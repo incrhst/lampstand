@@ -29,6 +29,50 @@ pub const CORNERS: [Color; 4] = [
     Color::rgb(255, 60, 255),
 ];
 
+/// One side of the safe area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edge {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+impl Edge {
+    pub const ALL: [Edge; 4] = [Edge::Top, Edge::Right, Edge::Bottom, Edge::Left];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Edge::Top => "TOP",
+            Edge::Right => "RIGHT",
+            Edge::Bottom => "BOTTOM",
+            Edge::Left => "LEFT",
+        }
+    }
+
+    /// This edge's margin in `safe_area`, as a fraction.
+    pub fn margin(self, safe_area: &SafeArea) -> f32 {
+        match self {
+            Edge::Top => safe_area.top,
+            Edge::Right => safe_area.right,
+            Edge::Bottom => safe_area.bottom,
+            Edge::Left => safe_area.left,
+        }
+    }
+
+    pub fn margin_mut(self, safe_area: &mut SafeArea) -> &mut f32 {
+        match self {
+            Edge::Top => &mut safe_area.top,
+            Edge::Right => &mut safe_area.right,
+            Edge::Bottom => &mut safe_area.bottom,
+            Edge::Left => &mut safe_area.left,
+        }
+    }
+}
+
+/// Colour of the edge being adjusted.
+pub const ACTIVE: Color = Color::rgb(255, 255, 255);
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Quad {
     pub rect: Rect,
@@ -79,7 +123,9 @@ pub fn aspect_name(width: u32, height: u32) -> String {
         .unwrap_or_else(|| format!("{ratio:.2}:1"))
 }
 
-pub fn pattern(width: u32, height: u32, safe_area: &SafeArea, label: &str) -> Pattern {
+/// The calibration pattern. `active` is the safe-area edge being adjusted,
+/// drawn thicker and in white; every edge is labelled with its margin.
+pub fn pattern(width: u32, height: u32, safe_area: &SafeArea, label: &str, active: Option<Edge>) -> Pattern {
     let (w, h) = (width as f32, height as f32);
     let t = line_width(w, h);
     let mut p = Pattern::default();
@@ -141,8 +187,47 @@ pub fn pattern(width: u32, height: u32, safe_area: &SafeArea, label: &str) -> Pa
         p.labels.push(Label { text: name.into(), x: w * x, y: h * y, size: label_size * 1.5, color });
     }
 
-    // The safe area as currently set.
-    p.quads.extend(outline(safe_area.rect(w, h), 2.0 * t, SAFE));
+    // The safe area as currently set, each edge labelled with its margin
+    // just inside it, a third of the way along (clear of the ring numbers).
+    let safe = safe_area.rect(w, h);
+    let [top, bottom, left, right] = outline(safe, 2.0 * t, SAFE);
+    let edge_size = label_size * 1.3;
+    for (edge, quad) in [(Edge::Top, top), (Edge::Right, right), (Edge::Bottom, bottom), (Edge::Left, left)] {
+        let is_active = active == Some(edge);
+        let (color, size) = if is_active { (ACTIVE, edge_size * 1.6) } else { (SAFE, edge_size) };
+        let text = format!("{} {:.1}%", edge.name(), edge.margin(safe_area) * 100.0);
+        let half_w = text.chars().count() as f32 * size * 0.3;
+        let gap = size * 0.9;
+        let (x, y) = match edge {
+            Edge::Top => (safe.x + safe.width * 0.375, safe.y + gap),
+            Edge::Bottom => (safe.x + safe.width * 0.375, safe.y + safe.height - gap),
+            Edge::Left => (safe.x + gap + half_w, safe.y + safe.height * 0.375),
+            Edge::Right => (safe.x + safe.width - gap - half_w, safe.y + safe.height * 0.375),
+        };
+        // A dark box behind the label so it reads over the ring lines.
+        let pad = size * 0.3;
+        let backing = Rect { x: x - half_w - pad, y: y - size * 0.75, width: 2.0 * (half_w + pad), height: size * 1.5 };
+        p.quads.push(Quad { rect: backing, color: BACKGROUND });
+        p.labels.push(Label { text, x, y, size, color });
+        let mut rect = quad.rect;
+        if is_active {
+            // Three times as thick, growing inwards.
+            let extra = 4.0 * t;
+            match edge {
+                Edge::Top => rect.height += extra,
+                Edge::Left => rect.width += extra,
+                Edge::Bottom => {
+                    rect.y -= extra;
+                    rect.height += extra
+                }
+                Edge::Right => {
+                    rect.x -= extra;
+                    rect.width += extra
+                }
+            }
+        }
+        p.quads.push(Quad { rect, color: if is_active { ACTIVE } else { SAFE } });
+    }
 
     // Centre cross and a caption naming the output and its mode.
     let cross = w.min(h) * 0.05;
@@ -173,7 +258,7 @@ mod tests {
 
     #[test]
     fn rings_are_numbered_by_percent_on_every_edge() {
-        let p = pattern(1920, 1080, &SafeArea::default(), "Main");
+        let p = pattern(1920, 1080, &SafeArea::default(), "Main", None);
         for n in (0..=MAX_PERCENT).step_by(STEP_PERCENT as usize) {
             let count = p.labels.iter().filter(|l| l.text == n.to_string()).count();
             assert_eq!(count, 12, "ring {n}: 3 labels on each of 4 edges");
@@ -186,7 +271,7 @@ mod tests {
     #[test]
     fn everything_is_on_screen() {
         for (w, h) in [(1024, 768), (1920, 1080), (1920, 1200), (5760, 1080)] {
-            let p = pattern(w, h, &SafeArea { top: 0.05, right: 0.05, bottom: 0.1, left: 0.05 }, "x");
+            let p = pattern(w, h, &SafeArea { top: 0.05, right: 0.05, bottom: 0.1, left: 0.05 }, "x", Some(Edge::Left));
             let screen = Rect { x: 0.0, y: 0.0, width: w as f32, height: h as f32 };
             for q in &p.quads {
                 assert!(crate::layout::contains(screen, q.rect), "{w}x{h}: {q:?}");

@@ -32,8 +32,8 @@ pub(crate) fn build(engine: &mut TextEngine, output: &Output, slide: &Slide) -> 
     let mut items = Vec::new();
     let mut texts = Vec::new();
 
-    if let Content::Calibration { label } = &slide.content {
-        let pattern = calibration::pattern(output.width, output.height, &output.safe_area, label);
+    if let Content::Calibration { label, active } = &slide.content {
+        let pattern = calibration::pattern(output.width, output.height, &output.safe_area, label, *active);
         items.extend(pattern.quads.into_iter().map(|q| Item::Solid { rect: q.rect, color: q.color }));
         for l in pattern.labels {
             texts.push(engine.label(&l.text, l.size, l.x, l.y, l.color));

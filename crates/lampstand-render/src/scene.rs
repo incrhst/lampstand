@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use lampstand_core::safe_area::SafeArea;
 
+use crate::calibration::Edge;
+
 /// An sRGB colour with straight (not premultiplied) alpha.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -170,8 +172,9 @@ pub enum Content {
     Text(TextSlide),
     /// A pre-rendered slide, fitted into the safe area keeping its aspect (TS-4).
     Image(Arc<Image>),
-    /// Calibration grid for this output (TS-1); `label` names the output.
-    Calibration { label: String },
+    /// Calibration grid for this output (TS-1); `label` names the output and
+    /// `active` is the safe-area edge being adjusted, if any.
+    Calibration { label: String, active: Option<Edge> },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -190,7 +193,7 @@ impl Slide {
     }
 
     pub fn calibration(label: impl Into<String>) -> Self {
-        Slide { content: Content::Calibration { label: label.into() }, ..Default::default() }
+        Slide { content: Content::Calibration { label: label.into(), active: None }, ..Default::default() }
     }
 
     pub fn with_background(mut self, background: Background) -> Self {

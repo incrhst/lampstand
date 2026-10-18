@@ -10,35 +10,39 @@
 //! previewed in an ordinary window (default 1280x720) instead of fullscreen.
 //! Resize it to try other aspect ratios.
 //!
-//! Keys:
-//!   Tab, or 1 2 3 4    pick the edge: top, right, bottom, left
-//!   Up / Right         move that edge in by 0.5% (Shift: 2%)
-//!   Down / Left        move it back out
-//!   R                  reset all margins to 0
-//!   T                  toggle calibration grid / sample lyric slide
-//!   B                  lyric slide background: bleed / fit
-//!   S                  safe-area outline on / off
-//!   Enter              save margins to the file
-//!   Esc / Q            save and quit
+//! How to calibrate: look at the screen from the back of the room. On each
+//! edge, move the white line in until everything outside it is cut off or
+//! hard to read, and everything inside is fully visible. The numbers on the
+//! rings help: the smallest number you can read on an edge is a good margin.
 //!
-//! Volunteer: on the grid, read the smallest number you can see fully on
-//! each edge; set that edge's margin to that number (the cyan line moves
-//! with it). Margins for each display are saved under the display's name and
-//! loaded again next time.
+//! Keys:
+//!   Arrow keys     move the white (active) edge the way the arrow points;
+//!                  an arrow along the other axis makes that edge active
+//!                  (Shift: bigger steps)
+//!   Tab            next edge
+//!   Mouse          drag any edge (in the preview window)
+//!   T              test slide: sample lyrics inside the safe area
+//!   B              test slide background: full screen / safe area only
+//!   S              test slide: safe-area outline on / off
+//!   R              reset all margins to 0
+//!   Enter          save
+//!   Esc / Q        save and quit
+//!
+//! Margins are saved per display name and loaded again next time.
 
 use std::path::PathBuf;
 
+use lampstand_render::calibration::Edge;
 use lampstand_render::window::{displays, open_outputs, DisplayInfo, OutputWindow};
 use lampstand_render::winit::application::ApplicationHandler;
-use lampstand_render::winit::event::{ElementState, KeyEvent, WindowEvent};
+use lampstand_render::winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use lampstand_render::winit::event_loop::{ActiveEventLoop, EventLoop};
 use lampstand_render::winit::keyboard::{Key, ModifiersState, NamedKey};
 use lampstand_render::winit::window::WindowId;
-use lampstand_render::{Background, BackgroundMode, Color, Output, SafeArea, Slide, TextSlide};
+use lampstand_render::{Background, BackgroundMode, Color, Content, Output, SafeArea, Slide, TextSlide};
 use serde_json::{json, Value};
 
 const LYRIC: &str = "Amazing grace! How sweet the sound\nThat saved a wretch like me!\nI once was lost, but now am found;\nWas blind, but now I see.";
-const EDGES: [&str; 4] = ["top", "right", "bottom", "left"];
 
 struct App {
     display: usize,
@@ -46,54 +50,39 @@ struct App {
     file: PathBuf,
     window: Option<OutputWindow>,
     name: String,
-    margins: [f32; 4],
-    edge: usize,
+    safe: SafeArea,
+    edge: Edge,
     lyric: bool,
     bleed: bool,
     outline: bool,
     modifiers: ModifiersState,
+    cursor: (f32, f32),
+    dragging: bool,
     status: String,
 }
 
 impl App {
-    fn safe_area(&self) -> SafeArea {
-        let [top, right, bottom, left] = self.margins;
-        SafeArea { top, right, bottom, left }
-    }
-
-    fn margins_text(&self) -> String {
-        EDGES
-            .iter()
-            .zip(self.margins)
-            .enumerate()
-            .map(|(i, (name, m))| {
-                let mark = if i == self.edge { ">" } else { " " };
-                format!("{mark}{} {:.1}%", name.to_uppercase(), m * 100.0)
-            })
-            .collect::<Vec<_>>()
-            .join("   ")
-    }
-
     fn update(&mut self) {
-        let margins = {
-            let [t, r, b, l] = self.margins.map(|m| m * 100.0);
-            format!("T {t:.1}%  R {r:.1}%  B {b:.1}%  L {l:.1}%")
-        };
         let slide = if self.lyric {
+            let s = self.safe;
             Slide::text(TextSlide::new(LYRIC).with_footer(format!(
-                "{margins}  ·  {}  ·  T grid  B bleed/fit  S outline",
-                if self.bleed { "bleed" } else { "fit" }
+                "Margins: top {:.1}%  right {:.1}%  bottom {:.1}%  left {:.1}%  ·  background: {}  ·  T: back to grid",
+                s.top * 100.0,
+                s.right * 100.0,
+                s.bottom * 100.0,
+                s.left * 100.0,
+                if self.bleed { "full screen" } else { "safe area only" }
             )))
             .with_background(Background::Color(Color::rgb(20, 40, 120)))
         } else {
-            Slide::calibration(format!(
-                "{}\n{}\nTab edge · arrows move · T lyric · Enter save · Esc quit\n{}",
-                self.name,
-                self.margins_text(),
-                self.status
-            ))
+            let label = format!(
+                "{}\nArrows move the white edge · Tab next edge · drag with mouse\nT test slide · Enter save · Esc save and quit\n{}",
+                self.name, self.status
+            );
+            Slide { content: Content::Calibration { label, active: Some(self.edge) }, ..Default::default() }
         };
-        let (safe_area, show_safe_area) = (self.safe_area(), self.lyric && self.outline);
+        let safe_area = self.safe;
+        let show_safe_area = self.lyric && self.outline;
         let background_mode = if self.bleed { BackgroundMode::Bleed } else { BackgroundMode::Fit };
         let Some(window) = self.window.as_mut() else { return };
         let output = Output { safe_area, background_mode, show_safe_area, ..window.output().clone() };
@@ -105,16 +94,70 @@ impl App {
         }
     }
 
+    /// Arrow keys move the active edge the way they point. An arrow along the
+    /// other axis switches to the edge it points at.
+    fn arrow(&mut self, key: NamedKey) {
+        let step = if self.modifiers.shift_key() { 0.02 } else { 0.005 };
+        let (towards, inward) = match key {
+            NamedKey::ArrowUp => (Edge::Top, Edge::Bottom),
+            NamedKey::ArrowDown => (Edge::Bottom, Edge::Top),
+            NamedKey::ArrowLeft => (Edge::Left, Edge::Right),
+            NamedKey::ArrowRight => (Edge::Right, Edge::Left),
+            _ => return,
+        };
+        let delta = if self.edge == towards {
+            -step // towards its own side of the screen: out
+        } else if self.edge == inward {
+            step // towards the opposite side: in
+        } else {
+            self.edge = towards;
+            return;
+        };
+        let m = self.edge.margin_mut(&mut self.safe);
+        *m = (*m + delta).clamp(0.0, 0.45);
+    }
+
+    fn size(&self) -> (f32, f32) {
+        self.window.as_ref().map_or((1.0, 1.0), |w| (w.output().width as f32, w.output().height as f32))
+    }
+
+    /// The edge nearest the cursor, if it is close enough to grab.
+    fn edge_at(&self, (x, y): (f32, f32)) -> Option<Edge> {
+        let (w, h) = self.size();
+        let r = self.safe.rect(w, h);
+        let reach = w.min(h) * 0.04;
+        let distances = [
+            (Edge::Top, (y - r.y).abs()),
+            (Edge::Bottom, (y - (r.y + r.height)).abs()),
+            (Edge::Left, (x - r.x).abs()),
+            (Edge::Right, (x - (r.x + r.width)).abs()),
+        ];
+        distances.into_iter().filter(|(_, d)| *d < reach).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(e, _)| e)
+    }
+
+    fn drag(&mut self) {
+        let (w, h) = self.size();
+        let (x, y) = self.cursor;
+        let value = match self.edge {
+            Edge::Top => y / h,
+            Edge::Bottom => 1.0 - y / h,
+            Edge::Left => x / w,
+            Edge::Right => 1.0 - x / w,
+        };
+        // Snap to half a percent, like the arrow keys.
+        *self.edge.margin_mut(&mut self.safe) = ((value * 200.0).round() / 200.0).clamp(0.0, 0.45);
+    }
+
     fn load(&mut self) {
         let Ok(text) = std::fs::read_to_string(&self.file) else { return };
         let Ok(all) = serde_json::from_str::<Value>(&text) else { return };
         if let Some(saved) = all.get(&self.name).and_then(|d| d.get("safe_area")) {
-            for (i, edge) in EDGES.iter().enumerate() {
-                if let Some(v) = saved.get(*edge).and_then(Value::as_f64) {
-                    self.margins[i] = v as f32;
+            for edge in Edge::ALL {
+                if let Some(v) = saved.get(edge.name().to_lowercase()).and_then(Value::as_f64) {
+                    *edge.margin_mut(&mut self.safe) = v as f32;
                 }
             }
-            self.status = format!("loaded from {}", self.file.display());
+            self.status = format!("Loaded saved margins from {}", self.file.display());
         }
     }
 
@@ -125,18 +168,26 @@ impl App {
             .filter(Value::is_object)
             .unwrap_or_else(|| json!({}));
         let (width, height) = self.window.as_ref().map(|w| (w.output().width, w.output().height)).unwrap_or_default();
-        let [top, right, bottom, left] = self.margins.map(|m| (m as f64 * 1000.0).round() / 1000.0);
+        let round = |m: f32| (m as f64 * 1000.0).round() / 1000.0;
+        let s = self.safe;
         all[&self.name] = json!({
             "width": width,
             "height": height,
-            "safe_area": { "top": top, "right": right, "bottom": bottom, "left": left },
+            "safe_area": { "top": round(s.top), "right": round(s.right), "bottom": round(s.bottom), "left": round(s.left) },
         });
         let result = std::fs::write(&self.file, serde_json::to_string_pretty(&all).unwrap() + "\n");
         self.status = match result {
-            Ok(()) => format!("saved to {}", self.file.display()),
-            Err(e) => format!("could not save: {e}"),
+            Ok(()) => format!("Saved to {}", self.file.display()),
+            Err(e) => format!("Could not save: {e}"),
         };
-        println!("{}  ({})", self.status, self.margins_text());
+        println!(
+            "{}: top {:.1}%  right {:.1}%  bottom {:.1}%  left {:.1}%",
+            self.status,
+            s.top * 100.0,
+            s.right * 100.0,
+            s.bottom * 100.0,
+            s.left * 100.0
+        );
     }
 }
 
@@ -165,7 +216,7 @@ impl ApplicationHandler for App {
         };
         self.name = display.name.clone();
         self.load();
-        let output = Output::new(display.size.0, display.size.1).with_safe_area(self.safe_area());
+        let output = Output::new(display.size.0, display.size.1).with_safe_area(self.safe);
         match open_outputs(event_loop, [(display, output, Slide::default())]) {
             Ok((_, mut windows)) => {
                 let window = windows.remove(0);
@@ -181,47 +232,76 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        let mut changed = true;
         match &event {
             WindowEvent::CloseRequested => {
                 self.save();
                 event_loop.exit();
                 return;
             }
-            WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
+            WindowEvent::ModifiersChanged(m) => {
+                self.modifiers = m.state();
+                changed = false;
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = (position.x as f32, position.y as f32);
+                changed = self.dragging && !self.lyric;
+                if changed {
+                    self.drag();
+                }
+            }
+            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => match state {
+                ElementState::Pressed if !self.lyric => match self.edge_at(self.cursor) {
+                    Some(edge) => {
+                        self.edge = edge;
+                        self.dragging = true;
+                    }
+                    None => changed = false,
+                },
+                _ => {
+                    changed = self.dragging;
+                    self.dragging = false;
+                }
+            },
             WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, .. }, .. } => {
-                let step = if self.modifiers.shift_key() { 0.02 } else { 0.005 };
                 match logical_key {
                     Key::Named(NamedKey::Escape) => {
                         self.save();
                         event_loop.exit();
                         return;
                     }
-                    Key::Named(NamedKey::Tab) => self.edge = (self.edge + 1) % 4,
-                    Key::Named(NamedKey::ArrowUp | NamedKey::ArrowRight) => {
-                        self.margins[self.edge] = (self.margins[self.edge] + step).min(0.45)
+                    Key::Named(NamedKey::Tab) => {
+                        let i = Edge::ALL.iter().position(|e| *e == self.edge).unwrap_or(0);
+                        let step = if self.modifiers.shift_key() { 3 } else { 1 };
+                        self.edge = Edge::ALL[(i + step) % 4];
                     }
-                    Key::Named(NamedKey::ArrowDown | NamedKey::ArrowLeft) => {
-                        self.margins[self.edge] = (self.margins[self.edge] - step).max(0.0)
+                    Key::Named(key @ (NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight)) => {
+                        if self.lyric {
+                            self.lyric = false;
+                        } else {
+                            self.arrow(*key);
+                        }
                     }
                     Key::Named(NamedKey::Enter) => self.save(),
                     Key::Character(c) => match c.to_lowercase().as_str() {
-                        "1" | "2" | "3" | "4" => self.edge = c.parse::<usize>().unwrap() - 1,
                         "q" => {
                             self.save();
                             event_loop.exit();
                             return;
                         }
-                        "r" => self.margins = [0.0; 4],
+                        "r" => self.safe = SafeArea::default(),
                         "t" => self.lyric = !self.lyric,
                         "b" => self.bleed = !self.bleed,
                         "s" => self.outline = !self.outline,
-                        _ => return,
+                        _ => changed = false,
                     },
-                    _ => return,
+                    _ => changed = false,
                 }
-                self.update();
             }
-            _ => {}
+            _ => changed = false,
+        }
+        if changed {
+            self.update();
         }
         if let Some(window) = self.window.as_mut() {
             if let Err(e) = window.handle_event(&event) {
@@ -239,12 +319,14 @@ fn main() {
         file: PathBuf::from("lampstand-calibration.json"),
         window: None,
         name: String::new(),
-        margins: [0.0; 4],
-        edge: 0,
+        safe: SafeArea::default(),
+        edge: Edge::Top,
         lyric: false,
         bleed: true,
         outline: true,
         modifiers: ModifiersState::empty(),
+        cursor: (0.0, 0.0),
+        dragging: false,
         status: String::new(),
     };
     let mut list = false;
