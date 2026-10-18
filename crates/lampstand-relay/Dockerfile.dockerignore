@@ -1,0 +1,6 @@
+# Used by BuildKit for crates/lampstand-relay/Dockerfile (context: repo root).
+target
+.git
+.claude
+**/*.automerge
+**/lampstand-relay-data

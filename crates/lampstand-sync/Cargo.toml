@@ -5,5 +5,22 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["tls"]
+# wss:// support for connecting to a relay behind TLS. The relay binary turns
+# it off: it speaks plain ws and sits behind a TLS reverse proxy.
+tls = ["tokio-tungstenite/native-tls"]
+
 [dependencies]
-lampstand-core = { path = "../lampstand-core" }
+automerge = "0.12"
+mdns-sd = "0.21"
+tokio = { version = "1", features = ["net", "sync", "rt", "macros", "time"] }
+tokio-tungstenite = "0.30"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rand = "0.9"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"
