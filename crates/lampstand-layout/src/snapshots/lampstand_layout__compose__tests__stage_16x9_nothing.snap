@@ -1,0 +1,445 @@
+---
+source: crates/lampstand-layout/src/compose.rs
+expression: json
+---
+{
+  "height": 1080.0,
+  "nodes": [
+    {
+      "id": 16777216,
+      "kind": {
+        "Path": {
+          "commands": [
+            {
+              "MoveTo": {
+                "x": 0.0,
+                "y": 0.0
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1920.0,
+                "y": 0.0
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1920.0,
+                "y": 1080.0
+              }
+            },
+            {
+              "LineTo": {
+                "x": 0.0,
+                "y": 1080.0
+              }
+            },
+            "Close"
+          ],
+          "fill": {
+            "Solid": {
+              "a": 255,
+              "b": 0,
+              "g": 0,
+              "r": 0
+            }
+          },
+          "shadow": null,
+          "stroke": null
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777217,
+      "kind": {
+        "Text": {
+          "outline": null,
+          "paragraphs": [
+            {
+              "align": "Left",
+              "bullet": null,
+              "indent": 0.0,
+              "line_spacing": 1.2000000476837158,
+              "runs": [
+                {
+                  "color": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  },
+                  "font_family": "Noto Sans",
+                  "italic": false,
+                  "size": 52.61759948730469,
+                  "strike": false,
+                  "text": "08:00",
+                  "underline": false,
+                  "weight": 700
+                }
+              ],
+              "space_after": 0.0,
+              "space_before": 0.0
+            }
+          ],
+          "rect": {
+            "height": 75.16799926757813,
+            "width": 864.0,
+            "x": 76.79999542236328,
+            "y": 54.0
+          },
+          "shadow": null,
+          "valign": "Top"
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777218,
+      "kind": {
+        "Text": {
+          "outline": null,
+          "paragraphs": [
+            {
+              "align": "Left",
+              "bullet": null,
+              "indent": 0.0,
+              "line_spacing": 1.2000000476837158,
+              "runs": [
+                {
+                  "color": {
+                    "a": 255,
+                    "b": 170,
+                    "g": 170,
+                    "r": 170
+                  },
+                  "font_family": "Noto Sans",
+                  "italic": false,
+                  "size": 28.0,
+                  "strike": false,
+                  "text": "NOW",
+                  "underline": false,
+                  "weight": 400
+                }
+              ],
+              "space_after": 0.0,
+              "space_before": 0.0
+            }
+          ],
+          "rect": {
+            "height": 39.20000076293945,
+            "width": 1071.3599853515625,
+            "x": 76.79999542236328,
+            "y": 147.95999145507813
+          },
+          "shadow": null,
+          "valign": "Top"
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777219,
+      "kind": {
+        "Path": {
+          "commands": [
+            {
+              "MoveTo": {
+                "x": 76.79999542236328,
+                "y": 187.1599884033203
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1148.1600341796875,
+                "y": 187.1599884033203
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1148.1600341796875,
+                "y": 993.5999145507813
+              }
+            },
+            {
+              "LineTo": {
+                "x": 76.79999542236328,
+                "y": 993.5999145507813
+              }
+            },
+            "Close"
+          ],
+          "fill": null,
+          "shadow": null,
+          "stroke": {
+            "dash": null,
+            "paint": {
+              "Solid": {
+                "a": 255,
+                "b": 10,
+                "g": 214,
+                "r": 255
+              }
+            },
+            "width": 3.0
+          }
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777220,
+      "kind": {
+        "Text": {
+          "outline": null,
+          "paragraphs": [
+            {
+              "align": "Left",
+              "bullet": null,
+              "indent": 0.0,
+              "line_spacing": 1.2000000476837158,
+              "runs": [
+                {
+                  "color": {
+                    "a": 255,
+                    "b": 170,
+                    "g": 170,
+                    "r": 170
+                  },
+                  "font_family": "Noto Sans",
+                  "italic": false,
+                  "size": 28.0,
+                  "strike": false,
+                  "text": "NEXT",
+                  "underline": false,
+                  "weight": 400
+                }
+              ],
+              "space_after": 0.0,
+              "space_before": 0.0
+            }
+          ],
+          "rect": {
+            "height": 39.20000076293945,
+            "width": 587.52001953125,
+            "x": 1217.2801513671875,
+            "y": 147.95999145507813
+          },
+          "shadow": null,
+          "valign": "Top"
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777221,
+      "kind": {
+        "Path": {
+          "commands": [
+            {
+              "MoveTo": {
+                "x": 1217.2801513671875,
+                "y": 187.1599884033203
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1804.8001708984375,
+                "y": 187.1599884033203
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1804.8001708984375,
+                "y": 486.2159423828125
+              }
+            },
+            {
+              "LineTo": {
+                "x": 1217.2801513671875,
+                "y": 486.2159423828125
+              }
+            },
+            "Close"
+          ],
+          "fill": null,
+          "shadow": null,
+          "stroke": {
+            "dash": null,
+            "paint": {
+              "Solid": {
+                "a": 255,
+                "b": 170,
+                "g": 170,
+                "r": 170
+              }
+            },
+            "width": 2.0
+          }
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777222,
+      "kind": {
+        "Text": {
+          "outline": null,
+          "paragraphs": [
+            {
+              "align": "Left",
+              "bullet": null,
+              "indent": 0.0,
+              "line_spacing": 1.2000000476837158,
+              "runs": [
+                {
+                  "color": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  },
+                  "font_family": "Noto Sans",
+                  "italic": false,
+                  "size": 60.0,
+                  "strike": false,
+                  "text": "Announcements",
+                  "underline": false,
+                  "weight": 400
+                }
+              ],
+              "space_after": 0.0,
+              "space_before": 0.0
+            }
+          ],
+          "rect": {
+            "height": 283.05596923828125,
+            "width": 571.52001953125,
+            "x": 1225.2801513671875,
+            "y": 195.1599884033203
+          },
+          "shadow": null,
+          "valign": "Top"
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    },
+    {
+      "id": 16777223,
+      "kind": {
+        "Text": {
+          "outline": null,
+          "paragraphs": [
+            {
+              "align": "Left",
+              "bullet": null,
+              "indent": 0.0,
+              "line_spacing": 1.2000000476837158,
+              "runs": [
+                {
+                  "color": {
+                    "a": 255,
+                    "b": 170,
+                    "g": 170,
+                    "r": 170
+                  },
+                  "font_family": "Noto Sans",
+                  "italic": false,
+                  "size": 28.0,
+                  "strike": false,
+                  "text": "NOTES",
+                  "underline": false,
+                  "weight": 400
+                }
+              ],
+              "space_after": 0.0,
+              "space_before": 0.0
+            }
+          ],
+          "rect": {
+            "height": 39.20000076293945,
+            "width": 587.52001953125,
+            "x": 1217.2801513671875,
+            "y": 505.81597900390625
+          },
+          "shadow": null,
+          "valign": "Top"
+        }
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "e": 0.0,
+        "f": 0.0
+      },
+      "visible": true
+    }
+  ],
+  "width": 1920.0
+}

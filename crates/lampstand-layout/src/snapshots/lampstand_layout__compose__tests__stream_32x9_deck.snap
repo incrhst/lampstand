@@ -1,0 +1,135 @@
+---
+source: crates/lampstand-layout/src/compose.rs
+expression: json
+---
+{
+  "height": 1080.0,
+  "nodes": [
+    {
+      "id": 16777216,
+      "kind": {
+        "Group": [
+          {
+            "id": 1,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 50.0,
+                      "y": 100.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 350.0,
+                      "y": 100.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 350.0,
+                      "y": 300.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 50.0,
+                      "y": 300.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 30,
+                    "g": 30,
+                    "r": 200
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 500.0,
+                      "y": 100.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 800.0,
+                      "y": 100.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 800.0,
+                      "y": 300.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 500.0,
+                      "y": 300.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 200,
+                    "g": 30,
+                    "r": 30
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          }
+        ]
+      },
+      "opacity": 1.0,
+      "transform": {
+        "a": 2.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 2.0,
+        "e": 960.0,
+        "f": 0.0
+      },
+      "visible": true
+    }
+  ],
+  "width": 3840.0
+}

@@ -1,0 +1,9 @@
+---
+source: crates/lampstand-layout/src/compose.rs
+expression: json
+---
+{
+  "height": 1080.0,
+  "nodes": [],
+  "width": 1920.0
+}
