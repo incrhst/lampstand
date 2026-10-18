@@ -10,11 +10,11 @@ The public APIs in `crates/*/src` are the contracts. Their doc comments are the 
 app          Tauri shell + Svelte UI, wires everything, speaks lampstand-api
 ───────────────────────────────────────────────────────────────────────────
 services     api    server    library    connectors    relay (binary)
-engines      live    layout    slides    render ← media    sync    import
+engines      live    slides    layout ← render ← media    sync    import
 model        core
 ```
 
-Each layer uses only the layers below it.
+Each layer uses only the layers below it, except the arrows within a layer: `render` uses `layout`'s font set, so both shape text from the same fonts, and `media`'s decoders.
 
 | Crate | Owns | Depends on |
 | --- | --- | --- |
@@ -22,7 +22,7 @@ Each layer uses only the layers below it.
 | `live` | The live engine: preview, live, navigation, overlays | core |
 | `layout` | Fonts, splitting text into slides, fitting text, composing each output's scene | core |
 | `slides` | PPTX → scenes, builds, transitions, notes, fidelity report | core |
-| `render` | wgpu: output windows, offscreen rendering, transitions, animations, calibration pattern | core, media |
+| `render` | wgpu: output windows, offscreen rendering, transitions, animations, calibration pattern | core, layout (fonts only), media |
 | `media` | Video and audio decoding (GStreamer behind a feature) | — |
 | `sync` | Automerge documents, blob store, sync protocol, LAN discovery, teams and roles | core |
 | `library` | Typed access to documents, song search, service packages, readiness check, CCLI usage | core, sync |
@@ -56,6 +56,14 @@ Decks, lyrics, scripture, countdowns and the stage display all become a `core::s
 - The wgpu renderer and the OBS browser source (DOM) draw the same thing.
 - Golden-image tests compare scenes, not app states.
 - PPTX knowledge stays in `slides`. Preset shapes become paths there, inheritance is resolved there, and autofit is applied there.
+
+Both renderers read a scene the same way. The wgpu renderer's choices (T24), which the browser source follows:
+
+- Colours are straight-alpha sRGB, and blending and gradient interpolation happen on the sRGB values (premultiplied), as in CSS. No linear-light blending.
+- A node's opacity applies to the node as a whole: a faded group or text block fades as one image, without darker overlaps.
+- Gradient and dash coordinates, stroke widths and shadow offsets and blurs are in the node's local units, so they scale and rotate with it. A shadow's `blur` is a CSS blur radius (twice the Gaussian's standard deviation). Strokes are centred, with miter joins and butt caps; fills are non-zero.
+- Text: line height is `size × line_spacing`; `space_before`, `space_after` and `indent` are in scene units; a paragraph wraps (by word, then by glyph) at the block's width minus its indent; a bullet hangs in the indent, at the block's left edge, on the first line's baseline, in the first run's style. Text that overflows its rect is drawn, not clipped. An outline is drawn under the fill and shows `width` outside the glyph edge (CSS `paint-order: stroke` with a stroke of twice the width).
+- Images: `crop` fractions outside 0 to 1 leave that part of the rect empty.
 
 Node IDs below 2^24 belong to content (deck shapes, so build animations can target them). The compositor numbers its own nodes from 2^24 up.
 
@@ -155,7 +163,7 @@ The Tauri updater installs only when `LiveEngine::is_idle()` is true and no serv
 | Pure crates | Unit tests next to the code; acceptance tests in the contracts |
 | Importers | Fixture files per format in `crates/lampstand-import/tests/fixtures/` |
 | Layout | Snapshot tests of composed scenes as JSON (insta) |
-| Render | Golden PNGs from `render_offscreen` on a software adapter (lavapipe or WARP in CI), compared with a per-pixel tolerance |
+| Render | Golden PNGs from `render_offscreen`, compared with a per-pixel tolerance; `LAMPSTAND_BLESS=1` rewrites them. CI renders on lavapipe (Linux), WARP or the runner's adapter (Windows) and Metal (macOS); with no adapter at all the tests skip with a message |
 | Slides | Synthetic decks in the repo; the 200-deck SSIM corpus in a private CI job |
 | Sync | Two and three in-process repos over in-memory transports, with random edit and partition schedules |
 | App | Playwright against the web UI with a mock API; a manual Sunday-service checklist per release |

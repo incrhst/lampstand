@@ -7,4 +7,15 @@ rust-version.workspace = true
 
 [dependencies]
 lampstand-core.workspace = true
+lampstand-layout.workspace = true
+bytemuck = { workspace = true }
+cosmic-text.workspace = true
+glyphon.workspace = true
+image.workspace = true
+lyon.workspace = true
+pollster.workspace = true
 serde.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
