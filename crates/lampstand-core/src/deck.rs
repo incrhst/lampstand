@@ -14,6 +14,10 @@ use crate::id::{BlobHash, Id, Timestamp};
 pub type DeckId = Id<Deck>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Deck {
     pub id: DeckId,
     pub title: String,
@@ -26,6 +30,10 @@ pub struct Deck {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Version {
     pub blob: BlobHash,
     pub fetched_at: Timestamp,
@@ -35,6 +43,10 @@ pub struct Version {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum DeckSource {
     /// Dropped in or picked from disk. Never updates.
     File { name: String },

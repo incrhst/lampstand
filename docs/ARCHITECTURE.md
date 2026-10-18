@@ -100,7 +100,11 @@ Google Slides arrive as their PPTX export and take the same path. A 200-deck fid
 - **Ordering.** Service items are a map keyed by item ID, each with a fractional `Position`, not a list. A CRDT list has no "move", and concurrent moves would duplicate items.
 - **Blobs.** Deck files, images, video and Bible text are content-addressed files (BLAKE3). Peers fetch them by hash on demand. They are never inside documents, which keeps documents small and sync fast.
 - **Wire protocol.** One protocol for every link: a WebSocket carrying Automerge sync messages and blob requests. LAN peers advertise `_lampstand._tcp` over mDNS and connect to each other's local server (CD-2). The relay speaks the same protocol (CD-3). Shared-folder sync (CD-7, Phase 2) writes the same saved chunks to a folder.
-- **samod.** T16 evaluates samod (Rust, wire-compatible with automerge-repo). If it fits, the Phase 2 browser planner can use automerge-repo in JavaScript directly. If not, we wrap Automerge's sync state ourselves.
+- **No samod.** The repo wraps `automerge` directly: samod cannot create a document under a chosen ID and has no hook to drop changes by author role ([decision 0002](decisions/0002-sync-repo.md)). Document IDs are UUIDs and messages are plain Automerge sync messages, so a relay can still bridge to automerge-repo for the Phase 2 browser planner.
+- **Storage.** `docs/<uuid>/` holds a `kind` file and the document's chunks: one incremental chunk per change, compacted into a snapshot after 32. `blobs/<hash>` holds blobs, written to a temp file, hashed while streaming, then renamed.
+- **Team index.** The team document's `index` map (ID → kind) lists every document; its `deleted` map holds tombstones. Its first change is made by a fixed actor at time zero, so every device's copy shares it and the maps merge. Until T18 the team document's ID is the nil UUID.
+- **Actors.** A change's actor ID is the device's 32-byte public key plus 8 random bytes per `Repo::open`, so peers can find the author's role (`actor_device`) and a device that lost its store never reuses a sequence number.
+- **Sync API.** `Repo::generate_sync_message` and `receive_sync_message` keep one Automerge sync state per (peer device, document) and carry the document's kind, so the receiver can create an unseen document and check permissions. T17 puts them on the WebSocket; tests pass them between in-memory repos.
 
 ### What syncs and what stays on the device
 

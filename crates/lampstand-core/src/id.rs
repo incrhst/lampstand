@@ -145,6 +145,62 @@ impl<'de> Deserialize<'de> for BlobHash {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Timestamp(pub i64);
 
+/// In synced documents an `Id` is its hyphenated UUID string and a
+/// `BlobHash` its 64 hex digits, the same as their `Display` and serde
+/// forms, so they read the same in a document, a map key and JSON. A
+/// `Timestamp` is an int; it is written by hand because autosurgeon's
+/// derived newtypes do not hydrate inside an `Option`.
+#[cfg(feature = "automerge")]
+mod automerge_impls {
+    use autosurgeon::{Hydrate, HydrateError, Reconcile, Reconciler};
+
+    use super::{BlobHash, Id, Timestamp};
+
+    impl<T> Reconcile for Id<T> {
+        type Key<'a> = autosurgeon::reconcile::NoKey;
+
+        fn reconcile<R: Reconciler>(&self, mut reconciler: R) -> Result<(), R::Error> {
+            reconciler.str(self.to_string())
+        }
+    }
+
+    impl<T> Hydrate for Id<T> {
+        fn hydrate_string(s: &str) -> Result<Self, HydrateError> {
+            s.parse()
+                .map_err(|_| HydrateError::unexpected("a UUID", s.to_string()))
+        }
+    }
+
+    impl Reconcile for BlobHash {
+        type Key<'a> = autosurgeon::reconcile::NoKey;
+
+        fn reconcile<R: Reconciler>(&self, mut reconciler: R) -> Result<(), R::Error> {
+            reconciler.str(self.to_string())
+        }
+    }
+
+    impl Hydrate for BlobHash {
+        fn hydrate_string(s: &str) -> Result<Self, HydrateError> {
+            s.parse()
+                .map_err(|_| HydrateError::unexpected("64 hex digits", s.to_string()))
+        }
+    }
+
+    impl Reconcile for Timestamp {
+        type Key<'a> = autosurgeon::reconcile::NoKey;
+
+        fn reconcile<R: Reconciler>(&self, mut reconciler: R) -> Result<(), R::Error> {
+            reconciler.i64(self.0)
+        }
+    }
+
+    impl Hydrate for Timestamp {
+        fn hydrate_int(ms: i64) -> Result<Self, HydrateError> {
+            Ok(Timestamp(ms))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,6 +11,10 @@ use crate::id::{BlobHash, Id};
 
 /// A book of the Bible, 1 (Genesis) to 66 (Revelation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Book(u8);
 
 pub const BOOK_NAMES: [&str; 66] = [
@@ -102,6 +106,10 @@ impl Book {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct ChapterVerse {
     pub chapter: u16,
     pub verse: u16,
@@ -116,6 +124,10 @@ impl ChapterVerse {
 /// A contiguous passage in one book, inclusive at both ends. It may cross
 /// chapters ("Gen 1:1-2:3").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Passage {
     pub book: Book,
     pub start: ChapterVerse,
@@ -157,6 +169,10 @@ pub type TranslationId = Id<Translation>;
 /// text is a blob ([`BibleText`], postcard + zstd) that syncs between the
 /// church's own devices and is never put in a service package (BI-2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Translation {
     pub id: TranslationId,
     pub name: String,
@@ -169,6 +185,10 @@ pub struct Translation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum Licence {
     PublicDomain,
     /// Imported by the church under its own licence; the notice is shown

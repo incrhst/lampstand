@@ -21,16 +21,29 @@ pub type ServiceId = Id<Service>;
 pub type ItemId = Id<ServiceItem>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Service {
     pub id: ServiceId,
     pub title: String,
     pub starts_at: Option<Timestamp>,
     /// Default theme for text items; each output may override it.
     pub theme: Option<ThemeId>,
+    /// Keyed by the item ID as a string in the synced document.
+    #[cfg_attr(
+        feature = "automerge",
+        autosurgeon(with = "autosurgeon::map_with_parseable_keys")
+    )]
     pub items: BTreeMap<ItemId, ServiceItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct ServiceItem {
     pub position: Position,
     pub kind: ItemKind,
@@ -39,6 +52,10 @@ pub struct ServiceItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum ItemKind {
     /// A divider in the order ("Worship", "Sermon"). Has no slides.
     Header {
@@ -73,6 +90,10 @@ pub enum ItemKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum CountdownTarget {
     /// Counts down to a wall-clock time (the service start).
     At(Timestamp),
@@ -84,6 +105,10 @@ pub enum CountdownTarget {
 /// devices picked the same position concurrently. Positions only contain
 /// the characters `0-9A-Za-z`, so they sort the same as bytes everywhere.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Position(String);
 
 impl Position {

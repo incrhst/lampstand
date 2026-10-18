@@ -11,6 +11,10 @@ pub type SongId = Id<Song>;
 
 /// A labelled block of lyrics, such as "V1" or "C".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Section {
     pub label: String,
     /// One entry per displayed line, with chords inline in ChordPro form:
@@ -47,6 +51,10 @@ impl SectionKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Song {
     pub id: SongId,
     pub title: String,
