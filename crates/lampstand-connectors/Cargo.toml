@@ -6,3 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64.workspace = true
+reqwest.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+wiremock.workspace = true
