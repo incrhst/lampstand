@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampstand</title>
+<link rel="stylesheet" href="/operator.css">
+</head>
+<body>
+<header class="bar">
+  <strong class="brand">Lampstand</strong>
+  <input id="service-name" class="service-name" aria-label="Service name">
+  <span id="conn" class="conn" role="status">Connecting…</span>
+  <span class="spacer"></span>
+  <a href="/stage" target="_blank" rel="noopener">Stage display</a>
+  <a href="/stream" target="_blank" rel="noopener">OBS source</a>
+  <button id="open-library" type="button">Library</button>
+</header>
+
+<main class="layout">
+  <section class="order" aria-label="Service order">
+    <div class="add">
+      <div class="add-row">
+        <input id="song-q" type="search" placeholder="Add a song: type title or words" autocomplete="off" aria-label="Search songs">
+      </div>
+      <ul id="song-results" class="results" hidden></ul>
+      <form id="scripture-form" class="add-row">
+        <input id="scripture-ref" placeholder="Add scripture: Jn 3:16-18" autocomplete="off" aria-label="Scripture reference">
+        <select id="scripture-tr" aria-label="Translation"></select>
+        <button type="submit">Add</button>
+      </form>
+      <p id="scripture-msg" class="msg" hidden></p>
+      <div class="add-row">
+        <select id="deck-pick" aria-label="Add a deck"><option value="">Add a deck…</option></select>
+        <label class="button">Import .pptx<input id="deck-file" type="file" accept=".pptx" hidden></label>
+        <button id="add-logo" type="button">Add logo</button>
+      </div>
+    </div>
+    <ol id="items" class="items"></ol>
+  </section>
+
+  <section class="screens" aria-label="Preview and live">
+    <div class="screen-wrap">
+      <h2>Preview <span id="preview-label" class="label"></span></h2>
+      <div id="preview" class="screen"></div>
+    </div>
+    <div class="screen-wrap live">
+      <h2>Live <span id="live-label" class="label"></span> <span id="mode-badge" class="badge" hidden></span></h2>
+      <div id="live" class="screen"></div>
+    </div>
+    <div class="controls" role="toolbar" aria-label="Live controls">
+      <button id="prev" type="button" title="Previous (←)">◀ Prev</button>
+      <button id="go" type="button" class="primary" title="Go live (Enter)">Go live</button>
+      <button id="next" type="button" title="Next (→ or Space)">Next ▶</button>
+      <span class="spacer"></span>
+      <button id="m-clear" type="button" title="Clear text (W)">Clear</button>
+      <button id="m-black" type="button" title="Black (B)">Black</button>
+      <button id="m-logo" type="button" title="Logo (L)">Logo</button>
+    </div>
+    <div class="notes-wrap">
+      <h2>Notes</h2>
+      <div id="notes" class="notes"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="library">
+  <form method="dialog" class="dialog-head"><h2>Library</h2><button>Close</button></form>
+  <p id="lib-summary"></p>
+  <div class="imports">
+    <label class="button">Import songs<input id="songs-file" type="file" multiple hidden></label>
+    <span class="hint">OpenLyrics, OpenSong or ChordPro</span>
+  </div>
+  <div class="imports">
+    <input id="bible-abbr" placeholder="Abbreviation, e.g. WEB" aria-label="Translation abbreviation" size="12">
+    <label class="button">Import a Bible<input id="bible-file" type="file" multiple hidden></label>
+    <span class="hint">USFM, OSIS, Zefania or OpenSong. Only translations your church is licensed to use.</span>
+  </div>
+  <div class="imports">
+    <label class="button">Set logo<input id="logo-file" type="file" accept="image/png,image/jpeg" hidden></label>
+  </div>
+  <pre id="lib-report" class="report" hidden></pre>
+</dialog>
+
+<script type="module" src="/operator.js"></script>
+</body>
+</html>

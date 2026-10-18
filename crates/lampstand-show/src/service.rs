@@ -126,7 +126,16 @@ fn expand_scripture(reference: &str, translation: &str, lib: &Library) -> Expand
                 (Some(a), _) => format!("{}:{}", a.chapter, a.verse),
                 _ => canonical.clone(),
             };
-            CueView::Text { lines: slide.lines(SCRIPTURE_BUDGET.chars_per_line), footer: Some(footer.clone()), label, notes: None }
+            // One line per verse: each output wraps to its own safe area.
+            let lines = slide
+                .verses
+                .iter()
+                .map(|v| match &v.label {
+                    Some(n) => format!("{n} {}", v.text),
+                    None => v.text.clone(),
+                })
+                .collect();
+            CueView::Text { lines, footer: Some(footer.clone()), label, notes: None }
         })
         .collect();
     Expanded { kind: ItemKind::Scripture, title: format!("{canonical} ({})", bible.meta.abbreviation), cues, problem: None }

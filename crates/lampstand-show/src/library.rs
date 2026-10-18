@@ -81,9 +81,7 @@ impl Library {
         }
         for path in sorted_files(&dir.join("bibles"))? {
             match fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| parse_bible(&t)) {
-                Ok(t) => {
-                    lib.bibles.insert(t.meta.abbreviation.clone(), Arc::new(t));
-                }
+                Ok(t) => lib.add_bible(t),
                 Err(e) => warnings.push(format!("{}: {e}", path.display())),
             }
         }
@@ -170,19 +168,45 @@ impl Library {
         if t.meta.abbreviation.is_empty() {
             t.meta.abbreviation = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("BIBLE").to_uppercase();
         }
-        // Keep the source, with the abbreviation in the name so a USFM file keeps it next time.
+        // Keep the source. A USFM file carries no abbreviation, so it is stored with
+        // ours on its first line. Files of one translation (often one per book) merge.
         let safe: String = t.meta.abbreviation.chars().filter(|c| c.is_alphanumeric()).collect();
         let mut stored = text;
         if lampstand_scripture::import::detect(&stored) == Some(lampstand_scripture::import::Format::Usfm) {
             stored = format!("\\id_lampstand {}\n{stored}", t.meta.abbreviation);
         }
-        fs::write(self.dir.join("bibles").join(format!("{safe}.txt")), stored)?;
-        let summary = ImportSummary {
-            added: vec![format!("{} ({} verses)", t.meta.abbreviation, t.verse_count())],
-            notes: Vec::new(),
+        let name = format!("{safe}-{:016x}.txt", fnv(stored.as_bytes()));
+        fs::write(self.dir.join("bibles").join(name), stored)?;
+        let added = t.verse_count();
+        let abbr = t.meta.abbreviation.clone();
+        self.add_bible(t);
+        let total = self.bibles[&abbr].verse_count();
+        Ok(ImportSummary { added: vec![format!("{abbr}: {added} verses ({total} in all)")], notes: Vec::new() })
+    }
+
+    /// Add a translation, merging it into one already loaded under the same abbreviation.
+    fn add_bible(&mut self, t: Translation) {
+        let Some(existing) = self.bibles.get_mut(&t.meta.abbreviation) else {
+            self.bibles.insert(t.meta.abbreviation.clone(), Arc::new(t));
+            return;
         };
-        self.bibles.insert(t.meta.abbreviation.clone(), Arc::new(t));
-        Ok(summary)
+        let merged = Arc::make_mut(existing);
+        if merged.meta.name.is_empty() {
+            merged.meta.name = t.meta.name.clone();
+        }
+        if merged.meta.copyright.is_none() {
+            merged.meta.copyright = t.meta.copyright.clone();
+        }
+        for book in t.books().collect::<Vec<_>>() {
+            for chapter in 1..=MAX_CHAPTERS {
+                let Some(last) = t.last_verse(book, chapter) else { continue };
+                for verse in 1..=last {
+                    if let Some(text) = t.verse(book, chapter, verse) {
+                        merged.insert(book, chapter, verse, text.to_string());
+                    }
+                }
+            }
+        }
     }
 
     pub fn deck(&self, id: &str) -> Option<&DeckEntry> {
@@ -218,6 +242,9 @@ impl Library {
         Ok(())
     }
 }
+
+/// Psalms has the most chapters, 150.
+const MAX_CHAPTERS: u16 = 150;
 
 fn parse_bible(text: &str) -> Result<Translation, String> {
     // A stored USFM file starts with our abbreviation line.

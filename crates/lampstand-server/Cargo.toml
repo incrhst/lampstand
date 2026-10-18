@@ -1,0 +1,25 @@
+[package]
+name = "lampstand-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lampstand-show = { path = "../lampstand-show" }
+lampstand-slides = { path = "../lampstand-slides" }
+lampstand-scripture = { path = "../lampstand-scripture" }
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rust-embed = { version = "8", features = ["mime-guess"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.30"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
+tempfile = "3"

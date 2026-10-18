@@ -125,6 +125,18 @@ fn editing_the_order_keeps_live_on_its_item() {
 }
 
 #[test]
+fn bible_files_of_one_translation_merge() {
+    let (dir, mut lib, _) = library();
+    let psalms = include_str!("../../lampstand-scripture/tests/fixtures/PSA.usfm");
+    lib.import_bible("PSA.usfm", psalms.as_bytes(), Some("KJV")).unwrap();
+    for l in [&lib, &Library::open(dir.path()).unwrap().0] {
+        let kjv = l.bible("KJV").unwrap();
+        assert!(kjv.passage(&"Jn 3:16".parse().unwrap()).is_ok(), "John kept");
+        assert!(kjv.passage(&"Ps 23:1".parse().unwrap()).is_ok(), "Psalms added");
+    }
+}
+
+#[test]
 fn library_reloads_from_disk() {
     let (dir, lib, song) = library();
     drop(lib);
