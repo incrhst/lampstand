@@ -16,6 +16,7 @@ base64 = "0.23"
 blake3 = "1.8"
 proptest = "1.7"
 cosmic-text = "0.19"
+quick-xml = "0.42"
 serde = { version = "1.0", features = ["derive", "rc"] }
 unicode-normalization = "0.1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
