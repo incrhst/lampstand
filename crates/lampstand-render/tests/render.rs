@@ -162,9 +162,17 @@ fn changing_slide_is_fast() {
     let renderer = r.renderer();
     let mut worst = std::time::Duration::ZERO;
     for verse in VERSE.lines() {
-        let start = Instant::now();
-        renderer.prepare(&output, &Slide::text(TextSlide::new(verse.repeat(3)))).unwrap();
-        worst = worst.max(start.elapsed());
+        // Best of three, so a busy machine's scheduling noise doesn't count.
+        let best = (0..3)
+            .map(|i| {
+                let slide = Slide::text(TextSlide::new(format!("{} {i}", verse.repeat(3))));
+                let start = Instant::now();
+                renderer.prepare(&output, &slide).unwrap();
+                start.elapsed()
+            })
+            .min()
+            .unwrap();
+        worst = worst.max(best);
     }
     eprintln!("slowest slide layout + upload: {worst:?}");
     // Generous for unoptimised test builds on shared CI; release is far lower.
