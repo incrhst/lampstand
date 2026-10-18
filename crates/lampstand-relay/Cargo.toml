@@ -6,4 +6,4 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lampstand-sync = { path = "../lampstand-sync" }
+lampstand-sync.workspace = true

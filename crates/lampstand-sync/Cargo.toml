@@ -6,4 +6,6 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lampstand-core = { path = "../lampstand-core" }
+lampstand-core.workspace = true
+serde.workspace = true
+uuid.workspace = true

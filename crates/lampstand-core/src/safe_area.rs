@@ -3,16 +3,12 @@
 //!
 //! PRD: TS-1 to TS-4.
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
+use serde::{Deserialize, Serialize};
+
+use crate::geom::Rect;
 
 /// Margins as fractions of the output's width and height (0.05 = 5%).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct SafeArea {
     pub top: f32,
     pub right: f32,
@@ -24,7 +20,12 @@ impl SafeArea {
     /// The rectangle text may use on an output of the given pixel size.
     pub fn rect(&self, width: f32, height: f32) -> Rect {
         let clamp = |m: f32| m.clamp(0.0, 0.45);
-        let (t, r, b, l) = (clamp(self.top), clamp(self.right), clamp(self.bottom), clamp(self.left));
+        let (t, r, b, l) = (
+            clamp(self.top),
+            clamp(self.right),
+            clamp(self.bottom),
+            clamp(self.left),
+        );
         Rect {
             x: width * l,
             y: height * t,
@@ -57,13 +58,31 @@ mod tests {
 
     #[test]
     fn rect_applies_margins() {
-        let safe = SafeArea { top: 0.1, right: 0.05, bottom: 0.25, left: 0.05 };
-        assert_eq!(safe.rect(1000.0, 1000.0), Rect { x: 50.0, y: 100.0, width: 900.0, height: 650.0 });
+        let safe = SafeArea {
+            top: 0.1,
+            right: 0.05,
+            bottom: 0.25,
+            left: 0.05,
+        };
+        assert_eq!(
+            safe.rect(1000.0, 1000.0),
+            Rect {
+                x: 50.0,
+                y: 100.0,
+                width: 900.0,
+                height: 650.0
+            }
+        );
     }
 
     #[test]
     fn margins_are_clamped() {
-        let safe = SafeArea { top: 2.0, right: -1.0, bottom: 0.0, left: 0.0 };
+        let safe = SafeArea {
+            top: 2.0,
+            right: -1.0,
+            bottom: 0.0,
+            left: 0.0,
+        };
         let r = safe.rect(100.0, 100.0);
         assert_eq!((r.y, r.height, r.width), (45.0, 55.0, 100.0));
     }

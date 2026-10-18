@@ -1,0 +1,12 @@
+[package]
+name = "lampstand-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lampstand-core.workspace = true
+lampstand-live.workspace = true
+lampstand-sync.workspace = true
+serde.workspace = true

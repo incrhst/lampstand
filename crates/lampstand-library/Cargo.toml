@@ -1,0 +1,12 @@
+[package]
+name = "lampstand-library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lampstand-core.workspace = true
+lampstand-sync.workspace = true
+serde.workspace = true
+uuid.workspace = true

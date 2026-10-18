@@ -4,5 +4,8 @@
 //! PRD: CD-3, CD-5.
 
 fn main() {
-    println!("lampstand-relay {}: not implemented yet", env!("CARGO_PKG_VERSION"));
+    println!(
+        "lampstand-relay {}: not implemented yet",
+        env!("CARGO_PKG_VERSION")
+    );
 }
