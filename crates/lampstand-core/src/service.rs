@@ -86,13 +86,71 @@ pub enum CountdownTarget {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Position(String);
 
+const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/// Base-62 digit values of a position string (non-alphabet bytes count as 0).
+fn digits(s: &str) -> Vec<u8> {
+    s.bytes()
+        .map(|c| ALPHABET.iter().position(|&a| a == c).unwrap_or(0) as u8)
+        .collect()
+}
+
+/// A digit string strictly between `a` and `b`, read as base-62 fractions
+/// (`a` shorter than `b` is padded with zeros). `None` means no upper bound.
+/// The result never ends in a zero digit, so there is always room before it.
+///
+/// Where there is room it steps one digit away from the upper bound, or one
+/// past the lower bound when appending. That lets both "insert before the
+/// last one inserted" and "insert after the last one inserted" run about 60
+/// times per added character; a plain midpoint would add one per 6.
+fn midpoint(a: &[u8], b: Option<&[u8]>, deep: bool) -> Vec<u8> {
+    let Some(b) = b else {
+        return match a.first() {
+            None if deep => vec![61],
+            None => vec![31],
+            Some(&61) if a.len() == 1 => vec![61, 1],
+            Some(&61) => [&[61][..], &midpoint(&a[1..], None, true)].concat(),
+            Some(&d) => vec![d + 1],
+        };
+    };
+    let shared = (0..b.len())
+        .take_while(|&i| a.get(i).copied().unwrap_or(0) == b[i])
+        .count();
+    if shared == b.len() {
+        // `a` is not below `b`; callers filter this out.
+        return midpoint(a, None, deep);
+    }
+    if shared > 0 {
+        let rest = a.get(shared..).unwrap_or(&[]);
+        let tail = midpoint(rest, Some(&b[shared..]), true);
+        return [&b[..shared], &tail].concat();
+    }
+    let da = a.first().copied().unwrap_or(0);
+    let db = b[0];
+    if db - da > 1 {
+        vec![db - 1]
+    } else if b.len() > 1 {
+        vec![db]
+    } else {
+        let tail = midpoint(a.get(1..).unwrap_or(&[]), None, true);
+        [&[da][..], &tail].concat()
+    }
+}
+
 impl Position {
     /// A position strictly between two others (either may be open). Keeps
     /// strings short: repeated inserts at the same spot grow them by about
     /// one character per 60 inserts.
     pub fn between(before: Option<&Position>, after: Option<&Position>) -> Position {
-        let _ = (before, after);
-        todo!("T02")
+        let a: Vec<u8> = before.map_or_else(Vec::new, |p| digits(&p.0));
+        let b: Option<Vec<u8>> = after.map(|p| digits(&p.0));
+        let b = b.filter(|b| b.as_slice() > a.as_slice());
+        let out = midpoint(&a, b.as_deref(), false);
+        Position(
+            out.into_iter()
+                .map(|d| ALPHABET[d as usize] as char)
+                .collect(),
+        )
     }
 
     pub fn as_str(&self) -> &str {
@@ -121,15 +179,41 @@ impl Service {
     /// Inserts a new item so that it lands at `index` in running order
     /// (clamped to the end).
     pub fn insert(&mut self, index: usize, kind: ItemKind) -> ItemId {
-        let _ = (index, kind);
-        todo!("T02")
+        let ordered = self.ordered();
+        let index = index.min(ordered.len());
+        let before = index.checked_sub(1).map(|i| &ordered[i].1.position);
+        let after = ordered.get(index).map(|(_, item)| &item.position);
+        let position = Position::between(before, after);
+        let id = ItemId::generate();
+        let item = ServiceItem {
+            position,
+            kind,
+            notes: String::new(),
+        };
+        self.items.insert(id, item);
+        id
     }
 
     /// Moves an item to `index` in running order, changing only its own
     /// position. Returns false if there is no such item.
     pub fn move_item(&mut self, id: ItemId, index: usize) -> bool {
-        let _ = (id, index);
-        todo!("T02")
+        if !self.items.contains_key(&id) {
+            return false;
+        }
+        let others: Vec<&Position> = self
+            .ordered()
+            .into_iter()
+            .filter(|(other, _)| *other != id)
+            .map(|(_, item)| &item.position)
+            .collect();
+        let index = index.min(others.len());
+        let before = index.checked_sub(1).map(|i| others[i]);
+        let after = others.get(index).copied();
+        let position = Position::between(before, after);
+        if let Some(item) = self.items.get_mut(&id) {
+            item.position = position;
+        }
+        true
     }
 
     pub fn remove(&mut self, id: ItemId) -> Option<ServiceItem> {
@@ -159,7 +243,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T02"]
     fn positions_sort_between_neighbours() {
         let a = Position::between(None, None);
         let b = Position::between(Some(&a), None);
@@ -169,7 +252,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T02"]
     fn many_inserts_at_one_spot_stay_ordered_and_short() {
         let low = Position::between(None, None);
         let mut high = Position::between(Some(&low), None);
@@ -183,7 +265,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T02"]
     fn insert_and_move_keep_running_order() {
         let mut s = Service::new("Sunday");
         s.insert(0, header("B"));
@@ -211,5 +292,79 @@ mod tests {
         }
         let ids: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
         assert!(ids[0] < ids[1]);
+    }
+
+    #[test]
+    fn positions_with_no_neighbours_or_at_the_ends() {
+        let mut last = Position::between(None, None);
+        for _ in 0..200 {
+            let next = Position::between(Some(&last), None);
+            assert!(last < next);
+            last = next;
+        }
+        assert!(last.as_str().len() < 6, "{}", last.as_str());
+        let mut first = Position::between(None, None);
+        for _ in 0..200 {
+            let prev = Position::between(None, Some(&first));
+            assert!(prev < first);
+            first = prev;
+        }
+        assert!(first.as_str().len() < 6, "{}", first.as_str());
+    }
+
+    #[test]
+    fn move_unknown_item_is_false() {
+        let mut s = Service::new("Sunday");
+        assert!(!s.move_item(ItemId::generate(), 0));
+    }
+
+    mod ordering_props {
+        use super::*;
+        use proptest::prelude::*;
+
+        #[derive(Debug, Clone)]
+        enum Op {
+            Insert(usize),
+            Move(usize, usize),
+        }
+
+        fn ops() -> impl Strategy<Value = Vec<Op>> {
+            let op = prop_oneof![
+                (0..40usize).prop_map(Op::Insert),
+                (0..40usize, 0..40usize).prop_map(|(a, b)| Op::Move(a, b)),
+            ];
+            prop::collection::vec(op, 1..150)
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(64))]
+
+            #[test]
+            fn random_inserts_and_moves_match_a_list_model(ops in ops()) {
+                let mut s = Service::new("Sunday");
+                let mut model: Vec<ItemId> = Vec::new();
+                for op in ops {
+                    match op {
+                        Op::Insert(i) => {
+                            let id = s.insert(i, header("x"));
+                            model.insert(i.min(model.len()), id);
+                        }
+                        Op::Move(from, to) if !model.is_empty() => {
+                            let id = model.remove(from % model.len());
+                            prop_assert!(s.move_item(id, to));
+                            model.insert(to.min(model.len()), id);
+                        }
+                        Op::Move(..) => {}
+                    }
+                    let actual: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
+                    prop_assert_eq!(&actual, &model);
+                }
+                for item in s.items.values() {
+                    let p = item.position.as_str();
+                    prop_assert!(p.chars().all(|c| c.is_ascii_alphanumeric()));
+                    prop_assert!(!p.ends_with('0'));
+                }
+            }
+        }
     }
 }
