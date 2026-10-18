@@ -6,6 +6,9 @@ stores them; they are not exports from EasyWorship itself.
 
 ew7/         Songs.db + SongWords.db (SQLite; `word` table in the second file)
 ew7-inline/  Songs.db with a `song_words` table in the same database
+service.ewsx A zip holding a SQLite main.db, with the zip checksum broken
+             on purpose (EasyWorship writes one the zip format rejects).
+service.ews  An old schedule file: fixed-size entries, zlib-compressed RTF.
 ew6/         Songs.DB + Songs.MB (Paradox 7-style table with a memo file),
              built from the layout OpenLP's importer reads: 0x800 header,
              1024-byte blocks, big-endian-free string fields, memo pointers
@@ -14,6 +17,8 @@ ew6/         Songs.DB + Songs.MB (Paradox 7-style table with a memo file),
 import os
 import sqlite3
 import struct
+import zipfile
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -151,6 +156,65 @@ def make_ew6():
         f.write(mb)
 
 
+def make_ewsx():
+    tmp = os.path.join(HERE, "_main.db")
+    fresh(tmp)
+    c = sqlite3.connect(tmp)
+    c.executescript("""
+        CREATE TABLE presentation (title TEXT, author TEXT, copyright TEXT, reference_number TEXT, presentation_type INTEGER);
+        CREATE TABLE slide (presentation_id INTEGER, order_index INTEGER);
+        CREATE TABLE element (slide_id INTEGER, element_type INTEGER, element_style_type INTEGER, foreground_resource_id INTEGER);
+        CREATE TABLE resource_text (resource_id INTEGER, rtf TEXT);
+    """)
+    c.execute("INSERT INTO presentation VALUES ('Service Song', 'A. Author', '(c) 2010', '777', 6)")
+    c.execute("INSERT INTO presentation VALUES ('A Slideshow', '', '', '', 3)")
+    # Slides are inserted out of order to check order_index is used.
+    for slide_id, order, res, text in [(1, 2, 11, rtf("Chorus", "Second slide")), (2, 1, 10, rtf("Verse 1", "First slide"))]:
+        c.execute("INSERT INTO slide(rowid, presentation_id, order_index) VALUES (?,1,?)", (slide_id, order))
+        c.execute("INSERT INTO element VALUES (?,6,4,?)", (slide_id, res))
+        c.execute("INSERT INTO resource_text VALUES (?,?)", (res, text))
+    c.commit(); c.close()
+    out = os.path.join(HERE, "service.ewsx")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(tmp, "main.db")
+    os.remove(tmp)
+    b = bytearray(open(out, "rb").read())
+    b[14:18] = b"\xde\xad\xbe\xef"                     # local header CRC
+    cd = b.rindex(b"PK\x01\x02")
+    b[cd + 16:cd + 20] = b"\xde\xad\xbe\xef"            # central directory CRC
+    open(out, "wb").write(bytes(b))
+
+
+def make_ews():
+    entry_len = 0x718
+    head = bytearray(62)
+    head[:38] = b"EasyWorship Schedule File Version    5"
+    struct.pack_into("<ih", head, 56, 3, entry_len)
+    songs = [
+        (1, "Schedule Song", "S. Writer", "(c) 1990", "Example Admin", "4242",
+         rtf("Verse 1", "Line one", "Line two", "", "Chorus", "Sing it")),
+        (2, "A Scripture", "", "", "", "", None),
+        (1, "Second Song", "", "", "", "", rtf("Only verse caf\\'e9")),
+    ]
+    entries = bytearray(entry_len * len(songs))
+    content = bytearray()
+    base = len(head) + len(entries)
+    for i, (kind, title, author, cr, admin, ccli, text) in enumerate(songs):
+        e = memoryview(entries)[i * entry_len:(i + 1) * entry_len]
+        def put(off, v, n): e[off:off + n] = v.encode("cp1252").ljust(n, b"\0")
+        put(0, title, 50); put(307, author, 50); put(358, cr, 100); put(459, admin, 50); put(1410, ccli, 10)
+        struct.pack_into("<i", e, 820, kind)
+        if text is not None:
+            z = zlib.compress(text.encode("latin-1"))
+            blob = z + b"\0" * 4 + struct.pack("<i", len(text)) + b"\0\0"
+            struct.pack_into("<i", e, 800, base + len(content))
+            content += struct.pack("<i", len(blob)) + blob
+    with open(os.path.join(HERE, "service.ews"), "wb") as f:
+        f.write(head + entries + content)
+
+
 if __name__ == "__main__":
+    make_ewsx()
+    make_ews()
     make_ew7()
     make_ew6()

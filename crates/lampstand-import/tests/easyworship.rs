@@ -162,3 +162,52 @@ fn truncated_paradox_is_an_error_not_a_panic() {
     assert!(r.songs.len() < 3);
     assert!(!r.skipped.is_empty());
 }
+
+#[test]
+fn ewsx_service_file_with_bad_zip_checksum() {
+    let r = import_songs(SongFormat::EasyWorship, &fixture("service.ewsx")).unwrap();
+    // The slideshow (presentation_type 3) is not a song.
+    assert_eq!(r.songs.len(), 1);
+    let s = &r.songs[0];
+    assert_eq!(s.title, "Service Song");
+    assert_eq!(s.author.as_deref(), Some("A. Author"));
+    assert_eq!(s.ccli_number, Some(777));
+    // Slides are joined in order_index order.
+    assert_eq!(labels(s), ["Verse 1", "Chorus 1"]);
+    assert_eq!(s.sections[0].lines, ["First slide"]);
+    assert_eq!(s.sections[1].lines, ["Second slide"]);
+}
+
+#[test]
+fn ews_schedule_file() {
+    let r = import_songs(SongFormat::EasyWorship, &fixture("service.ews")).unwrap();
+    // The scripture entry (content type 2) is ignored.
+    assert_eq!(r.songs.len(), 2);
+    let s = &r.songs[0];
+    assert_eq!(s.title, "Schedule Song");
+    assert_eq!(s.author.as_deref(), Some("S. Writer"));
+    assert_eq!(
+        s.copyright.as_deref(),
+        Some("(c) 1990, Administered by Example Admin")
+    );
+    assert_eq!(s.ccli_number, Some(4242));
+    assert_eq!(labels(s), ["Verse 1", "Chorus 1"]);
+    assert_eq!(s.sections[0].lines, ["Line one", "Line two"]);
+    assert_eq!(r.songs[1].sections[0].lines, ["Only verse café"]);
+    assert!(r.skipped.is_empty());
+}
+
+#[test]
+fn damaged_schedule_files_do_not_panic() {
+    let dir = std::env::temp_dir().join(format!("lampstand-ews-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in ["service.ews", "service.ewsx"] {
+        let bytes = std::fs::read(fixture(name)).unwrap();
+        for cut in [20, 100, 900, bytes.len() / 2, bytes.len() - 5] {
+            let p = dir.join(name);
+            std::fs::write(&p, &bytes[..cut.min(bytes.len())]).unwrap();
+            let _ = import_songs(SongFormat::EasyWorship, &p);
+        }
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}

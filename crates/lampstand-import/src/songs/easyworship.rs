@@ -11,6 +11,10 @@
 //! * **Paradox** (EasyWorship 2009 and earlier): `Songs.DB` plus a `Songs.MB`
 //!   memo file next to it that holds the RTF lyrics.
 //!
+//! * **Schedules**: `.ewsx` (EasyWorship 6/7 service files: a zip holding a
+//!   SQLite `main.db`) and `.ews` (older schedules: fixed-size entries with
+//!   zlib-compressed RTF). Only the songs in them are imported.
+//!
 //! The Paradox reading logic (header layout, field descriptors, block chain,
 //! memo block lookup) and the section-heading rules are ported from OpenLP's
 //! `openlp/plugins/songs/lib/importers/easyworship.py`, copyright OpenLP
@@ -37,10 +41,11 @@ use rusqlite::{Connection, OpenFlags};
 use crate::{ImportError, Skipped, SongImport};
 
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
+const EWS_MAGIC: &[u8] = b"EasyWorship Schedule File Version";
 
 pub fn import(path: &Path) -> Result<SongImport, ImportError> {
     let file = locate(path)?;
-    let mut magic = [0u8; 16];
+    let mut magic = [0u8; 40];
     {
         use std::io::Read;
         let mut f = fs::File::open(&file)?;
@@ -49,8 +54,12 @@ pub fn import(path: &Path) -> Result<SongImport, ImportError> {
             magic[n..].fill(0);
         }
     }
-    if magic == *SQLITE_MAGIC {
+    if magic.starts_with(SQLITE_MAGIC) {
         import_sqlite(&file)
+    } else if magic.starts_with(b"PK\x03\x04") {
+        import_ewsx(&file)
+    } else if magic.starts_with(EWS_MAGIC) {
+        import_ews(&file)
     } else {
         import_paradox(&file)
     }
@@ -678,6 +687,195 @@ fn import_sqlite(file: &Path) -> Result<SongImport, ImportError> {
                 reason,
             }),
         }
+    }
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Service files (.ewsx, .ews)
+// ---------------------------------------------------------------------------
+
+fn import_ewsx(file: &Path) -> Result<SongImport, ImportError> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(fs::read(file)?))
+        .map_err(|_| ImportError::WrongFormat)?;
+    let mut entry = zip
+        .by_name("main.db")
+        .map_err(|_| ImportError::WrongFormat)?;
+    let mut db = Vec::new();
+    // EasyWorship writes a checksum the zip reader rejects, but only after the
+    // last byte, so what was read before the error is the whole file.
+    let _ = entry.read_to_end(&mut db);
+    drop(entry);
+    if !db.starts_with(SQLITE_MAGIC) {
+        return Err(unreadable("main.db is not a SQLite database"));
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp =
+        std::env::temp_dir().join(format!("lampstand-ewsx-{}-{nanos}.db", std::process::id()));
+    fs::write(&tmp, &db)?;
+    let result = read_ewsx_db(&tmp, file);
+    let _ = fs::remove_file(&tmp);
+    result
+}
+
+fn read_ewsx_db(db: &Path, source: &Path) -> Result<SongImport, ImportError> {
+    let conn = open_read_only(db)?;
+    if table_columns(&conn, "presentation")?.is_empty() {
+        return Err(ImportError::WrongFormat);
+    }
+    let file_name = source
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    // presentation_type 6 is a song; element_type 6 / element_style_type 4 is
+    // a song's lyric text, one RTF resource per slide.
+    let mut songs = conn
+        .prepare(
+            "SELECT rowid, title, author, copyright, reference_number \
+             FROM presentation WHERE presentation_type = 6 ORDER BY rowid",
+        )
+        .map_err(unreadable)?;
+    let mut slides = conn
+        .prepare(
+            "SELECT rt.rtf FROM element AS e \
+             JOIN slide AS s ON e.slide_id = s.rowid \
+             JOIN resource_text AS rt ON rt.resource_id = e.foreground_resource_id \
+             WHERE e.element_type = 6 AND e.element_style_type = 4 AND s.presentation_id = ? \
+             ORDER BY s.order_index",
+        )
+        .map_err(unreadable)?;
+    let mut rows = songs.query([]).map_err(unreadable)?;
+    let mut result = SongImport::default();
+    while let Some(row) = rows.next().map_err(unreadable)? {
+        let get = |i: usize| -> Result<String, ImportError> {
+            Ok(value_to_string(row.get_ref(i).map_err(unreadable)?).unwrap_or_default())
+        };
+        let id: i64 = row.get(0).map_err(unreadable)?;
+        let title = get(1)?;
+        let mut parts = Vec::new();
+        let mut rs = slides.query([id]).map_err(unreadable)?;
+        while let Some(r) = rs.next().map_err(unreadable)? {
+            if let Some(rtf) = value_to_string(r.get_ref(0).map_err(unreadable)?) {
+                parts.push(lyrics_text(&rtf, false, encoding_rs::WINDOWS_1252));
+            }
+        }
+        let raw = RawSong {
+            title: &title,
+            author: &get(2)?,
+            copyright: &get(3)?,
+            administrator: "",
+            ccli: &get(4)?,
+            text: (!parts.is_empty()).then(|| parts.join("\n\n")),
+        };
+        push_song(&mut result, &raw, &file_name);
+    }
+    Ok(result)
+}
+
+fn push_song(result: &mut SongImport, raw: &RawSong, file_name: &str) {
+    match build_song(raw) {
+        Ok(song) => result.songs.push(song),
+        Err(reason) => result.skipped.push(Skipped {
+            source: format!("{file_name}: {}", raw.title.trim()),
+            reason,
+        }),
+    }
+}
+
+fn le_i32(b: &[u8], off: usize) -> Option<i32> {
+    Some(i32::from_le_bytes(b.get(off..off + 4)?.try_into().ok()?))
+}
+
+/// A NUL-padded windows-1252 string.
+fn fixed_string(b: &[u8], off: usize, len: usize) -> String {
+    let Some(raw) = b.get(off..off + len) else {
+        return String::new();
+    };
+    let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+    encoding_rs::WINDOWS_1252
+        .decode(&raw[..end])
+        .0
+        .trim()
+        .to_string()
+}
+
+/// Format notes: <https://github.com/meinders/lithium-ews/blob/master/docs/ews%20file%20format.md>
+fn import_ews(file: &Path) -> Result<SongImport, ImportError> {
+    use std::io::Read;
+    let data = fs::read(file)?;
+    // Room for a header and one entry.
+    if data.len() < 892 {
+        return Err(unreadable("schedule file is too small"));
+    }
+    let count_at = match &data[35..38] {
+        b"  5" => 56,
+        b"  3" => 48,
+        b"1.6" => 40,
+        _ => return Err(unreadable("unknown schedule file version")),
+    };
+    let count = le_i32(&data, count_at).unwrap_or(0).max(0) as usize;
+    let entry_len = le_u16(&data, count_at + 4).unwrap_or(0) as usize;
+    if entry_len < 1420 {
+        return Err(unreadable("schedule entries are too short"));
+    }
+    let first = count_at + 6;
+    let count = count.min((data.len().saturating_sub(first)) / entry_len);
+
+    let file_name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut result = SongImport::default();
+    for n in 0..count {
+        let at = first + n * entry_len;
+        // Content type 1 is a song; scripture, media and the rest are not.
+        if le_i32(&data, at + 820) != Some(1) {
+            continue;
+        }
+        let title = fixed_string(&data, at, 50);
+        let author = fixed_string(&data, at + 307, 50);
+        let copyright = fixed_string(&data, at + 358, 100);
+        let admin = fixed_string(&data, at + 459, 50);
+        let ccli = fixed_string(&data, at + 1410, 10);
+
+        // The content: a length, then zlib data, then 10 bytes of trailer.
+        let content = (|| {
+            let ptr = usize::try_from(le_i32(&data, at + 800)?).ok()?;
+            let len = usize::try_from(le_i32(&data, ptr)?).ok()?;
+            let zlib = data.get(ptr + 4..(ptr + 4).checked_add(len.checked_sub(10)?)?)?;
+            let mut out = Vec::new();
+            flate2::read::ZlibDecoder::new(zlib)
+                .take(64 << 20)
+                .read_to_end(&mut out)
+                .ok()?;
+            Some(out)
+        })();
+        let text = content.map(|bytes| match String::from_utf8(bytes) {
+            Ok(s) => lyrics_text(&s, false, encoding_rs::WINDOWS_1252),
+            Err(e) => {
+                let widened: String = e.as_bytes().iter().map(|&b| char::from(b)).collect();
+                lyrics_text(&widened, true, encoding_rs::WINDOWS_1252)
+            }
+        });
+        if text.is_none() {
+            result.skipped.push(Skipped {
+                source: format!("{file_name}: {title}"),
+                reason: "song content could not be decompressed".to_string(),
+            });
+            continue;
+        }
+        let raw = RawSong {
+            title: &title,
+            author: &author,
+            copyright: &copyright,
+            administrator: &admin,
+            ccli: &ccli,
+            text,
+        };
+        push_song(&mut result, &raw, &file_name);
     }
     Ok(result)
 }
