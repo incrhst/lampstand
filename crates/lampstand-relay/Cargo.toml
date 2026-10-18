@@ -3,7 +3,17 @@ name = "lampstand-relay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
+# automerge 0.12 needs Rust 1.90.
+rust-version = "1.90"
 
 [dependencies]
+# No TLS client needed: the relay speaks plain ws behind a TLS reverse proxy.
+lampstand-sync = { path = "../lampstand-sync", default-features = false }
+tokio = { version = "1", features = ["rt", "net", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
+
+[dev-dependencies]
 lampstand-sync = { path = "../lampstand-sync" }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"
