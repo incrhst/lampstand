@@ -113,3 +113,27 @@ fn images_are_fitted_into_the_safe_area() {
     assert_eq!(rgb(&img, W / 2, H / 2), [255, 0, 0]);
     assert_eq!(rgb(&img, 2, 2), [0, 0, 0]);
 }
+
+/// Each `lines` entry is a paragraph (a verse, a lyric line): long ones wrap
+/// inside the safe area, and every entry starts on a line of its own.
+#[test]
+fn text_entries_are_paragraphs_that_wrap() {
+    use lampstand_render::{layout_slide, TextEngine};
+    let verses = vec![
+        "16 For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.".to_string(),
+        "17 For God sent not his Son into the world to condemn the world; but that the world through him might be saved.".to_string(),
+    ];
+    let cue = CueView::Text { lines: verses.clone(), footer: Some("John 3:16-17 (KJV)".into()), label: "Jn 3:16-17".into(), notes: None };
+    let slide = Frame::from_snapshot(&snapshot(Mode::Normal, Some(cue))).slide(None);
+    let output = Output::new(1920, 1080).with_safe_area(SafeArea { top: 0.05, right: 0.05, bottom: 0.05, left: 0.05 });
+    let layout = layout_slide(&mut TextEngine::new(), &output, &slide);
+    assert!(!layout.overflow());
+    let text = layout.text.expect("text laid out");
+    assert!(text.lines.len() > verses.len(), "long verses wrapped: {:?}", text.lines.iter().map(|l| &l.text).collect::<Vec<_>>());
+    for verse in &verses {
+        let first_word = verse.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+        assert!(text.lines.iter().any(|l| l.text.trim_start().starts_with(&first_word)), "{first_word} starts a line");
+    }
+    let safe = output.safe_area.rect(1920.0, 1080.0);
+    assert!(text.lines.iter().all(|l| lampstand_render::layout::contains(safe, l.rect)));
+}

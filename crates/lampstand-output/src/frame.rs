@@ -22,6 +22,8 @@ pub enum Frame {
     Black,
     /// The theme background with nothing on it.
     Background,
+    /// `body` holds one `lines` entry per `\n`: each is a paragraph (a verse,
+    /// a lyric line) that wraps inside the safe area if it is too long.
     Text { body: String, footer: Option<String> },
     /// A deck step, fitted into the safe area on black.
     Image { url: String },
