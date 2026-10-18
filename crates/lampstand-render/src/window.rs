@@ -28,6 +28,28 @@ pub struct DisplayInfo {
     pub scale_factor: f64,
     pub refresh_hz: Option<f32>,
     pub monitor: MonitorHandle,
+    /// A stand-in shown in an ordinary window instead of fullscreen, for
+    /// previewing an output whose screen is not connected.
+    pub preview: bool,
+}
+
+impl DisplayInfo {
+    /// A preview of display `index` (connected or not) as a `width` x
+    /// `height` window on the operator's screen. The window can be resized
+    /// to try other aspect ratios.
+    pub fn preview(event_loop: &ActiveEventLoop, index: usize, width: u32, height: u32) -> Option<DisplayInfo> {
+        let monitor = event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next())?;
+        Some(DisplayInfo {
+            index,
+            name: format!("Preview of display {index}"),
+            position: (0, 0),
+            size: (width, height),
+            scale_factor: monitor.scale_factor(),
+            refresh_hz: None,
+            monitor,
+            preview: true,
+        })
+    }
 }
 
 /// The displays connected now, in the order the OS lists them.
@@ -46,6 +68,7 @@ pub fn displays(event_loop: &ActiveEventLoop) -> Vec<DisplayInfo> {
                 scale_factor: monitor.scale_factor(),
                 refresh_hz: monitor.refresh_rate_millihertz().map(|m| m as f32 / 1000.0),
                 monitor,
+                preview: false,
             }
         })
         .collect()
@@ -57,6 +80,15 @@ pub fn instance(event_loop: &ActiveEventLoop) -> wgpu::Instance {
 }
 
 fn create_window(event_loop: &ActiveEventLoop, display: &DisplayInfo) -> Result<Arc<Window>, RenderError> {
+    if display.preview {
+        let (w, h) = display.size;
+        let attributes = Window::default_attributes()
+            .with_title(format!("Lampstand: {} ({w}x{h})", display.name))
+            .with_inner_size(winit::dpi::LogicalSize::new(w, h))
+            .with_visible(false);
+        let window = event_loop.create_window(attributes).map_err(|e| RenderError::Surface(e.to_string()))?;
+        return Ok(Arc::new(window));
+    }
     let attributes = Window::default_attributes()
         .with_title(format!("Lampstand output: {}", display.name))
         .with_decorations(false)

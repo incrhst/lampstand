@@ -4,7 +4,11 @@
 //!     cargo run -p lampstand-render --release --example calibrate -- --display 1
 //!
 //! Options: --display N (default 0), --file PATH (default
-//! lampstand-calibration.json in the current directory).
+//! lampstand-calibration.json in the current directory), --window WxH.
+//!
+//! If display N is not connected, or --window is given, the output is
+//! previewed in an ordinary window (default 1280x720) instead of fullscreen.
+//! Resize it to try other aspect ratios.
 //!
 //! Keys:
 //!   Tab, or 1 2 3 4    pick the edge: top, right, bottom, left
@@ -24,7 +28,7 @@
 
 use std::path::PathBuf;
 
-use lampstand_render::window::{displays, open_outputs, OutputWindow};
+use lampstand_render::window::{displays, open_outputs, DisplayInfo, OutputWindow};
 use lampstand_render::winit::application::ApplicationHandler;
 use lampstand_render::winit::event::{ElementState, KeyEvent, WindowEvent};
 use lampstand_render::winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -38,6 +42,7 @@ const EDGES: [&str; 4] = ["top", "right", "bottom", "left"];
 
 struct App {
     display: usize,
+    window_size: Option<(u32, u32)>,
     file: PathBuf,
     window: Option<OutputWindow>,
     name: String,
@@ -140,10 +145,23 @@ impl ApplicationHandler for App {
         if self.window.is_some() {
             return;
         }
-        let Some(display) = displays(event_loop).into_iter().find(|d| d.index == self.display) else {
-            eprintln!("no display {}; run with --list", self.display);
-            event_loop.exit();
-            return;
+        let connected = displays(event_loop).into_iter().find(|d| d.index == self.display);
+        let display = match (connected, self.window_size) {
+            (Some(d), None) => d,
+            (connected, size) => {
+                if connected.is_none() {
+                    println!("display {} is not connected; previewing it in a window", self.display);
+                }
+                let (w, h) = size.unwrap_or((1280, 720));
+                match DisplayInfo::preview(event_loop, self.display, w, h) {
+                    Some(d) => d,
+                    None => {
+                        eprintln!("no displays found");
+                        event_loop.exit();
+                        return;
+                    }
+                }
+            }
         };
         self.name = display.name.clone();
         self.load();
@@ -217,6 +235,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let mut app = App {
         display: 0,
+        window_size: None,
         file: PathBuf::from("lampstand-calibration.json"),
         window: None,
         name: String::new(),
@@ -236,11 +255,18 @@ fn main() {
                 Some(n) => app.display = n,
                 None => return eprintln!("--display needs a number; see --list"),
             },
+            "--window" => match args.next().and_then(|v| {
+                let (w, h) = v.split_once('x')?;
+                Some((w.parse().ok()?, h.parse().ok()?))
+            }) {
+                Some(size) => app.window_size = Some(size),
+                None => return eprintln!("--window needs a size like 1024x768"),
+            },
             "--file" => match args.next() {
                 Some(path) => app.file = path.into(),
                 None => return eprintln!("--file needs a path"),
             },
-            _ => return eprintln!("usage: calibrate [--list] [--display N] [--file PATH]"),
+            _ => return eprintln!("usage: calibrate [--list] [--display N] [--window WxH] [--file PATH]"),
         }
     }
     let event_loop = EventLoop::new().expect("event loop");
