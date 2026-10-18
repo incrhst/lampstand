@@ -1,0 +1,224 @@
+[
+ "id-Amaz",
+ {
+  "name": "Amazing Grace",
+  "category": null,
+  "settings": {
+   "activeLayout": "lay1",
+   "template": null
+  },
+  "timestamps": {
+   "created": 0,
+   "modified": null,
+   "used": null
+  },
+  "meta": {
+   "title": "Amazing Grace",
+   "author": "John Newton",
+   "copyright": "Public Domain",
+   "CCLI": "22025",
+   "key": "G"
+  },
+  "slides": {
+   "s1": {
+    "group": "Verse",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "Amazing grace, how sweet the sound"
+         }
+        ],
+        "chords": [
+         {
+          "id": "c0",
+          "pos": 0,
+          "key": "G"
+         },
+         {
+          "id": "c1",
+          "pos": 8,
+          "key": "G7"
+         },
+         {
+          "id": "c2",
+          "pos": 19,
+          "key": "C"
+         }
+        ]
+       },
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "That saved a wretch like me"
+         }
+        ]
+       }
+      ],
+      "type": "text"
+     }
+    ],
+    "globalGroup": "verse"
+   },
+   "s2": {
+    "group": "Verse",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "I once was lost, but now am found"
+         }
+        ]
+       },
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "Was blind, but now I see"
+         }
+        ]
+       }
+      ],
+      "type": "text"
+     }
+    ],
+    "globalGroup": "verse",
+    "children": [
+     "s2b"
+    ]
+   },
+   "s2b": {
+    "group": "Verse",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "(second part of verse)"
+         }
+        ]
+       }
+      ],
+      "type": "text"
+     }
+    ],
+    "globalGroup": "verse"
+   },
+   "s3": {
+    "group": "Chorus",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "My chains are gone, I've been set free"
+         }
+        ]
+       }
+      ],
+      "type": "text"
+     }
+    ],
+    "globalGroup": "chorus"
+   },
+   "s4": {
+    "group": "Blank",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [],
+      "type": "text"
+     }
+    ]
+   },
+   "s5": {
+    "group": "Outro",
+    "color": null,
+    "settings": {},
+    "notes": "",
+    "items": [
+     {
+      "style": "",
+      "lines": [
+       {
+        "align": "",
+        "text": [
+         {
+          "style": "",
+          "value": "Amen"
+         }
+        ]
+       }
+      ],
+      "type": "text"
+     }
+    ],
+    "globalGroup": "outro"
+   }
+  },
+  "layouts": {
+   "lay1": {
+    "name": "Default",
+    "notes": "",
+    "slides": [
+     {
+      "id": "s1"
+     },
+     {
+      "id": "s3"
+     },
+     {
+      "id": "s2"
+     },
+     {
+      "id": "s3"
+     },
+     {
+      "id": "s5",
+      "disabled": true
+     },
+     {
+      "id": "s5"
+     }
+    ]
+   }
+  },
+  "media": {}
+ }
+]
