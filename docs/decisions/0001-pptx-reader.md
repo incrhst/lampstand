@@ -12,7 +12,7 @@ Fall back to writing our own parser (the ARCHITECTURE.md default) if T29 finds t
 
 ## What was checked
 
-- Source: `github.com/storytold/deckcraft` at `cb78440a1618e6a2c1df55dd7bff74719685518c` (2026-10-18), the repo the ArtCraft site links to. Cloned into an empty scratch directory outside this repo. A search shows more than a dozen same-named forks under other accounts; none of those were used, and none should be.
+- Source: `github.com/storytold/deckcraft` at `cb78440a1618e6a2c1df55dd7bff74719685518c` (2026-10-18), the repo the ArtCraft site links to. Cloned into an empty scratch directory outside this repo. A search shows many same-named forks (a dozen turned up in one search) under other accounts; none of those were used, and none should be.
 - Built a 40-line harness crate outside the repo that depends on `deckcraft-pptx` and `deckcraft-model` by path, calls `import_checked` and prints the result. I did not build or run DeckCraft's app, CLI or MCP server, and I did not run its test suite. The pptx, model, geom and color crates have no `build.rs`.
 - Generated five decks with python-pptx 1.0.2 (plus hand-written timing XML). Python-pptx has no animation API, so deck 5 injects raw `p:timing` XML.
 
