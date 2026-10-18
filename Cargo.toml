@@ -12,12 +12,17 @@ rust-version = "1.95"
 
 # Every third-party version is pinned here, once. Crates use `foo.workspace = true`.
 [workspace.dependencies]
+base64 = "0.23"
 blake3 = "1.8"
 proptest = "1.7"
 cosmic-text = "0.19"
 serde = { version = "1.0", features = ["derive", "rc"] }
 unicode-normalization = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+tokio = { version = "1.53", features = ["macros", "rt"] }
+url = "2.5"
 uuid = { version = "1.28", features = ["v7", "serde"] }
+wiremock = "0.6"
 
 lampstand-core = { path = "crates/lampstand-core" }
 lampstand-layout = { path = "crates/lampstand-layout" }
