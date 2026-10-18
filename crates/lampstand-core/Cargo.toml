@@ -9,3 +9,6 @@ rust-version.workspace = true
 blake3.workspace = true
 serde.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
