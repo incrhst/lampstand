@@ -27,6 +27,13 @@ allow = [
     "LGPL-3.0-or-later",
 ]
 
+# Mozilla's root certificate bundle, pulled in by reqwest's rustls verifier.
+# CDLA-Permissive-2.0 is a permissive data licence, compatible with GPL-3.0.
+# Allowed for this crate only, so it can't slip in elsewhere unreviewed.
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
