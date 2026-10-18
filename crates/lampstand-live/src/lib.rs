@@ -25,7 +25,7 @@
 //!   per visit, for CCLI reporting.
 
 use lampstand_core::id::Timestamp;
-use lampstand_core::program::{Content, Program};
+use lampstand_core::program::{Content, Overlay, Program};
 use lampstand_core::service::ItemId;
 use lampstand_core::song::SongId;
 use lampstand_core::theme::{Background, ThemeId};
@@ -113,13 +113,83 @@ impl LiveEngine {
     /// Loads or reloads the service. See the module rules for what happens
     /// to the live and preview cursors.
     pub fn load(&mut self, items: Vec<LoadedItem>) -> Vec<Event> {
-        let _ = items;
-        todo!("T33")
+        self.items = items;
+        let mut events = Vec::new();
+        if let Some(preview) = self.preview {
+            if self.resolve(preview).is_none() {
+                self.preview = None;
+                events.push(Event::PreviewChanged);
+            }
+        }
+        // The stage display's "next" follows the new order; what is on air
+        // does not change.
+        if let Some(live) = self.live {
+            let next = self.next_content(live);
+            if next != self.program.next {
+                self.program.next = next;
+                events.push(Event::ProgramChanged);
+            }
+        }
+        events
     }
 
     pub fn apply(&mut self, command: Command) -> Vec<Event> {
-        let _ = command;
-        todo!("T33")
+        let mut events = Vec::new();
+        match command {
+            Command::Preview(cursor) => {
+                if let Some(cursor) = self.resolve(cursor) {
+                    self.preview = Some(cursor);
+                    events.push(Event::PreviewChanged);
+                }
+            }
+            Command::GoLive => {
+                if let Some(preview) = self.preview {
+                    self.go_live(preview, &mut events);
+                }
+            }
+            Command::Show(cursor) => self.go_live(cursor, &mut events),
+            Command::Next => {
+                let target = match self.live {
+                    Some(live) => self.step_forward(live),
+                    None => self
+                        .preview
+                        .and_then(|p| self.resolve(p))
+                        .or_else(|| self.first_slide_from(0)),
+                };
+                if let Some(target) = target {
+                    self.go_live(target, &mut events);
+                }
+            }
+            Command::Previous => {
+                if let Some(target) = self.live.and_then(|live| self.step_back(live)) {
+                    self.go_live(target, &mut events);
+                }
+            }
+            Command::ToggleBlack => self.toggle_overlay(Overlay::Black, &mut events),
+            Command::ToggleLogo => self.toggle_overlay(Overlay::Logo, &mut events),
+            Command::ClearText => {
+                if self.program.content.take().is_some() {
+                    events.push(Event::ProgramChanged);
+                }
+            }
+            Command::ClearBackground => {
+                if self.program.background.take().is_some() {
+                    events.push(Event::ProgramChanged);
+                }
+            }
+            Command::ClearAll => {
+                let changed = self.program.content.is_some()
+                    || self.program.background.is_some()
+                    || self.program.overlay != Overlay::None;
+                self.program.content = None;
+                self.program.background = None;
+                self.program.overlay = Overlay::None;
+                if changed {
+                    events.push(Event::ProgramChanged);
+                }
+            }
+        }
+        events
     }
 
     /// Drives auto-advancing items and countdowns. Call at least every
@@ -145,15 +215,175 @@ impl LiveEngine {
     /// (CD-11).
     pub fn is_idle(&self) -> bool {
         let _ = (&self.items, &self.live_item);
-        self.program.content.is_none()
-            && self.program.overlay == lampstand_core::program::Overlay::None
+        self.program.content.is_none() && self.program.overlay == Overlay::None
+    }
+}
+
+// Navigation helpers.
+impl LiveEngine {
+    /// The item a cursor refers to. The live item keeps the slides it was
+    /// loaded with until the operator leaves it.
+    fn item_for(&self, id: ItemId) -> Option<&LoadedItem> {
+        match (&self.live_item, self.live) {
+            (Some(item), Some(live)) if live.item == id => Some(item),
+            _ => self.items.iter().find(|i| i.id == id),
+        }
+    }
+
+    /// Checks a cursor against the slides it points at, clamping the step.
+    fn resolve(&self, cursor: Cursor) -> Option<Cursor> {
+        let slide = self.item_for(cursor.item)?.slides.get(cursor.slide)?;
+        Some(Cursor {
+            step: cursor.step.min(slide.steps),
+            ..cursor
+        })
+    }
+
+    fn steps_at(&self, item: ItemId, slide: usize) -> usize {
+        self.item_for(item)
+            .and_then(|i| i.slides.get(slide))
+            .map_or(0, |s| s.steps)
+    }
+
+    fn content_at(&self, cursor: Cursor) -> Option<Content> {
+        let slide = self.item_for(cursor.item)?.slides.get(cursor.slide)?;
+        let mut content = slide.content.clone();
+        if let Content::DeckSlide { step, .. } = &mut content {
+            *step = cursor.step;
+        }
+        Some(content)
+    }
+
+    /// The first slide of the first item at or after `from` that has slides.
+    fn first_slide_from(&self, from: usize) -> Option<Cursor> {
+        self.items
+            .iter()
+            .skip(from)
+            .find(|i| !i.slides.is_empty())
+            .map(|i| Cursor {
+                item: i.id,
+                slide: 0,
+                step: 0,
+            })
+    }
+
+    fn item_index(&self, id: ItemId) -> Option<usize> {
+        self.items.iter().position(|i| i.id == id)
+    }
+
+    /// The cursor `Next` would move to from `from`, or `None` at the end.
+    fn step_forward(&self, from: Cursor) -> Option<Cursor> {
+        let item = self.item_for(from.item)?;
+        if from.step < self.steps_at(from.item, from.slide) {
+            return Some(Cursor {
+                step: from.step + 1,
+                ..from
+            });
+        }
+        if from.slide + 1 < item.slides.len() {
+            return Some(Cursor {
+                slide: from.slide + 1,
+                step: 0,
+                ..from
+            });
+        }
+        self.first_slide_from(self.item_index(from.item)? + 1)
+    }
+
+    /// The cursor `Previous` would move to from `from`, at the final step
+    /// of the slide it lands on.
+    fn step_back(&self, from: Cursor) -> Option<Cursor> {
+        if from.step > 0 {
+            return Some(Cursor {
+                step: from.step - 1,
+                ..from
+            });
+        }
+        if from.slide > 0 {
+            let slide = from.slide - 1;
+            return Some(Cursor {
+                slide,
+                step: self.steps_at(from.item, slide),
+                ..from
+            });
+        }
+        let index = self.item_index(from.item)?;
+        let prev = self.items[..index]
+            .iter()
+            .rev()
+            .find(|i| !i.slides.is_empty())?;
+        let slide = prev.slides.len() - 1;
+        Some(Cursor {
+            item: prev.id,
+            slide,
+            step: prev.slides[slide].steps,
+        })
+    }
+
+    /// What the stage display shows as next: the following slide, or the
+    /// first slide of the following item.
+    fn next_content(&self, live: Cursor) -> Option<Content> {
+        let item = self.item_for(live.item)?;
+        let cursor = if live.slide + 1 < item.slides.len() {
+            Cursor {
+                slide: live.slide + 1,
+                step: 0,
+                ..live
+            }
+        } else {
+            self.first_slide_from(self.item_index(live.item)? + 1)?
+        };
+        self.content_at(cursor)
+    }
+
+    fn go_live(&mut self, cursor: Cursor, events: &mut Vec<Event>) {
+        let Some(cursor) = self.resolve(cursor) else {
+            return;
+        };
+        let previous = self.live;
+        let same_item = previous.is_some_and(|p| p.item == cursor.item);
+        let content = self.content_at(cursor);
+
+        if !same_item {
+            let item = self.items.iter().find(|i| i.id == cursor.item).cloned();
+            // `resolve` found the item, and it was not the live one, so it
+            // is in `items`.
+            self.live_item = item;
+        }
+        let Some(item) = &self.live_item else { return };
+        self.program.background = item.background.clone();
+        self.program.theme = item.theme;
+        let song = item.song;
+        self.program.content = content;
+        self.live = Some(cursor);
+        self.program.next = self.next_content(cursor);
+
+        events.push(Event::ProgramChanged);
+        if !same_item {
+            events.push(Event::ItemLive { item: cursor.item });
+            if let Some(song) = song {
+                events.push(Event::SongShown { song });
+            }
+        }
+        if same_item && previous.is_some_and(|p| p.slide == cursor.slide && p.step < cursor.step) {
+            events.push(Event::BuildStep { cursor });
+        }
+    }
+
+    fn toggle_overlay(&mut self, overlay: Overlay, events: &mut Vec<Event>) {
+        self.program.overlay = if self.program.overlay == overlay {
+            Overlay::None
+        } else {
+            overlay
+        };
+        events.push(Event::ProgramChanged);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lampstand_core::program::{Overlay, SlideText};
+    use lampstand_core::program::SlideText;
     use std::sync::Arc;
 
     fn text(s: &str) -> LoadedSlide {
@@ -222,7 +452,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn next_walks_slides_and_skips_headers() {
         let (mut e, _) = service();
         assert_eq!(on_air(&e), None);
@@ -246,7 +475,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn next_takes_preview_live_first() {
         let (mut e, items) = service();
         e.apply(Command::Preview(Cursor {
@@ -260,7 +488,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn builds_advance_before_slides() {
         let deck = item("Sermon", vec![deck_slide(2), deck_slide(0)]);
         let mut e = LiveEngine::new();
@@ -305,7 +532,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn black_persists_and_clear_text_does_not() {
         let (mut e, _) = service();
         e.apply(Command::Next);
@@ -324,7 +550,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn clear_all_goes_idle() {
         let (mut e, _) = service();
         e.apply(Command::Next);
@@ -336,7 +561,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn reload_keeps_live_item_and_follows_reorder() {
         let (mut e, mut items) = service();
         e.apply(Command::Next);
@@ -387,7 +611,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn song_shown_once_per_visit() {
         let song = SongId::generate();
         let mut s = item("Song", vec![text("v1"), text("c")]);
@@ -408,7 +631,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T33"]
     fn next_on_stage_shows_following_slide() {
         let (mut e, _) = service();
         e.apply(Command::Next);
@@ -417,5 +639,49 @@ mod tests {
             Some(Content::Text { slide }) => assert_eq!(slide.lines[0], "b1"),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn preview_and_go_live_on_headers_and_empty_service_do_nothing() {
+        let (mut e, items) = service();
+        let header = Cursor {
+            item: items[1].id,
+            slide: 0,
+            step: 0,
+        };
+        assert!(e.apply(Command::Preview(header)).is_empty());
+        assert_eq!(e.preview(), None);
+        assert!(e.apply(Command::GoLive).is_empty());
+        assert!(e.apply(Command::Show(header)).is_empty());
+        assert_eq!(e.live(), None);
+        assert!(e.is_idle());
+
+        let mut empty = LiveEngine::new();
+        empty.load(vec![]);
+        for command in [Command::Next, Command::Previous, Command::GoLive] {
+            assert!(empty.apply(command).is_empty());
+        }
+        assert_eq!(empty.live(), None);
+        assert_eq!(empty.preview(), None);
+    }
+
+    #[test]
+    fn show_on_missing_item_or_slide_does_nothing() {
+        let (mut e, items) = service();
+        let missing = Cursor {
+            item: ItemId::generate(),
+            slide: 0,
+            step: 0,
+        };
+        assert!(e.apply(Command::Show(missing)).is_empty());
+        assert!(e.apply(Command::Preview(missing)).is_empty());
+        let past_end = Cursor {
+            item: items[0].id,
+            slide: 5,
+            step: 0,
+        };
+        assert!(e.apply(Command::Show(past_end)).is_empty());
+        assert_eq!(e.live(), None);
+        assert!(e.is_idle());
     }
 }
