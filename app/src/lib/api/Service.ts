@@ -6,4 +6,8 @@ export type Service = { id: string, title: string, starts_at: Timestamp | null,
 /**
  * Default theme for text items; each output may override it.
  */
-theme: string | null, items: { [key in string]: ServiceItem }, };
+theme: string | null, 
+/**
+ * Keyed by the item ID as a string in the synced document.
+ */
+items: { [key in string]: ServiceItem }, };
