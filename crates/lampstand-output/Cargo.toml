@@ -1,0 +1,28 @@
+[package]
+name = "lampstand-output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# lampstand-render needs 1.89 (wgpu 30, cosmic-text 0.19).
+rust-version = "1.89"
+description = "Lampstand projector process: one fullscreen wgpu window per output display"
+
+[[bin]]
+name = "lampstand-output"
+path = "src/main.rs"
+
+[dependencies]
+lampstand-render = { path = "../lampstand-render" }
+lampstand-show = { path = "../lampstand-show" }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
+# Plain ws:// to the local server; no TLS.
+tokio-tungstenite = "0.30"
+# Plain http:// to the local server; no TLS.
+ureq = { version = "3", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
