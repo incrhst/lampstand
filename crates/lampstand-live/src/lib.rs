@@ -54,6 +54,7 @@ pub struct LoadedSlide {
     pub steps: usize,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Cursor {
     pub item: ItemId,
@@ -61,6 +62,7 @@ pub struct Cursor {
     pub step: usize,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
     /// Put a slide on the preview pane.

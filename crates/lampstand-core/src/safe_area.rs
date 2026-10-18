@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::geom::Rect;
 
 /// Margins as fractions of the output's width and height (0.05 = 5%).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct SafeArea {
     pub top: f32,

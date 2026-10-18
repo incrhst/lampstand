@@ -2,12 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Rect {
     pub x: f32,
@@ -94,6 +96,7 @@ impl Default for Transform {
 }
 
 /// Straight (not premultiplied) sRGB colour.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Color {
     pub r: u8,

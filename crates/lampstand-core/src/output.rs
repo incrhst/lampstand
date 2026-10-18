@@ -13,6 +13,7 @@ use crate::theme::ThemeId;
 
 pub type OutputId = Id<OutputConfig>;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OutputConfig {
     pub id: OutputId,
@@ -26,6 +27,7 @@ pub struct OutputConfig {
     pub enabled: bool,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputRole {
     /// What the congregation sees. Exactly one audience output is primary:
@@ -40,6 +42,7 @@ pub enum OutputRole {
     Stream,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OutputTarget {
     /// A fullscreen native window on a physical display.
@@ -53,6 +56,7 @@ pub enum OutputTarget {
 /// How a configured output finds its display again after a reboot or a
 /// replug. Phase 1 matches on name, then size, then position; Phase 2 adds
 /// the EDID hardware ID (TS-10).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisplayMatch {
     pub name: String,
@@ -64,6 +68,7 @@ pub struct DisplayMatch {
 
 /// TS-3: whether backgrounds fill the whole screen or stay inside the safe
 /// area. Text always stays inside it.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BackgroundMode {
     Bleed,

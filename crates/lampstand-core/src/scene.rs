@@ -96,6 +96,7 @@ pub struct Stroke {
     pub dash: Option<Vec<f32>>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Shadow {
     pub color: Color,
@@ -133,6 +134,7 @@ pub struct VideoNode {
     pub autoplay: bool,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HAlign {
     Left,
@@ -141,6 +143,7 @@ pub enum HAlign {
     Justify,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VAlign {
     Top,
@@ -159,6 +162,7 @@ pub struct TextBlock {
     pub outline: Option<Outline>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Outline {
     pub color: Color,
@@ -193,6 +197,7 @@ pub struct TextRun {
 }
 
 /// How one scene replaces the previous one on an output.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Transition {
     pub kind: TransitionKind,
@@ -206,6 +211,7 @@ impl Transition {
     };
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransitionKind {
     Cut,
@@ -217,6 +223,7 @@ pub enum TransitionKind {
     Zoom,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Direction {
     Left,
@@ -264,6 +271,7 @@ pub enum Effect {
     Play,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Easing {
     Linear,

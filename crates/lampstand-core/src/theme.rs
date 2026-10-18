@@ -14,6 +14,7 @@ pub type ThemeId = Id<Theme>;
 /// the output's height, so one theme works on every screen (TS-9).
 pub const REFERENCE_HEIGHT: f32 = 1080.0;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Theme {
     pub id: ThemeId,
@@ -31,6 +32,7 @@ pub struct Theme {
     pub show_copyright: bool,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextStyle {
     pub font_family: String,
@@ -50,6 +52,7 @@ pub struct TextStyle {
     pub outline: Option<Outline>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Background {
     /// Nothing: transparent on the stream output, black elsewhere.

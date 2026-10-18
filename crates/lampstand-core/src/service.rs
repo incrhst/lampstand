@@ -20,6 +20,7 @@ use crate::theme::ThemeId;
 pub type ServiceId = Id<Service>;
 pub type ItemId = Id<ServiceItem>;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Service {
     pub id: ServiceId,
@@ -30,6 +31,7 @@ pub struct Service {
     pub items: BTreeMap<ItemId, ServiceItem>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceItem {
     pub position: Position,
@@ -38,6 +40,7 @@ pub struct ServiceItem {
     pub notes: String,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ItemKind {
     /// A divider in the order ("Worship", "Sermon"). Has no slides.
@@ -72,6 +75,7 @@ pub enum ItemKind {
     },
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CountdownTarget {
     /// Counts down to a wall-clock time (the service start).
@@ -83,6 +87,7 @@ pub enum CountdownTarget {
 /// Fractional index: items sort by position string, then by ID when two
 /// devices picked the same position concurrently. Positions only contain
 /// the characters `0-9A-Za-z`, so they sort the same as bytes everywhere.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Position(String);
 

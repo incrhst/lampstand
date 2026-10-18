@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::DocKind;
 
 /// A device's ed25519 public key.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct DeviceKey(pub [u8; 32]);
 
@@ -27,6 +29,7 @@ pub struct DeviceKeypair {
     _private: (),
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Role {
     Admin,
@@ -53,6 +56,7 @@ impl Role {
 
 /// A link or QR code that lets a new device join with a role. Single use,
 /// with an expiry. Encoded as `lampstand://join?team=…&relay=…&token=…`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Invite {
     pub team: DeviceKey,
@@ -60,7 +64,9 @@ pub struct Invite {
     pub relay: Option<String>,
     pub role: Role,
     /// 32 random bytes; the team document stores only its hash.
+    #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
     pub token: [u8; 32],
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub expires_ms: i64,
 }
 

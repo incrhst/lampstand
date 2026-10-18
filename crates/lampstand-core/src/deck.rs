@@ -13,6 +13,7 @@ use crate::id::{BlobHash, Id, Timestamp};
 
 pub type DeckId = Id<Deck>;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Deck {
     pub id: DeckId,
@@ -25,6 +26,7 @@ pub struct Deck {
     pub pending: Option<Version>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Version {
     pub blob: BlobHash,
@@ -34,6 +36,7 @@ pub struct Version {
     pub source_version: Option<String>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeckSource {
     /// Dropped in or picked from disk. Never updates.
