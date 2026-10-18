@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<song>
+  <title>Amazing Grace</title>
+  <author>John Newton</author>
+  <copyright>Public Domain</copyright>
+  <ccli>22025</ccli>
+  <key>G</key>
+  <tempo>72</tempo>
+  <presentation>V1 C V2 C</presentation>
+  <hymn_number></hymn_number>
+  <lyrics>[V1]
+; verse one, with chords
+.G              G7        C
+ Amazing grace, how sweet the sound
+.G            Em          D
+ That saved a wretch like me
+[C]
+.       C          G
+ I once was lost &amp; now am found
+ Was blind, but now I see
+[V2]
+ 'Twas grace that taught my heart to fear,
+ And grace my fears relieved
+</lyrics>
+</song>
