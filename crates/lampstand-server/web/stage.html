@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Lampstand Stage</title>
+<link rel="stylesheet" href="stage.css">
+<script type="module" src="stage.js"></script>
+</head>
+<body>
+<header class="bar">
+  <div class="now">
+    <span class="item-title" id="item-title">Waiting for the service</span>
+    <span class="cue-label" id="live-label"></span>
+  </div>
+  <dl class="timers">
+    <div><dt>Item</dt><dd id="item-elapsed">–:––</dd></div>
+    <div><dt>Service</dt><dd id="service-elapsed">–:––</dd></div>
+    <div class="clock"><dt>Time</dt><dd id="clock">--:--</dd></div>
+  </dl>
+</header>
+<main class="grid">
+  <section class="panel live" aria-label="Live">
+    <h2>Live</h2>
+    <div class="mode-banner" id="mode-banner" hidden></div>
+    <div class="cue" id="live-cue"></div>
+  </section>
+  <section class="panel next" aria-label="Next">
+    <h2>Next <span class="cue-label" id="next-label"></span></h2>
+    <div class="cue" id="next-cue"></div>
+  </section>
+  <section class="panel notes" aria-label="Speaker notes">
+    <h2>Notes</h2>
+    <div class="notes-body" id="notes"></div>
+  </section>
+</main>
+<div class="reconnecting" id="reconnecting" hidden><span class="dot"></span>Reconnecting…</div>
+</body>
+</html>
