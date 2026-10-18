@@ -12,9 +12,11 @@ without a panic, and it played 38 of 42 animated slides with exactly the right
 clicks. On visual fidelity, 91% of slides are within 0.20 RMSE of LibreOffice,
 and most of the worst are charts. The gaps found are specific and fixable:
 one animation-import bug (paragraph builds), chart labels and fills, and
-font substitution for fonts that are not installed. Two checks are
-still open before we commit to it for launch: Google Slides exports and real
-church decks (see [Still to test](#still-to-test)).
+font substitution for fonts that are not installed. Four real Google Slides
+exports, three of them church decks, did even better: every slide opened,
+all 404 clicks matched, and DeckCraft used the embedded fonts that
+LibreOffice ignored. Church decks made in PowerPoint and a check against
+PowerPoint itself are still open (see [Still to test](#still-to-test)).
 
 ## What was evaluated
 
@@ -166,14 +168,42 @@ Two LibreOffice faults also showed up in this set (a stray drawing artifact on
 a chart, a title overflowing its box), which is why PowerPoint should be the
 reference before launch.
 
+## Google Slides exports and church decks: the best results
+
+Per-slide results: [eval/deckcraft-google-slides.tsv](eval/deckcraft-google-slides.tsv).
+
+Four real decks exported from Google Slides with File › Download ›
+Microsoft PowerPoint, three of them from one church. Names are withheld; they
+are a sermon deck (51 slides, Bible text on a textured background), weekly
+notices (28 slides, photo backgrounds), a church slideshow (26 slides, photos
+and an animated GIF) and an app walkthrough (12 slides, diagrams and speaker
+notes).
+
+| Check | Result |
+| --- | --- |
+| Open and render | 4 of 4 decks, all 117 slides |
+| Speaker notes | Read on the one deck that has them (12 of 12 slides) |
+| Hidden slides | 9, all skipped by the show |
+| Click builds | 42 slides, 404 clicks: **every slide matches the file exactly** |
+| Visuals against LibreOffice | Median RMSE 0.144; 94% of slides within 0.20; worst 0.221 |
+
+The visual scores are higher than on the POI corpus, but here the difference
+is LibreOffice's fault. Google Slides embeds the deck's fonts in the export
+(Be Vietnam Pro, Lato, Poppins and others, in `ppt/fonts/`). DeckCraft reads
+the embedded fonts (`embeddedFontLst`), so text sets as designed and fits
+its boxes. LibreOffice ignores them and substitutes wider fonts, so titles
+wrap and body text runs out of its boxes. On the slideshow deck DeckCraft also
+draws an animated GIF (it decodes every frame with its timing) that
+LibreOffice's PDF leaves out. No slide in these decks looked wrong in
+DeckCraft.
+
 ## Still to test
 
-- **Google Slides exports.** None of the corpus came from Google Slides, and
-  PS-2 brings every Google deck in through that export. Export 2 or 3 real
-  decks and run the same checks.
-- **Church decks.** Large background photos, embedded video, custom fonts and
-  paragraph builds. The PRD's fidelity target (95% of 200 real church decks)
-  needs this corpus anyway; collect it now and contribute it upstream.
+- **Church decks made in PowerPoint.** The church decks tested so far came
+  from Google Slides. Decks made in PowerPoint, with embedded video and
+  paragraph builds, are still to test. The PRD's fidelity target (95% of 200
+  real church decks) needs this corpus anyway; collect it now and contribute
+  the ones we may share upstream.
 - **PowerPoint as the reference.** LibreOffice was used because PowerPoint's
   AppleScript export stalled on a "file extension has changed" dialog for a
   valid `.pptx`. Exporting by hand from PowerPoint for a dozen slides would
@@ -184,7 +214,7 @@ reference before launch.
 | ID | What DeckCraft gives us | Gap |
 | --- | --- | --- |
 | PS-1 | PPTX import and rendering with no PowerPoint | Wrap in our import UI |
-| PS-2 | Reads Google Slides PPTX exports | Untested |
+| PS-2 | Reads Google Slides PPTX exports, embedded fonts included | Drive picker and Slides API export are ours |
 | PS-3 | Text, shapes, images, masters, media parts, transitions, animations, click builds | Paragraph-build bug; chart labels; fonts |
 | PS-4 | Import failures are clean errors | Fidelity report is ours to build: missing fonts and unsupported effects need hooks in the reader |
 | PS-7 | Speaker notes | None |
@@ -197,7 +227,7 @@ reference before launch.
 Depend, not fork, not build. Pin `deckcraft-pptx`, `deckcraft-model` and
 `deckcraft-anim` to a commit when `lampstand-slides` work starts, raise
 `rust-version` to 1.95, and send the paragraph-build fix and our test decks
-upstream. Revisit if Google Slides or church decks show gaps that upstream
+upstream. Revisit if PowerPoint-made church decks show gaps that upstream
 won't take. Not added as a dependency in this PR.
 
 ## Reproducing
