@@ -149,7 +149,12 @@ pub fn pattern(width: u32, height: u32, safe_area: &SafeArea, label: &str) -> Pa
     p.quads.push(Quad { rect: Rect { x: w / 2.0 - cross, y: h / 2.0 - t / 2.0, width: 2.0 * cross, height: t }, color: RING_A });
     p.quads.push(Quad { rect: Rect { x: w / 2.0 - t / 2.0, y: h / 2.0 - cross, width: t, height: 2.0 * cross }, color: RING_A });
     let caption = format!("{label}\n{width} × {height}  {}", aspect_name(width, height));
-    p.labels.push(Label { text: caption, x: w / 2.0, y: h / 2.0 + cross + h * 0.05, size: h * 0.035, color: RING_A });
+    // Labels are centred on their point, so push the block down by half its
+    // height to keep a multi-line caption clear of the cross.
+    let size = h * 0.035;
+    let lines = caption.lines().count() as f32;
+    let y = h / 2.0 + cross + size + lines * size * 1.2 / 2.0;
+    p.labels.push(Label { text: caption, x: w / 2.0, y, size, color: RING_A });
     p
 }
 
