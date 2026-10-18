@@ -37,9 +37,16 @@ impl BlobSource for Blobs {
 }
 
 impl Blobs {
+    /// Tests run in parallel and several add the same image, so write to a
+    /// unique temp file and rename: a reader never sees a half-written blob.
     fn add(&self, png: &[u8]) -> BlobHash {
         let hash = BlobHash::of(png);
-        std::fs::write(self.dir.path().join(hash.to_string()), png).unwrap();
+        let path = self.dir.path().join(hash.to_string());
+        if !path.exists() {
+            let tmp = tempfile::NamedTempFile::new_in(self.dir.path()).unwrap();
+            std::fs::write(tmp.path(), png).unwrap();
+            tmp.persist(&path).unwrap();
+        }
         hash
     }
 }
