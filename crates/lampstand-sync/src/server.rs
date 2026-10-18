@@ -20,6 +20,8 @@ where
     A: FnOnce(&str, &str) -> Option<T> + Unpin,
 {
     let mut authorized = None;
+    // tungstenite's handshake callback fixes the error type, so it cannot be boxed.
+    #[allow(clippy::result_large_err)]
     let callback = |request: &Request, response: Response| {
         let Some(church) = request.uri().path().strip_prefix(SYNC_PATH_PREFIX) else {
             return Err(reject(StatusCode::NOT_FOUND));

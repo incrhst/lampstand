@@ -11,7 +11,7 @@
 # Put a TLS reverse proxy in front of it on the internet; devices then use
 # wss://your.host. The image is a static musl binary on Alpine, a few MB.
 
-FROM rust:1.91-alpine AS build
+FROM rust:1.99-alpine AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /src
 COPY . .

@@ -3,8 +3,7 @@ name = "lampstand-relay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# automerge 0.12 needs Rust 1.90.
-rust-version = "1.90"
+rust-version.workspace = true
 
 [dependencies]
 # No TLS client needed: the relay speaks plain ws behind a TLS reverse proxy.
