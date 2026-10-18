@@ -1,0 +1,10 @@
+[package]
+name = "lampstand-scripture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lampstand-core = { path = "../lampstand-core" }
+roxmltree = "0.21.1"
