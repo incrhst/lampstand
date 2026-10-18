@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RVPresentationDocument CCLIArtistCredits="" CCLIAuthor="John Newton" CCLICopyrightYear="1779" CCLIDisplay="false" CCLIPublisher="Public Domain" CCLISongNumber="22025" CCLISongTitle="Amazing Grace" category="Hymn" selectedArrangementID="00000000-0000-4000-8000-000000000100" height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="2020-01-01T10:00:00" os="1" buildNumber="6016">
+  <timeline timeOffSet="0" selectedMediaTrackIndex="0" unitOfMeasure="60" duration="0" loop="false"/>
+  <bibleReference/>
+  <arrangements>
+    <RVSongArrangement color="0 0 0 0" name="Default" uuid="00000000-0000-4000-8000-000000000100">
+      <groupIDs>
+        <NSString rvXMLIvarName="groupID">00000000-0000-4000-8000-000000000001</NSString>
+        <NSString rvXMLIvarName="groupID">00000000-0000-4000-8000-000000000002</NSString>
+        <NSString rvXMLIvarName="groupID">00000000-0000-4000-8000-000000000003</NSString>
+        <NSString rvXMLIvarName="groupID">00000000-0000-4000-8000-000000000001</NSString>
+      </groupIDs>
+    </RVSongArrangement>
+    <RVSongArrangement color="0 0 0 0" name="Short" uuid="00000000-0000-4000-8000-000000000101">
+      <groupIDs>
+        <NSString rvXMLIvarName="groupID">00000000-0000-4000-8000-000000000002</NSString>
+      </groupIDs>
+    </RVSongArrangement>
+  </arrangements>
+  <groups>
+    <RVSlideGrouping color="0 0 0 1" name="Verse 1" uuid="00000000-0000-4000-8000-000000000001">
+      <slides>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="0" UUID="00000000-0000-4000-8000-000000000201" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="0">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgQW1hemluZyBncmFjZSEgSG93IHN3ZWV0IHRoZSBzb3VuZFwK
+VGhhdCBzYXZlZCBhIHdyZXRjaCBsaWtlIG1lIVwKSSBvbmNlIHdhcyBsb3N0LCBidXQgbm93IGFt
+IGZvdW5kLFwKV2FzIGJsaW5kLCBidXQgbm93IEkgc2VlLn0=</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+      </slides>
+    </RVSlideGrouping>
+    <RVSlideGrouping color="0 0 0 1" name="Verse 2" uuid="00000000-0000-4000-8000-000000000002">
+      <slides>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="1" UUID="00000000-0000-4000-8000-000000000202" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="1">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgXHU4MjE3P1R3YXMgZ3JhY2UgdGhhdCB0YXVnaHQgbXkgaGVh
+cnQgdG8gZmVhcixcCkFuZCBncmFjZSBteSBmZWFycyByZWxpZXZlZDtcCkhvdyBwcmVjaW91cyBk
+aWQgdGhhdCBncmFjZSBhcHBlYXJcClRoZSBob3VyIEkgZmlyc3QgYmVsaWV2ZWQufQ==</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+      </slides>
+    </RVSlideGrouping>
+    <RVSlideGrouping color="0 0 0 1" name="Verse 3" uuid="00000000-0000-4000-8000-000000000003">
+      <slides>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="2" UUID="00000000-0000-4000-8000-000000000203" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="2">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgVGhyb3VnaCBtYW55IGRhbmdlcnMsIHRvaWxzIGFuZCBzbmFy
+ZXNcCkkgaGF2ZSBhbHJlYWR5IGNvbWU7fQ==</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="3" UUID="00000000-0000-4000-8000-000000000204" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="3">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgXHU4MjE3P1RpcyBncmFjZSBoYXRoIGJyb3VnaHQgbWUgc2Fm
+ZSB0aHVzIGZhcixcCkFuZCBncmFjZSB3aWxsIGxlYWQgbWUgaG9tZS59</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+      </slides>
+    </RVSlideGrouping>
+    <RVSlideGrouping color="0 0 0 1" name="Blank" uuid="00000000-0000-4000-8000-000000000004">
+      <slides>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="4" UUID="00000000-0000-4000-8000-000000000205" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="4">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgfQ==</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+      </slides>
+    </RVSlideGrouping>
+    <RVSlideGrouping color="0 0 0 1" name="Verse 2" uuid="00000000-0000-4000-8000-000000000005">
+      <slides>
+        <RVDisplaySlide backgroundColor="0 0 0 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="" notes="" slideType="1" sort_index="5" UUID="00000000-0000-4000-8000-000000000206" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="5">
+          <cues/>
+          <displayElements>
+            <RVTextElement displayDelay="0" displayName="Lyrics" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="0" revealType="0" serialization-array-index="0">
+              <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+              <_-D-_serializedShadow containerClass="NSMutableDictionary"/>
+              <stroke containerClass="NSMutableDictionary"/>
+              <NSString rvXMLIvarName="PlainText">ignored</NSString>
+              <NSString rvXMLIvarName="RTFData">e1xydGYxXGFuc2lcYW5zaWNwZzEyNTJcY29jb2FydGYxNTA0e1xmb250dGJsXGYwXGZzd2lzc1xm
+Y2hhcnNldDAgSGVsdmV0aWNhO317XGNvbG9ydGJsO1xyZWQyNTVcZ3JlZW4yNTVcYmx1ZTI1NTt9
+e1wqXGV4cGFuZGVkY29sb3J0Ymw7O31ccGFyZFxwYXJkaXJuYXR1cmFsXHFjXHBhcnRpZ2h0ZW5m
+YWN0b3IwClxmMFxmczk2IFxjZjEgTG9yZCwgSSBiZWxpZXZlIGl0fQ==</NSString>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>
+      </slides>
+    </RVSlideGrouping>
+  </groups>
+</RVPresentationDocument>
