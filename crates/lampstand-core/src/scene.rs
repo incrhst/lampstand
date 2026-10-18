@@ -188,7 +188,8 @@ pub struct Outline {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Paragraph {
     pub align: HAlign,
-    /// Multiple of the font's line height.
+    /// Line height as a multiple of the font size (1.2 = 120%). Layout
+    /// (`fit_text`, pagination) and every renderer use this same rule.
     pub line_spacing: f32,
     pub space_before: f32,
     pub space_after: f32,

@@ -9,10 +9,6 @@ use lampstand_core::theme::{TextStyle, Theme, REFERENCE_HEIGHT};
 
 use crate::Fonts;
 
-/// Line height used when the theme's font cannot be found: the usual
-/// 1.2 × size.
-const FALLBACK_LINE_HEIGHT: f32 = 1.2;
-
 /// The scripture footer is set at this fraction of the body size, and a
 /// gap of half a footer line separates it from the text. The compositor
 /// (T23) must lay the footer out the same way.
@@ -196,41 +192,6 @@ fn font_attrs(style: &TextStyle) -> Attrs<'_> {
         })
 }
 
-/// The font's own line height as a multiple of its size:
-/// (ascent + descent + line gap) / units per em, the metric behind CSS
-/// `line-height: normal` and PowerPoint's single line spacing. It varies by
-/// font (Noto Sans is about 1.36, Carlito about 1.22), so a fixed factor
-/// would mis-measure. `line_spacing` multiplies it. Falls back to
-/// [`FALLBACK_LINE_HEIGHT`] when the family cannot be resolved.
-fn natural_line_height(style: &TextStyle, fonts: &mut Fonts) -> f32 {
-    let attrs = font_attrs(style);
-    let families = [cosmic_text::fontdb::Family::Name(&style.font_family)];
-    let query = cosmic_text::fontdb::Query {
-        families: &families,
-        weight: cosmic_text::fontdb::Weight(style.weight),
-        stretch: cosmic_text::fontdb::Stretch::Normal,
-        style: match attrs.style {
-            Style::Italic => cosmic_text::fontdb::Style::Italic,
-            Style::Oblique => cosmic_text::fontdb::Style::Oblique,
-            Style::Normal => cosmic_text::fontdb::Style::Normal,
-        },
-    };
-    let system = fonts.system();
-    let Some(id) = system.db().query(&query) else {
-        return FALLBACK_LINE_HEIGHT;
-    };
-    let Some(font) = system.get_font(id, cosmic_text::fontdb::Weight(style.weight)) else {
-        return FALLBACK_LINE_HEIGHT;
-    };
-    let m = font.metrics();
-    let height = (m.ascent - m.descent + m.leading) / f32::from(m.units_per_em.max(1));
-    if height.is_finite() && height > 0.0 {
-        height
-    } else {
-        FALLBACK_LINE_HEIGHT
-    }
-}
-
 /// Whether text fits the primary output's text area at the theme's
 /// preferred size scaled to the output's height.
 struct Measure<'a> {
@@ -255,7 +216,9 @@ impl<'a> Measure<'a> {
         let safe = primary.safe_area.rect(w, h);
         let area = theme.text_area;
         let size = theme.text.size * h / REFERENCE_HEIGHT;
-        let line_height = size * natural_line_height(&theme.text, fonts) * theme.text.line_spacing;
+        // Same rule as `fit_text` and the renderer: a multiple of the font
+        // size. See `Paragraph::line_spacing`.
+        let line_height = size * theme.text.line_spacing;
         let mut measure = Self {
             style: &theme.text,
             size,
@@ -633,20 +596,6 @@ mod tests {
     #[test]
     fn empty_passage_has_no_slides() {
         assert!(passage(&[], &output(1920, 1080)).is_empty());
-    }
-
-    #[test]
-    fn line_height_comes_from_the_font() {
-        let mut fonts = Fonts::bundled_only();
-        let mut style = theme(4, false).text;
-        let noto = natural_line_height(&style, &mut fonts);
-        style.font_family = "Carlito".into();
-        let carlito = natural_line_height(&style, &mut fonts);
-        style.font_family = "No Such Family".into();
-        let missing = natural_line_height(&style, &mut fonts);
-        assert!((noto - 1.362).abs() < 0.01, "Noto Sans {noto}");
-        assert!((carlito - 1.22).abs() < 0.01, "Carlito {carlito}");
-        assert_eq!(missing, FALLBACK_LINE_HEIGHT);
     }
 
     #[test]
