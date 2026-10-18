@@ -10,3 +10,14 @@ lampstand-core.workspace = true
 lampstand-live.workspace = true
 lampstand-sync.workspace = true
 serde.workspace = true
+ts-rs = { workspace = true, optional = true }
+
+[features]
+# TypeScript bindings for the UI (T45). Normal builds don't depend on ts-rs.
+ts = ["dep:ts-rs", "lampstand-core/ts", "lampstand-live/ts", "lampstand-sync/ts"]
+
+[dev-dependencies]
+# Turns `ts` on whenever the api crate's tests build, so the stale-bindings
+# check runs under a plain `cargo test --workspace`.
+lampstand-api = { path = ".", features = ["ts"] }
+tempfile.workspace = true

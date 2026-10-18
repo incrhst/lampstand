@@ -37,6 +37,22 @@ impl<T> Id<T> {
     }
 }
 
+/// An ID is a UUID string in TypeScript whatever it identifies, so `T` needs
+/// no `TS` impl and the derive (which would demand one) is bypassed.
+#[cfg(feature = "ts")]
+impl<T> ts_rs::TS for Id<T> {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+
+    fn name(_: &ts_rs::Config) -> String {
+        "string".into()
+    }
+
+    fn inline(cfg: &ts_rs::Config) -> String {
+        Self::name(cfg)
+    }
+}
+
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         *self
@@ -83,6 +99,8 @@ impl<T> FromStr for Id<T> {
 
 /// BLAKE3 hash of a blob: a deck file, image, video or Bible text. Blobs are
 /// stored and synced by hash, never inside sync documents.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(type = "string"))]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlobHash([u8; 32]);
 
@@ -142,6 +160,8 @@ impl<'de> Deserialize<'de> for BlobHash {
 }
 
 /// Milliseconds since the Unix epoch, UTC.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(type = "number"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Timestamp(pub i64);
 

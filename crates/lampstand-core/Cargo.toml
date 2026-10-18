@@ -8,12 +8,15 @@ rust-version.workspace = true
 [features]
 # autosurgeon `Hydrate` and `Reconcile` for every synced document type.
 automerge = ["dep:automerge", "dep:autosurgeon"]
+# TypeScript bindings for the UI (T45); see lampstand-api.
+ts = ["dep:ts-rs"]
 
 [dependencies]
 automerge = { workspace = true, optional = true }
 autosurgeon = { workspace = true, optional = true }
 blake3.workspace = true
 serde.workspace = true
+ts-rs = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]

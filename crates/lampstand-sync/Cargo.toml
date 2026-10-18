@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# TypeScript bindings for the UI (T45); see lampstand-api.
+ts = ["dep:ts-rs", "lampstand-core/ts"]
+
 [dependencies]
 automerge.workspace = true
 autosurgeon.workspace = true
@@ -13,6 +17,7 @@ ed25519-dalek.workspace = true
 getrandom.workspace = true
 lampstand-core = { workspace = true, features = ["automerge"] }
 serde.workspace = true
+ts-rs = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]

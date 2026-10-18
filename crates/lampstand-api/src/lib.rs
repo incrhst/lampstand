@@ -18,6 +18,7 @@ use lampstand_core::theme::Theme;
 use lampstand_live::{Command, Cursor};
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "area", content = "request")]
 pub enum Request {
@@ -28,6 +29,7 @@ pub enum Request {
     Team(TeamRequest),
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LibraryRequest {
     SearchSongs {
@@ -54,6 +56,7 @@ pub enum LibraryRequest {
     AcceptDeckUpdate(DeckId),
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServiceRequest {
     List,
@@ -87,6 +90,7 @@ pub enum ServiceRequest {
     },
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OutputRequest {
     ListDisplays,
@@ -106,6 +110,7 @@ pub enum OutputRequest {
     BrowserSourceUrl(OutputId),
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TeamRequest {
     Status,
@@ -114,6 +119,7 @@ pub enum TeamRequest {
     SetRelay { url: Option<String> },
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Response {
@@ -137,6 +143,7 @@ pub enum Response {
     Text(String),
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SongHit {
     pub song: SongId,
@@ -144,6 +151,7 @@ pub struct SongHit {
     pub line: Option<String>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceSummary {
     pub id: ServiceId,
@@ -152,6 +160,7 @@ pub struct ServiceSummary {
 }
 
 /// Pushed to the UI.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Event {

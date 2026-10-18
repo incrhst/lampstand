@@ -96,6 +96,7 @@ pub struct Stroke {
     pub dash: Option<Vec<f32>>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -137,6 +138,7 @@ pub struct VideoNode {
     pub autoplay: bool,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -149,6 +151,7 @@ pub enum HAlign {
     Justify,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -171,6 +174,7 @@ pub struct TextBlock {
     pub outline: Option<Outline>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -209,6 +213,7 @@ pub struct TextRun {
 }
 
 /// How one scene replaces the previous one on an output.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -226,6 +231,7 @@ impl Transition {
     };
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -241,6 +247,7 @@ pub enum TransitionKind {
     Zoom,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -292,6 +299,7 @@ pub enum Effect {
     Play,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Easing {
     Linear,

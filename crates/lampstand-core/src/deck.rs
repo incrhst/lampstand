@@ -13,6 +13,7 @@ use crate::id::{BlobHash, Id, Timestamp};
 
 pub type DeckId = Id<Deck>;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -29,6 +30,7 @@ pub struct Deck {
     pub pending: Option<Version>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -42,6 +44,7 @@ pub struct Version {
     pub source_version: Option<String>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",

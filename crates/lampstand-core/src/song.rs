@@ -10,6 +10,7 @@ use crate::id::Id;
 pub type SongId = Id<Song>;
 
 /// A labelled block of lyrics, such as "V1" or "C".
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -28,6 +29,7 @@ impl Section {
     }
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SectionKind {
     Verse,
@@ -64,6 +66,7 @@ impl SectionKind {
     }
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",

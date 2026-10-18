@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::id::{BlobHash, Id};
 
 /// A book of the Bible, 1 (Genesis) to 66 (Revelation).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -105,6 +106,7 @@ impl Book {
     }
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -123,6 +125,7 @@ impl ChapterVerse {
 
 /// A contiguous passage in one book, inclusive at both ends. It may cross
 /// chapters ("Gen 1:1-2:3").
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -466,6 +469,7 @@ pub type TranslationId = Id<Translation>;
 /// An imported Bible translation. The metadata is a synced document; the
 /// text is a blob ([`BibleText`], postcard + zstd) that syncs between the
 /// church's own devices and is never put in a service package (BI-2).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -482,6 +486,7 @@ pub struct Translation {
     pub text: BlobHash,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",

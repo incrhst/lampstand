@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -12,6 +13,7 @@ pub struct Point {
     pub y: f32,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -102,6 +104,7 @@ impl Default for Transform {
 }
 
 /// Straight (not premultiplied) sRGB colour.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",

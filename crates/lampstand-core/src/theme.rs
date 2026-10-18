@@ -14,6 +14,7 @@ pub type ThemeId = Id<Theme>;
 /// the output's height, so one theme works on every screen (TS-9).
 pub const REFERENCE_HEIGHT: f32 = 1080.0;
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -35,6 +36,7 @@ pub struct Theme {
     pub show_copyright: bool,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
@@ -58,6 +60,7 @@ pub struct TextStyle {
     pub outline: Option<Outline>,
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "automerge",
