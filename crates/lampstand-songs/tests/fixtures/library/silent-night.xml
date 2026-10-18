@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Public domain: Joseph Mohr (1818), English by John Freeman Young. OpenLyrics 0.8 style. -->
+<song xmlns="http://openlyrics.info/namespace/2009/song" version="0.8">
+  <properties>
+    <titles><title>Silent Night</title></titles>
+    <authors><author>Joseph Mohr</author><author type="translation" lang="en">John Freeman Young</author></authors>
+    <tempo type="text">Slow</tempo>
+  </properties>
+  <lyrics>
+    <verse name="v1" lang="en">
+      <lines>
+        <line><chord name="Bb"/>Silent night, holy night</line>
+        <line>All is calm, all is bright</line>
+      </lines>
+    </verse>
+    <verse name="v1" lang="de">
+      <lines>
+        <line>Stille Nacht, heilige Nacht</line>
+        <line>Alles schläft, einsam wacht</line>
+      </lines>
+    </verse>
+  </lyrics>
+</song>

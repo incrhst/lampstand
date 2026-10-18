@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Public domain: words by John Newton (1779). -->
+<song xmlns="http://openlyrics.info/namespace/2009/song" version="0.9" createdIn="Lampstand tests">
+  <properties>
+    <titles>
+      <title>Amazing Grace</title>
+      <title>Amazing Grace, How Sweet the Sound</title>
+    </titles>
+    <authors>
+      <author type="words">John Newton</author>
+    </authors>
+    <copyright>Public Domain</copyright>
+    <ccliNo>22025</ccliNo>
+    <key>G</key>
+    <tempo type="bpm">72</tempo>
+    <verseOrder>v1 v2 v3 v1</verseOrder>
+    <themes><theme>Grace</theme></themes>
+  </properties>
+  <lyrics>
+    <verse name="v1">
+      <lines><chord root="G"/>Amazing grace! How <chord root="C"/>sweet the <chord root="G"/>sound<br/>That saved a wretch like <chord root="D"/>me!</lines>
+      <lines>I once was <tag name="i">lost</tag>, but now am found;<br/>Was blind, but now I see.</lines>
+    </verse>
+    <verse name="v2">
+      <lines>'Twas grace that taught my heart to fear,<br/>And grace my fears relieved;</lines>
+    </verse>
+    <verse name="v3">
+      <lines>Through many dangers, toils and snares,<br/>I have already come;<comment>slow down</comment></lines>
+    </verse>
+  </lyrics>
+</song>
