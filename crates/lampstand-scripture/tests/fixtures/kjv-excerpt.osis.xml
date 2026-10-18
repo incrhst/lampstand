@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osis xmlns="http://www.bibletechnologies.net/2003/OSIS/namespace">
+  <osisText osisIDWork="KJV" osisRefWork="Bible" xml:lang="en">
+    <header>
+      <work osisWork="KJV">
+        <title>King James Version (excerpt)</title>
+        <language>en</language>
+        <rights type="x-copyright">Public domain outside the United Kingdom.</rights>
+        <rights type="x-license">Free to copy, project and distribute.</rights>
+      </work>
+    </header>
+    <div type="book" osisID="Gen">
+      <title type="main">Genesis</title>
+      <chapter osisID="Gen.1">
+        <title>The Creation</title>
+        <verse osisID="Gen.1.1"><w lemma="strong:H7225">In</w> the beginning God created the heaven and the earth.</verse>
+        <verse osisID="Gen.1.2">And the earth was without form, and void; and darkness <transChange type="added">was</transChange> upon the face of the deep. And the Spirit of God moved upon the face of the waters.</verse>
+        <verse osisID="Gen.1.3">And God said, Let there be light: and there was light.</verse>
+        <verse osisID="Gen.1.4">And God saw the light, that <transChange type="added">it was</transChange> good: and God divided the light from the darkness.<note type="translation">Heb. between the light and between the darkness.</note></verse>
+        <verse osisID="Gen.1.5">And God called the light Day, and the darkness he called Night. And the evening and the morning were the first day.</verse>
+      </chapter>
+      <chapter osisID="Gen.2">
+        <verse osisID="Gen.2.1">Thus the heavens and the earth were finished, and all the host of them.</verse>
+        <verse osisID="Gen.2.2">And on the seventh day God ended his work which he had made; and he rested on the seventh day from all his work which he had made.</verse>
+        <verse osisID="Gen.2.3">And God blessed the seventh day, and sanctified it: because that in it he had rested from all his work which God created and made.</verse>
+      </chapter>
+    </div>
+    <div type="book" osisID="Ps">
+      <chapter sID="Ps.23" osisID="Ps.23"/>
+      <title type="psalm" canonical="true">A Psalm of David.</title>
+      <lg>
+        <l><verse sID="Ps.23.1" osisID="Ps.23.1"/>The <divineName>LORD</divineName> <transChange type="added">is</transChange> my shepherd; I shall not want.<verse eID="Ps.23.1"/></l>
+        <l><verse sID="Ps.23.2" osisID="Ps.23.2"/>He maketh me to lie down in green pastures: he leadeth me beside the still waters.<verse eID="Ps.23.2"/></l>
+        <l><verse sID="Ps.23.3" osisID="Ps.23.3"/>He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake.<verse eID="Ps.23.3"/></l>
+        <l><verse sID="Ps.23.4" osisID="Ps.23.4"/>Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou <transChange type="added">art</transChange> with me; thy rod and thy staff they comfort me.<verse eID="Ps.23.4"/></l>
+        <l><verse sID="Ps.23.5" osisID="Ps.23.5"/>Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over.<verse eID="Ps.23.5"/></l>
+        <l><verse sID="Ps.23.6" osisID="Ps.23.6"/>Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the <divineName>LORD</divineName> for ever.<verse eID="Ps.23.6"/></l>
+      </lg>
+      <chapter eID="Ps.23"/>
+    </div>
+    <div type="book" osisID="John">
+      <chapter osisID="John.3">
+        <verse osisID="John.3.16"><q who="Jesus" marker="">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</q></verse>
+        <verse osisID="John.3.17"><q who="Jesus" marker="">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</q><note type="crossReference"><reference osisRef="Luke.9.56">Luke 9.56</reference></note></verse>
+        <verse osisID="John.3.18"><q who="Jesus" marker="">He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.</q></verse>
+      </chapter>
+    </div>
+    <div type="book" osisID="Tob">
+      <chapter osisID="Tob.1">
+        <verse osisID="Tob.1.1">Apocryphal text the importer does not know.</verse>
+      </chapter>
+    </div>
+  </osisText>
+</osis>
