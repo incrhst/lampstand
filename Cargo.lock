@@ -1104,6 +1104,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lampstand-show"
+version = "0.1.0"
+dependencies = [
+ "lampstand-core",
+ "lampstand-scripture",
+ "lampstand-slides",
+ "lampstand-songs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "lampstand-slides"
 version = "0.1.0"
 dependencies = [
