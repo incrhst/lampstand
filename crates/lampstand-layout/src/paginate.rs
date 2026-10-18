@@ -9,8 +9,14 @@ use lampstand_core::theme::{TextStyle, Theme, REFERENCE_HEIGHT};
 
 use crate::Fonts;
 
-/// Line height as a multiple of the font size when `line_spacing` is 1.
-const LINE_HEIGHT_FACTOR: f32 = 1.2;
+/// Line height used when the theme's font cannot be found: the usual
+/// 1.2 × size.
+const FALLBACK_LINE_HEIGHT: f32 = 1.2;
+
+/// The scripture footer is set at this fraction of the body size, and a
+/// gap of half a footer line separates it from the text. The compositor
+/// (T23) must lay the footer out the same way.
+pub const FOOTER_SCALE: f32 = 0.5;
 
 /// Splits a song into slides: each arranged section becomes one or more
 /// slides of at most `theme.max_lines` lines, split as evenly as possible
@@ -109,7 +115,9 @@ fn copyright_line(song: &Song) -> Option<String> {
 /// so loved...").
 ///
 /// Each verse is one entry in `lines` ("16 For God..."), wrapped by the
-/// renderer. `reference` is both the label and the footer of every slide.
+/// renderer. `reference` is both the label and the footer of every slide,
+/// so the footer's height (at [`FOOTER_SCALE`] of the body size, plus a gap
+/// of half its line height) is taken off the text area before measuring.
 pub fn paginate_passage(
     verses: &[(ChapterVerse, &str)],
     reference: &str,
@@ -117,7 +125,7 @@ pub fn paginate_passage(
     primary: &OutputConfig,
     fonts: &mut Fonts,
 ) -> Vec<SlideText> {
-    let measure = Measure::new(theme, primary);
+    let measure = Measure::new(theme, primary, reference, fonts);
     let mut slides: Vec<Vec<String>> = Vec::new();
     let mut current: Vec<String> = Vec::new();
 
@@ -177,17 +185,67 @@ pub fn paginate_passage(
         .collect()
 }
 
+fn font_attrs(style: &TextStyle) -> Attrs<'_> {
+    Attrs::new()
+        .family(Family::Name(&style.font_family))
+        .weight(Weight(style.weight))
+        .style(if style.italic {
+            Style::Italic
+        } else {
+            Style::Normal
+        })
+}
+
+/// The font's own line height as a multiple of its size:
+/// (ascent + descent + line gap) / units per em, the metric behind CSS
+/// `line-height: normal` and PowerPoint's single line spacing. It varies by
+/// font (Noto Sans is about 1.36, Carlito about 1.22), so a fixed factor
+/// would mis-measure. `line_spacing` multiplies it. Falls back to
+/// [`FALLBACK_LINE_HEIGHT`] when the family cannot be resolved.
+fn natural_line_height(style: &TextStyle, fonts: &mut Fonts) -> f32 {
+    let attrs = font_attrs(style);
+    let families = [cosmic_text::fontdb::Family::Name(&style.font_family)];
+    let query = cosmic_text::fontdb::Query {
+        families: &families,
+        weight: cosmic_text::fontdb::Weight(style.weight),
+        stretch: cosmic_text::fontdb::Stretch::Normal,
+        style: match attrs.style {
+            Style::Italic => cosmic_text::fontdb::Style::Italic,
+            Style::Oblique => cosmic_text::fontdb::Style::Oblique,
+            Style::Normal => cosmic_text::fontdb::Style::Normal,
+        },
+    };
+    let system = fonts.system();
+    let Some(id) = system.db().query(&query) else {
+        return FALLBACK_LINE_HEIGHT;
+    };
+    let Some(font) = system.get_font(id, cosmic_text::fontdb::Weight(style.weight)) else {
+        return FALLBACK_LINE_HEIGHT;
+    };
+    let m = font.metrics();
+    let height = (m.ascent - m.descent + m.leading) / f32::from(m.units_per_em.max(1));
+    if height.is_finite() && height > 0.0 {
+        height
+    } else {
+        FALLBACK_LINE_HEIGHT
+    }
+}
+
 /// Whether text fits the primary output's text area at the theme's
 /// preferred size scaled to the output's height.
 struct Measure<'a> {
     style: &'a TextStyle,
     size: f32,
+    /// Line height in pixels: the font's natural line height times
+    /// `line_spacing`.
+    line_height: f32,
     width: f32,
+    /// Height left for text once the footer is reserved.
     height: f32,
 }
 
 impl<'a> Measure<'a> {
-    fn new(theme: &'a Theme, primary: &OutputConfig) -> Self {
+    fn new(theme: &'a Theme, primary: &OutputConfig, footer: &str, fonts: &mut Fonts) -> Self {
         let (w, h) = match &primary.target {
             OutputTarget::Display(d) => (d.width, d.height),
             OutputTarget::BrowserSource { width, height }
@@ -196,18 +254,43 @@ impl<'a> Measure<'a> {
         let (w, h) = (w as f32, h as f32);
         let safe = primary.safe_area.rect(w, h);
         let area = theme.text_area;
-        Self {
+        let size = theme.text.size * h / REFERENCE_HEIGHT;
+        let line_height = size * natural_line_height(&theme.text, fonts) * theme.text.line_spacing;
+        let mut measure = Self {
             style: &theme.text,
-            size: theme.text.size * h / REFERENCE_HEIGHT,
+            size,
+            line_height,
             width: safe.width * area.width,
             height: safe.height * area.height,
+        };
+        measure.height -= measure.footer_height(footer, fonts);
+        measure
+    }
+
+    /// Height taken by the footer and the gap above it.
+    fn footer_height(&self, footer: &str, fonts: &mut Fonts) -> f32 {
+        if footer.is_empty() {
+            return 0.0;
         }
+        let footer_line = self.line_height * FOOTER_SCALE;
+        let rows = self.rows(
+            &[footer.to_string()],
+            self.size * FOOTER_SCALE,
+            footer_line,
+            fonts,
+        );
+        (rows as f32 + 0.5) * footer_line
     }
 
     /// Whether `lines`, wrapped to the area's width, fit its height.
     fn fits(&self, lines: &[String], fonts: &mut Fonts) -> bool {
-        let line_height = self.size * LINE_HEIGHT_FACTOR * self.style.line_spacing;
-        let metrics = Metrics::new(self.size, line_height);
+        let rows = self.rows(lines, self.size, self.line_height, fonts);
+        rows as f32 * self.line_height <= self.height
+    }
+
+    /// Rows `lines` wrap to at the given size, in the theme's font.
+    fn rows(&self, lines: &[String], size: f32, line_height: f32, fonts: &mut Fonts) -> usize {
+        let metrics = Metrics::new(size, line_height);
         let mut buffer = Buffer::new_empty(metrics);
         buffer.set_size(Some(self.width), None);
         let joined = lines.join("\n");
@@ -216,19 +299,10 @@ impl<'a> Measure<'a> {
         } else {
             joined
         };
-        let attrs = Attrs::new()
-            .family(Family::Name(&self.style.font_family))
-            .weight(Weight(self.style.weight))
-            .style(if self.style.italic {
-                Style::Italic
-            } else {
-                Style::Normal
-            })
-            .metrics(metrics);
+        let attrs = font_attrs(self.style).metrics(metrics);
         buffer.set_text(&text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(fonts.system(), false);
-        let rows = buffer.layout_runs().count();
-        rows as f32 * line_height <= self.height
+        buffer.layout_runs().count()
     }
 
     /// Largest `n` in `1..=max` for which `line_for(n)` fits (1 when even
@@ -262,7 +336,7 @@ mod tests {
     use lampstand_core::scene::{HAlign, Transition, VAlign};
     use lampstand_core::theme::Background;
 
-    fn theme(max_lines: u8, show_copyright: bool) -> Theme {
+    fn raw_theme(max_lines: u8, show_copyright: bool) -> Theme {
         Theme {
             id: Id::generate(),
             name: "test".into(),
@@ -285,13 +359,24 @@ mod tests {
                 x: 0.0,
                 y: 0.0,
                 width: 1.0,
-                // Three 120 px lines on a 1080 px output.
-                height: 0.34,
+                // Set by `theme` to hold three lines and the footer.
+                height: 1.0,
             },
             max_lines,
             transition: Transition::CUT,
             show_copyright,
         }
+    }
+
+    /// A theme whose text area holds exactly three lines plus the footer on
+    /// a 1080-pixel-tall output.
+    fn theme(max_lines: u8, show_copyright: bool) -> Theme {
+        let mut theme = raw_theme(max_lines, show_copyright);
+        let mut fonts = Fonts::bundled_only();
+        let m = Measure::new(&theme, &output(1920, 1080), "John 3", &mut fonts);
+        let reserved = 1080.0 - m.height; // footer, as the area is the full screen
+        theme.text_area.height = (3.0 * m.line_height + reserved + 1.0) / 1080.0;
+        theme
     }
 
     fn output(width: u32, height: u32) -> OutputConfig {
@@ -470,7 +555,7 @@ mod tests {
         );
     }
 
-    // Scripture. The theme's text area holds three 120 px lines at 1080p.
+    // Scripture. The theme's text area holds three lines and the footer at 1080p.
 
     fn verse(n: u16) -> ChapterVerse {
         ChapterVerse {
@@ -531,7 +616,7 @@ mod tests {
 
         // Every slide fits, and the words all survive in order.
         let th = theme(4, false);
-        let m = Measure::new(&th, &out);
+        let m = Measure::new(&th, &out, "John 3", &mut Fonts::bundled_only());
         let mut fonts = Fonts::bundled_only();
         assert!(slides.iter().all(|s| m.fits(&s.lines, &mut fonts)));
         let words = all
@@ -548,5 +633,35 @@ mod tests {
     #[test]
     fn empty_passage_has_no_slides() {
         assert!(passage(&[], &output(1920, 1080)).is_empty());
+    }
+
+    #[test]
+    fn line_height_comes_from_the_font() {
+        let mut fonts = Fonts::bundled_only();
+        let mut style = theme(4, false).text;
+        let noto = natural_line_height(&style, &mut fonts);
+        style.font_family = "Carlito".into();
+        let carlito = natural_line_height(&style, &mut fonts);
+        style.font_family = "No Such Family".into();
+        let missing = natural_line_height(&style, &mut fonts);
+        assert!((noto - 1.362).abs() < 0.01, "Noto Sans {noto}");
+        assert!((carlito - 1.22).abs() < 0.01, "Carlito {carlito}");
+        assert_eq!(missing, FALLBACK_LINE_HEIGHT);
+    }
+
+    #[test]
+    fn footer_space_is_reserved() {
+        let th = theme(4, false);
+        let out = output(1920, 1080);
+        let mut fonts = Fonts::bundled_only();
+        let with = Measure::new(&th, &out, "John 3", &mut fonts);
+        let without = Measure::new(&th, &out, "", &mut fonts);
+        // One footer row at half size plus half a footer line of gap.
+        let expected = 1.5 * with.line_height * FOOTER_SCALE;
+        assert!((without.height - with.height - expected).abs() < 0.01);
+        // A fourth line no longer fits beside the footer.
+        let four = ["Jesus wept"; 4].map(String::from);
+        assert!(!with.fits(&four, &mut fonts));
+        assert!(with.fits(&four[..3], &mut fonts));
     }
 }
