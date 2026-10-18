@@ -13,6 +13,8 @@ rust-version = "1.95"
 # Every third-party version is pinned here, once. Crates use `foo.workspace = true`.
 [workspace.dependencies]
 blake3 = "1.8"
+quick-xml = "0.42"
+rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 uuid = { version = "1.28", features = ["v7", "serde"] }
 
