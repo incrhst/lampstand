@@ -1,0 +1,91 @@
+/* OBS browser source. The page is always transparent; only cues paint pixels.
+   Sizes are in vh/vw so any source size works; designed for 1920×1080. */
+
+:root {
+  --scale: 1;
+  --safe: 5;           /* title-safe margin, percent of each side */
+  --fade: 200ms;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  background: transparent;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.frame {
+  position: fixed;
+  inset: 0;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--fade) ease-in-out;
+}
+.layer.shown { opacity: 1; }
+
+/* Deck slide: full frame, letterboxed transparently if the aspect differs. */
+.layer img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Lower third: a bar in the bottom quarter, inside the title-safe area. */
+.lowerthird .box {
+  position: absolute;
+  left: calc(var(--safe) * 1vw);
+  right: calc(var(--safe) * 1vw);
+  bottom: calc(var(--safe) * 1vh);
+  max-height: 25vh;
+  padding: 1.6vh 2.4vw;
+  box-sizing: border-box;
+  background: rgba(10, 12, 16, .78);
+  border-radius: .8vh;
+  color: #fff;
+  text-align: center;
+  overflow: hidden;
+}
+.lowerthird .lines {
+  font-size: calc(3.6vh * var(--scale));
+  font-weight: 600;
+  line-height: 1.22;
+}
+
+/* Full: text centred in the title-safe area over the video. */
+.full .box {
+  position: absolute;
+  inset: calc(var(--safe) * 1vh) calc(var(--safe) * 1vw);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 .25vh .6vh rgba(0, 0, 0, .9), 0 0 .2vh rgba(0, 0, 0, .9);
+  overflow: hidden;
+}
+.full .lines {
+  font-size: calc(6vh * var(--scale));
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.lines p { margin: 0; overflow-wrap: anywhere; }
+.footer {
+  margin-top: .5em;
+  font-size: .55em;
+  font-weight: 400;
+  opacity: .85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layer { transition: none; }
+}

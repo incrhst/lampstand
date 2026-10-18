@@ -1,0 +1,230 @@
+/* Stage display / confidence monitor. Dark, high contrast, readable from 5 m on a
+   1080p TV: sizes scale with the viewport, the live text is fitted to its panel. */
+
+:root {
+  --bg: #000;
+  --panel: #111418;
+  --line: #2a2f36;
+  --text: #f4f4f2;
+  --dim: #8b929b;
+  --live: #e5484d;
+  --next: #3e9bff;
+  --warn: #f5a524;
+  --gap: clamp(6px, 1vmin, 16px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
+  padding-left: max(var(--gap), env(safe-area-inset-left));
+  padding-right: max(var(--gap), env(safe-area-inset-right));
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2vw;
+  flex: none;
+  min-height: 0;
+}
+
+.now {
+  display: flex;
+  align-items: baseline;
+  gap: 1.2vw;
+  min-width: 0;
+  font-size: clamp(16px, 2.6vw, 56px);
+  font-weight: 600;
+}
+.item-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.cue-label {
+  color: var(--dim);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.timers {
+  display: flex;
+  gap: 2.4vw;
+  margin: 0;
+  flex: none;
+}
+.timers div { text-align: right; }
+.timers dt {
+  font-size: clamp(10px, 1vw, 22px);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--dim);
+}
+.timers dd {
+  margin: 0;
+  font-size: clamp(20px, 3.4vw, 76px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.timers .clock dd { color: var(--warn); }
+
+.grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: 62fr 38fr;
+  grid-template-rows: 42fr 58fr;
+  grid-template-areas:
+    "live next"
+    "live notes";
+}
+
+.panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.panel h2 {
+  margin: 0;
+  padding: .35em .7em;
+  font-size: clamp(11px, 1.2vw, 26px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--dim);
+  flex: none;
+}
+.live { grid-area: live; border-color: var(--live); }
+.live h2 { color: var(--live); }
+.next { grid-area: next; }
+.next h2 { color: var(--next); }
+.notes { grid-area: notes; }
+
+.cue {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  padding: 0 1.2vw 1vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Text cue: the line block is fitted by stage.js. */
+.cue .lines {
+  width: 100%;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.18;
+}
+.cue .lines p { margin: 0; overflow-wrap: anywhere; }
+.cue .footer {
+  margin-top: .6em;
+  font-size: .42em;
+  font-weight: 400;
+  color: var(--dim);
+}
+.cue img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #000;
+}
+.cue .empty {
+  color: var(--dim);
+  font-size: clamp(14px, 2vw, 44px);
+}
+
+.live.dimmed .cue { opacity: .45; }
+
+.mode-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: .15em;
+  text-align: center;
+  font-size: clamp(20px, 4vw, 96px);
+  font-weight: 800;
+  letter-spacing: .2em;
+  background: var(--live);
+  color: #fff;
+}
+.mode-banner[data-mode="clear"] { background: #5b6470; }
+.mode-banner[data-mode="logo"] { background: var(--warn); color: #000; }
+
+.notes-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 .8em .8em;
+  font-size: clamp(16px, 2.3vw, 52px);
+  line-height: 1.3;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-overflow-scrolling: touch;
+}
+.notes-body.none { color: var(--dim); }
+
+.reconnecting {
+  position: fixed;
+  right: calc(var(--gap) * 2);
+  bottom: calc(var(--gap) * 2);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  padding: .3em .8em;
+  border-radius: 999px;
+  background: rgba(20, 22, 26, .9);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: clamp(11px, 1vw, 20px);
+}
+.reconnecting .dot {
+  width: .6em;
+  height: .6em;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+@keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
+[hidden] { display: none !important; }
+
+/* Tablets held upright: stack live over next and notes. */
+@media (orientation: portrait) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 52fr 48fr;
+    grid-template-areas:
+      "live live"
+      "next notes";
+  }
+  .now { font-size: clamp(16px, 4vw, 44px); }
+  .timers dd { font-size: clamp(18px, 5vw, 56px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reconnecting .dot { animation: none; }
+}
