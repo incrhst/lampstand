@@ -26,7 +26,7 @@
 //!   S              test slide: safe-area outline on / off
 //!   R              reset all margins to 0
 //!   Enter          save
-//!   Esc / Q        save and quit
+//!   Esc / Q        save and quit (closing the window also saves)
 //!
 //! Margins are saved per display name and loaded again next time.
 
@@ -231,11 +231,17 @@ impl ApplicationHandler for App {
         }
     }
 
+    /// However the app ends (Esc, Q, closing the window, Cmd+Q), save.
+    fn exiting(&mut self, _: &ActiveEventLoop) {
+        if self.window.is_some() {
+            self.save();
+        }
+    }
+
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let mut changed = true;
         match &event {
             WindowEvent::CloseRequested => {
-                self.save();
                 event_loop.exit();
                 return;
             }
@@ -266,7 +272,6 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, .. }, .. } => {
                 match logical_key {
                     Key::Named(NamedKey::Escape) => {
-                        self.save();
                         event_loop.exit();
                         return;
                     }
@@ -285,7 +290,6 @@ impl ApplicationHandler for App {
                     Key::Named(NamedKey::Enter) => self.save(),
                     Key::Character(c) => match c.to_lowercase().as_str() {
                         "q" => {
-                            self.save();
                             event_loop.exit();
                             return;
                         }
