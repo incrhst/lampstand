@@ -41,8 +41,22 @@ impl SectionKind {
     /// "C2", "P", "B", "T", "I", "E", and their spelled-out forms ("Verse 2",
     /// "Pre-Chorus", "chorus"). Case-insensitive; anything else is `Other`.
     pub fn from_label(label: &str) -> Self {
-        let _ = label;
-        todo!("T03")
+        let lower = label.trim().to_lowercase();
+        let word: String = lower
+            .trim_end_matches(|c: char| c.is_ascii_digit() || c.is_whitespace())
+            .chars()
+            .filter(|c| !matches!(c, ' ' | '-' | '_'))
+            .collect();
+        match word.as_str() {
+            "v" | "verse" => Self::Verse,
+            "c" | "chorus" | "refrain" => Self::Chorus,
+            "p" | "prechorus" => Self::PreChorus,
+            "b" | "bridge" => Self::Bridge,
+            "t" | "tag" => Self::Tag,
+            "i" | "intro" => Self::Intro,
+            "e" | "ending" | "outro" => Self::Ending,
+            _ => Self::Other,
+        }
     }
 }
 
@@ -108,15 +122,49 @@ impl Song {
 /// `"[G]Amazing [G7]grace"` becomes `"Amazing grace"`. A chord inside a word
 /// (`"gr[C]ace"`) joins the word back up.
 pub fn lyrics(line: &str) -> String {
-    let _ = line;
-    todo!("T03")
+    split_chords(line).0
 }
 
 /// The chords of a ChordPro line, with the byte offset in [`lyrics`]'s
 /// output where each one sits.
 pub fn chords(line: &str) -> Vec<(usize, String)> {
-    let _ = line;
-    todo!("T03")
+    split_chords(line).1
+}
+
+/// Splits a ChordPro line into its lyrics and chords. Whitespace runs
+/// collapse to one space and the ends are trimmed. An unclosed `[` and an
+/// empty `[]` are not chords: the first stays as text, the second is dropped.
+fn split_chords(line: &str) -> (String, Vec<(usize, String)>) {
+    let mut text = String::new();
+    let mut found = Vec::new();
+    let mut pending_space = false;
+    let mut rest = line;
+    while let Some(c) = rest.chars().next() {
+        if c == '[' {
+            if let Some(end) = rest.find(']') {
+                let chord = rest[1..end].trim();
+                if !chord.is_empty() {
+                    found.push((text.len() + usize::from(pending_space), chord.to_string()));
+                }
+                rest = &rest[end + 1..];
+                continue;
+            }
+        }
+        if c.is_whitespace() {
+            pending_space = !text.is_empty();
+        } else {
+            if pending_space {
+                text.push(' ');
+                pending_space = false;
+            }
+            text.push(c);
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    for (pos, _) in &mut found {
+        *pos = (*pos).min(text.len());
+    }
+    (text, found)
 }
 
 #[cfg(test)]
@@ -168,7 +216,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T03"]
     fn section_kinds_from_labels() {
         use SectionKind::*;
         let cases = [
@@ -195,7 +242,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T03"]
     fn lyrics_strips_chords() {
         assert_eq!(
             lyrics("[G]Amazing [G7]grace, how [C]sweet"),
@@ -208,12 +254,56 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "T03"]
     fn chords_keep_positions() {
         assert_eq!(
             chords("[G]Amazing [G7]grace"),
             [(0, "G".to_string()), (8, "G7".to_string())]
         );
         assert_eq!(chords("plain"), []);
+    }
+
+    #[test]
+    fn section_kind_edge_cases() {
+        use SectionKind::*;
+        for (label, kind) in [
+            ("", Other),
+            ("  c2 ", Chorus),
+            ("PRE CHORUS", PreChorus),
+            ("pre_chorus 2", PreChorus),
+            ("Refrain", Chorus),
+            ("Ending", Ending),
+            ("Intro 1", Intro),
+            ("Verse2", Verse),
+            ("1", Other),
+        ] {
+            assert_eq!(SectionKind::from_label(label), kind, "{label:?}");
+        }
+    }
+
+    #[test]
+    fn lyrics_edge_cases() {
+        assert_eq!(lyrics(""), "");
+        assert_eq!(lyrics("[G]"), "");
+        assert_eq!(lyrics("  spaced   out  [C] "), "spaced out");
+        assert_eq!(lyrics("broken [G chord"), "broken [G chord");
+        assert_eq!(lyrics("empty[]brackets"), "emptybrackets");
+        assert_eq!(lyrics("[Am]Grâce [F]à toi"), "Grâce à toi");
+    }
+
+    #[test]
+    fn chord_positions_follow_tidied_text() {
+        assert_eq!(
+            chords("  [G]one   [D]two [C]"),
+            [(0, "G".into()), (4, "D".into()), (7, "C".into())]
+        );
+        assert_eq!(chords("gr[C]ace"), [(2, "C".to_string())]);
+        assert_eq!(
+            chords("[G] [D]  Hallelujah"),
+            [(0, "G".into()), (0, "D".into())]
+        );
+        assert_eq!(
+            chords("[Am]Grâce [F]à"),
+            [(0, "Am".into()), (7, "F".into())]
+        );
     }
 }
