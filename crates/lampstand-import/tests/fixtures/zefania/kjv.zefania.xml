@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XMLBIBLE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" biblename="King James Version" status="v" version="2.0" type="x-bible">
+  <INFORMATION>
+    <title>King James Version</title>
+    <identifier>KJV</identifier>
+    <language>ENG</language>
+    <rights>Public Domain</rights>
+    <publisher>Test fixture</publisher>
+  </INFORMATION>
+  <BIBLEBOOK bnumber="1" bname="Genesis" bsname="Gen">
+    <CHAPTER cnumber="1">
+      <CAPTION vref="1">The Creation</CAPTION>
+      <VERS vnumber="1">In the beginning God created the heaven and the earth.</VERS>
+      <VERS vnumber="2">And the earth was without form, and void; and darkness <STYLE css="font-style:italic">was</STYLE> upon the face of the deep. And the Spirit of God moved upon the face of the waters.<NOTE type="x-studynote">Moved: or, brooded</NOTE></VERS>
+      <VERS vnumber="3">And God said, Let there be light: and there was light.</VERS>
+    </CHAPTER>
+  </BIBLEBOOK>
+  <BIBLEBOOK bnumber="43" bname="John" bsname="Joh">
+    <CHAPTER cnumber="3">
+      <VERS vnumber="16">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</VERS>
+      <VERS vnumber="17">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.<REMARK>fixture</REMARK></VERS>
+    </CHAPTER>
+  </BIBLEBOOK>
+  <BIBLEBOOK bnumber="67" bname="Tobit">
+    <CHAPTER cnumber="1"><VERS vnumber="1">Not in the 66.</VERS></CHAPTER>
+  </BIBLEBOOK>
+</XMLBIBLE>

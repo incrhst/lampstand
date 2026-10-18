@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osis xmlns="http://www.bibletechnologies.net/2003/OSIS/namespace">
+  <osisText osisIDWork="KJV" osisRefWork="Bible" xml:lang="en">
+    <header>
+      <work osisWork="KJV">
+        <title>King James Version (1769) with Strongs Numbers</title>
+        <identifier type="OSIS">Bible.KJV</identifier>
+        <language type="IETF">en</language>
+        <rights type="x-copyright">Public Domain</rights>
+      </work>
+      <work osisWork="Bible">
+        <title>Other work that must be ignored</title>
+        <refSystem>Bible.KJV</refSystem>
+      </work>
+    </header>
+    <div type="bookGroup">
+      <div type="book" osisID="Gen">
+        <title type="main">The First Book of Moses</title>
+        <chapter osisID="Gen.1">
+          <title type="chapter">Chapter 1</title>
+          <verse osisID="Gen.1.1">In the beginning <w lemma="strong:H0430">God</w> created the heaven and the earth.</verse>
+          <verse osisID="Gen.1.2">And the earth was without form, and void; and darkness <transChange type="added">was</transChange> upon the face of the deep. And the Spirit of God moved upon the face of the waters.<note type="study">Moved: or, brooded</note></verse>
+          <verse osisID="Gen.1.3">And God said, Let there be light: and there was light.</verse>
+        </chapter>
+      </div>
+      <div type="book" osisID="Ps">
+        <chapter osisID="Ps.23">
+          <title canonical="true" type="psalm">A Psalm of David.</title>
+          <verse osisID="Ps.23.1">The <divineName>LORD</divineName> is my shepherd; I shall not want.</verse>
+          <verse osisID="Ps.23.2">He maketh me to lie down in green pastures: he leadeth me beside the still waters.</verse>
+          <verse osisID="Ps.23.3">He restoreth my soul: he leadeth me in the paths of righteousness for his name&apos;s sake.</verse>
+        </chapter>
+      </div>
+      <div type="book" osisID="John">
+        <chapter osisID="John.3">
+          <verse osisID="John.3.16"><q who="Jesus" marker="">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</q></verse>
+          <verse osisID="John.3.17">For God sent not his Son into the world to condemn the world; but that the world through him might be saved.</verse>
+        </chapter>
+      </div>
+    </div>
+  </osisText>
+</osis>
