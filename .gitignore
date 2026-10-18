@@ -3,3 +3,4 @@
 node_modules/
 /docs/eval/tools/probe/target
 lampstand-calibration.json
+/app/src-tauri/gen/schemas
