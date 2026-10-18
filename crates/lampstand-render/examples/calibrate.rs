@@ -51,6 +51,8 @@ struct App {
     window: Option<OutputWindow>,
     name: String,
     safe: SafeArea,
+    /// Margins as last saved or loaded, so quitting only saves changes.
+    saved: Option<SafeArea>,
     edge: Edge,
     lyric: bool,
     bleed: bool,
@@ -157,6 +159,7 @@ impl App {
                     *edge.margin_mut(&mut self.safe) = v as f32;
                 }
             }
+            self.saved = Some(self.safe);
             self.status = format!("Loaded saved margins from {}", self.file.display());
         }
     }
@@ -177,7 +180,10 @@ impl App {
         });
         let result = std::fs::write(&self.file, serde_json::to_string_pretty(&all).unwrap() + "\n");
         self.status = match result {
-            Ok(()) => format!("Saved to {}", self.file.display()),
+            Ok(()) => {
+                self.saved = Some(s);
+                format!("Saved to {}", self.file.display())
+            }
             Err(e) => format!("Could not save: {e}"),
         };
         println!(
@@ -233,7 +239,7 @@ impl ApplicationHandler for App {
 
     /// However the app ends (Esc, Q, closing the window, Cmd+Q), save.
     fn exiting(&mut self, _: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if self.window.is_some() && self.saved != Some(self.safe) {
             self.save();
         }
     }
@@ -324,6 +330,7 @@ fn main() {
         window: None,
         name: String::new(),
         safe: SafeArea::default(),
+        saved: None,
         edge: Edge::Top,
         lyric: false,
         bleed: true,
