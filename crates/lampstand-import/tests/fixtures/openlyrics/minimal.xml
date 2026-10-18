@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<song version="0.8">
+  <properties><titles><title>Doxology</title></titles></properties>
+  <lyrics>
+    <verse name="v1"><lines>Praise God from whom all blessings flow<br/>Praise Him all creatures here below</lines></verse>
+    <verse name="b"><lines>Praise Him above, ye heavenly host</lines></verse>
+    <verse name="p"><lines>Praise Father, Son and Holy Ghost</lines></verse>
+  </lyrics>
+</song>
