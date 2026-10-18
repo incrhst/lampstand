@@ -120,7 +120,7 @@ impl Repo {
 
     pub fn get<T: Doc>(&self, id: Uuid) -> Result<Option<T>, SyncError> {
         let mut st = self.lock();
-        if self.is_deleted(&mut st.docs, id)? {
+        if self.tombstoned(&mut st.docs, id)? {
             return Ok(None);
         }
         let Some(loaded) = self.load(&mut st.docs, id, None)? else {
@@ -196,6 +196,25 @@ impl Repo {
             .collect();
         ids.sort();
         ids
+    }
+
+    /// Whether `id` is a document of `kind` that was deleted, as opposed to
+    /// one that never existed (both make [`Repo::get`] return `None`).
+    pub fn is_deleted(&self, kind: DocKind, id: Uuid) -> Result<bool, SyncError> {
+        let mut st = self.lock();
+        if !self.tombstoned(&mut st.docs, id)? {
+            return Ok(false);
+        }
+        let Some(team) = self.load(&mut st.docs, TEAM_DOC, None)? else {
+            return Ok(false);
+        };
+        let Some(index) = map_at(&team.doc, "index") else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            team.doc.get(&index, id.to_string()),
+            Ok(Some((v, _))) if v.as_str() == Some(kind.as_str())
+        ))
     }
 
     /// Every document change, local or remote.
@@ -347,7 +366,7 @@ impl Repo {
         Ok(())
     }
 
-    fn is_deleted(&self, docs: &mut HashMap<Uuid, Loaded>, id: Uuid) -> Result<bool, SyncError> {
+    fn tombstoned(&self, docs: &mut HashMap<Uuid, Loaded>, id: Uuid) -> Result<bool, SyncError> {
         let Some(team) = self.load(docs, TEAM_DOC, None)? else {
             return Ok(false);
         };

@@ -274,12 +274,18 @@ fn put_get_list_delete() {
     assert_eq!(repo.get::<Service>(a.id.uuid()).unwrap(), None);
     assert_eq!(repo.get::<Song>(Uuid::now_v7()).unwrap(), None);
 
+    assert!(!repo.is_deleted(DocKind::Song, a.id.uuid()).unwrap());
     repo.delete(DocKind::Song, a.id.uuid()).unwrap();
     assert_eq!(repo.list(DocKind::Song), [b.id.uuid()]);
     assert_eq!(repo.get::<Song>(a.id.uuid()).unwrap(), None);
+    // Deleted is not the same as never existed, or another kind.
+    assert!(repo.is_deleted(DocKind::Song, a.id.uuid()).unwrap());
+    assert!(!repo.is_deleted(DocKind::Service, a.id.uuid()).unwrap());
+    assert!(!repo.is_deleted(DocKind::Song, Uuid::now_v7()).unwrap());
 
     // Putting it again brings it back.
     repo.put(&a).unwrap();
+    assert!(!repo.is_deleted(DocKind::Song, a.id.uuid()).unwrap());
     assert_eq!(repo.get::<Song>(a.id.uuid()).unwrap(), Some(a));
     assert_eq!(repo.list(DocKind::Song).len(), 2);
 }
@@ -484,6 +490,7 @@ fn deletes_sync_and_index_merges_across_devices() {
     sync(&a, &b);
     assert_eq!(a.list(DocKind::Song), [sb.id.uuid()]);
     assert_eq!(a.get::<Song>(sa.id.uuid()).unwrap(), None);
+    assert!(a.is_deleted(DocKind::Song, sa.id.uuid()).unwrap());
 }
 
 #[test]
