@@ -84,7 +84,7 @@ Each importer is one file in `crates/lampstand-import/src/`, with fixtures in `c
 | --- | --- | --- |
 | T04 | OpenLyrics XML | Do first: T06 reuses it. Handles `<verse name="v1">`, `<lines>` with `<br/>` and `<chord name=""/>`, and `verseOrder`. |
 | T05 | OpenSong | Chord lines (`.`) above lyric lines become inline ChordPro. Handles `[V1]`, `presentation` order and multi-verse lines (`1`, `2` prefixes). |
-| T06 | OpenLP | Reads `songs.sqlite` with `rusqlite` (bundled feature). Lyrics are OpenLyrics: call T04's parser. Also reads authors, CCLI number and copyright. |
+| T06 | OpenLP (skipped for now: the importer returns an error suggesting an OpenLyrics export) | Reads `songs.sqlite` with `rusqlite` (bundled feature). Lyrics are OpenLyrics: call T04's parser. Also reads authors, CCLI number and copyright. |
 | T07 | SongSelect `.usr` and `.txt` | Converts `.usr` `Words=` with `/t` section separators and `Fields=` labels. Recognises `.txt` section headings. |
 | T08 | FreeShow `.show` | JSON: `slides`, `layouts` (arrangement), `meta` (CCLI, author, copyright). |
 | T09 | EasyWorship 6 and 7 | EW7 is SQLite with RTF lyrics; write a minimal RTF-to-text helper. EW6 is Paradox `.DB`: port only the reading logic from OpenLP's `easyworship.py`. GPL-2.0-or-later code is compatible with ours. |
