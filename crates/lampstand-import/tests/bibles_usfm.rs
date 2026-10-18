@@ -130,8 +130,8 @@ fn ranges_split_verses_and_paragraph_markers() {
     let dir = folder("synth", &[("66-JUD.SFM", SYNTH)]);
     let i = import_bible(BibleFormat::Usfm, &dir).unwrap();
     let jude = &i.text.books[64][0];
-    assert_eq!(jude[0], "Jude, a servant, to those"); // range 1-2 under verse 1
-    assert_eq!(jude[1], ""); // verse 2 is part of the range
+    assert_eq!(jude[0], "Jude, a servant, to those");
+    assert_eq!(jude[1], jude[0]); // verse 2 shares the range text
     assert_eq!(jude[2], "Beloved, I was diligent to write.");
     assert_eq!(jude[3], "");
     assert_eq!(jude[4], "Part one part two");

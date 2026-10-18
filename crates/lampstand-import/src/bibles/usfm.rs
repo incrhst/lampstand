@@ -4,9 +4,8 @@
 //! `\toc1`, then the canonical English name). Verse text is the text of
 //! `\v` up to the next `\v`, `\c` or heading, with footnotes, cross
 //! references, attribute lists (`\w word|strong="H1"\w*`) and other
-//! character-style markers removed. A verse range (`\v 1-2`) is stored under
-//! its first verse and the other verses of the range are left empty, so
-//! indexing by verse number stays right.
+//! character-style markers removed. Every verse of a range (`\v 1-2`) gets the
+//! range's text, so lookup by verse number works for each of them.
 
 use std::path::{Path, PathBuf};
 
@@ -272,6 +271,8 @@ struct Builder {
     chapters: Vec<Vec<String>>,
     chapter: usize,
     verse: Option<usize>,
+    /// Last verse of a range (`\v 1-2`); equal to `verse` otherwise.
+    verse_end: usize,
     text: String,
 }
 
@@ -283,12 +284,17 @@ impl Builder {
             if verses.len() < v {
                 verses.resize(v, String::new());
             }
-            let slot = &mut verses[v - 1];
-            if slot.is_empty() {
-                *slot = text;
-            } else if !text.is_empty() {
-                slot.push(' ');
-                slot.push_str(&text);
+            if verses.len() < self.verse_end {
+                verses.resize(self.verse_end, String::new());
+            }
+            // Every verse of a range carries the range's text.
+            for slot in &mut verses[v - 1..self.verse_end.max(v)] {
+                if slot.is_empty() {
+                    slot.clone_from(&text);
+                } else if !text.is_empty() {
+                    slot.push(' ');
+                    slot.push_str(&text);
+                }
             }
         }
         self.text.clear();
@@ -305,11 +311,17 @@ fn leading_number(label: &str) -> Option<usize> {
     digits.parse().ok().filter(|n| *n > 0)
 }
 
+/// The end of a range label: 2 for "1-2" and "1-2a".
+fn range_end(label: &str) -> Option<usize> {
+    leading_number(label.split_once('-')?.1)
+}
+
 fn parse_book(raw: &str, file: &str, warnings: &mut Vec<String>) -> ParsedBook {
     let mut b = Builder {
         chapters: Vec::new(),
         chapter: 0,
         verse: None,
+        verse_end: 0,
         text: String::new(),
     };
     let (mut h, mut toc2, mut toc1) = (None::<String>, None::<String>, None::<String>);
@@ -411,6 +423,7 @@ fn parse_book(raw: &str, file: &str, warnings: &mut Vec<String>) -> ParsedBook {
                 match (leading_number(label), b.chapter) {
                     (Some(n), c) if c > 0 => {
                         b.verse = Some(n);
+                        b.verse_end = range_end(label).unwrap_or(n).max(n);
                         sink = Sink::Verse;
                     }
                     _ => {
