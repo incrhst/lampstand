@@ -22,9 +22,58 @@ use crate::DocKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct DeviceKey(pub [u8; 32]);
 
+impl DeviceKey {
+    /// Whether `signature` is this device's ed25519 signature of `message`.
+    pub fn verify(&self, message: &[u8], signature: &[u8; 64]) -> bool {
+        use ed25519_dalek::Verifier;
+        ed25519_dalek::VerifyingKey::from_bytes(&self.0).is_ok_and(|key| {
+            key.verify(message, &ed25519_dalek::Signature::from_bytes(signature))
+                .is_ok()
+        })
+    }
+}
+
 /// A device's signing key, kept in the OS keychain (T18).
 pub struct DeviceKeypair {
-    _private: (),
+    signing: ed25519_dalek::SigningKey,
+}
+
+impl DeviceKeypair {
+    /// A new key from the operating system's random source.
+    pub fn generate() -> Self {
+        let mut secret = [0u8; 32];
+        getrandom::fill(&mut secret).expect("operating system random source");
+        Self::from_secret_bytes(secret)
+    }
+
+    /// Restores a key saved with [`DeviceKeypair::secret_bytes`].
+    pub fn from_secret_bytes(secret: [u8; 32]) -> Self {
+        Self {
+            signing: ed25519_dalek::SigningKey::from_bytes(&secret),
+        }
+    }
+
+    /// The secret key, for the keychain. Never sync or log it.
+    pub fn secret_bytes(&self) -> [u8; 32] {
+        self.signing.to_bytes()
+    }
+
+    pub fn public(&self) -> DeviceKey {
+        DeviceKey(self.signing.verifying_key().to_bytes())
+    }
+
+    pub fn sign(&self, message: &[u8]) -> [u8; 64] {
+        use ed25519_dalek::Signer;
+        self.signing.sign(message).to_bytes()
+    }
+}
+
+impl std::fmt::Debug for DeviceKeypair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceKeypair")
+            .field("public", &self.public())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -67,6 +116,19 @@ pub struct Invite {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_keys_sign_and_verify() {
+        let device = DeviceKeypair::generate();
+        let again = DeviceKeypair::from_secret_bytes(device.secret_bytes());
+        assert_eq!(device.public(), again.public());
+        let signature = device.sign(b"join team");
+        assert!(device.public().verify(b"join team", &signature));
+        assert!(!device.public().verify(b"leave team", &signature));
+        assert!(!DeviceKeypair::generate()
+            .public()
+            .verify(b"join team", &signature));
+    }
 
     #[test]
     fn roles_narrow_from_admin_to_viewer() {

@@ -13,13 +13,23 @@
 //!   messages and blob requests. LAN peers find each other by mDNS
 //!   (`_lampstand._tcp`); the relay is the same protocol on a server.
 //! - Connections authenticate with device keys; see [`team`].
+//!
+//! The repo wraps `automerge` directly rather than using samod; see
+//! docs/decisions/0002-sync-repo.md.
 
+mod repo;
 pub mod team;
 
-use std::path::PathBuf;
+use std::fmt;
 
-use lampstand_core::id::BlobHash;
+use lampstand_core::deck::Deck;
+use lampstand_core::scripture::Translation;
+use lampstand_core::service::Service;
+use lampstand_core::song::Song;
+use lampstand_core::theme::Theme;
 use uuid::Uuid;
+
+pub use repo::{actor_device, BlobStore, Repo, SyncMessage};
 
 /// The kinds of synced document. Each has its own write permission
 /// ([`team::Role::can_write`]).
@@ -35,11 +45,75 @@ pub enum DocKind {
     UsageLog,
 }
 
-/// A core type stored as a synced document. T16 adds the autosurgeon
-/// `Hydrate + Reconcile` bounds and implements this for each core type.
-pub trait Doc: Sized {
+impl DocKind {
+    pub const ALL: [DocKind; 7] = [
+        DocKind::Team,
+        DocKind::Song,
+        DocKind::Service,
+        DocKind::Theme,
+        DocKind::Deck,
+        DocKind::Translation,
+        DocKind::UsageLog,
+    ];
+
+    /// The name used in the team document's index and on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DocKind::Team => "team",
+            DocKind::Song => "song",
+            DocKind::Service => "service",
+            DocKind::Theme => "theme",
+            DocKind::Deck => "deck",
+            DocKind::Translation => "translation",
+            DocKind::UsageLog => "usage-log",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<DocKind> {
+        DocKind::ALL.into_iter().find(|k| k.as_str() == s)
+    }
+}
+
+/// A core type stored as a synced document: the type is reconciled onto
+/// the document's root map, so a `put` writes only the fields that changed.
+pub trait Doc: Sized + autosurgeon::Hydrate + autosurgeon::Reconcile {
     const KIND: DocKind;
     fn doc_id(&self) -> Uuid;
+}
+
+impl Doc for Song {
+    const KIND: DocKind = DocKind::Song;
+    fn doc_id(&self) -> Uuid {
+        self.id.uuid()
+    }
+}
+
+impl Doc for Service {
+    const KIND: DocKind = DocKind::Service;
+    fn doc_id(&self) -> Uuid {
+        self.id.uuid()
+    }
+}
+
+impl Doc for Theme {
+    const KIND: DocKind = DocKind::Theme;
+    fn doc_id(&self) -> Uuid {
+        self.id.uuid()
+    }
+}
+
+impl Doc for Deck {
+    const KIND: DocKind = DocKind::Deck;
+    fn doc_id(&self) -> Uuid {
+        self.id.uuid()
+    }
+}
+
+impl Doc for Translation {
+    const KIND: DocKind = DocKind::Translation;
+    fn doc_id(&self) -> Uuid {
+        self.id.uuid()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,72 +132,40 @@ pub enum SyncError {
     Forbidden(DocKind),
 }
 
-/// All documents and blobs on this device.
-pub struct Repo {
-    _private: (),
-}
-
-impl Repo {
-    /// Opens (or creates) the store under `dir`: `dir/docs/<id>` holds each
-    /// document's saved chunks, `dir/blobs/<hash>` each blob.
-    pub fn open(dir: PathBuf, device: team::DeviceKeypair) -> Result<Self, SyncError> {
-        let _ = (dir, device);
-        todo!("T16")
-    }
-
-    pub fn get<T: Doc>(&self, id: Uuid) -> Result<Option<T>, SyncError> {
-        let _ = id;
-        todo!("T16")
-    }
-
-    /// Writes `doc`, diffing against the stored document so that only the
-    /// fields that changed become CRDT operations.
-    pub fn put<T: Doc>(&self, doc: &T) -> Result<(), SyncError> {
-        let _ = doc;
-        todo!("T16")
-    }
-
-    /// Deletes by tombstone in the team document's index.
-    pub fn delete(&self, kind: DocKind, id: Uuid) -> Result<(), SyncError> {
-        let _ = (kind, id);
-        todo!("T16")
-    }
-
-    pub fn list(&self, kind: DocKind) -> Vec<Uuid> {
-        let _ = kind;
-        todo!("T16")
-    }
-
-    /// Every document change, local or remote.
-    pub fn subscribe(&self) -> std::sync::mpsc::Receiver<DocChanged> {
-        todo!("T16")
-    }
-
-    pub fn blobs(&self) -> &BlobStore {
-        todo!("T16")
+impl fmt::Display for SyncError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SyncError::Io(e) => write!(f, "sync store I/O: {e}"),
+            SyncError::Corrupt(why) => write!(f, "corrupt sync data: {why}"),
+            SyncError::Forbidden(kind) => write!(f, "this device may not write {}", kind.as_str()),
+        }
     }
 }
 
-/// Content-addressed files. Writes are atomic (temp file then rename) and
-/// verified against their hash.
-pub struct BlobStore {
-    _private: (),
+impl std::error::Error for SyncError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SyncError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
-impl BlobStore {
-    pub fn put(&self, bytes: &[u8]) -> Result<BlobHash, SyncError> {
-        let _ = bytes;
-        todo!("T16")
+impl From<std::io::Error> for SyncError {
+    fn from(e: std::io::Error) -> Self {
+        SyncError::Io(e)
     }
+}
 
-    pub fn path(&self, hash: &BlobHash) -> Option<PathBuf> {
-        let _ = hash;
-        todo!("T16")
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    /// The hashes in `wanted` this device does not have yet.
-    pub fn missing(&self, wanted: &[BlobHash]) -> Vec<BlobHash> {
-        let _ = wanted;
-        todo!("T16")
+    #[test]
+    fn kind_names_round_trip() {
+        for kind in DocKind::ALL {
+            assert_eq!(DocKind::parse(kind.as_str()), Some(kind));
+        }
+        assert_eq!(DocKind::parse("hymn"), None);
     }
 }

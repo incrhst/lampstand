@@ -6,6 +6,14 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lampstand-core.workspace = true
+automerge.workspace = true
+autosurgeon.workspace = true
+blake3.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+lampstand-core = { workspace = true, features = ["automerge"] }
 serde.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

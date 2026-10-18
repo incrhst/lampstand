@@ -97,6 +97,10 @@ pub struct Stroke {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Shadow {
     pub color: Color,
     pub offset: Point,
@@ -134,6 +138,10 @@ pub struct VideoNode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum HAlign {
     Left,
     Center,
@@ -142,6 +150,10 @@ pub enum HAlign {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum VAlign {
     Top,
     Middle,
@@ -160,6 +172,10 @@ pub struct TextBlock {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Outline {
     pub color: Color,
     pub width: f32,
@@ -194,6 +210,10 @@ pub struct TextRun {
 
 /// How one scene replaces the previous one on an output.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Transition {
     pub kind: TransitionKind,
     pub duration_ms: u32,
@@ -207,6 +227,10 @@ impl Transition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum TransitionKind {
     Cut,
     Fade,
@@ -218,6 +242,10 @@ pub enum TransitionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum Direction {
     Left,
     Right,

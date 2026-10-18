@@ -15,6 +15,10 @@ pub type ThemeId = Id<Theme>;
 pub const REFERENCE_HEIGHT: f32 = 1080.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct Theme {
     pub id: ThemeId,
     pub name: String,
@@ -32,6 +36,10 @@ pub struct Theme {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub struct TextStyle {
     pub font_family: String,
     /// Preferred size; text shrinks from here to fit.
@@ -51,6 +59,10 @@ pub struct TextStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
 pub enum Background {
     /// Nothing: transparent on the stream output, black elsewhere.
     None,
