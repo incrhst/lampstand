@@ -1,5 +1,5 @@
 // Stage display: live cue large, next cue, speaker notes, clock and timers.
-import { connect, cueKey, formatElapsed, imageUrl, params, preloadImage } from "./shared/ws.js";
+import { connect, cueKey, formatElapsed, imageUrl, params, preloadImage, serverNow, syncServerClock } from "./shared/ws.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -133,7 +133,9 @@ function render() {
 }
 
 function tick() {
-  const now = Date.now();
+  // Server time, so the clock and timers agree with the operator even when
+  // this device's clock is wrong.
+  const now = serverNow();
   el.clock.textContent = new Date(now).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -156,6 +158,7 @@ window.addEventListener("resize", () => {
 
 setInterval(tick, 250);
 tick();
+const resyncClock = syncServerClock();
 
 connect({
   role: "stage",
@@ -167,10 +170,14 @@ connect({
   onStatus(connected) {
     isConnected = connected;
     el.reconnecting.hidden = connected;
+    // The server may have restarted on another machine or with a new clock.
+    if (connected && wasConnected) resyncClock();
+    wasConnected ||= connected;
   },
 });
 // Give the first connect a moment before saying we are reconnecting.
 let isConnected = false;
+let wasConnected = false;
 setTimeout(() => {
   if (!isConnected) el.reconnecting.hidden = false;
 }, 1500);

@@ -147,12 +147,69 @@ export function cueKey(cue) {
 
 /** "1:05", "12:34", "1:02:03" from milliseconds. */
 export function formatElapsed(ms) {
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return "–:––";
-  const total = Math.floor(ms / 1000);
+  if (ms == null || !Number.isFinite(ms)) return "–:––";
+  const total = Math.floor(Math.max(0, ms) / 1000);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = String(total % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
+// Server clock. Snapshot timestamps (`item_started_at`, `service_started_at`)
+// are the server's Unix ms, but a stage tablet's clock can be minutes off. The
+// HTTP `Date` header gives the server time truncated to the second, so each
+// sample bounds the offset to an interval; intersecting samples taken at
+// different sub-second phases narrows it to well under a second.
+let offsetLo = -Infinity;
+let offsetHi = Infinity;
+let offset = 0;
+
+/** The server's current time in Unix ms (local time until the first sync). */
+export function serverNow() {
+  return Date.now() + offset;
+}
+
+async function sampleOffset() {
+  const t0 = Date.now();
+  const res = await fetch(location.pathname, { method: "HEAD", cache: "no-store" });
+  const t1 = Date.now();
+  const date = Date.parse(res.headers.get("Date") ?? "");
+  if (!Number.isFinite(date)) return;
+  // Server time at the moment it wrote the header is in [date, date + 1000),
+  // and that moment is somewhere in [t0, t1].
+  const lo = date - t1;
+  const hi = date + 1000 - t0;
+  if (lo > offsetHi || hi < offsetLo) {
+    // The server clock jumped (or the client's did): start again.
+    offsetLo = lo;
+    offsetHi = hi;
+  } else {
+    offsetLo = Math.max(offsetLo, lo);
+    offsetHi = Math.min(offsetHi, hi);
+  }
+  offset = Math.round((offsetLo + offsetHi) / 2);
+}
+
+/** Measure the server clock now, then again every few minutes. */
+export function syncServerClock({ samples = 6, everyMs = 5 * 60 * 1000 } = {}) {
+  const run = async () => {
+    for (let i = 0; i < samples; i++) {
+      try {
+        await sampleOffset();
+      } catch {
+        return; // Server unreachable; keep the last offset and try next round.
+      }
+      // 370 ms steps land each sample at a different phase of the server's second.
+      await new Promise((r) => setTimeout(r, 370));
+    }
+  };
+  run();
+  setInterval(() => {
+    offsetLo = -Infinity;
+    offsetHi = Infinity;
+    run();
+  }, everyMs);
+  return run;
 }
 
 /** Query parameters of this page as an object-ish accessor. */

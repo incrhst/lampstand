@@ -10,7 +10,7 @@ generated PNGs for /media/deck/... and /media/logo.png, and a few dev controls:
     GET /dev/drop?secs=5   close every WebSocket and refuse new ones for a while
     GET /dev/auto?secs=4   step through the script every N seconds (secs=0 stops)
 
-Run:  python3 crates/lampstand-server/web/dev/fake_server.py [--port 7420]
+Run:  python3 crates/lampstand-server/web/dev/fake_server.py [--port 7420] [--skew SECS]
 Then: http://127.0.0.1:7420/stage  and  http://127.0.0.1:7420/stream
 """
 
@@ -70,6 +70,14 @@ SCRIPT = [
 ]
 
 lock = threading.Lock()
+SKEW = {"secs": 0.0}
+
+
+def server_time():
+    """This server's clock, optionally skewed to test clients that sync to it."""
+    return time.time() + SKEW["secs"]
+
+
 clients = set()
 state = {"index": 1, "revision": 0, "refuse_until": 0.0, "auto": 0.0,
          "service_started_at": None, "item_started_at": None, "item": None}
@@ -77,7 +85,7 @@ state = {"index": 1, "revision": 0, "refuse_until": 0.0, "auto": 0.0,
 
 def snapshot():
     _, live, mode, live_cue, next_cue = SCRIPT[state["index"]]
-    now = int(time.time() * 1000)
+    now = int(server_time() * 1000)
     if live is not None:
         if state["service_started_at"] is None:
             state["service_started_at"] = now - 23 * 60 * 1000  # pretend we are 23 min in
@@ -198,6 +206,9 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=str(WEB), **kw)
 
+    def date_time_string(self, timestamp=None):
+        return super().date_time_string(server_time() if timestamp is None else timestamp)
+
     def log_message(self, format, *args):
         if "/media/" in self.path or "/dev/" in self.path:
             super().log_message(format, *args)
@@ -289,9 +300,11 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=7420)
+    ap.add_argument("--skew", type=float, default=0, help="run the server clock this many seconds off")
     ap.add_argument("--auto", type=float, default=0, help="step through the script every N seconds")
     args = ap.parse_args()
     state["auto"] = args.auto
+    SKEW["secs"] = args.skew
     threading.Thread(target=auto_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
