@@ -114,9 +114,13 @@ Phase 1 runs in one process. The live cursor and overlay state are written to a 
 
 A missing font in a deck uses its stand-in where one exists, and the fidelity report says so (PS-4).
 
-### PPTX: evaluate DeckCraft, plan to own the parser
+### PPTX: depend on DeckCraft's reader, own the mapping
 
-A short spike (T28) checks DeckCraft's licence, reader quality and fit with our scene format. Unless it is clearly usable, `slides` owns a parser built on `zip` and `quick-xml`. Either way, the parser's output is our `ParsedDeck`, so the choice is internal to `slides`.
+Both evaluations of DeckCraft, the T28 spike ([0001](decisions/0001-pptx-reader.md)) and the DeckCraft evaluation in PR #2, recommend the same thing: depend on DeckCraft's `deckcraft-pptx`, `deckcraft-model` and `deckcraft-anim` crates, pinned to a commit, rather than write our own reader. Its licence (MIT OR Apache-2.0) is compatible with GPL-3.0, and its reader handled the test decks. `slides` converts DeckCraft's `Presentation` into our `ParsedDeck`, so nothing from DeckCraft appears in `slides`' API. We don't use DeckCraft's layout, text shaping or renderer; ours are T20, T22 and T24. If upstream is slow to take a fix, we fork with `[patch]`.
+
+DeckCraft needs Rust 1.95, which sets the workspace's minimum (`rust-version = "1.95"`).
+
+If T29 finds the pinned reader loses fidelity on real decks, the fallback is our own parser on `zip` and `quick-xml`. The `ParsedDeck` boundary keeps that switch inside `slides`.
 
 Google Slides arrive as their PPTX export and take the same path. A 200-deck fidelity corpus with PowerPoint-exported reference images is measured with SSIM in CI (T32). Real church decks cannot go in a public repo, so the corpus lives in private storage and the CI job reads it with a secret. The public repo carries synthetic decks.
 

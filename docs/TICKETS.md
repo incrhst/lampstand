@@ -165,7 +165,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 - Click-to-photon is under 50 ms, measured with a frame timestamp test.
 - Unplugging a display never shows the desktop on the others.
 
-**T26. Calibration.** Draw `CalibrationPattern` as a scene: numbered edges at 1% steps, corner markers and a bright outline of the current margins. Add a safe-area overlay for previews. Done when golden tests pass.
+**T26. Calibration.** Draw `CalibrationPattern` as a scene: numbered edges at 1% steps, corner markers and a bright outline of the current margins. Add a safe-area overlay for previews. Done when golden tests pass. Do T62 (the full TS-1 design ported from PR #5) in the same session.
 
 **T27. Video.** `GstBackend` behind the `gstreamer` feature: `playbin3` → `appsink` (RGBA), looping, muting, seeking. Video nodes in the renderer upload frames to a texture. Report the install size the GStreamer runtime adds on Windows and macOS. Done when a test plays a bundled 2-second clip to the end and counts frames, and the install-size numbers are in the PR.
 
@@ -190,7 +190,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` |
 | T44 | Guest upload links on the relay | S | T19 | CD-9 | `relay/src/upload.rs` |
 
-**T19. Relay.** One binary built on axum: the sync endpoint from T17 with role checks from T18, a blob store with a size quota, and TOML configuration. Ship a Dockerfile and builds for arm64 and x86-64. Done when it runs on a Raspberry Pi 4 image in CI (QEMU) and uses under 50 MB of memory idle with 10 teams.
+**T19. Relay.** One binary built on axum: the sync endpoint from T17 with role checks from T18, a blob store with a size quota, and TOML configuration. Ship a Dockerfile and builds for arm64 and x86-64. Done when it runs on a Raspberry Pi 4 image in CI (QEMU) and uses under 50 MB of memory idle with 10 teams. Do T64 (Docker image, TLS guidance and relay tests ported from PR #4) in the same session. T75 (encrypted sessions) must land before the relay is used beyond a test network.
 
 **T32. Corpus harness.** Render every slide of every corpus deck with `render_offscreen`, compute SSIM against the reference PNGs, and write an HTML report. Fail CI if the share of decks at or above 0.95 SSIM drops. The private corpus is downloaded with a CI secret, and the job is skipped on forks.
 
@@ -256,6 +256,141 @@ Done when, from a fresh install, the operator can open a service with one song a
 **T60. Accessibility.** Run axe on each screen, check contrast, add focus rings, labels and shortcuts for every live action. Done when there are zero axe violations at AA and a keyboard-only mock service runs end to end.
 
 **T61. Performance (Opus).** On 2019-class hardware (8 GB RAM, integrated graphics), a three-output service must hold 60 fps with a video background, and click-to-photon must stay under 50 ms. Profile, fix, and record the method and the numbers in `docs/perf.md`.
+
+## Follow-ups
+
+Tickets found while reviewing the first wave and the pull requests it superseded. They have no wave: each says what it needs.
+
+Code from a closed pull request is still on GitHub. Fetch every pull request head once with `git fetch origin 'refs/pull/*/head:refs/remotes/pr/*'`, then read a file with `git show pr/N:path`. Port the behaviour and the tests, not the code as is: those pull requests used an older model (one library document, positional service items) that ARCHITECTURE.md replaced.
+
+### Ported from closed PRs
+
+| ID | Title | Model | Needs | Source | Files |
+| --- | --- | --- | --- | --- | --- |
+| T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` |
+| T63 | Ultra-wide text column and authored-line fitting | **O** | — | #5 | `layout/src/fit.rs`, `layout/src/compose.rs`, `core/src/theme.rs` |
+| T64 | Relay Docker image, TLS guidance and relay tests | S | T19 | #4 | `relay/` |
+| T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` |
+| T66 | Song search by author and CCLI number; finished words | S | — | #1 | `library/src/search.rs` |
+| T67 | OpenLyrics 0.9 chords | S | — | #1 | `import/src/songs/openlyrics.rs` |
+| T68 | ChordPro file importer | S | — | #1 | `import/src/songs/chordpro.rs` |
+| T69 | Contract decision: alternate titles and several authors | **O** | — | #1 | `core/src/song.rs`, ARCHITECTURE.md |
+| T70 | Scripture slides: chapter labels and clause breaks | S | — | #3 | `layout/src/paginate.rs` |
+| T71 | Chapter counts and "did you mean" for book names | S | — | #3 | `core/src/scripture.rs` |
+| T72 | USFM Psalm superscription fixture | S | — | #3 | `import/tests/` |
+| T73 | Every Bible format imports the same text (optional) | S | — | #3 | `import/tests/` |
+| T74 | Contract decision: verse lists | **O** | — | #3 | `core/src/scripture.rs`, ARCHITECTURE.md |
+
+**T62. Full TS-1 calibration design.** Port the pattern from `git show pr/5:crates/lampstand-render/src/calibration.rs`, drawn as `Scene` nodes rather than #5's direct drawing:
+
+- numbered rings stepping in from each edge
+- a different colour in each corner, so a flipped or rotated output is obvious
+- a 10% grid
+- the safe area outlined in cyan
+- a label naming the output and its aspect ("32:9")
+- the edge being adjusted highlighted
+
+T26 asks for rings at 1% steps; #5 used 2%. Use 1%. Port the golden tests in `pr/5:crates/lampstand-render/tests/render.rs` that apply.
+
+**T63. Ultra-wide text column (Opus).** Two pieces from `git show pr/5:crates/lampstand-render/src/layout.rs` and `pr/5:crates/lampstand-render/tests/layout.rs`:
+
+- On ultra-wide outputs (TS-9), cap the text column at 2.4 times its height, centred in the safe area, so a 32:9 LED wall doesn't run one lyric line edge to edge. Port the 32:9 tests (`text_stays_in_safe_area_on_every_aspect`, `layout_adapts_to_aspect_ratio`).
+- Fitting first tries to keep each authored line unbroken, shrinking towards the minimum, and only then wraps (`lyric_lines_shrink_before_wrapping`).
+
+#5 made the cap a theme field (`max_column_aspect`). That is a contract change to `core::theme::TextStyle`; decide whether it belongs there or in `compose`, and update ARCHITECTURE.md if the contract changes.
+
+**T64. Relay packaging and tests.** From `git show pr/4:crates/lampstand-relay/...`:
+
+- `Dockerfile` and `Dockerfile.dockerignore`: an Alpine multi-stage build. Keep it, adjusted to the T19 binary.
+- `README.md`: the guidance on putting the relay behind a TLS reverse proxy.
+- `tests/relay.rs`: three tests, rewritten on `SyncNode` and `Repo`. Two peers converge through a relay (`two_peers_converge_through_relay`); a change stored on the relay reaches a peer that connects after a relay restart (`relay_stores_and_forwards_across_restarts`); teams are kept apart and strangers refused (`relay_keeps_churches_apart_and_strangers_out`).
+
+**T65. Corrupt chunks don't lose a document.** A follow-up to T16. Today one unreadable chunk makes `Store::load` fail (`repo/store.rs`, around line 71) and the whole document is lost to the app. Skip a chunk that will not load and report it, and ignore leftover `.tmp-*` files in a document folder. Use `git show pr/4:crates/lampstand-sync/src/store.rs` (`torn_append_is_ignored_on_load`, around line 448) as the template for the tests. Done when a document with a corrupt chunk loads its other changes, and a stray temp file is ignored.
+
+**T66. Song search additions.** A follow-up to T15, from `git show pr/1:crates/lampstand-songs/src/search.rs` and `tests/search.rs`:
+
+- Search authors and CCLI numbers as well as titles and lyrics.
+- A trailing space means the last word is finished: match it whole, not as a prefix.
+
+Port the tests `finds_by_title_lyrics_and_author`, `finds_by_ccli_number` and `matches_prefix_while_typing`.
+
+**T67. OpenLyrics 0.9 chords.** A follow-up to T04. OpenLyrics 0.9 writes chords as `root`, `structure` and `bass` attributes instead of `name`. See `chord_name` in `git show pr/1:crates/lampstand-songs/src/openlyrics.rs` (around line 176) and its test `reads_09_chords_with_root_and_structure`. Add the `pr/1:crates/lampstand-songs/tests/fixtures/amazing-grace.xml` fixture.
+
+**T68. ChordPro importer.** A new file importer for `.cho`, `.chopro` and `.chordpro` files: directives (`{title}`, `{artist}`, `{ccli}`, `{copyright}`), `{start_of_verse}`-style environments and inline chords. Port from `git show pr/1:crates/lampstand-songs/src/chordpro.rs`, with the fixture `pr/1:crates/lampstand-songs/tests/fixtures/library/blessed-assurance.cho`. Register it in `detect.rs` and the importer dispatch. Done to the importer rules above.
+
+**T69. Alternate titles and several authors (Opus).** OpenLyrics, CCLI and most song databases carry alternate titles and more than one author, and #1 kept them. `core::song::Song` has one title and one author string. Decide whether to add `alternate_titles: Vec<String>` and `authors: Vec<String>`, how search (T15, T66) and the CCLI report (T38) use them, and how existing documents migrate. Record the decision in ARCHITECTURE.md; the importers follow in their own tickets.
+
+**T70. Scripture slide labels and clause breaks.** A follow-up to T21, from `git show pr/3:crates/lampstand-scripture/src/split.rs`:
+
+- When a passage crosses chapters, verse labels include the chapter ("3:36", "4:1"); within one chapter they stay bare.
+- A verse too long for one slide breaks between words at a clause (after a comma, semicolon or colon) rather than at the last word that fits.
+
+Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_between_words_at_a_clause`.
+
+**T71. Book chapter counts and suggestions.** A follow-up to T01, from `git show pr/3:crates/lampstand-scripture/src/book.rs`:
+
+- A table of chapter counts for the 66 books, so "Jude 2:1" or "Ps 151" is a bounds error at parse time, not an empty lookup.
+- "Did you mean" suggestions for a book name that doesn't match ("Jhon" → John), for the scripture panel (T52).
+
+**T72. Psalm superscription fixture.** A follow-up to T12. Add `pr/3:crates/lampstand-scripture/tests/fixtures/PSA.usfm` and a test that a Psalm's superscription (`\d`) is not part of verse 1.
+
+**T73. Bible formats agree (optional).** #3 had excerpts of the same KJV text in OpenSong, OSIS, Zefania and USFM (`pr/3:crates/lampstand-scripture/tests/fixtures/`). Add a test that every format imports the same verses with the same text.
+
+**T74. Verse lists (Opus).** `Passage` is one range. Operators type lists: "Ps 23:1-4,6" and "Jn 3:16; 4:1". Decide whether `Passage` becomes a list of ranges or the app splits a list into several items, and how `Display`, pagination and the CCLI and usage logs treat it. #3's `pr/3:crates/lampstand-scripture/src/reference.rs` parsed lists; read it as input. Record the decision in ARCHITECTURE.md.
+
+### Security and robustness
+
+| ID | Title | Model | Needs | PRD | Files |
+| --- | --- | --- | --- | --- | --- |
+| T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` |
+| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` |
+| T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` |
+| T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` |
+| T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` |
+| T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` |
+| T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` |
+| T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` |
+| T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` |
+| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md |
+| T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` |
+
+**T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
+
+**T76. Blob transfer limits.** In `net/session.rs` (around lines 285–303), an incoming blob is written to a shared `incoming/{hash}.part` with no size limit:
+
+- Cap a blob at a configured maximum and drop the transfer past it.
+- Use a separate temp file per session (or per transfer), so two peers sending the same blob at once can't interleave writes into one file.
+
+Done when tests cover an oversized blob and two concurrent senders of the same hash.
+
+**T77. Unknown-id sync messages (Opus).** A sync message for an id this device has never seen creates an in-memory document and fixes its kind from the message (`repo/mod.rs`, around line 333). A peer can make a device hold any number of empty documents, and the first message decides the kind for good. Bound how many such documents a peer can create, and don't record the kind until a change is actually applied. Done when tests cover a flood of unknown ids and a first message that carries no changes.
+
+**T78. Durable before acknowledged (Opus).** After receiving changes, `Repo` updates the in-memory document and the per-peer sync state, then flushes (`repo/mod.rs`, around lines 350–372). If the final flush fails, the sync state already says the changes were received, so the peer never resends them and a restart loses them. Don't advance `saved` or the sync state until the write is durable. Done when a test with an injected write failure shows the changes arrive again after the next connect.
+
+**T79. Device key file.** `app/src-tauri/src/config.rs` (around line 89) writes `device.key` with default permissions and without fsync. Write it with mode 0600 on Unix (and owner-only on Windows), and fsync the file and its directory. There are three atomic-write helpers (`config.rs` `write_atomically`, and the method and function in `sync/src/repo/fsutil.rs`); merge them into one that the app reuses. Done when a test checks the key's mode on Unix.
+
+**T80. Size caps.** Three reads have no upper bound:
+
+- zip entries read to the end in `import/src/songs/opensong.rs` (around line 97)
+- deck downloads in `connectors/src/links.rs` (around line 172)
+- zstd decompression of Bible text in `library/src/lib.rs` (around line 47)
+
+Cap each (a song file at a few MB, a deck at the T44 upload limit, a Bible at about 50 MB decompressed) and return an error past it. Done when each has a test with an oversized input.
+
+**T81. Share-link decoding.** In `connectors/src/links.rs` (around line 220), `percent_decode` checks `i + 2 < len`, so an escape at the very end ("%20") is left encoded, and it slices `&s[i + 1..i + 3]`, which panics if those bytes are not a character boundary. Fix both, and sanitise the `Content-Disposition` filename: strip path separators, control characters and leading dots before it is used as a file name. Done when tests cover a trailing escape, a multi-byte character after `%`, and `../` in a filename.
+
+**T82. Render thread work (Opus).** Two things that make a click slower than it should be or text inconsistent:
+
+- `render/src/images.rs` `decode` runs on the render thread from the engine's draw path, so a large background image stalls every output. Decode on a worker and show the previous frame (or nothing) until it is ready.
+- Pagination and footer shaping in `layout` measure with different font stand-ins from `fit.rs` and `render/src/text.rs`, so a slide can paginate to fit and then overflow. Use the same stand-ins everywhere, ideally through one shared cosmic-text buffer helper.
+
+Done when a test shows a large image doesn't delay a text slide on another output, and a test checks that pagination, fit and render agree on line breaks for a stand-in font.
+
+**T83. GPU tests that can't pass silently.** Render tests skip when no adapter is found, so a broken lavapipe install on the Linux CI job passes. Read an environment variable (`LAMPSTAND_REQUIRE_GPU=1`, set on the lavapipe job) and fail instead of skipping when it is set. Add a test for `SurfaceLost`: the output recreates its surface and keeps drawing.
+
+**T84. Deck builds on recompose (Opus).** Decide before T30. `compose.rs` ignores `Content::DeckSlide.step`, and `layout` can't call `slides::scene_at_step` (it doesn't depend on `slides`). So any recompose (a theme edit, an output resize, a synced change) shows the slide as authored and built-up content vanishes. Options: carry the stepped scene in `Content`, move `scene_at_step` to `core`, or let the app compose deck slides itself. Record the choice in ARCHITECTURE.md.
+
+**T85. Remaining stubs.** Two stubs are not marked with a ticket: video nodes draw nothing (`render/src/frame.rs`, around line 265, belongs to T27), and the logo overlay is a placeholder ring (`layout/src/compose.rs`) until the contract has a logo asset. Mark each with `todo`-style comments naming its ticket, add a logo asset to the theme or output contract, and make the operator view say when an overlay is a placeholder.
 
 ## Not code: start now
 
