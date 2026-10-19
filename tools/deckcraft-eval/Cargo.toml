@@ -1,0 +1,18 @@
+# Scratch harness for docs/research/deckcraft-evaluation.md. Not a workspace member and not
+# built by CI: it pins DeckCraft (MIT OR Apache-2.0) at the commit that was evaluated.
+[package]
+name = "deckcraft-eval"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+deckcraft-pptx = { git = "https://github.com/storytold/deckcraft", rev = "010941e" }
+deckcraft-model = { git = "https://github.com/storytold/deckcraft", rev = "010941e" }
+deckcraft-anim = { git = "https://github.com/storytold/deckcraft", rev = "010941e" }
+zip = { version = "3", default-features = false, features = ["deflate"] }
+quick-xml = "0.41"
+serde_json = "1"
+
+[workspace]
