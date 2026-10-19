@@ -142,6 +142,7 @@ fn theme() -> Theme {
 fn every_item_kind() -> Service {
     let mut s = Service::new("Sunday 10am");
     s.starts_at = Some(Timestamp(1_790_000_000_000));
+    s.time_zone = Some("Europe/London".into());
     s.theme = Some(ThemeId::generate());
     let blob = BlobHash::of(b"video");
     let kinds = [
@@ -252,6 +253,20 @@ fn every_document_type_round_trips() {
     plain.transition = Transition::CUT;
     plain.text.shadow = None;
     round_trip(&repo, plain);
+}
+
+/// A service written before services had a time zone has no `time_zone`
+/// key in its document; it reads as `None`, not an error.
+#[test]
+fn a_service_saved_before_time_zones_reads_without_one() {
+    use automerge::transaction::Transactable;
+    let mut service = Service::new("Old");
+    service.starts_at = Some(Timestamp(1_790_000_000_000));
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    doc.delete(automerge::ROOT, "time_zone").unwrap();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
 }
 
 #[test]

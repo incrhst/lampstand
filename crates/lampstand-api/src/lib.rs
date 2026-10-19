@@ -8,6 +8,7 @@
 //! payload, or `Response::Error`.
 
 use lampstand_core::deck::{Deck, DeckId};
+use lampstand_core::id::Timestamp;
 use lampstand_core::output::OutputId;
 use lampstand_core::output::{DisplayMatch, OutputConfig};
 use lampstand_core::program::Overlay;
@@ -74,8 +75,20 @@ pub enum LibraryRequest {
 pub enum ServiceRequest {
     List,
     Get(ServiceId),
+    /// A new, empty service. `starts_at` is when it is scheduled, if the
+    /// planner picked a time (the UI defaults to the coming Sunday), and
+    /// `time_zone` the IANA zone it was picked in (`Service::time_zone`).
     Create {
         title: String,
+        starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
+    },
+    /// Moves a service to another time and zone, or clears its date with
+    /// `starts_at: None`. Answers `Response::Service`.
+    Reschedule {
+        service: ServiceId,
+        starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
     },
     InsertItem {
         service: ServiceId,
@@ -218,7 +231,8 @@ pub struct SongHit {
 pub struct ServiceSummary {
     pub id: ServiceId,
     pub title: String,
-    pub starts_at: Option<lampstand_core::id::Timestamp>,
+    pub starts_at: Option<Timestamp>,
+    pub time_zone: Option<String>,
 }
 
 /// Pushed to the UI.

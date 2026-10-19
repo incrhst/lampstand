@@ -30,6 +30,12 @@ pub struct Service {
     pub id: ServiceId,
     pub title: String,
     pub starts_at: Option<Timestamp>,
+    /// The IANA time zone the service is planned in ("Europe/London"), so
+    /// `starts_at` reads as the church's wall-clock time wherever it is
+    /// viewed. `None` reads it in the viewer's own zone. Documents saved
+    /// before this field existed lack the key and read as `None`.
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub time_zone: Option<String>,
     /// Default theme for text items; each output may override it.
     pub theme: Option<ThemeId>,
     /// Keyed by the item ID as a string in the synced document.
@@ -194,6 +200,7 @@ impl Service {
             id: ServiceId::generate(),
             title: title.into(),
             starts_at: None,
+            time_zone: None,
             theme: None,
             items: BTreeMap::new(),
         }

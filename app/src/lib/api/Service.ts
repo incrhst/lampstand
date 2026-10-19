@@ -4,6 +4,13 @@ import type { Timestamp } from "./Timestamp";
 
 export type Service = { id: string, title: string, starts_at: Timestamp | null, 
 /**
+ * The IANA time zone the service is planned in ("Europe/London"), so
+ * `starts_at` reads as the church's wall-clock time wherever it is
+ * viewed. `None` reads it in the viewer's own zone. Documents saved
+ * before this field existed lack the key and read as `None`.
+ */
+time_zone: string | null, 
+/**
  * Default theme for text items; each output may override it.
  */
 theme: string | null, 
