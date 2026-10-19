@@ -150,10 +150,6 @@ What this does and does not protect against:
 - It does not stop a member who runs a modified client, because Automerge changes are not signed one by one. The remedy is removing that member's device.
 - A self-hosted relay can read the team's documents. It needs to, to check roles and to serve the Phase 2 browser planner. End-to-end encryption is a Phase 2 question tied to the public relay (CD-4).
 
-### AI assistants: team members that suggest (proposed)
-
-Claude, ChatGPT and Gemini can help plan through an MCP server ([decision 0003](decisions/0003-assistant-mcp.md), not built yet). An assistant joins the team with an invite and its own key, like a device. It reads what its role allows and never edits a document: its changes go into a suggestion on the service that a person accepts in Plan. Its tools are generated from `lampstand-api`, and no `Live` or `Outputs` request is one. It is reached through a localhost-only endpoint on the local server, an OAuth connector on the relay, or a per-service link.
-
 ### UI: one web app, one message set
 
 The operator and planning screens are a Svelte 5 + TypeScript app (Vite), in `app/`. Svelte was chosen for its small bundles and plain syntax, which suits a volunteer open-source team.
@@ -175,6 +171,10 @@ How the app is laid out (T46):
 A first library can come from Worship Leader App's free song database (`lampstand-connectors::song_databases`): about 50 languages, published daily as `.osb` backups. The operator picks a language and the app downloads and imports it. Nothing is bundled: many of those songs are under copyright, and the church's own licence covers projecting them. The database carries no copyright or CCLI numbers, so CCLI reports for those songs need the numbers added. A fresh install also imports two public-domain hymns (`app/src-tauri/seed/`), so there is always something to show.
 
 Importing the 3,100-song English database takes about 110 s on an M1 (release build), almost all of it in `Repo::put`, one document at a time. A batched put in the sync repo is the fix (follow-up).
+
+### New service from a list (proposed)
+
+A pasted list of songs and readings ("Come Thou Fount, 10000 reasons, Ps 23, sermon John 10:1-18") becomes a draft service that the person checks and creates ([decision 0003](decisions/0003-service-from-list.md), not built yet). A small Gemma model, run by a local runtime where the machine has one, only splits the text into song, scripture and heading entries; without one, a line parser does. Library search and `parse_reference` do the matching, so the model never picks a song, never touches the live engine, and nothing leaves the machine.
 
 ### Media: GStreamer, behind a feature
 
