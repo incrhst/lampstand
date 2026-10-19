@@ -181,6 +181,10 @@ A first library can come from Worship Leader App's free song database (`lampstan
 
 Importing the 3,100-song English database took about 110 s on an M1 (release build), almost all of it in `Repo::put`'s drive-cache flushes. T17 made each `put` one flush instead of six (see "Sync", Storage), about four times faster; a `put` of many documents with one flush would close the rest of the gap (follow-up).
 
+### New service from a list (proposed)
+
+A pasted list of songs and readings ("Come Thou Fount, 10000 reasons, Ps 23, sermon John 10:1-18") becomes a draft service that the person checks and creates ([decision 0003](decisions/0003-service-from-list.md), not built yet). A small Gemma model, run by a local runtime where the machine has one, only splits the text into song, scripture and heading entries; without one, a line parser does. Library search and `parse_reference` do the matching, so the model never picks a song, never touches the live engine, and nothing leaves the machine.
+
 ### Media: GStreamer, behind a feature
 
 Video backgrounds, media items and video embedded in decks decode through GStreamer (`playbin3` into an `appsink` of RGBA frames, uploaded to wgpu textures). The same pipeline gives NDI, Spout and Syphon in Phase 2.
