@@ -92,6 +92,17 @@ secret, and swapping a share in the middle breaks a signature.
 ## Cost
 
 Measured with `crates/lampstand-sync/tests/net.rs` and
-`crates/lampstand-server/tests/sync.rs` on the same machine, before and
-after (debug build); see ARCHITECTURE.md, "Sync" → "Network", for the
-numbers.
+`crates/lampstand-server/tests/sync.rs`, debug build, one M1, four rounds
+alternating `main` and this change (other builds were running, so single
+runs vary by tens of percent):
+
+| | before | after |
+| --- | --- | --- |
+| Edit to change on the other process, median | 13–15 ms | 13–15 ms |
+| Edit to change in-process, median | 14–17 ms | 13–30 ms (one outlier) |
+| 500-song first sync | 0.66–1.13 s | 0.87–1.06 s |
+
+Per frame the cost is one X25519 agreement per connection, a 16-byte tag
+and one ChaCha20-Poly1305 pass over the bytes, in place. Within this
+noise the first sync may be up to about 0.15 s slower; edits are not
+measurably slower.
