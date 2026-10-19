@@ -1,0 +1,49 @@
+deck	slide	xml_clicks	deckcraft_clicks	powerpoint_clicks_1.5s	powerpoint_clicks_5s	note
+2411-Performance_Up	2	0	0	1	1	effect starts by itself after 5 s; an early press triggers it
+2411-Performance_Up	4	1	1	1	1	
+2411-Performance_Up	6	1	1	1	1	
+2411-Performance_Up	8	7	7	7	7	
+2411-Performance_Up	23	1	1	1	2	2 at 5 s is unexplained; the 1.5 s bound matches the XML
+45541_Footer	1	1	1	1	-	
+45541_Footer	11	1	1	1	-	
+45541_Header	1	1	1	1	1	
+45541_Header	11	1	1	2	1	
+45545_Comment	1	1	1	1	-	
+45545_Comment	11	1	1	1	-	
+EmbeddedAudio	1	1	1	1	-	
+EmbeddedVideo	1	1	1	1	-	
+ae.ac.uaeu.faculty_nafaachbili_GeomLec1	14	1	1	0	0	effect is a nodePh placeholder that ends as it begins
+alterman_security	16	5	5	5	-	
+at.ecodesign.www_downloads_Vertiefungsvortrag_elektronik	22	1	1	2	1	
+at.ecodesign.www_downloads_Vertiefungsvortrag_elektronik	24	3	3	4	3	
+at.ecodesign.www_downloads_Vertiefungsvortrag_elektronik	25	1	1	2	1	
+bug68703	1	1	1	-	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	2	1	1	2	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	3	4	4	5	4	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	4	4	4	5	4	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	5	3	3	4	3	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	6	6	6	7	6	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	7	0	0	1	-	advances by itself after 1 s; not observed at 5 s
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	8	1	1	2	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	9	1	4	2	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	10	10	10	11	10	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	11	0	0	1	-	advances by itself after 1 s; not observed at 5 s
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	12	1	1	2	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	13	0	0	1	-	advances by itself after 1 s; not observed at 5 s
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	16	4	4	5	4	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	17	0	0	1	-	advances by itself after 1 s; not observed at 5 s
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	18	1	1	2	1	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	19	0	0	1	-	advances by itself after 1 s; not observed at 5 s
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	21	2	1	3	2	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	22	9	9	10	9	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	23	2	2	3	2	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	24	3	3	4	3	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	26	2	2	2	2	
+ca.ubc.cs.people_~emhill_presentations_HowWeRefactor	27	6	18	6	6	
+customGeo	6	3	3	3	-	
+customGeo	15	3	3	3	-	
+customGeo	17	3	3	3	-	
+customGeo	18	5	0	5	-	
+customGeo	36	5	5	5	-	
+customGeo	48	9	9	9	-	
+keyframes	1	1	1	-	-	PowerPoint cannot read the file
