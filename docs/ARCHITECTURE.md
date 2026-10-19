@@ -150,6 +150,10 @@ What this does and does not protect against:
 - It does not stop a member who runs a modified client, because Automerge changes are not signed one by one. The remedy is removing that member's device.
 - A self-hosted relay can read the team's documents. It needs to, to check roles and to serve the Phase 2 browser planner. End-to-end encryption is a Phase 2 question tied to the public relay (CD-4).
 
+### AI assistants: team members that suggest (proposed)
+
+Claude, ChatGPT and Gemini can help plan through an MCP server ([decision 0003](decisions/0003-assistant-mcp.md), not built yet). An assistant joins the team with an invite and its own key, like a device. It reads what its role allows and never edits a document: its changes go into a suggestion on the service that a person accepts in Plan. Its tools are generated from `lampstand-api`, and no `Live` or `Outputs` request is one. It is reached through a localhost-only endpoint on the local server, an OAuth connector on the relay, or a per-service link.
+
 ### UI: one web app, one message set
 
 The operator and planning screens are a Svelte 5 + TypeScript app (Vite), in `app/`. Svelte was chosen for its small bundles and plain syntax, which suits a volunteer open-source team.
