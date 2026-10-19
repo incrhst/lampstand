@@ -1,0 +1,659 @@
+---
+source: crates/lampstand-slides/tests/decks.rs
+expression: value
+---
+{
+  "height": 540.0,
+  "issues": [
+    "Issue { slide: Some(0), kind: MissingFont { requested: \"Calibri\", substitute: Some(\"Carlito\") } }"
+  ],
+  "media": [
+    {
+      "blob": "0303336a4e4cf09feadae97890be3750a03ec511119dc4de8dc6608ccce73702",
+      "bytes": 3520,
+      "type": "image/png"
+    },
+    {
+      "blob": "33fa3b1997bd670573c807eebb755b486f7dd1700a5e1095e44226e7411d6f3b",
+      "bytes": 4296,
+      "type": "video/mp4"
+    },
+    {
+      "blob": "34da3f382d27d6c081febaf261b62f3e4f228d75ee9412fc20a14a6b297805cd",
+      "bytes": 5297,
+      "type": "image/png"
+    },
+    {
+      "blob": "5ad1938412ee6df0d97fca78f6efe06924fb4e57a128e7e3ffb566bd5bee7fd3",
+      "bytes": 47757,
+      "type": "image/jpeg"
+    },
+    {
+      "blob": "691fbdd7d232762927035d1e880881d4153c33daa5fadcf541cc515ff7d7f088",
+      "bytes": 701,
+      "type": "image/png"
+    }
+  ],
+  "slides": [
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 8,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 9,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Pictures",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Image": {
+                "blob": "5ad1938412ee6df0d97fca78f6efe06924fb4e57a128e7e3ffb566bd5bee7fd3",
+                "crop": null,
+                "fit": "Fill",
+                "rect": {
+                  "height": 194.4,
+                  "width": 345.6,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Image": {
+                "blob": "0303336a4e4cf09feadae97890be3750a03ec511119dc4de8dc6608ccce73702",
+                "crop": null,
+                "fit": "Fill",
+                "rect": {
+                  "height": 158.4,
+                  "width": 158.4,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 432.0,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Image": {
+                "blob": "34da3f382d27d6c081febaf261b62f3e4f228d75ee9412fc20a14a6b297805cd",
+                "crop": {
+                  "height": 0.5,
+                  "width": 0.5,
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                "fit": "Fill",
+                "rect": {
+                  "height": 108.0,
+                  "width": 144.0,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 626.4,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Group": [
+                {
+                  "id": 14,
+                  "kind": {
+                    "Image": {
+                      "blob": "34da3f382d27d6c081febaf261b62f3e4f228d75ee9412fc20a14a6b297805cd",
+                      "crop": null,
+                      "fit": "Fill",
+                      "rect": {
+                        "height": 129.6,
+                        "width": 172.8,
+                        "x": 0.0,
+                        "y": 0.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 15,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 172.8,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 172.8,
+                            "y": 129.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 129.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 4.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 0.98,
+              "b": -0.21,
+              "c": 0.21,
+              "d": 0.98,
+              "e": 420.42,
+              "f": 328.98
+            },
+            "visible": true
+          },
+          {
+            "id": 7,
+            "kind": {
+              "Image": {
+                "blob": "5ad1938412ee6df0d97fca78f6efe06924fb4e57a128e7e3ffb566bd5bee7fd3",
+                "crop": {
+                  "height": 1.0,
+                  "width": 0.7,
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "fit": "Fill",
+                "rect": {
+                  "height": 129.6,
+                  "width": 230.4,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 648.0,
+              "f": 309.6
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Video",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 7,
+            "kind": {
+              "Image": {
+                "blob": "691fbdd7d232762927035d1e880881d4153c33daa5fadcf541cc515ff7d7f088",
+                "crop": null,
+                "fit": "Fill",
+                "rect": {
+                  "height": 324.0,
+                  "width": 576.0,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 180.0,
+              "f": 129.6
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Video": {
+                "autoplay": false,
+                "blob": "33fa3b1997bd670573c807eebb755b486f7dd1700a5e1095e44226e7411d6f3b",
+                "fit": "Fill",
+                "looped": false,
+                "muted": false,
+                "rect": {
+                  "height": 324.0,
+                  "width": 576.0,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 180.0,
+              "f": 129.6
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    }
+  ],
+  "width": 960.0
+}

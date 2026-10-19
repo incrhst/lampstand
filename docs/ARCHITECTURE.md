@@ -122,6 +122,18 @@ DeckCraft needs Rust 1.95, which sets the workspace's minimum (`rust-version = "
 
 If T29 finds the pinned reader loses fidelity on real decks, the fallback is our own parser on `zip` and `quick-xml`. The `ParsedDeck` boundary keeps that switch inside `slides`.
 
+How T29 built it (details at the top of `lampstand-slides/src/pptx/mod.rs`):
+
+- **Pin.** `deckcraft-pptx`, `-model`, `-geom` and `-color` by git `rev` at `cb78440` (the commit T28 checked), in `[workspace.dependencies]`. T30 adds `deckcraft-anim` at the same commit.
+- **Resolution.** Every shape goes through `deckcraft_model::resolve`, the helpers DeckCraft's own renderer uses: placeholder position, fill, line, effects, body and run properties follow slide → layout → master → theme. Master and layout graphics come first when the slide shows them; placeholders on layouts and masters are never drawn.
+- **Node IDs.** A slide shape's node ID is its DeckCraft `ShapeId`, which is the PPTX `cNvPr id` wherever that is unique on the slide, so T30's builds can target it. A shape that needs more than one node (an outline and its text, a picture and its border, a table) becomes a group with the shape's ID. Added nodes, master and layout graphics included, are numbered after the slide's largest shape ID.
+- **Groups.** Flattened as DeckCraft draws them: a group's child-coordinate scale sizes and places its children, but outline widths, insets and type stay in slide points. Each node's local space is its box at its size on the slide, and the group node keeps the group's ID with an identity transform.
+- **Geometry.** DeckCraft generates every `ST_ShapeType` preset; a name outside the schema becomes the bounding rectangle and an `UnsupportedContent` issue. `COMMON_PRESETS` lists the 40 most common (measured on the Apache POI corpus), each tested to have its own outline.
+- **Text.** `normAutofit` applies the saved `fontScale` and `lnSpcReduction`, as PowerPoint does on open; nothing is measured in `slides`, so table rows keep their stored heights. "Single" line spacing is 1.2 × the size. Our paragraphs hang a bullet at the block's left edge, so a nested bullet (PowerPoint puts it at `marL + indent`) is folded into the text at its own indent; a paragraph with a hanging indent and no bullet keeps its first line's indent. A per-paragraph bullet position in `scene::Paragraph` would fix both (follow-up).
+- **Approximations.** A picture fill is stretched over the shape's box, not clipped to its outline; a pattern is its average colour; a path gradient is a radial from its focus; arrowheads are filled paths and the line stops short under them.
+- **Report.** Fonts the `FontLookup` lacks (exact matches are silent; substitutes and misses are reported once per deck), charts, 3D models and objects with no preview picture, unknown presets, linked media and slide parts that could not be read. T31 builds the report on these.
+- **Tests.** Ten synthetic decks in `slides/tests/decks/`, made with python-pptx by `generate.py`, have JSON scene snapshots (`tests/decks.rs`) and are drawn by the wgpu renderer and compared with LibreOffice renders (`tests/render.rs`). PowerPoint exports were not available (the PowerPoint on the machine that made them is unlicensed); slides where LibreOffice is known to be wrong are listed in the test.
+
 Google Slides arrive as their PPTX export and take the same path. A 200-deck fidelity corpus with PowerPoint-exported reference images is measured with SSIM in CI (T32). Real church decks cannot go in a public repo, so the corpus lives in private storage and the CI job reads it with a secret. The public repo carries synthetic decks.
 
 ### Sync: one Automerge document per thing, blobs beside them

@@ -7,3 +7,17 @@ rust-version.workspace = true
 
 [dependencies]
 lampstand-core.workspace = true
+deckcraft-color.workspace = true
+deckcraft-geom.workspace = true
+deckcraft-model.workspace = true
+deckcraft-pptx.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+insta.workspace = true
+lampstand-layout.workspace = true
+# Draws the synthetic decks for tests/render.rs. Tests only: `slides` stays
+# free of the GPU stack.
+lampstand-render.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

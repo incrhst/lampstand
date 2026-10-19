@@ -1,0 +1,3756 @@
+---
+source: crates/lampstand-slides/tests/decks.rs
+expression: value
+---
+{
+  "height": 540.0,
+  "issues": [
+    "Issue { slide: Some(0), kind: MissingFont { requested: \"Calibri\", substitute: Some(\"Carlito\") } }"
+  ],
+  "media": [
+    {
+      "blob": "0303336a4e4cf09feadae97890be3750a03ec511119dc4de8dc6608ccce73702",
+      "bytes": 3520,
+      "type": "image/png"
+    },
+    {
+      "blob": "bbe7bc3e8bfb0e4a9c1eb514a70c3f483b95e1eeccb02124ef3d9a5f118c1ce9",
+      "bytes": 36574,
+      "type": "image/jpeg"
+    }
+  ],
+  "slides": [
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "Verse 1. Hold the last line.",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 3,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Image": {
+                "blob": "bbe7bc3e8bfb0e4a9c1eb514a70c3f483b95e1eeccb02124ef3d9a5f118c1ce9",
+                "crop": null,
+                "fit": "Fill",
+                "rect": {
+                  "height": 540.0,
+                  "width": 720.0,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 255,
+                          "g": 255,
+                          "r": 255
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 34.0,
+                        "strike": false,
+                        "text": "Amazing grace, how sweet the sound",
+                        "underline": false,
+                        "weight": 700
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 255,
+                          "g": 255,
+                          "r": 255
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 34.0,
+                        "strike": false,
+                        "text": "That saved a wretch like me",
+                        "underline": false,
+                        "weight": 700
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 255,
+                          "g": 255,
+                          "r": 255
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 34.0,
+                        "strike": false,
+                        "text": "I once was lost, but now am found",
+                        "underline": false,
+                        "weight": 700
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 255,
+                          "g": 255,
+                          "r": 255
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 34.0,
+                        "strike": false,
+                        "text": "Was blind, but now I see",
+                        "underline": false,
+                        "weight": 700
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 316.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": {
+                  "blur": 2.67,
+                  "color": {
+                    "a": 179,
+                    "b": 0,
+                    "g": 0,
+                    "r": 0
+                  },
+                  "offset": {
+                    "x": 2.12,
+                    "y": 2.12
+                  }
+                },
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 108.0
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Psalm 23",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 0.96,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.8,
+                        "strike": false,
+                        "text": "The Lord is my shepherd; I shall not want.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 5.95
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 0.96,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.8,
+                        "strike": false,
+                        "text": "He makes me lie down in green pastures. He leads me beside still waters.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 5.95
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 0.96,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.8,
+                        "strike": false,
+                        "text": "He restores my soul. He leads me in paths of righteousness for his name's sake.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 5.95
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 0.96,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.8,
+                        "strike": false,
+                        "text": "Even though I walk through the valley of the shadow of death, I will fear no evil, for you are with me; your rod and your staff, they comfort me.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 5.95
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 0.96,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.8,
+                        "strike": false,
+                        "text": "You prepare a table before me in the presence of my enemies; you anoint my head with oil; my cup overflows.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 5.95
+                  }
+                ],
+                "rect": {
+                  "height": 349.18,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 126.0
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 6,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 7,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "This week",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 9,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 189,
+                          "g": 129,
+                          "r": 79
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 15,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 189,
+                          "g": 129,
+                          "r": 79
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 201.6,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 21,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 232,
+                          "g": 216,
+                          "r": 208
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 46.8
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 27,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 232,
+                          "g": 216,
+                          "r": 208
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 201.6,
+                    "f": 46.8
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 33,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 244,
+                          "g": 237,
+                          "r": 233
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 93.6
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 39,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 244,
+                          "g": 237,
+                          "r": 233
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 201.6,
+                    "f": 93.6
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 45,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 232,
+                          "g": 216,
+                          "r": 208
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 140.4
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 51,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 232,
+                          "g": 216,
+                          "r": 208
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 201.6,
+                    "f": 140.4
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 10,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 11,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 12,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 13,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 16,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 17,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 403.2,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 18,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 19,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 22,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 23,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 24,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 25,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 28,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 29,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 403.2,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 30,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 46.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 46.8
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 31,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 34,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 35,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 36,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 37,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 40,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 41,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 403.2,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 42,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 93.6
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 93.6
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 43,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 46,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 47,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 48,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 49,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 187.2
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 52,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 201.6,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 53,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 403.2,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 54,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 140.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 140.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 55,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 201.6,
+                            "y": 187.2
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 403.2,
+                            "y": 187.2
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": null,
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 255,
+                            "g": 255,
+                            "r": 255
+                          }
+                        },
+                        "width": 1.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 14,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Day",
+                              "underline": false,
+                              "weight": 700
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 20,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Event",
+                              "underline": false,
+                              "weight": 700
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 208.8,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 26,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Tuesday",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 7.2,
+                        "y": 50.4
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 32,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Prayer meeting",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 208.8,
+                        "y": 50.4
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 38,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Thursday",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 7.2,
+                        "y": 97.2
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 44,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Youth group",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 208.8,
+                        "y": 97.2
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 50,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Saturday",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 7.2,
+                        "y": 144.0
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 56,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 18.0,
+                              "strike": false,
+                              "text": "Men's breakfast",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 39.6,
+                        "width": 187.2,
+                        "x": 208.8,
+                        "y": 144.0
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Image": {
+                "blob": "0303336a4e4cf09feadae97890be3750a03ec511119dc4de8dc6608ccce73702",
+                "crop": null,
+                "fit": "Fill",
+                "rect": {
+                  "height": 201.6,
+                  "width": 201.6,
+                  "x": 0.0,
+                  "y": 0.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 475.2,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Group": [
+                {
+                  "id": 58,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 16.8,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 631.2,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 640.48,
+                              "y": -0.0
+                            },
+                            {
+                              "x": 648.0,
+                              "y": 7.52
+                            },
+                            {
+                              "x": 648.0,
+                              "y": 16.8
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 648.0,
+                            "y": 84.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 648.0,
+                              "y": 93.28
+                            },
+                            {
+                              "x": 640.48,
+                              "y": 100.8
+                            },
+                            {
+                              "x": 631.2,
+                              "y": 100.8
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 16.8,
+                            "y": 100.8
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 7.52,
+                              "y": 100.8
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 93.28
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 84.0
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 16.8
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 0.0,
+                              "y": 7.52
+                            },
+                            {
+                              "x": 7.52,
+                              "y": 0.0
+                            },
+                            {
+                              "x": 16.8,
+                              "y": -0.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 77,
+                          "g": 80,
+                          "r": 192
+                        }
+                      },
+                      "shadow": {
+                        "blur": 5.33,
+                        "color": {
+                          "a": 128,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 5.0
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 59,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 24.0,
+                              "strike": false,
+                              "text": "Coffee and cake in the hall after the service",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 83.76,
+                        "width": 623.76,
+                        "x": 12.12,
+                        "y": 8.52
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 345.6
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "Reveal one point at a time.\nPause after the second.",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Three things to remember",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": "1.",
+                    "indent": 27.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 32.0,
+                        "strike": false,
+                        "text": "God is with us",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 7.68
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": "2.",
+                    "indent": 27.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 32.0,
+                        "strike": false,
+                        "text": "We are not alone",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 7.68
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": "3.",
+                    "indent": 27.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 32.0,
+                        "strike": false,
+                        "text": "Hope does not disappoint",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 7.68
+                  }
+                ],
+                "rect": {
+                  "height": 349.18,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 126.0
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": true,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 3,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Backup slide",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      }
+    }
+  ],
+  "width": 720.0
+}

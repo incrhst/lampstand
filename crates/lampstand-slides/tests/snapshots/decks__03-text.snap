@@ -1,0 +1,2214 @@
+---
+source: crates/lampstand-slides/tests/decks.rs
+expression: value
+---
+{
+  "height": 540.0,
+  "issues": [
+    "Issue { slide: Some(0), kind: MissingFont { requested: \"Calibri\", substitute: Some(\"Carlito\") } }"
+  ],
+  "media": [],
+  "slides": [
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Runs and alignment",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.0,
+                        "strike": false,
+                        "text": "Bold ",
+                        "underline": false,
+                        "weight": 700
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": true,
+                        "size": 24.0,
+                        "strike": false,
+                        "text": "italic ",
+                        "underline": false,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.0,
+                        "strike": false,
+                        "text": "underline ",
+                        "underline": true,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.0,
+                        "strike": true,
+                        "text": "strike ",
+                        "underline": false,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 32,
+                          "g": 32,
+                          "r": 192
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.0,
+                        "strike": false,
+                        "text": "red ",
+                        "underline": false,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 40.0,
+                        "strike": false,
+                        "text": "big",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Left aligned",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Centred",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Right",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Right aligned",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Justify",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Justified text runs to both edges of the box when it wraps onto a second line like this one does.",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "A line break",
+                        "underline": false,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 18.0,
+                        "strike": false,
+                        "text": "\n",
+                        "underline": false,
+                        "weight": 400
+                      },
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "inside one paragraph",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 352.8,
+                  "width": 417.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Single spacing, 20 pt after",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 20.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.8,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "One and a half line spacing wraps onto a second line here",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 2.0,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "Exactly 40 pt between lines, which also wraps onto a second line",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 12.0
+                  }
+                ],
+                "rect": {
+                  "height": 352.8,
+                  "width": 367.2,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 525.6,
+              "f": 115.2
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Bullets and numbering",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": "1.",
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "Numbered one",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": "2.",
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "Numbered two",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "a) Lettered a",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "b) Lettered b",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": "3.",
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "Numbered three",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "i. Roman i",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 30.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "ii. Roman ii",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 352.8,
+                  "width": 388.8,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 115.2
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": "•",
+                    "indent": 24.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "Round bullet",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 36.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "–   Dash bullet one level in",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 72.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "»   Arrow bullet two levels in",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  },
+                  {
+                    "align": "Left",
+                    "bullet": "•",
+                    "indent": 24.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 22.0,
+                        "strike": false,
+                        "text": "Round bullet again",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 352.8,
+                  "width": 403.2,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 489.6,
+              "f": 115.2
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 10,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 11,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Anchors and autofit",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 13,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 72.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 72.0,
+                            "y": 172.8
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 14,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 20.0,
+                              "strike": false,
+                              "text": "Top",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 165.6,
+                        "width": 129.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 122.4
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Group": [
+                {
+                  "id": 15,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 72.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 72.0,
+                            "y": 172.8
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 16,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 20.0,
+                              "strike": false,
+                              "text": "Middle",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 165.6,
+                        "width": 129.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 216.0,
+              "f": 122.4
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Group": [
+                {
+                  "id": 17,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 72.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 72.0,
+                            "y": 172.8
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 18,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 20.0,
+                              "strike": false,
+                              "text": "Bottom",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 165.6,
+                        "width": 129.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Bottom"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 374.4,
+              "f": 122.4
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Group": [
+                {
+                  "id": 19,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 360.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 360.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 172.8
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 238,
+                          "g": 238,
+                          "r": 238
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 20,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 0.96,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 32,
+                                "g": 32,
+                                "r": 32
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 17.5,
+                              "strike": false,
+                              "text": "This box holds more text than fits at 28 pt, so PowerPoint saved a 62.5% font scale and a 20% line spacing reduction. The parser applies both.",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 165.6,
+                        "width": 345.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 547.2,
+              "f": 122.4
+            },
+            "visible": true
+          },
+          {
+            "id": 7,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 20.0,
+                        "strike": false,
+                        "text": "A text box that does not wrap runs past its edge",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 36.0,
+                  "width": 10000.0,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 331.2
+            },
+            "visible": true
+          },
+          {
+            "id": 8,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Left",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 24.0,
+                        "strike": false,
+                        "text": "Rotated 20 degrees",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 50.4,
+                  "width": 10000.0,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 0.94,
+              "b": 0.34,
+              "c": -0.34,
+              "d": 0.94,
+              "e": 700.36,
+              "f": 310.4
+            },
+            "visible": true
+          },
+          {
+            "id": 9,
+            "kind": {
+              "Group": [
+                {
+                  "id": 23,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 72.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 72.0,
+                            "y": 180.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 180.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 36.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 36.0,
+                            "y": 180.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 24,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 20.0,
+                              "strike": false,
+                              "text": "Vertical",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 64.8,
+                        "width": 165.6,
+                        "x": -46.8,
+                        "y": 57.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 0.0,
+                    "b": -1.0,
+                    "c": 1.0,
+                    "d": 0.0,
+                    "e": -54.0,
+                    "f": 126.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 547.2,
+              "f": 331.2
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    }
+  ],
+  "width": 960.0
+}

@@ -10,6 +10,8 @@
 //!
 //! Scenes are in points (1/72 inch); a 16:9 deck is 960 × 540.
 
+mod pptx;
+
 use std::collections::BTreeMap;
 
 use lampstand_core::id::BlobHash;
@@ -105,8 +107,14 @@ pub enum ImportError {
     Corrupt(String),
 }
 
-/// Parses a PPTX file.
+/// Parses a PPTX file (PowerPoint, Keynote or Google Slides export).
+///
+/// Built on DeckCraft's reader (`docs/decisions/0001-pptx-reader.md`); see
+/// `pptx` for how its model maps onto scenes. Fonts the deck asks for
+/// that `fonts` lacks, shapes and objects drawn approximately or not at
+/// all, and linked media are in `ParsedDeck::report`. Builds and
+/// transitions are T30's: every slide comes back with no build steps and a
+/// cut.
 pub fn import_pptx(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
-    let _ = (bytes, fonts);
-    todo!("T29")
+    pptx::import(bytes, fonts)
 }
