@@ -773,17 +773,12 @@ impl App {
         self.place_windows();
     }
 
-    /// Drives auto-advancing items. Call every 100 ms or so.
-    ///
-    /// `LiveEngine::tick` is still `todo!("T34")`, so this does nothing
-    /// yet; T34 turns the call on.
+    /// Drives announcement loops and countdowns. Call every 100 ms or so;
+    /// the engine reports events only when something on air changed.
     pub fn tick(&mut self) {
-        const ENGINE_TICKS: bool = false;
-        if ENGINE_TICKS {
-            let events = self.live.tick(now());
-            if !events.is_empty() {
-                self.after_live(events);
-            }
+        let events = self.live.tick(now());
+        if !events.is_empty() {
+            self.after_live(events);
         }
     }
 
