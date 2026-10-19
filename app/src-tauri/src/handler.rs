@@ -374,6 +374,8 @@ impl App {
                 let pattern = active.then_some(CalibrationPattern {
                     current: config.safe_area,
                     max_percent: 10,
+                    active: None,
+                    label: config.name.clone(),
                 });
                 self.sink.send(output, OutputCommand::Calibrate(pattern));
                 Response::Ok

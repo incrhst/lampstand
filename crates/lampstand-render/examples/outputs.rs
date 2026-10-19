@@ -370,6 +370,8 @@ fn script() -> Vec<(u64, Step)> {
             Step::Calibrate(Some(CalibrationPattern {
                 current: area,
                 max_percent: 10,
+                active: Some(lampstand_render::Edge::Left),
+                label: "Stage".into(),
             })),
         ),
         (1500, Step::Calibrate(None)),

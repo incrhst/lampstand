@@ -539,7 +539,7 @@ impl Engine {
             }
         }
 
-        if let Some(pattern) = l.calibrate {
+        if let Some(pattern) = l.calibrate.clone() {
             if a.work
                 .calibration
                 .as_ref()

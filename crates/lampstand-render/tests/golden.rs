@@ -157,7 +157,14 @@ fn check(name: &str, image: &Image) {
     }
 }
 
+/// Tests share one `Renderer` and run in parallel, but a renderer is meant
+/// to be driven from one thread (the render thread): two scenes drawn at
+/// once share the glyph renderers and can swap each other's text. So draw
+/// one at a time.
+static RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn render(f: &Fixture, scene: &Scene, width: u32, height: u32) -> Image {
+    let _one_at_a_time = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     f.renderer.render_offscreen(scene, width, height).unwrap()
 }
 
@@ -965,4 +972,204 @@ fn bad_sizes_are_errors() {
         f.renderer.render_offscreen(&s, 10, 1 << 20),
         Err(RenderError::Device(_))
     ));
+}
+
+// Calibration pattern (TS-1).
+
+mod calibration {
+    use super::*;
+    use lampstand_core::safe_area::SafeArea;
+    use lampstand_render::calibrate::{self, CORNERS};
+    use lampstand_render::output::overlay::{calibration_scene, safe_area_scene};
+    use lampstand_render::{CalibrationPattern, Edge};
+
+    const AREA: SafeArea = SafeArea {
+        top: 0.05,
+        right: 0.06,
+        bottom: 0.08,
+        left: 0.04,
+    };
+
+    fn pattern(active: Option<Edge>) -> CalibrationPattern {
+        CalibrationPattern {
+            current: AREA,
+            max_percent: 15,
+            active,
+            label: "Main".into(),
+        }
+    }
+
+    fn px(image: &Image, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y * image.width + x) * 4) as usize;
+        image.pixels[i..i + 4].try_into().unwrap()
+    }
+
+    fn rgba(c: Color) -> [u8; 4] {
+        [c.r, c.g, c.b, 255]
+    }
+
+    /// Pixels in the box that are brighter than `min` in the red channel.
+    fn bright(image: &Image, x: Range<u32>, y: Range<u32>, min: u8) -> usize {
+        y.flat_map(|y| x.clone().map(move |x| (x, y)))
+            .filter(|&(x, y)| px(image, x, y)[0] > min)
+            .count()
+    }
+
+    use std::ops::Range;
+
+    /// Checks by pixel, on outputs whose 1% is a whole number of pixels
+    /// (so a ring's position is exact).
+    fn check_pattern(image: &Image, active: Option<Edge>) {
+        let (w, h) = (image.width, image.height);
+        let (fw, fh) = (w as f32, h as f32);
+
+        // A different colour in each corner, on the arm along the side.
+        let (arm, i) = (fh * 0.04, 5);
+        let corner_px = [
+            (i, arm as u32),
+            (w - 1 - i, arm as u32),
+            (w - 1 - i, h - 1 - arm as u32),
+            (i, h - 1 - arm as u32),
+        ];
+        for ((x, y), color) in corner_px.into_iter().zip(CORNERS) {
+            assert_eq!(px(image, x, y), rgba(color), "corner at {x},{y}");
+        }
+
+        // The edge ring is on the very edge; ring 1 (dim) and ring 5 and
+        // ring 10 (bright, alternating colours) are where they say, at the
+        // left edge at a height clear of any number.
+        let y = (fh * 0.667) as u32;
+        assert_eq!(px(image, w / 2 + 100, 1), rgba(calibrate::EDGE));
+        assert_eq!(px(image, w / 100, y), rgba(calibrate::ring_color(1)));
+        assert_eq!(px(image, w * 5 / 100, y), rgba(calibrate::RING_B));
+        assert_eq!(px(image, w * 10 / 100, y), rgba(calibrate::RING_A));
+        // ... and on the top edge, 1% of the height down, at a clear x.
+        let x = (fw * 0.625) as u32;
+        assert_eq!(px(image, x, h / 100), rgba(calibrate::ring_color(1)));
+        assert_eq!(px(image, x, h * 10 / 100), rgba(calibrate::RING_A));
+        // Empty space is black.
+        assert_eq!(
+            px(image, w * 3 / 10 + 20, h * 3 / 10 + 20),
+            rgba(Color::BLACK)
+        );
+        // The 10% grid.
+        assert_eq!(
+            px(image, w * 3 / 10 + 40, h * 3 / 10 - 1),
+            rgba(calibrate::GRID)
+        );
+
+        // The safe area, in cyan: left at 4%, right at 6%, top at 5%.
+        let left = (fw * AREA.left) as u32;
+        let right = (fw * (1.0 - AREA.right)) as u32;
+        let top = (fh * AREA.top) as u32;
+        let cyan = rgba(calibrate::SAFE);
+        assert_eq!(px(image, right - 2, y), cyan, "right edge");
+        if active != Some(Edge::Top) {
+            assert_eq!(px(image, x, top + 2), cyan, "top edge");
+        }
+        match active {
+            // The edge being adjusted is white.
+            Some(Edge::Left) => {
+                assert_eq!(px(image, left + 2, y), rgba(calibrate::ACTIVE));
+                assert_eq!(px(image, right - 2, y), cyan);
+            }
+            _ => assert_eq!(px(image, left + 2, y), cyan, "left edge"),
+        }
+
+        // Numbers are drawn: ring 7's small number, in the band 7-8% down
+        // from the top edge at 30% across, and ring 5's large one just inside ring 5.
+        let band = (h * 7 / 100 + 1)..(h * 8 / 100);
+        assert!(
+            bright(image, w * 3 / 10 - 12..w * 3 / 10 + 12, band, 150) > 5,
+            "small 7"
+        );
+        let big = (h * 5 / 100 + 3)..(h * 5 / 100 + 3 + h / 30);
+        let at = (fw * 0.14) as u32;
+        assert!(bright(image, at - 20..at + 20, big, 200) > 40, "large 5");
+        // The corner names, in their colours, at 20% and 80%.
+        for ((fx, fy), color) in [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
+            .into_iter()
+            .zip(CORNERS)
+        {
+            let (cx, cy) = ((fw * fx) as u32, (fh * fy) as u32);
+            let n = (cy - 30..cy + 30)
+                .flat_map(|y| (cx - 40..cx + 40).map(move |x| (x, y)))
+                .filter(|&(x, y)| px(image, x, y) == rgba(color))
+                .count();
+            assert!(n > 30, "corner name at {cx},{cy}: {n} pixels");
+        }
+        // The caption under the centre cross.
+        let below = (h / 2 + h / 14)..(h / 2 + h / 5);
+        assert!(
+            bright(image, w / 2 - 150..w / 2 + 150, below, 200) > 200,
+            "caption"
+        );
+    }
+
+    #[test]
+    fn calibration_16x9() {
+        let f = fixture_or_skip!();
+        let scene = calibration_scene(&pattern(Some(Edge::Left)), 1600.0, 900.0);
+        let image = render(f, &scene, 1600, 900);
+        check_pattern(&image, Some(Edge::Left));
+        check("calibration_16x9", &image);
+    }
+
+    #[test]
+    fn calibration_4x3() {
+        let f = fixture_or_skip!();
+        let scene = calibration_scene(&pattern(None), 1200.0, 900.0);
+        let image = render(f, &scene, 1200, 900);
+        check("calibration_4x3", &image);
+        check_pattern(&image, None);
+    }
+
+    #[test]
+    fn calibration_32x9() {
+        let f = fixture_or_skip!();
+        let scene = calibration_scene(&pattern(Some(Edge::Top)), 3200.0, 900.0);
+        let image = render(f, &scene, 3200, 900);
+        check_pattern(&image, Some(Edge::Top));
+        check("calibration_32x9", &image);
+    }
+
+    #[test]
+    fn the_edge_being_adjusted_is_the_one_that_changes() {
+        let f = fixture_or_skip!();
+        let render_with = |active| {
+            render(
+                f,
+                &calibration_scene(&pattern(active), 1600.0, 900.0),
+                1600,
+                900,
+            )
+        };
+        let none = render_with(None);
+        for edge in Edge::ALL {
+            let image = render_with(Some(edge));
+            // The white line is on the safe-area edge, clear of the labels.
+            let (x, y) = match edge {
+                Edge::Top => (1000, 45 + 2),
+                Edge::Bottom => (1000, 900 - 72 - 2),
+                Edge::Left => (64 + 2, 600),
+                Edge::Right => (1504 - 3, 600),
+            };
+            assert_eq!(px(&image, x, y), rgba(calibrate::ACTIVE), "{edge:?}");
+            assert_ne!(px(&none, x, y), rgba(calibrate::ACTIVE), "{edge:?} without");
+        }
+    }
+
+    #[test]
+    fn safe_area_overlay_for_previews() {
+        let f = fixture_or_skip!();
+        let scene = safe_area_scene(&AREA, 1600.0, 900.0);
+        let image = render(f, &scene, 1600, 900);
+        // Transparent but for a dashed outline at the margins.
+        assert_eq!(px(&image, 800, 450)[3], 0);
+        let dashes = (0..900)
+            .filter(|&y| px(&image, 64, y)[3] > 128 || px(&image, 65, y)[3] > 128)
+            .count();
+        assert!(dashes > 100 && dashes < 700, "dashed, not solid: {dashes}");
+        check("safe_area_overlay", &image);
+    }
 }
