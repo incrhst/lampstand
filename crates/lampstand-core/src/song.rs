@@ -2,20 +2,27 @@
 //!
 //! PRD: SL-1.
 
-/// A labelled block of lyrics, such as "V1" or "C".
-#[derive(Debug, Clone, PartialEq, Eq)]
+use autosurgeon::{Hydrate, Reconcile};
+use serde::{Deserialize, Serialize};
+
+/// A labelled block of lyrics, such as "V1" or "C". Labels are unique within
+/// a song and identify the section when edits from several devices merge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Section {
+    #[key]
     pub label: String,
     pub lines: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Reconcile, Hydrate)]
 pub struct Song {
     pub title: String,
     pub author: Option<String>,
     pub copyright: Option<String>,
     pub ccli_number: Option<u32>,
     pub key: Option<String>,
+    /// Beats per minute.
+    pub tempo: Option<u16>,
     pub sections: Vec<Section>,
     /// Section labels in the order they are sung. Empty means the order the
     /// sections are written in.
@@ -50,7 +57,10 @@ mod tests {
     use super::*;
 
     fn section(label: &str) -> Section {
-        Section { label: label.into(), lines: vec![format!("{label} line")] }
+        Section {
+            label: label.into(),
+            lines: vec![format!("{label} line")],
+        }
     }
 
     fn song(arrangement: &[&str]) -> Song {
@@ -63,7 +73,11 @@ mod tests {
     }
 
     fn labels(song: &Song) -> Vec<String> {
-        song.arranged().unwrap().iter().map(|s| s.label.clone()).collect()
+        song.arranged()
+            .unwrap()
+            .iter()
+            .map(|s| s.label.clone())
+            .collect()
     }
 
     #[test]
@@ -73,11 +87,17 @@ mod tests {
 
     #[test]
     fn arrangement_repeats_sections() {
-        assert_eq!(labels(&song(&["V1", "C", "V2", "C", "C"])), ["V1", "C", "V2", "C", "C"]);
+        assert_eq!(
+            labels(&song(&["V1", "C", "V2", "C", "C"])),
+            ["V1", "C", "V2", "C", "C"]
+        );
     }
 
     #[test]
     fn unknown_label_is_an_error() {
-        assert_eq!(song(&["V1", "B"]).arranged(), Err(SongError::UnknownSection("B".into())));
+        assert_eq!(
+            song(&["V1", "B"]).arranged(),
+            Err(SongError::UnknownSection("B".into()))
+        );
     }
 }
