@@ -15,6 +15,7 @@ pub struct Section {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Reconcile, Hydrate)]
+#[serde(default)]
 pub struct Song {
     pub title: String,
     pub author: Option<String>,

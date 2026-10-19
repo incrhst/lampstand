@@ -23,6 +23,30 @@ The product requirements are in [docs/PRD.md](docs/PRD.md).
 cargo test --workspace
 ```
 
+## Try the output window
+
+Shows a song full screen on a second display if there is one, otherwise on
+the main display:
+
+```
+cargo run -p lampstand-render --bin lampstand-output -- --windowed --safe 0.05,0.05,0.2,0.05
+```
+
+Pass a song as JSON to show it instead of the demo
+(see `crates/lampstand-render/examples/amazing-grace.json`). Drop
+`--windowed` for full screen.
+
+| Key | Action |
+| --- | --- |
+| Right, Down, Space, Page Down | Next slide |
+| Left, Up, Page Up | Previous slide |
+| B or . | Black screen (press again to return) |
+| C or W | Clear text, keep the background |
+| S | Show the safe area |
+| Ctrl+Q / Cmd+Q | Quit (Esc also quits in a window) |
+
+Set `LAMPSTAND_TIMING=1` to log the time from key press to frame.
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

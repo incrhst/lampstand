@@ -1,0 +1,37 @@
+{
+  "title": "Amazing Grace",
+  "author": "John Newton",
+  "copyright": "Public domain",
+  "key": "G",
+  "tempo": 72,
+  "sections": [
+    {
+      "label": "V1",
+      "lines": [
+        "Amazing grace! How sweet the sound",
+        "That saved a wretch like me!",
+        "I once was lost, but now am found;",
+        "Was blind, but now I see."
+      ]
+    },
+    {
+      "label": "V2",
+      "lines": [
+        "'Twas grace that taught my heart to fear,",
+        "And grace my fears relieved;",
+        "How precious did that grace appear",
+        "The hour I first believed."
+      ]
+    },
+    {
+      "label": "V3",
+      "lines": [
+        "Through many dangers, toils and snares,",
+        "I have already come;",
+        "'Tis grace hath brought me safe thus far,",
+        "And grace will lead me home."
+      ]
+    }
+  ],
+  "arrangement": ["V1", "V2", "V3", "V1"]
+}
