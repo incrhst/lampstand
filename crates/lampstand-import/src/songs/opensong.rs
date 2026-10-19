@@ -1,7 +1,9 @@
 //! OpenSong songs: XML files without extension in a `Songs` folder, lyrics in OpenSong's `[V1]` / `.`chord-line text format.
 //!
-//! `path` is one song file or a `Songs` folder, searched recursively. A file
-//! that is not an OpenSong song goes to `skipped`; the rest still import.
+//! `path` is one song file, a `Songs` folder (searched recursively) or an
+//! OpenSongApp backup (`.osb`, a zip of song files, which is also how
+//! worshipleaderapp.com publishes its song database). A file that is not an
+//! OpenSong song goes to `skipped`; the rest still import.
 //!
 //! Lyrics format, by first character of each line:
 //!
@@ -27,6 +29,9 @@ use crate::{ImportError, Skipped, SongImport};
 
 pub fn import(path: &Path) -> Result<SongImport, ImportError> {
     let meta = fs::metadata(path)?;
+    if meta.is_file() && is_zip(path)? {
+        return import_backup(path);
+    }
     let mut files = Vec::new();
     if meta.is_dir() {
         collect_files(path, &mut files)?;
@@ -47,6 +52,56 @@ pub fn import(path: &Path) -> Result<SongImport, ImportError> {
             Ok(song) => out.songs.push(song),
             Err(reason) => out.skipped.push(Skipped {
                 source: name,
+                reason,
+            }),
+        }
+    }
+    Ok(out)
+}
+
+fn is_zip(path: &Path) -> Result<bool, ImportError> {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    let n = fs::File::open(path)?.read(&mut magic)?;
+    Ok(n == 4 && magic == *b"PK\x03\x04")
+}
+
+/// An OpenSongApp backup: every file in the zip that is not a folder or a
+/// hidden file is a song. Entry names are the songs' file names.
+fn import_backup(path: &Path) -> Result<SongImport, ImportError> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(fs::File::open(path)?)
+        .map_err(|e| ImportError::Unreadable(format!("not a readable zip: {e}")))?;
+    let mut out = SongImport::default();
+    for i in 0..zip.len() {
+        let mut entry = match zip.by_index(i) {
+            Ok(entry) => entry,
+            Err(e) => {
+                out.skipped.push(Skipped {
+                    source: format!("entry {i}"),
+                    reason: e.to_string(),
+                });
+                continue;
+            }
+        };
+        let full = entry
+            .name()
+            .map(|n| n.into_owned())
+            .unwrap_or_else(|_| String::from_utf8_lossy(entry.name_raw()).into_owned());
+        let name = full.rsplit('/').next().unwrap_or(&full).to_string();
+        if entry.is_dir() || name.is_empty() || name.starts_with('.') {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        let parsed = entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())
+            .and_then(|_| String::from_utf8(bytes).map_err(|_| "not valid UTF-8".to_string()))
+            .and_then(|text| parse_song(&text, &name));
+        match parsed {
+            Ok(song) => out.songs.push(song),
+            Err(reason) => out.skipped.push(Skipped {
+                source: full,
                 reason,
             }),
         }

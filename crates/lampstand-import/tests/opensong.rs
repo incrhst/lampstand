@@ -94,3 +94,17 @@ fn bad_single_file_is_skipped_not_an_error() {
 fn missing_path_is_an_io_error() {
     assert!(import_songs(SongFormat::OpenSong, &fixture("nope")).is_err());
 }
+
+/// An OpenSongApp backup (`.osb`): a zip of song files, the format
+/// worshipleaderapp.com publishes its song database in.
+#[test]
+fn opensongapp_backup_zip() {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/opensong_backup/hymns.osb");
+    let out = import_songs(SongFormat::OpenSong, &path).unwrap();
+    let mut titles: Vec<_> = out.songs.iter().map(|s| s.title.as_str()).collect();
+    titles.sort();
+    assert_eq!(titles, ["Amazing Grace", "Holy, Holy, Holy"]);
+    assert_eq!(out.skipped.len(), 1, "{:?}", out.skipped);
+    assert_eq!(out.skipped[0].source, "Bad/Broken");
+}

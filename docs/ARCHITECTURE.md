@@ -77,7 +77,7 @@ Theme sizes are pixels on a 1080-line screen and scale with output height, so on
 
 ### Outputs render natively on one render thread
 
-Each physical output is a borderless fullscreen Tauri window with no webview and a wgpu surface (Tauri 2 exposes raw window handles). One render thread owns the device and every surface. It paces itself with FIFO present and never waits on the UI thread. The cursor is hidden over output windows, and they are created only once the first frame is ready, so a desktop or a white flash never shows (NFR Reliability).
+Each physical output is a borderless fullscreen Tauri window with no webview and a wgpu surface. One render thread owns the device and every surface. It paces itself with FIFO present and never waits on the UI thread. The cursor is hidden over output windows, and they are created only once the first frame is ready, so a desktop or a white flash never shows (NFR Reliability).
 
 How T25 built it (details at the top of `lampstand-render/src/lib.rs`):
 
@@ -88,6 +88,14 @@ How T25 built it (details at the top of `lampstand-render/src/lib.rs`):
 - Displays are matched by name, then size, then nearest position (`output::assign_displays`). A display that matches on neither name nor size is never used, so a missing projector's output waits hidden instead of covering the operator's screen.
 - A surface failure affects only its own output. The output keeps its scene, so re-attaching a window shows the live slide at once.
 - `core::scene::Direction` always names a side: the side a push or cover enters from, where a wipe starts, where a fly-in comes from. `Effect::Transparency` is PowerPoint's transparency value (0.5 means half see-through).
+
+How the app hosts them (T46, `app/src-tauri/src/shell.rs`):
+
+- **Webview-less Tauri windows.** Output windows are `tauri::window::Window`s built with `tauri::window::WindowBuilder`, which needs Tauri 2's `unstable` feature (Tauri 2.12). The alternative, creating our own winit windows and handing their raw handles to T25, is not possible: Tauri's event loop (tao) is the only one a process may run on macOS, and winit cannot share it. A webview window with a surface on top would load a webview per projector for nothing. A `tauri::Window` implements raw-window-handle 0.6, so it goes straight into `Outputs::attach`. If `unstable` changes under us, the fallback is the same window type built through `WebviewWindowBuilder` with an empty page, at the cost of a webview per output.
+- **Threads.** The main thread runs Tauri's event loop and creates, places and destroys output windows (macOS wants surfaces created there); it never locks the app state. `api` requests run on Tauri's blocking pool and lock `App`. An app thread (`lampstand-app`) handles window resizes and closes, render-thread events, library change notifications, the 100 ms live tick and a once-a-second display poll (Tauri has no hot-plug event). Imports and song-database downloads run without the `App` lock, on the shared `Library`, so a minutes-long import never blocks live control.
+- **Sizes.** Each output is composed at its window's real inner size in physical pixels, reported on attach and on every resize, so a Retina rehearsal window gets a 2× scene. A window is reopened only when the placement it was asked for changes (a different display, a new configured size), never because its real size differs.
+- **Rehearsal windows** (`OutputTarget::Window`) are normal decorated windows, opened in the bottom-right corner of the operator's screen. macOS never presents to a window that is completely covered (wgpu reports it occluded and T25 retries), so a rehearsal window hidden behind the operator window looks frozen until uncovered. Projectors and stage displays are not affected. Closing a rehearsal window disables its output.
+- **Display outputs** are borderless, always on top and kept out of the taskbar, placed with physical coordinates on the display `assign_displays` picks, and made simple-fullscreen with the cursor hidden on their first frame.
 
 On laptops with two GPUs, the integrated one is preferred: it has lower power draw and avoids switching stalls. If no adapter works, a software adapter is used so the app always starts.
 
@@ -148,6 +156,22 @@ The operator and planning screens are a Svelte 5 + TypeScript app (Vite), in `ap
 
 The UI speaks only `lampstand-api` messages. On the desktop they go through a single Tauri command and event stream; in Phase 2 the browser planner sends the same messages over a WebSocket. TypeScript types are generated from the Rust types with ts-rs and never written by hand.
 
+How the app is laid out (T46):
+
+- `app/src-tauri/src/handler.rs` holds `App`, the app state (library, live engine, fonts, per-output composition cache, device-local output configuration) and every request handler. It has no Tauri in it: the render thread is behind `OutputSink` and the windows behind a `WindowHost` trait, so `app/src-tauri/tests/handler.rs` drives the whole click path with a recording sink and fake windows.
+- `app/src/lib/api.ts` is the only way to the core: `request(req, "Services")` returns the payload of the expected response type and throws `ApiError` on `Response::Error`; `send(req)` for `Ok`; `onEvent(handler)` for the `api-event` stream. `app/src/lib/state.svelte.ts` keeps the loaded service, cursors and overlay current from events.
+- Screens live in `app/src/routes/<name>/`, one folder per ticket (T47 `operate`, T48 `library`, T49 `plan`, T50 `outputs`...). Shared components and design tokens are in `app/src/lib/kit/`.
+- `ServiceRequest::Open` answers `Response::Loaded`: every item with its slides, as the live engine holds them, so the operator view never paginates. `Event::Loaded` brings the same after a reload, and `Event::Live` carries the overlay so Black shows its state.
+- Operator keys (in Lampstand's windows): Space, Right or Page Down for Next; Left or Page Up for Previous; full stop for Black; 1 to 9 jump to that verse of the live song; C, B, P, T, I and E jump to the next chorus, bridge, pre-chorus, tag, intro or ending, wrapping round. B means Bridge here, not Black: clickers send B for black, so T56's clicker mode maps the clicker's B to Black while it holds the global shortcuts.
+
+### Getting songs in
+
+`LibraryRequest::ImportFiles` takes files and folders and works out the format by extension, then by content: OpenLyrics, OpenSong (a song file, a `Songs` folder, OpenSong's data folder, or an OpenSongApp `.osb` backup), SongSelect, FreeShow, ProPresenter, EasyWorship, and the Bible formats. Imported songs get an ID derived from their title and lyrics (UUIDv5), so importing the same library twice skips the songs already there and leaves edited copies alone.
+
+A first library can come from Worship Leader App's free song database (`lampstand-connectors::song_databases`): about 50 languages, published daily as `.osb` backups. The operator picks a language and the app downloads and imports it. Nothing is bundled: many of those songs are under copyright, and the church's own licence covers projecting them. The database carries no copyright or CCLI numbers, so CCLI reports for those songs need the numbers added. A fresh install also imports two public-domain hymns (`app/src-tauri/seed/`), so there is always something to show.
+
+Importing the 3,100-song English database takes about 110 s on an M1 (release build), almost all of it in `Repo::put`, one document at a time. A batched put in the sync repo is the fix (follow-up).
+
 ### Media: GStreamer, behind a feature
 
 Video backgrounds, media items and video embedded in decks decode through GStreamer (`playbin3` into an `appsink` of RGBA frames, uploaded to wgpu textures). The same pipeline gives NDI, Spout and Syphon in Phase 2.
@@ -160,7 +184,7 @@ One axum server on port 7340 serves the OBS browser source, peer sync and the Go
 
 ### Clickers
 
-Presenter clickers send Page Up, Page Down, B and full stop. While a service is live and clicker mode is on, those keys are registered as global shortcuts, so they work whichever window has focus (PS-9). Arrow keys are taken only while a Lampstand window has focus, so other apps keep them.
+Presenter clickers send Page Up, Page Down, B and full stop (in the operator view, B is Bridge; see "UI"). While a service is live and clicker mode is on, those keys are registered as global shortcuts, so they work whichever window has focus (PS-9). Arrow keys are taken only while a Lampstand window has focus, so other apps keep them.
 
 ### Updates
 
