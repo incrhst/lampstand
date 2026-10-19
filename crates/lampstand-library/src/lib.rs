@@ -37,6 +37,12 @@ const STARTER_THEME_ID: Uuid = Uuid::from_u128(0x0192_0000_0000_7000_8000_6c61_6
 /// Encodes Bible text as the bytes of a translation blob: postcard, then
 /// zstd. Store the result with `repo().blobs().put` and point
 /// `Translation::text` at the hash.
+/// The starter theme every library has from first run. Songs and
+/// scripture use it when neither the service nor the output names a theme.
+pub fn starter_theme_id() -> ThemeId {
+    ThemeId::from_uuid(STARTER_THEME_ID)
+}
+
 pub fn encode_bible_text(text: &BibleText) -> Result<Vec<u8>, SyncError> {
     let raw = postcard::to_stdvec(text)
         .map_err(|e| SyncError::Corrupt(format!("encoding Bible text: {e}")))?;

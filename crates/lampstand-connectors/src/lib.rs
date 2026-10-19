@@ -5,6 +5,7 @@
 
 pub mod google;
 pub mod links;
+pub mod song_databases;
 
 /// A file fetched from a source, with the source's own version marker so
 /// later checks can skip the download when nothing changed (PS-5).

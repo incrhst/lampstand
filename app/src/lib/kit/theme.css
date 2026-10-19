@@ -1,0 +1,54 @@
+/* Tokens for every screen. T60 checks contrast against these. */
+:root {
+  --bg: #12151c;
+  --panel: #1a1f29;
+  --raised: #242b38;
+  --line: #333c4d;
+  --text: #e8ecf3;
+  --muted: #9aa4b5;
+  --accent: #f4c542;
+  --on-accent: #1d2a5c;
+  --danger: #c0392b;
+  --live: #2ecc71;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+}
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+ul.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+ul.list li {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.muted {
+  color: var(--muted);
+}

@@ -8,8 +8,9 @@
 //! payload, or `Response::Error`.
 
 use lampstand_core::deck::{Deck, DeckId};
-use lampstand_core::output::OutputConfig;
 use lampstand_core::output::OutputId;
+use lampstand_core::output::{DisplayMatch, OutputConfig};
+use lampstand_core::program::Overlay;
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scripture::{Passage, Translation, TranslationId};
 use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId};
@@ -46,9 +47,21 @@ pub enum LibraryRequest {
         reference: String,
         translation: TranslationId,
     },
-    /// Files dropped or picked: PPTX, images, video, song or Bible files.
+    /// Files or folders dropped or picked: PPTX, images, video, song or
+    /// Bible files, an OpenSong data or `Songs` folder, an OpenSongApp
+    /// backup (`.osb`). Songs already in the library are not added again.
+    /// Answers `Response::Text` with a summary; progress comes as
+    /// `Event::ImportProgress`.
     ImportFiles {
         paths: Vec<String>,
+    },
+    /// The free song databases this app can download, as
+    /// `Response::SongDatabases`.
+    ListSongDatabases,
+    /// Downloads one language's database (a `SongDatabase::code`) and
+    /// imports it as `ImportFiles` would.
+    DownloadSongDatabase {
+        code: String,
     },
     AddDeckFromLink {
         url: String,
@@ -78,7 +91,8 @@ pub enum ServiceRequest {
         service: ServiceId,
         item: ItemId,
     },
-    /// Load into the live engine (and start pre-service caching).
+    /// Load into the live engine (and start pre-service caching). Answers
+    /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),
     Readiness(ServiceId),
     ExportPackage {
@@ -93,6 +107,7 @@ pub enum ServiceRequest {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OutputRequest {
+    /// The monitors this machine has now, as `Response::Displays`.
     ListDisplays,
     List,
     Put(OutputConfig),
@@ -140,7 +155,54 @@ pub enum Response {
     Services(Vec<ServiceSummary>),
     Deck(Deck),
     Outputs(Vec<OutputConfig>),
+    /// The monitors connected now, as a `Display` target would match them.
+    Displays(Vec<DisplayMatch>),
+    /// The service now in the live engine, split into slides.
+    Loaded(LoadedService),
+    SongDatabases(Vec<SongDatabase>),
     Text(String),
+}
+
+/// A song database that can be downloaded to start a library.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SongDatabase {
+    /// What `DownloadSongDatabase` takes.
+    pub code: String,
+    /// "English", "Spanish".
+    pub name: String,
+    /// Where it comes from, to show the operator: "worshipleaderapp.com".
+    pub source: String,
+}
+
+/// A service as the live engine holds it: every item with its slides, in
+/// order. Cursors in `Event::Live` index into this.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadedService {
+    pub service: ServiceId,
+    pub title: String,
+    pub items: Vec<LoadedItemView>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadedItemView {
+    pub id: ItemId,
+    pub title: String,
+    /// Empty for headers and for items that cannot be shown yet.
+    pub slides: Vec<SlideView>,
+}
+
+/// One slide as the operator sees it.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SlideView {
+    /// "V1", "John 3:16", or the slide's kind for non-text slides.
+    pub label: Option<String>,
+    pub lines: Vec<String>,
+    /// Build steps after the slide appears (deck slides).
+    pub steps: usize,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -169,8 +231,15 @@ pub enum Event {
         live: Option<Cursor>,
         preview: Option<Cursor>,
         idle: bool,
+        /// Black or logo, which persist across slides.
+        overlay: Overlay,
     },
+    /// A service was loaded or reloaded (an edit synced in mid-service):
+    /// the operator view should show these slides.
+    Loaded(LoadedService),
     /// A document changed (here or on another device); refetch if shown.
+    /// When many change at once (an import, a first sync), one event with
+    /// an empty `id` stands for all of that kind.
     Changed {
         kind: String,
         id: String,
