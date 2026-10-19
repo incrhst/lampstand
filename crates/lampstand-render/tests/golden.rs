@@ -157,14 +157,7 @@ fn check(name: &str, image: &Image) {
     }
 }
 
-/// Tests share one `Renderer` and run in parallel, but a renderer is meant
-/// to be driven from one thread (the render thread): two scenes drawn at
-/// once share the glyph renderers and can swap each other's text. So draw
-/// one at a time.
-static RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn render(f: &Fixture, scene: &Scene, width: u32, height: u32) -> Image {
-    let _one_at_a_time = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     f.renderer.render_offscreen(scene, width, height).unwrap()
 }
 
@@ -1038,7 +1031,7 @@ mod calibration {
         // The edge ring is on the very edge; ring 1 (dim) and ring 5 and
         // ring 10 (bright, alternating colours) are where they say, at the
         // left edge at a height clear of any number.
-        let y = (fh * 0.667) as u32;
+        let y = (fh * 0.45) as u32;
         assert_eq!(px(image, w / 2 + 100, 1), rgba(calibrate::EDGE));
         assert_eq!(px(image, w / 100, y), rgba(calibrate::ring_color(1)));
         assert_eq!(px(image, w * 5 / 100, y), rgba(calibrate::RING_B));
@@ -1070,19 +1063,16 @@ mod calibration {
         match active {
             // The edge being adjusted is white.
             Some(Edge::Left) => {
-                assert_eq!(px(image, left + 2, y), rgba(calibrate::ACTIVE));
+                assert_eq!(px(image, left + 8, y), rgba(calibrate::ACTIVE));
                 assert_eq!(px(image, right - 2, y), cyan);
             }
             _ => assert_eq!(px(image, left + 2, y), cyan, "left edge"),
         }
 
-        // Numbers are drawn: ring 7's small number, in the band 7-8% down
-        // from the top edge at 30% across, and ring 5's large one just inside ring 5.
-        let band = (h * 7 / 100 + 1)..(h * 8 / 100);
-        assert!(
-            bright(image, w * 3 / 10 - 12..w * 3 / 10 + 12, band, 150) > 5,
-            "small 7"
-        );
+        // Numbers are drawn: ring 7's small number, just inside ring 7,
+        // in the second column of the top edge, and ring 5's large one just inside ring 5.
+        let (cx, band) = ((fw * 0.345) as u32, (h * 7 / 100 + 1)..(h * 9 / 100));
+        assert!(bright(image, cx - 12..cx + 12, band, 150) > 30, "small 7");
         let big = (h * 5 / 100 + 3)..(h * 5 / 100 + 3 + h / 30);
         let at = (fw * 0.14) as u32;
         assert!(bright(image, at - 20..at + 20, big, 200) > 40, "large 5");
@@ -1133,6 +1123,46 @@ mod calibration {
         check("calibration_32x9", &image);
     }
 
+    /// Rows of the top-edge number for ring 3 (a single bold white digit,
+    /// 2% of the height tall) that have white pixels in them: its ink
+    /// height. Rings 4 and 5 cross the box but are dim grey and yellow.
+    fn ink_rows(image: &Image) -> usize {
+        let (w, h) = (image.width, image.height);
+        let cx = (w as f32 * 0.30) as u32;
+        (h * 3 / 100..h * 11 / 200)
+            .filter(|&y| (cx - 12..cx + 12).any(|x| px(image, x, y)[..3].iter().all(|&c| c > 200)))
+            .count()
+    }
+
+    #[test]
+    fn calibration_720p() {
+        let f = fixture_or_skip!();
+        let scene = calibration_scene(&pattern(Some(Edge::Bottom)), 1280.0, 720.0);
+        let image = render(f, &scene, 1280, 720);
+        // The top and bottom numbers, the hard case at 1% steps, are
+        // tall enough to read: a digit's ink is about 0.7 of its size.
+        assert!(
+            ink_rows(&image) >= 9,
+            "ring 3 is {} px tall",
+            ink_rows(&image)
+        );
+        check("calibration_720p", &image);
+    }
+
+    #[test]
+    fn top_numbers_are_legible_on_xga_and_1080p() {
+        let f = fixture_or_skip!();
+        for (w, h) in [(1024, 768), (1920, 1080)] {
+            let scene = calibration_scene(&pattern(None), w as f32, h as f32);
+            let image = render(f, &scene, w, h);
+            assert!(
+                ink_rows(&image) >= 9,
+                "{w}x{h}: ring 3 is {} px tall",
+                ink_rows(&image)
+            );
+        }
+    }
+
     #[test]
     fn the_edge_being_adjusted_is_the_one_that_changes() {
         let f = fixture_or_skip!();
@@ -1147,12 +1177,12 @@ mod calibration {
         let none = render_with(None);
         for edge in Edge::ALL {
             let image = render_with(Some(edge));
-            // The white line is on the safe-area edge, clear of the labels.
+            // The highlight is on the safe-area edge, clear of the labels.
             let (x, y) = match edge {
-                Edge::Top => (1000, 45 + 2),
-                Edge::Bottom => (1000, 900 - 72 - 2),
-                Edge::Left => (64 + 2, 600),
-                Edge::Right => (1504 - 3, 600),
+                Edge::Top => (1000, 45 + 8),
+                Edge::Bottom => (1000, 900 - 72 - 8),
+                Edge::Left => (64 + 8, 405),
+                Edge::Right => (1504 - 8, 405),
             };
             assert_eq!(px(&image, x, y), rgba(calibrate::ACTIVE), "{edge:?}");
             assert_ne!(px(&none, x, y), rgba(calibrate::ACTIVE), "{edge:?} without");

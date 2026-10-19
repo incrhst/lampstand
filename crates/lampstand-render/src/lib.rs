@@ -273,6 +273,10 @@ pub struct Renderer {
     pipelines: gpu::Pipelines,
     blobs: Arc<dyn BlobSource>,
     state: Mutex<State>,
+    /// Held by `render_offscreen` from drawing to read-back: `draw` releases
+    /// `state` before the encoder is submitted, and a second scene prepared
+    /// in between would overwrite the shared glyph buffers.
+    offscreen: Mutex<()>,
 }
 
 /// Everything drawing mutates. Behind a mutex so `render_offscreen` can
@@ -308,6 +312,7 @@ impl Renderer {
             gpu,
             pipelines,
             blobs,
+            offscreen: Mutex::new(()),
             state: Mutex::new(State {
                 fonts,
                 glyphs,
@@ -341,6 +346,7 @@ impl Renderer {
                 "image size {width}x{height} is outside 1..={max}"
             )));
         }
+        let _one_at_a_time = self.offscreen.lock().unwrap_or_else(|e| e.into_inner());
         let device = &self.gpu.device;
         let target = gpu::Texture::new(device, "offscreen", width, height, 1, 1);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);

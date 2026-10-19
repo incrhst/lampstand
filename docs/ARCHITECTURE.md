@@ -99,8 +99,6 @@ How the app hosts them (T46, `app/src-tauri/src/shell.rs`):
 
 **Calibration (T26, T62).** `render/src/calibrate.rs` draws the TS-1 pattern as an ordinary `Scene` (paths and bundled-font text), so it is golden-tested like any slide. Numbered rings step in from every edge at 1% of the output's width and height, each with a small number just inside it, and every fifth ring also has a larger one that hangs inwards: number *n* is always entirely inside ring *n*, so it is visible only if the ring is. Corners are four different colours, there is a 10% grid, the current safe area is outlined in cyan with its margins labelled, and a caption names the output and its aspect ("32:9"). `CalibrationPattern` carries what the wizard (T50) varies: `current` margins, `active: Option<Edge>` (drawn in white with its label enlarged) and `label` (the output's name). The last two were added for this and default when deserialised; the struct is no longer `Copy`.
 
-A `Renderer` is meant to be driven from one thread. Two scenes drawn on one `Renderer` at the same time can swap each other's text (the glyph renderers are shared), so tests that share a renderer take a lock around each draw.
-
 On laptops with two GPUs, the integrated one is preferred: it has lower power draw and avoids switching stalls. If no adapter works, a software adapter is used so the app always starts.
 
 ### Crash recovery: a journal now, a separate process later if needed

@@ -78,13 +78,13 @@ pub const GRID: Color = Color::rgb(70, 70, 70);
 pub const RING_A: Color = Color::rgb(255, 255, 255);
 pub const RING_B: Color = Color::rgb(255, 210, 0);
 pub const SAFE: Color = Color::rgb(0, 229, 255);
-/// The edge being adjusted.
-pub const ACTIVE: Color = Color::rgb(255, 255, 255);
+/// The edge being adjusted: a colour used nowhere else in the pattern.
+pub const ACTIVE: Color = Color::rgb(190, 255, 0);
 
 /// Rings run to 45% at most: further in and they would cross.
 const MAX_RING: u32 = 45;
-/// Node IDs for the pattern, clear of content (below 2^24) and of the
-/// compositor and the other overlays (from 2^24 up to `u32::MAX - 1024`).
+/// Node IDs for the pattern. It is a standalone scene, so they only have to
+/// be unique within it; they start high to stay clear of content IDs.
 const NODE_BASE: u32 = 1 << 31;
 const FONT: &str = "Noto Sans";
 /// Width of a bold digit or letter relative to its font size, rounded up so
@@ -107,7 +107,7 @@ pub fn aspect_name(width: u32, height: u32) -> String {
     ];
     named
         .iter()
-        .find(|(r, _)| (ratio - r).abs() < 0.02)
+        .find(|(r, _)| (ratio / r - 1.0).abs() < 0.03)
         .map(|(_, name)| name.to_string())
         .unwrap_or_else(|| format!("{ratio:.2}:1"))
 }
@@ -364,8 +364,12 @@ pub fn scene(pattern: &CalibrationPattern, width: f32, height: f32) -> Scene {
         b.label(w * fx, h * fy, name, name_size, color);
     }
 
+    // The safe-area outline goes under the numbers, which must stay readable
+    // when a margin sits on a ring; its labels, in the middle of each edge,
+    // go over everything.
+    safe_outline(&mut b, pattern, w, h, line);
     ring_numbers(&mut b, w, h, max);
-    safe_area(&mut b, pattern, w, h, line);
+    safe_labels(&mut b, pattern, w, h, line);
 
     // Centre cross and the caption naming the output and its mode.
     let cross = m * 0.05;
@@ -414,16 +418,25 @@ pub fn scene(pattern: &CalibrationPattern, width: f32, height: f32) -> Scene {
     }
 }
 
-/// Where numbers go along an edge. Small numbers are at 30% and 70% of the
-/// edge, which leaves the middle for the safe-area labels. Large numbers
-/// are placed within the ring they belong to (the fractions are of the
-/// ring's own length), so they march in diagonally as the rings do and can
-/// never end up on a ring further in. Those of the left and right edges are
-/// at different fractions from those of the top and bottom, so they do not
-/// meet at a corner.
-const SMALL_ALONG: [f32; 2] = [0.3, 0.7];
+/// Where numbers go. Number `n` only has to be inside ring `n`, not inside
+/// the 1% band after it, so the small numbers are staggered: rings are dealt
+/// into three columns (top and bottom edges) or three rows (left and right)
+/// by `n % 3`, and each number can then be about two bands high or wide
+/// instead of one. They stay at two places along each edge, clear of the
+/// middle, which is for the safe-area labels.
+///
+/// Large numbers are placed within the ring they belong to (the fractions
+/// are of the ring's own length), so they march in diagonally as the rings
+/// do. Those of the left and right edges are at different fractions from
+/// those of the top and bottom, so they do not meet at a corner.
+const SMALL_COLUMNS: [f32; 2] = [0.30, 0.60];
+const SMALL_COLUMN_STEP: f32 = 0.045;
+const SMALL_ROWS: f32 = 0.28;
+const SMALL_ROW_STEP: f32 = 0.05;
 const BIG_ALONG_HORIZONTAL: [f32; 2] = [0.1, 0.9];
-const BIG_ALONG_VERTICAL: [f32; 2] = [0.12, 0.88];
+const BIG_ALONG_VERTICAL: [f32; 2] = [0.08, 0.92];
+/// The smallest a number may be, in pixels, so it stays a digit.
+const MIN_NUMBER: f32 = 8.0;
 
 /// A ring number, and the box it is drawn in.
 pub struct Number {
@@ -432,10 +445,10 @@ pub struct Number {
     pub size: f32,
 }
 
-/// Every ring number for an output: a small one for each ring in the band
-/// just inside it, and a large one for each fifth ring, hanging inwards
-/// from it. Number `n` is always entirely inside ring `n`, so seeing it
-/// means seeing the ring.
+/// Every ring number for an output: a small one for each ring, staggered,
+/// and a large one for each fifth ring. Number `n` is always entirely
+/// inside ring `n` (clear of the ring's own line), so seeing it means
+/// seeing the ring.
 pub fn numbers(width: f32, height: f32, max_percent: u32) -> Vec<Number> {
     let (w, h) = (width, height);
     let line = line_width(w, h);
@@ -447,26 +460,66 @@ pub fn numbers(width: f32, height: f32, max_percent: u32) -> Vec<Number> {
         let (dx, dy) = ring_inset(n, w, h);
         let text = n.to_string();
         let chars = text.chars().count() as f32;
-        let mut push = |cx: f32, cy: f32, size: f32| {
+        // Where the ring's own line ends, so the number starts clear of it.
+        let pad = match n {
+            0 => line * 2.0 + 1.0,
+            _ if n.is_multiple_of(5) => line * 0.75 + 1.0,
+            _ => line * 0.5 + 1.0,
+        };
+        let stagger = (n % 3) as f32;
+        let mut push = |rect: Rect, size: f32| {
             out.push(Number {
                 ring: n,
-                rect: label_rect(cx, cy, &text, size),
+                rect,
                 size,
             });
         };
+        let boxed = |x: f32, y: f32, size: f32| Rect {
+            x,
+            y,
+            width: chars * size * GLYPH_WIDTH,
+            height: size,
+        };
 
-        // Small: in the band from this ring to the next. Top and bottom
-        // bands are as tall as they are, so the text is as high as the
-        // band; left and right bands are as wide, so it is as wide.
-        let tb = (band_y * 0.85).max(6.0);
-        let lr = (band_x / (GLYPH_WIDTH * chars) * 0.9)
-            .min(band_y * 2.5)
-            .max(6.0);
-        for along in SMALL_ALONG {
-            push(w * along, dy + band_y / 2.0, tb);
-            push(w * along, h - dy - band_y / 2.0, tb);
-            push(dx + band_x / 2.0, h * along, lr);
-            push(w - dx - band_x / 2.0, h * along, lr);
+        // Small: two bands high (top and bottom) or as wide as three bands
+        // allow (left and right).
+        let tb = (band_y * 2.0).max(MIN_NUMBER);
+        let lr = (band_y * 2.0)
+            .min(band_x * 2.85 / (GLYPH_WIDTH * chars))
+            .max(MIN_NUMBER);
+        for column in SMALL_COLUMNS {
+            let cx = w * (column + SMALL_COLUMN_STEP * stagger);
+            let r = boxed(cx, dy + pad, tb);
+            push(
+                Rect {
+                    x: cx - r.width / 2.0,
+                    ..r
+                },
+                tb,
+            );
+            let r = boxed(cx, h - dy - pad - tb, tb);
+            push(
+                Rect {
+                    x: cx - r.width / 2.0,
+                    ..r
+                },
+                tb,
+            );
+        }
+        for row in [
+            SMALL_ROWS + SMALL_ROW_STEP * stagger,
+            1.0 - SMALL_ROWS - SMALL_ROW_STEP * stagger,
+        ] {
+            let cy = h * row;
+            push(boxed(dx + pad, cy - lr / 2.0, lr), lr);
+            let r = boxed(0.0, cy - lr / 2.0, lr);
+            push(
+                Rect {
+                    x: w - dx - pad - r.width,
+                    ..r
+                },
+                lr,
+            );
         }
 
         // Large: every fifth ring, anchored just inside the ring.
@@ -474,20 +527,14 @@ pub fn numbers(width: f32, height: f32, max_percent: u32) -> Vec<Number> {
             let (bw, bh) = (chars * big_size * GLYPH_WIDTH, big_size);
             let gap = line * 2.0;
             for along in BIG_ALONG_HORIZONTAL {
-                push(dx + (w - 2.0 * dx) * along, dy + gap + bh / 2.0, big_size);
-                push(
-                    dx + (w - 2.0 * dx) * along,
-                    h - dy - gap - bh / 2.0,
-                    big_size,
-                );
+                let cx = dx + (w - 2.0 * dx) * along;
+                push(boxed(cx - bw / 2.0, dy + gap, big_size), big_size);
+                push(boxed(cx - bw / 2.0, h - dy - gap - bh, big_size), big_size);
             }
             for along in BIG_ALONG_VERTICAL {
-                push(dx + gap + bw / 2.0, dy + (h - 2.0 * dy) * along, big_size);
-                push(
-                    w - dx - gap - bw / 2.0,
-                    dy + (h - 2.0 * dy) * along,
-                    big_size,
-                );
+                let cy = dy + (h - 2.0 * dy) * along;
+                push(boxed(dx + gap, cy - bh / 2.0, big_size), big_size);
+                push(boxed(w - dx - gap - bw, cy - bh / 2.0, big_size), big_size);
             }
         }
     }
@@ -501,11 +548,11 @@ fn ring_numbers(b: &mut Builder, w: f32, h: f32, max: u32) {
     }
 }
 
-/// The safe area as currently set: a cyan outline, each margin labelled
-/// just inside its edge, and the edge being adjusted drawn in white with its label enlarged.
-fn safe_area(b: &mut Builder, pattern: &CalibrationPattern, w: f32, h: f32, line: f32) {
-    let area = pattern.current;
-    let r = area.rect(w, h);
+/// The safe area as currently set: a cyan outline and, over it, the edge
+/// being adjusted in the highlight colour, three times as thick, growing
+/// inwards. Drawn before the ring numbers so it never covers one.
+fn safe_outline(b: &mut Builder, pattern: &CalibrationPattern, w: f32, h: f32, line: f32) {
+    let r = pattern.current.rect(w, h);
     let stroke = line * 2.0;
     b.stroke_rect(
         Rect {
@@ -518,6 +565,24 @@ fn safe_area(b: &mut Builder, pattern: &CalibrationPattern, w: f32, h: f32, line
         stroke,
     );
     let (right, bottom) = (r.x + r.width, r.y + r.height);
+    if let Some(edge) = pattern.active {
+        let t = stroke * 3.0;
+        let (a, z) = match edge {
+            Edge::Top => (p(r.x, r.y + t / 2.0), p(right, r.y + t / 2.0)),
+            Edge::Bottom => (p(r.x, bottom - t / 2.0), p(right, bottom - t / 2.0)),
+            Edge::Left => (p(r.x + t / 2.0, r.y), p(r.x + t / 2.0, bottom)),
+            Edge::Right => (p(right - t / 2.0, r.y), p(right - t / 2.0, bottom)),
+        };
+        b.line(a, z, ACTIVE, t);
+    }
+}
+
+/// Each margin labelled in the middle of its edge, the active one larger.
+fn safe_labels(b: &mut Builder, pattern: &CalibrationPattern, w: f32, h: f32, line: f32) {
+    let area = pattern.current;
+    let r = area.rect(w, h);
+    let stroke = line * 2.0;
+    let (right, bottom) = (r.x + r.width, r.y + r.height);
     let base = h * 0.0195;
     for edge in Edge::ALL {
         let active = pattern.active == Some(edge);
@@ -526,22 +591,10 @@ fn safe_area(b: &mut Builder, pattern: &CalibrationPattern, w: f32, h: f32, line
         } else {
             (SAFE, base)
         };
-        if active {
-            // Drawn over the cyan in white. Not thicker: it would hide the number of
-            // the ring it sits on.
-            let t = stroke;
-            let (a, z) = match edge {
-                Edge::Top => (p(r.x, r.y + t / 2.0), p(right, r.y + t / 2.0)),
-                Edge::Bottom => (p(r.x, bottom - t / 2.0), p(right, bottom - t / 2.0)),
-                Edge::Left => (p(r.x + t / 2.0, r.y), p(r.x + t / 2.0, bottom)),
-                Edge::Right => (p(right - t / 2.0, r.y), p(right - t / 2.0, bottom)),
-            };
-            b.line(a, z, ACTIVE, t);
-        }
         let text = format!("{} {:.1}%", edge.name(), edge.margin(&area) * 100.0);
         // Clear of the ring numbers: the middle of the edge, past
         // the thick line when it is the active one.
-        let off = size * 1.2 + stroke;
+        let off = size * 1.2 + if active { stroke * 3.0 } else { stroke };
         let (cx, cy) = match edge {
             Edge::Top => (r.x + r.width * 0.5, r.y + off),
             Edge::Bottom => (r.x + r.width * 0.5, bottom - off),
@@ -589,6 +642,8 @@ mod tests {
         assert_eq!(aspect_name(1920, 1080), "16:9");
         assert_eq!(aspect_name(1920, 1200), "16:10");
         assert_eq!(aspect_name(5120, 1440), "32:9");
+        assert_eq!(aspect_name(2560, 1080), "21:9");
+        assert_eq!(aspect_name(3440, 1440), "21:9");
         assert_eq!(aspect_name(1000, 100), "10.00:1");
     }
 
@@ -687,12 +742,39 @@ mod tests {
     }
 
     #[test]
-    fn small_numbers_are_legible_at_1080p() {
-        let all = numbers(1920.0, 1080.0, 10);
-        let smallest = all.iter().map(|n| n.size).fold(f32::MAX, f32::min);
-        assert!(smallest >= 8.0, "smallest number is {smallest} px");
-        let biggest = all.iter().map(|n| n.size).fold(0.0, f32::max);
-        assert!(biggest >= 30.0, "large numbers are {biggest} px");
+    fn small_numbers_are_legible_on_common_outputs() {
+        // Every number on every edge, so top and bottom as well as the
+        // sides: at least 12 px high, where bold digits stay readable.
+        for (w, h) in [
+            (1024.0, 768.0),
+            (1280.0, 720.0),
+            (1280.0, 800.0),
+            (1600.0, 900.0),
+            (1920.0, 1080.0),
+            (3200.0, 900.0),
+            (5760.0, 1080.0),
+        ] {
+            for number in numbers(w, h, 15) {
+                assert!(
+                    number.size >= 12.0 && number.rect.height >= 12.0,
+                    "{w}x{h} ring {}: {} px",
+                    number.ring,
+                    number.size
+                );
+            }
+            let biggest = numbers(w, h, 15).iter().map(|n| n.size).fold(0.0, f32::max);
+            assert!(biggest >= h * 0.03 - 0.01, "large numbers are {biggest} px");
+        }
+    }
+
+    #[test]
+    fn the_highlight_colour_is_used_for_nothing_else() {
+        let others: Vec<Color> = (0..=45)
+            .map(ring_color)
+            .chain([RING_A, RING_B, EDGE, GRID, SAFE])
+            .chain(CORNERS)
+            .collect();
+        assert!(!others.contains(&ACTIVE));
     }
 
     #[test]
