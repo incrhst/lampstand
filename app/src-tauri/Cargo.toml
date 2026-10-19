@@ -28,6 +28,7 @@ lampstand-live.workspace = true
 lampstand-render.workspace = true
 lampstand-server.workspace = true
 lampstand-sync = { workspace = true, features = ["net"] }
+chrono.workspace = true
 gethostname.workspace = true
 serde.workspace = true
 serde_json.workspace = true

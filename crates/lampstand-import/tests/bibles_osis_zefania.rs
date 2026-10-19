@@ -94,3 +94,60 @@ fn missing_file_is_io_error() {
         Err(ImportError::Io(_))
     ));
 }
+
+/// A temporary file holding `body`.
+fn temp_file(name: &str, body: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("lampstand-{name}-{}.xml", std::process::id()));
+    std::fs::write(&path, body).unwrap();
+    path
+}
+
+#[test]
+fn osis_huge_chapter_and_verse_numbers_are_skipped() {
+    let path = temp_file(
+        "osis-huge",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<osis xmlns="http://www.bibletechnologies.net/2003/OSIS/namespace">
+  <osisText osisIDWork="HUG" xml:lang="en">
+    <div type="book" osisID="Gen">
+      <chapter osisID="Gen.1">
+        <verse osisID="Gen.99999999999.1">Lost.</verse>
+        <verse osisID="Gen.1.99999999999">Lost too.</verse>
+        <verse osisID="Gen.1.1-Gen.1.99999999999">Kept.</verse>
+        <verse osisID="Gen.1.2">Also kept.</verse>
+      </chapter>
+    </div>
+  </osisText>
+</osis>"#,
+    );
+    let b = osis::import(&path).unwrap();
+    assert_eq!(b.text.books[0], [vec!["Kept.", "Also kept."]]);
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn zefania_huge_chapter_and_verse_numbers_are_skipped() {
+    let path = temp_file(
+        "zefania-huge",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<XMLBIBLE biblename="Huge" type="x-bible">
+  <BIBLEBOOK bnumber="1" bname="Genesis">
+    <CHAPTER cnumber="99999999999">
+      <VERS vnumber="1">Lost.</VERS>
+    </CHAPTER>
+    <CHAPTER cnumber="1">
+      <VERS vnumber="99999999999">Lost too.</VERS>
+      <VERS vnumber="1">Kept.</VERS>
+    </CHAPTER>
+  </BIBLEBOOK>
+</XMLBIBLE>"#,
+    );
+    let b = zefania::import(&path).unwrap();
+    assert_eq!(b.text.books[0], [vec!["Kept."]]);
+    assert!(
+        b.warnings.iter().any(|w| w.contains("99999999999")),
+        "{:?}",
+        b.warnings
+    );
+    std::fs::remove_file(&path).ok();
+}

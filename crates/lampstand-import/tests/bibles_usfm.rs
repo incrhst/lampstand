@@ -194,3 +194,24 @@ fn unterminated_footnote_warns() {
     assert!(i.warnings.iter().any(|w| w.contains("unterminated")));
     fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn huge_chapter_and_verse_numbers_are_skipped_not_allocated() {
+    let dir = folder(
+        "huge",
+        &[(
+            "66-JUD.SFM",
+            "\\id JUD Huge Numbers (HUG)\n\\c 99999999999\n\\v 1 Lost.\n\\c 1\n\\v 99999999999 Lost too.\n\\v 1-99999999999 Kept.\n\\v 2 Also kept.\n",
+        )],
+    );
+    let i = import_bible(BibleFormat::Usfm, &dir).unwrap();
+    let jude = &i.text.books[64];
+    assert_eq!(jude.len(), 1);
+    assert_eq!(jude[0], ["Kept.", "Also kept."]);
+    assert!(
+        i.warnings.iter().any(|w| w.contains("99999999999")),
+        "{:?}",
+        i.warnings
+    );
+    fs::remove_dir_all(&dir).ok();
+}

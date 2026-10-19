@@ -48,7 +48,8 @@ pub fn import(path: &Path) -> Result<BibleImport, ImportError> {
 
     let mut next_book = 0usize;
     let mut book: Option<usize> = None;
-    let mut chapter = 0usize;
+    // None while the chapter number is out of range: its verses are skipped.
+    let mut chapter = Some(0usize);
     let mut next_chapter = 0usize;
     let mut verse: Option<(usize, usize, usize)> = None;
     let mut text = String::new();
@@ -116,14 +117,22 @@ pub fn import(path: &Path) -> Result<BibleImport, ImportError> {
                                 .and_then(|s| s.trim().parse::<usize>().ok())
                                 .unwrap_or(next_chapter);
                             next_chapter = num;
-                            chapter = num.saturating_sub(1);
+                            chapter = if (1..=super::MAX_NUMBER).contains(&num) {
+                                Some(num - 1)
+                            } else {
+                                warnings.push(format!(
+                                    "chapter {num} out of range, its verses skipped"
+                                ));
+                                None
+                            };
                         }
                         "vers" => {
                             finish_verse(&mut books, &mut verse, &mut text);
                             let num =
                                 attr(e, "vnumber").and_then(|s| s.trim().parse::<usize>().ok());
-                            if let (Some(b), Some(v)) = (book, num.filter(|v| *v > 0)) {
-                                verse = Some((b, chapter, v - 1));
+                            let num = num.filter(|v| (1..=super::MAX_NUMBER).contains(v));
+                            if let (Some(b), Some(c), Some(v)) = (book, chapter, num) {
+                                verse = Some((b, c, v - 1));
                             }
                         }
                         "note" | "remark" | "caption" | "xref" => skip += 1,
@@ -140,8 +149,9 @@ pub fn import(path: &Path) -> Result<BibleImport, ImportError> {
                             finish_verse(&mut books, &mut verse, &mut text);
                             let num =
                                 attr(e, "vnumber").and_then(|s| s.trim().parse::<usize>().ok());
-                            if let (Some(b), Some(v)) = (book, num.filter(|v| *v > 0)) {
-                                store(&mut books, pos(b, chapter, v - 1), "");
+                            let num = num.filter(|v| (1..=super::MAX_NUMBER).contains(v));
+                            if let (Some(b), Some(c), Some(v)) = (book, chapter, num) {
+                                store(&mut books, pos(b, c, v - 1), "");
                             }
                         }
                         "br" => text.push(' '),

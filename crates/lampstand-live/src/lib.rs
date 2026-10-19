@@ -21,6 +21,9 @@
 //!   what is on air: the live item keeps the slides it was loaded with
 //!   until the operator leaves it. Cursors follow items by ID, so a reorder
 //!   keeps the operator in place.
+//! - If a synced edit deletes the live item, it stays on air, and `Next`
+//!   and `Previous` carry on from where it stood: to the item that
+//!   followed it by Position, or the one before it.
 //! - `SongShown` fires when a song item goes live from another item, once
 //!   per visit, for CCLI reporting.
 
@@ -105,6 +108,9 @@ pub struct LiveEngine {
     live_item: Option<LoadedItem>,
     preview: Option<Cursor>,
     program: Program,
+    /// Set while the live item has been deleted by a reload: the index in
+    /// `items` where the items that followed it start.
+    orphan_slot: Option<usize>,
 }
 
 impl LiveEngine {
@@ -115,6 +121,23 @@ impl LiveEngine {
     /// Loads or reloads the service. See the module rules for what happens
     /// to the live and preview cursors.
     pub fn load(&mut self, items: Vec<LoadedItem>) -> Vec<Event> {
+        if let Some(live) = self.live {
+            self.orphan_slot = if items.iter().any(|i| i.id == live.item) {
+                None
+            } else {
+                // How many surviving items stood before the live one.
+                let before = self
+                    .item_index(live.item)
+                    .or(self.orphan_slot)
+                    .unwrap_or(self.items.len());
+                Some(
+                    self.items[..before.min(self.items.len())]
+                        .iter()
+                        .filter(|old| items.iter().any(|i| i.id == old.id))
+                        .count(),
+                )
+            };
+        }
         self.items = items;
         let mut events = Vec::new();
         if let Some(preview) = self.preview {
@@ -213,11 +236,15 @@ impl LiveEngine {
         self.preview
     }
 
-    /// Nothing on air. The updater only installs when this is true
-    /// (CD-11).
+    /// Nothing on air and no service under way: no item has gone live, and
+    /// there is no text, background or overlay on the output. The updater
+    /// only installs when this is true (CD-11), so once a service starts it
+    /// waits for the next launch.
     pub fn is_idle(&self) -> bool {
-        let _ = (&self.items, &self.live_item);
-        self.program.content.is_none() && self.program.overlay == Overlay::None
+        self.live.is_none()
+            && self.program.content.is_none()
+            && self.program.background.is_none()
+            && self.program.overlay == Overlay::None
     }
 }
 
@@ -273,6 +300,19 @@ impl LiveEngine {
         self.items.iter().position(|i| i.id == id)
     }
 
+    /// Where the items before `id` end and the items after it start, in
+    /// `items`. For a live item a reload deleted, both are the slot it
+    /// stood in.
+    fn slot_of(&self, id: ItemId) -> Option<(usize, usize)> {
+        if let Some(index) = self.item_index(id) {
+            return Some((index, index + 1));
+        }
+        match (self.live, self.orphan_slot) {
+            (Some(live), Some(slot)) if live.item == id => Some((slot, slot)),
+            _ => None,
+        }
+    }
+
     /// The cursor `Next` would move to from `from`, or `None` at the end.
     fn step_forward(&self, from: Cursor) -> Option<Cursor> {
         let item = self.item_for(from.item)?;
@@ -289,7 +329,7 @@ impl LiveEngine {
                 ..from
             });
         }
-        self.first_slide_from(self.item_index(from.item)? + 1)
+        self.first_slide_from(self.slot_of(from.item)?.1)
     }
 
     /// The cursor `Previous` would move to from `from`, at the final step
@@ -309,7 +349,7 @@ impl LiveEngine {
                 ..from
             });
         }
-        let index = self.item_index(from.item)?;
+        let (index, _) = self.slot_of(from.item)?;
         let prev = self.items[..index]
             .iter()
             .rev()
@@ -333,7 +373,7 @@ impl LiveEngine {
                 ..live
             }
         } else {
-            self.first_slide_from(self.item_index(live.item)? + 1)?
+            self.first_slide_from(self.slot_of(live.item)?.1)?
         };
         self.content_at(cursor)
     }
@@ -351,6 +391,7 @@ impl LiveEngine {
             // `resolve` found the item, and it was not the live one, so it
             // is in `items`.
             self.live_item = item;
+            self.orphan_slot = None;
         }
         let Some(item) = &self.live_item else { return };
         self.program.background = item.background.clone();
@@ -552,14 +593,78 @@ mod tests {
     }
 
     #[test]
-    fn clear_all_goes_idle() {
+    fn clear_all_clears_the_screen_but_the_service_is_not_idle() {
         let (mut e, _) = service();
+        assert!(e.is_idle());
         e.apply(Command::Next);
         e.apply(Command::ToggleLogo);
         assert!(!e.is_idle());
         e.apply(Command::ClearAll);
-        assert!(e.is_idle());
+        assert_eq!(e.program().content, None);
         assert_eq!(e.program().background, None);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert!(!e.is_idle(), "an item is still live: no update mid-service");
+    }
+
+    #[test]
+    fn clear_text_leaves_the_background_on_air_so_not_idle() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ClearText);
+        assert_eq!(e.program().content, None);
+        assert!(e.program().background.is_some());
+        assert!(!e.is_idle());
+    }
+
+    #[test]
+    fn deleted_live_item_still_navigates_by_position() {
+        let items = vec![
+            item("Welcome", vec![text("a1")]),
+            item("Song", vec![text("b1"), text("b2")]),
+            item("Prayer", vec![text("c1")]),
+            item("Notices", vec![text("d1")]),
+        ];
+        let mut e = LiveEngine::new();
+        e.load(items.clone());
+        e.apply(Command::Show(Cursor {
+            item: items[1].id,
+            slide: 1,
+            step: 0,
+        }));
+        // A planner deletes the live song.
+        let without_song = vec![items[0].clone(), items[2].clone(), items[3].clone()];
+        e.load(without_song.clone());
+        assert_eq!(on_air(&e).as_deref(), Some("b2"), "on air is untouched");
+        match &e.program().next {
+            Some(Content::Text { slide }) => assert_eq!(slide.lines[0], "c1"),
+            other => panic!("{other:?}"),
+        }
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("c1"));
+
+        // Previous from the deleted item's first slide goes to the one before.
+        e.load(items.clone());
+        e.apply(Command::Show(Cursor {
+            item: items[1].id,
+            slide: 0,
+            step: 0,
+        }));
+        e.load(without_song.clone());
+        // A second reload (Prayer deleted too) keeps the slot.
+        e.load(vec![items[0].clone(), items[3].clone()]);
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+
+        e.load(items.clone());
+        e.apply(Command::Show(Cursor {
+            item: items[1].id,
+            slide: 1,
+            step: 0,
+        }));
+        e.load(without_song);
+        e.load(vec![items[0].clone(), items[3].clone()]);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("d1"));
     }
 
     #[test]

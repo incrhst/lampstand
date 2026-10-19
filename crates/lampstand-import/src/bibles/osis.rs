@@ -73,7 +73,8 @@ fn parse_osis_id(id: &str) -> Result<(Pos, usize), Option<String>> {
             digits.parse::<usize>().map_err(|_| None)
         };
         let (c, v) = (num()?, num()?);
-        if c == 0 || v == 0 {
+        let range = 1..=super::MAX_NUMBER;
+        if !range.contains(&c) || !range.contains(&v) {
             return Err(None);
         }
         Ok(Pos(b, c - 1, v - 1))
@@ -91,7 +92,11 @@ pub(super) fn empty_books() -> Vec<Vec<Vec<String>>> {
 }
 
 /// Appends `text` to the verse, growing the chapter and book as needed.
+/// Positions past [`super::MAX_NUMBER`] are dropped.
 pub(super) fn store(books: &mut [Vec<Vec<String>>], at: Pos, text: &str) {
+    if at.1 >= super::MAX_NUMBER || at.2 >= super::MAX_NUMBER {
+        return;
+    }
     let chapters = &mut books[at.0];
     if chapters.len() <= at.1 {
         chapters.resize_with(at.1 + 1, Vec::new);

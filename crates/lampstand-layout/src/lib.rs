@@ -13,7 +13,7 @@ mod fit;
 mod fonts;
 mod paginate;
 
-pub use compose::{compose, Composed, FitWarning, OutputSize};
+pub use compose::{compose, compose_at, Composed, FitWarning, OutputSize};
 pub use fit::{fit_text, Fitted};
 pub use fonts::Fonts;
 pub use paginate::{paginate_passage, paginate_song};

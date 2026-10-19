@@ -308,7 +308,10 @@ fn leading_number(label: &str) -> Option<usize> {
         .chars()
         .take_while(char::is_ascii_digit)
         .collect();
-    digits.parse().ok().filter(|n| *n > 0)
+    digits
+        .parse()
+        .ok()
+        .filter(|n| (1..=super::MAX_NUMBER).contains(n))
 }
 
 /// The end of a range label: 2 for "1-2" and "1-2a".
@@ -406,7 +409,10 @@ fn parse_book(raw: &str, file: &str, warnings: &mut Vec<String>) -> ParsedBook {
                     }
                     b.chapter = n;
                 } else {
-                    warnings.push(format!("{file}: chapter marker without a number"));
+                    warnings.push(format!(
+                        "{file}: chapter \"{}\" missing or out of range, its verses skipped",
+                        label.trim()
+                    ));
                     b.chapter = 0;
                 }
                 b.verse = None;
@@ -425,6 +431,11 @@ fn parse_book(raw: &str, file: &str, warnings: &mut Vec<String>) -> ParsedBook {
                         b.verse = Some(n);
                         b.verse_end = range_end(label).unwrap_or(n).max(n);
                         sink = Sink::Verse;
+                    }
+                    (None, c) if c > 0 => {
+                        warnings.push(format!("{file}: verse \"{label}\" out of range skipped"));
+                        b.verse = None;
+                        sink = Sink::Ignore;
                     }
                     _ => {
                         warnings.push(format!("{file}: verse \"{label}\" outside a chapter"));

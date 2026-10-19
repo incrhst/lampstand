@@ -28,7 +28,7 @@ use lampstand_core::scene::Animation;
 use lampstand_core::scripture::parse_reference;
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
-use lampstand_layout::{compose, paginate_passage, paginate_song, Fonts, OutputSize};
+use lampstand_layout::{compose_at, paginate_passage, paginate_song, Fonts, OutputSize};
 use lampstand_library::{starter_theme_id, Library};
 use lampstand_live::{LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
@@ -609,7 +609,7 @@ impl App {
             if self.sent.get(&id) == Some(&sent) {
                 continue;
             }
-            let composed = compose(
+            let composed = compose_at(
                 &sent.program,
                 &sent.config,
                 OutputSize {
@@ -618,6 +618,8 @@ impl App {
                 },
                 &sent.theme,
                 &mut self.fonts,
+                now(),
+                local_utc_offset_minutes(),
             );
             self.sink.send(
                 id,
@@ -893,6 +895,11 @@ fn sort_services(services: &mut [ServiceSummary], now: Timestamp) {
                 .then_with(|| newest_first(a, b)),
         })
     });
+}
+
+/// Local time's offset from UTC, for the stage clock.
+fn local_utc_offset_minutes() -> i32 {
+    chrono::Local::now().offset().local_minus_utc() / 60
 }
 
 fn now() -> Timestamp {

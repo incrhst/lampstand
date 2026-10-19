@@ -2909,6 +2909,7 @@ dependencies = [
 name = "lampstand-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gethostname",
  "lampstand-api",
  "lampstand-connectors",

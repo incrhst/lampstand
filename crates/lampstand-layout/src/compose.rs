@@ -46,8 +46,8 @@ pub enum FitWarning {
 /// Text is laid out in the safe area and nothing else. The footer is
 /// [`FOOTER_SCALE`] of the preferred size with half a footer line above it,
 /// the same as pagination reserves. The stage clock and countdown read the
-/// system clock, in UTC; use [`compose_at`] to pass the time (and the local
-/// UTC offset) yourself, which also keeps tests deterministic.
+/// system clock, in UTC; the app uses [`compose_at`] to pass the time and
+/// the local UTC offset, which also keeps tests deterministic.
 ///
 /// Overlays: `Black` and `Logo` cover an audience output completely. The
 /// stage ignores them (the confidence monitor keeps its slides), and the
@@ -1278,6 +1278,40 @@ mod tests {
             &theme(60.0, 30.0),
         );
         assert!(ok.warnings.is_empty());
+    }
+
+    #[test]
+    fn stage_clock_follows_the_utc_offset() {
+        let t = theme(60.0, 30.0);
+        let o = output(OutputRole::Stage, BackgroundMode::Bleed, safe());
+        let p = program(Some(lyrics()), Overlay::None);
+        let clock = |offset: i32| {
+            let mut fonts = Fonts::bundled_only();
+            let c = crate::compose_at(
+                &p,
+                &o,
+                OutputSize {
+                    width: 1920.0,
+                    height: 1080.0,
+                },
+                &t,
+                &mut fonts,
+                NOW,
+                offset,
+            );
+            let mut texts = Vec::new();
+            walk(&c.scene.nodes, &mut |n| {
+                if let NodeKind::Text(b) = &n.kind {
+                    texts.push(b.paragraphs[0].runs[0].text.clone());
+                }
+            });
+            texts
+        };
+        // 1_800_000_000 s is 08:00:00 UTC.
+        assert!(clock(0).contains(&"08:00".to_string()));
+        let jamaica = clock(-300);
+        assert!(jamaica.contains(&"03:00".to_string()), "{jamaica:?}");
+        assert!(!jamaica.contains(&"08:00".to_string()), "{jamaica:?}");
     }
 
     #[test]
