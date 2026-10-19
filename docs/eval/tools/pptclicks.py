@@ -9,6 +9,7 @@
 # DELAY. Slides with automatic timings (advTm) can advance on their own during DELAY; check
 # those against the XML. Prints: deck, slide (1-based, presentation order), clicks.
 #
+# If PowerPoint offers to repair a deck, answer it, then rerun: an open deck is reused.
 # PowerPoint is sandboxed: if it asks for file access, copy the decks to ~/Downloads first.
 #
 # Usage: python3 -I pptclicks.py [--delay S] DECK.pptx...
@@ -25,14 +26,27 @@ on run argv
         exit slide show (slide show view of slide show window 1)
       end repeat
     end try
-    close every presentation saving no
-    open POSIX file f
-    repeat 60 times
-      delay 1
-      if (count of presentations) > 0 then exit repeat
+    -- Keep the deck if it is already open (for example after answering a Repair prompt by hand).
+    set p to missing value
+    repeat with q in (get presentations)
+      if (name of q as text) begins with (item 3 of argv) then
+        set p to contents of q
+      else
+        close q saving no
+      end if
     end repeat
-    delay 2
-    set p to active presentation
+    if p is missing value then
+      -- A Repair prompt holds the open until someone answers it.
+      with timeout of 900 seconds
+        open POSIX file f
+      end timeout
+      repeat 60 times
+        delay 1
+        if (count of presentations) > 0 then exit repeat
+      end repeat
+      delay 2
+      set p to active presentation
+    end if
     run slide show slide show settings of p
     delay 2
     set v to slide show view of slide show window 1
@@ -79,8 +93,8 @@ if args[:1] == ["--delay"]:
     delay, args = args[1], args[2:]
 for path in args:
     name = os.path.splitext(os.path.basename(path))[0]
-    r = subprocess.run(["osascript", "-e", SCRIPT, os.path.abspath(path), delay],
-                       capture_output=True, text=True, timeout=3600)
+    r = subprocess.run(["osascript", "-e", SCRIPT, os.path.abspath(path), delay, os.path.splitext(os.path.basename(path))[0]],
+                       capture_output=True, text=True, timeout=7200)
     if r.returncode != 0:
         print(f"{name}\t?\t?\t# {r.stderr.strip()[:120]}", flush=True)
         continue

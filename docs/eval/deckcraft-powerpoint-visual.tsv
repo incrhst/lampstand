@@ -1,0 +1,15 @@
+deck	slide	kind	rmse_deckcraft_vs_libreoffice	closest_to_powerpoint	what_differs
+chart-picture-bg	1	chart	0.513	LibreOffice	DeckCraft leaves out the picture fill behind the plot area
+aascu.org_workarea_downloadasset.aspx_id=5864	5	chart	0.319	LibreOffice	DeckCraft gives each bar its own colour, drops the data labels, overlaps the category labels instead of rotating them
+aascu.org_workarea_downloadasset.aspx_id=5864	7	chart	0.387	LibreOffice	DeckCraft overlaps the category labels instead of rotating them and moves the plot area
+aascu.org_workarea_downloadasset.aspx_id=5864	11	chart	0.322	LibreOffice	DeckCraft draws the markers-only 1995 series as a line and places the legend elsewhere
+aascu.org_workarea_downloadasset.aspx_id=5864	16	chart	0.306	LibreOffice	DeckCraft overlaps axis labels, sets chart titles larger and lays out the legend in one row
+aascu.org_workarea_downloadasset.aspx_id=5864	6	text	0.300	DeckCraft	LibreOffice sets the text narrower, so lines break in different places
+aascu.org_workarea_downloadasset.aspx_id=5864	17	text	0.313	DeckCraft	LibreOffice sets the text narrower, so lines break in different places
+aascu.org_workarea_downloadasset.aspx_id=5864	34	text	0.325	DeckCraft	LibreOffice sets the text narrower, so lines break in different places
+at.ecodesign.www_downloads_Vertiefungsvortrag_elektronik	13	text	0.321	DeckCraft	LibreOffice sets the text narrower and misplaces line breaks after bold runs
+customGeo	5	text	0.292	DeckCraft	LibreOffice shrinks the title and sets the body narrower
+customGeo	34	text	0.307	DeckCraft	LibreOffice shrinks the title
+2411-Performance_Up	17	typical	0.098	all three match	
+aascu.org_hbcu_leadershipsummit_cooper_	4	typical	0.104	all three match	
+alterman_security	8	typical	0.105	all three match	
