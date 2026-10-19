@@ -248,6 +248,10 @@ pub enum TransitionKind {
     Zoom,
 }
 
+/// Always a side of the screen (transitions) or of the shape (effects),
+/// in PowerPoint's "From Left" sense: the side a push or cover enters
+/// from, where a wipe starts, where a fly-in comes from and a fly-out
+/// goes, where a wipe-out starts hiding.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(
@@ -294,7 +298,8 @@ pub enum Effect {
     GrowShrink(f32),
     /// Emphasis: scale up briefly and back.
     Pulse,
-    /// Emphasis: change opacity and stay.
+    /// Emphasis: become this transparent (0.5 = half see-through, as
+    /// PowerPoint shows it) and stay.
     Transparency(f32),
     /// Start a video node playing.
     Play,

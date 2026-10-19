@@ -43,9 +43,9 @@ Third-party versions are pinned once, in `[workspace.dependencies]`. A crate add
 2. `LiveEngine::apply` moves the cursor and updates the `Program`: background, content, overlay, next slide.
 3. For each enabled output, `layout::compose(program, output, size, theme, fonts)` builds that output's `Scene` in its own pixels, using its own safe area, theme and role (audience, stage or stream).
 4. The scene goes to the render thread as `OutputCommand::Show { scene, transition }`, or to the local server for browser-source outputs. On a deck build step, the step's animations go as `OutputCommand::Animate` instead.
-5. The render thread draws it at the next vsync.
+5. The render thread wakes, draws the new scene into a texture, composites it onto each output's surface and presents (FIFO). It reaches the screen at the next vsync.
 
-Budget: 50 ms from click to frame (NFR). Steps 1 to 4 run in-process with no disk or network access. Composition is cached per (content, output), so a click that only toggles an overlay costs one cheap compose per output.
+Budget: 50 ms from click to frame (NFR). Steps 1 to 4 run in-process with no disk or network access. Composition is cached per (content, output), so a click that only toggles an overlay costs one cheap compose per output. Step 5, measured from `send` to `present` on three windows on an M1 (`crates/lampstand-render/tests/windows.rs`), takes a p95 of 10 to 16 ms, so steps 5 and 6 together come to under 33 ms including the refresh wait.
 
 ## Decisions
 
@@ -79,11 +79,21 @@ Theme sizes are pixels on a 1080-line screen and scale with output height, so on
 
 Each physical output is a borderless fullscreen Tauri window with no webview and a wgpu surface (Tauri 2 exposes raw window handles). One render thread owns the device and every surface. It paces itself with FIFO present and never waits on the UI thread. The cursor is hidden over output windows, and they are created only once the first frame is ready, so a desktop or a white flash never shows (NFR Reliability).
 
+How T25 built it (details at the top of `lampstand-render/src/lib.rs`):
+
+- `Outputs::spawn` takes over a `Renderer` and starts the thread. `Outputs` implements `OutputSink`, and commands travel over an unbounded channel. Events come back through a callback that must not block: `FirstFrame`, `Presented` (frame timestamps), `SurfaceLost` and `Restarted`. Thumbnails use a second `Renderer`, so they never contend with the frame loop.
+- The loop draws only outputs that changed or are animating, and blocks on the channel otherwise. Each scene is drawn once into a texture. A frame is then a few textured quads, laid out by pure, unit-tested timeline functions. Frame latency is 1.
+- `Outputs::attach` takes any `wgpu::SurfaceTarget<'static>`, such as a winit or Tauri window. The surface is created on the caller's thread and presented from the render thread.
+- Windows are created hidden, with a black background, and shown on `FirstFrame`. macOS will not present to a hidden window, so there the window appears black and its first frame follows within one refresh. On macOS, fullscreen means simple fullscreen, so there is no new Space and no animation.
+- Displays are matched by name, then size, then nearest position (`output::assign_displays`). A display that matches on neither name nor size is never used, so a missing projector's output waits hidden instead of covering the operator's screen.
+- A surface failure affects only its own output. The output keeps its scene, so re-attaching a window shows the live slide at once.
+- `core::scene::Direction` always names a side: the side a push or cover enters from, where a wipe starts, where a fly-in comes from. `Effect::Transparency` is PowerPoint's transparency value (0.5 means half see-through).
+
 On laptops with two GPUs, the integrated one is preferred: it has lower power draw and avoids switching stalls. If no adapter works, a software adapter is used so the app always starts.
 
 ### Crash recovery: a journal now, a separate process later if needed
 
-Phase 1 runs in one process. The live cursor and overlay state are written to a small journal file on every change. On start, if the journal says a service was live less than 10 minutes ago, the app reopens it with the same slide on the same outputs. The target is under 5 seconds (NFR). Panics on the render thread are caught and the thread is restarted with the last scene.
+Phase 1 runs in one process. The live cursor and overlay state are written to a small journal file on every change. On start, if the journal says a service was live less than 10 minutes ago, the app reopens it with the same slide on the same outputs. The target is under 5 seconds (NFR). Panics on the render thread are caught and the thread is restarted with the last scene. Each output's frame is caught on its own, so a scene that panics resets only its output. Its transition and build steps jump to their end, and its last scene is drawn again. If the same output panics twice within 10 seconds, it shows black instead of crashing in a loop. wgpu's default error handler, which panics, is replaced with one that logs.
 
 `OutputCommand` is serialisable on purpose. If field reports show whole-app crashes, outputs can move to a child process without changing any caller.
 

@@ -33,7 +33,6 @@ pub enum AdapterChoice {
 }
 
 pub(crate) struct Gpu {
-    #[expect(dead_code, reason = "T25 creates output surfaces from it")]
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
     pub device: wgpu::Device,
@@ -102,8 +101,8 @@ async fn pick_adapter(instance: &wgpu::Instance, choice: AdapterChoice) -> Optio
 }
 
 /// The pipelines. Layers and scene targets all use `FORMAT`, so one set
-/// serves every target; T25 composites finished scene textures onto
-/// surfaces with `quad_single` built for the surface format.
+/// serves every target. Output surfaces get their own composite pipelines
+/// (`output::composite`), built per surface format from the same shader.
 pub(crate) struct Pipelines {
     pub shape_layout: wgpu::BindGroupLayout,
     pub quad_layout: wgpu::BindGroupLayout,
