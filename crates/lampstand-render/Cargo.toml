@@ -6,4 +6,31 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lampstand-core = { path = "../lampstand-core" }
+lampstand-core.workspace = true
+lampstand-layout.workspace = true
+bytemuck = { workspace = true }
+cosmic-text.workspace = true
+glyphon.workspace = true
+image.workspace = true
+lyon.workspace = true
+pollster.workspace = true
+serde.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Output windows for the demo and the window test. The app makes its windows
+# with Tauri instead, so winit is not a dependency of the library.
+winit.workspace = true
+raw-window-handle.workspace = true
+
+# Gives demo and test windows a black background (Tauri has an option).
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+
+# Real windows need the main thread (macOS), so this test brings its own
+# `main` instead of libtest's thread pool.
+[[test]]
+name = "windows"
+harness = false

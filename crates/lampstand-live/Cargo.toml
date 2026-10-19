@@ -1,0 +1,18 @@
+[package]
+name = "lampstand-live"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lampstand-core.workspace = true
+serde.workspace = true
+
+[features]
+# TypeScript bindings for the UI (T45); see lampstand-api.
+ts = ["dep:ts-rs", "lampstand-core/ts"]
+
+[dependencies.ts-rs]
+workspace = true
+optional = true

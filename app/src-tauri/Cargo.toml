@@ -1,0 +1,42 @@
+[package]
+name = "lampstand-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Lampstand desktop app: the Tauri shell around the Rust core"
+
+[lib]
+name = "lampstand_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lampstand"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+lampstand-api.workspace = true
+lampstand-connectors.workspace = true
+lampstand-core.workspace = true
+lampstand-import.workspace = true
+lampstand-layout.workspace = true
+lampstand-library.workspace = true
+lampstand-live.workspace = true
+lampstand-render.workspace = true
+lampstand-server.workspace = true
+lampstand-sync = { workspace = true, features = ["net"] }
+chrono.workspace = true
+gethostname.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri.workspace = true
+tauri-plugin-dialog.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }

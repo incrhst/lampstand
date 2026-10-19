@@ -3,19 +3,13 @@
 //!
 //! PRD: TS-1 to TS-4.
 
-use autosurgeon::{Hydrate, Reconcile};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
+use crate::geom::Rect;
 
 /// Margins as fractions of the output's width and height (0.05 = 5%).
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reconcile, Hydrate)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct SafeArea {
     pub top: f32,
     pub right: f32,
