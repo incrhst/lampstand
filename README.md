@@ -23,15 +23,48 @@ The product requirements are in [docs/PRD.md](docs/PRD.md).
 | `crates/lampstand-server` | Local server: OBS browser source, peer sync |
 | `crates/lampstand-api` | Messages between the web UI and the core |
 | `crates/lampstand-relay` | Self-hostable sync relay |
-| `app` | Tauri shell and web UI (not scaffolded yet) |
+| `app` | Tauri 2 shell (`app/src-tauri`) and Svelte 5 web UI (`app/src`) |
 
 How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Work to do: [docs/TICKETS.md](docs/TICKETS.md).
 
 ## Build
 
+The app crate embeds the built web UI, so build that once before any
+workspace-wide cargo command:
+
 ```
+cd app && npm ci && npm run build && cd ..
 cargo test --workspace
 ```
+
+## Run the app
+
+Needs Node 22 (tested with 22.22, npm 10.9) and Rust 1.95 or newer (tested
+with 1.99). The Tauri CLI comes with the npm dependencies (2.12); a global
+`cargo tauri` (tested with 2.9.4) works too. On Linux, install
+`libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev` first.
+
+```
+cd app
+npm ci
+npm run tauri dev
+```
+
+Data lives in the OS app-data folder (`~/Library/Application Support/org.lampstand.app`
+on macOS). To start from a fresh folder, set `LAMPSTAND_DATA_DIR`:
+
+```
+LAMPSTAND_DATA_DIR=/tmp/lampstand-fresh npm run tauri dev
+```
+
+First run: two public-domain hymns are already in the library. Under
+**Plan**, create a service, add a song and click **Open for live**. Under
+**Outputs**, add a window output and tick **Enabled**. Under **Operate**,
+press Space or Right for Next, Left for Previous and full stop for Black;
+1 to 9 jump to a verse, C to the chorus, B to the bridge. To fill the
+library, use **Get songs** (a free song database by language) or **Import
+files…** / **Import folder…** for your own OpenSong library, OpenLyrics,
+SongSelect, FreeShow or ProPresenter files.
 
 ## Licence
 
