@@ -257,8 +257,10 @@ fn all<T: Doc>(repo: &Repo) -> Result<Vec<T>, SyncError> {
     Ok(out)
 }
 
-/// White Noto Sans on black, full screen, four lines a slide.
-fn starter_theme() -> Theme {
+/// White Noto Sans on black, full screen, four lines a slide. A fresh
+/// library gets it as a document; the app also falls back to it when every
+/// theme has been deleted (deletes sync, so that can happen mid-service).
+pub fn starter_theme() -> Theme {
     Theme {
         id: ThemeId::from_uuid(STARTER_THEME_ID),
         name: "Starter".into(),

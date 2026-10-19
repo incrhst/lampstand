@@ -189,6 +189,8 @@ pub struct SyncNode {
     name: String,
     dir: PathBuf,
     trust: Mutex<Trust>,
+    /// Held by the one pairing handshake allowed at a time.
+    pairing: tokio::sync::Mutex<()>,
     peers: Mutex<Peers>,
     /// Bumped whenever the status changes or mDNS sees something.
     changed: watch::Sender<u64>,
@@ -214,6 +216,7 @@ impl SyncNode {
             name: config.name,
             dir: config.dir,
             trust: Mutex::new(trust),
+            pairing: tokio::sync::Mutex::new(()),
             peers: Mutex::new(Peers::default()),
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
@@ -417,7 +420,7 @@ impl SyncNode {
         };
         let peer = match tokio::time::timeout(
             HANDSHAKE_TIMEOUT,
-            handshake::server(&mut link, &me, &self.trust),
+            handshake::server(&mut link, &me, &self.trust, &self.pairing),
         )
         .await
         {

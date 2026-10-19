@@ -29,7 +29,7 @@ use lampstand_core::scripture::parse_reference;
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{compose_at, paginate_passage, paginate_song, Fonts, OutputSize};
-use lampstand_library::{starter_theme_id, Library};
+use lampstand_library::{starter_theme, starter_theme_id, Library};
 use lampstand_live::{LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
@@ -637,12 +637,14 @@ impl App {
         self.library.service(id).ok().flatten()?.theme
     }
 
-    /// The theme with this ID, or the starter theme.
+    /// The theme with this ID, else the starter theme, else any theme. If
+    /// a synced delete removed them all, the built-in starter theme, so a
+    /// delete on another device never takes the output down.
     fn theme(&self, id: Option<ThemeId>) -> Theme {
         id.and_then(|id| self.library.theme(id).ok().flatten())
             .or_else(|| self.library.theme(starter_theme_id()).ok().flatten())
             .or_else(|| self.library.themes().ok()?.into_iter().next())
-            .expect("the library always has the starter theme")
+            .unwrap_or_else(starter_theme)
     }
 
     /// The audience output scripture is split against: the primary one,

@@ -598,6 +598,47 @@ fn editing_the_open_service_reloads_it_without_changing_what_is_live() {
 }
 
 #[test]
+fn deleting_every_theme_mid_service_falls_back_to_the_starter_theme() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+
+    // Another device deletes the only theme; the delete syncs in.
+    let library = h.app.library().clone();
+    let themes = library.themes().unwrap();
+    for theme in &themes {
+        library.delete_theme(theme.id).unwrap();
+    }
+    assert!(library.themes().unwrap().is_empty());
+    let changes: Vec<_> = themes
+        .iter()
+        .map(|t| lampstand_sync::DocChanged {
+            kind: lampstand_sync::DocKind::Theme,
+            id: t.id.uuid(),
+            remote: true,
+        })
+        .collect();
+    h.app.library_changed(&changes);
+    h.sink.take();
+
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(
+        scene_text(&shown[0].1).contains("grace that taught my heart"),
+        "{}",
+        scene_text(&shown[0].1)
+    );
+}
+
+#[test]
 fn unbuilt_areas_answer_with_an_error_not_a_panic() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());

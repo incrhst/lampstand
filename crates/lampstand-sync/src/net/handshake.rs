@@ -179,11 +179,13 @@ pub(crate) async fn client(
 }
 
 /// The accepting side. Refuses devices that are not paired, unless they
-/// confirm the pairing code this device is showing.
+/// confirm the pairing code this device is showing. `pairing` admits one
+/// pairing handshake at a time; others are refused until it finishes.
 pub(crate) async fn server(
     link: &mut Link,
     me: &Me<'_>,
     trust: &std::sync::Mutex<Trust>,
+    pairing: &tokio::sync::Mutex<()>,
 ) -> Result<Peer, NetError> {
     let Frame::Hello(theirs) = expect(link).await? else {
         return Err(refuse(link, "expected a hello").await);
@@ -195,18 +197,32 @@ pub(crate) async fn server(
     if device == me.key.public() {
         return Err(refuse(link, "that address is this device").await);
     }
-    let showing = lock(trust).pairing();
+    let mut _pairing_slot = None;
+    let mut guess = None;
     let spake = match &theirs.pair {
-        Some(_) => match showing {
-            Some(code) => Some(Spake2::<Ed25519Group>::start_b(
-                &Password::new(code.code.as_bytes()),
-                &Identity::new(SPAKE_CLIENT),
-                &Identity::new(SPAKE_SERVER),
-            )),
-            None => {
-                return Err(refuse(link, "the other device is not showing a pairing code").await)
+        Some(_) => {
+            let Ok(slot) = pairing.try_lock() else {
+                return Err(refuse(link, "another device is pairing; try again").await);
+            };
+            _pairing_slot = Some(slot);
+            let begun = lock(trust).begin_guess();
+            match begun {
+                Some(g) => {
+                    let spake = Spake2::<Ed25519Group>::start_b(
+                        &Password::new(g.code.code.as_bytes()),
+                        &Identity::new(SPAKE_CLIENT),
+                        &Identity::new(SPAKE_SERVER),
+                    );
+                    guess = Some(g);
+                    Some(spake)
+                }
+                None => {
+                    return Err(
+                        refuse(link, "the other device is not showing a pairing code").await,
+                    )
+                }
             }
-        },
+        }
         None => {
             if !lock(trust).is_paired(device) {
                 return Err(refuse(link, "this device is not paired with that one").await);
@@ -227,15 +243,20 @@ pub(crate) async fn server(
     if !verify(device, &t, b"client", &signature) {
         return Err(refuse(link, "the other device's key did not check out").await);
     }
-    let key = match (spake, &theirs.pair) {
-        (Some((state, _)), Some(msg)) => {
+    let key = match (spake, &theirs.pair, &guess) {
+        (Some((state, _)), Some(msg), Some(guess)) => {
             let key = state.finish(msg).ok();
             let good = key
                 .as_ref()
                 .is_some_and(|k| theirs_confirm == Some(confirm(k, &t, b"client")));
             if !good {
-                lock(trust).pairing_failed();
+                lock(trust).pairing_failed(guess);
                 return Err(refuse(link, "the pairing code did not match").await);
+            }
+            // Re-checked under the lock: the code may have been voided,
+            // replaced or used while this handshake ran.
+            if !lock(trust).pairing_succeeded(guess) {
+                return Err(refuse(link, "the pairing code is no longer valid").await);
             }
             key
         }
@@ -247,9 +268,7 @@ pub(crate) async fn server(
     })
     .await?;
     if key.is_some() {
-        let mut trust = lock(trust);
-        trust.add(device, &theirs.name, None)?;
-        trust.stop_pairing();
+        lock(trust).add(device, &theirs.name, None)?;
     }
     Ok(Peer {
         device,

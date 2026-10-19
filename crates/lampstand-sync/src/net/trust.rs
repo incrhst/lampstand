@@ -5,7 +5,10 @@
 //! it. The code is never sent: both sides run SPAKE2 with it and confirm
 //! the derived key over the handshake transcript, so a listener on the
 //! network learns nothing and an impostor gets one guess per attempt.
-//! After five wrong guesses, or five minutes, the code is void.
+//! After five wrong guesses, or five minutes, the code is void. A guess
+//! counts from the moment its handshake starts, so attempts made in
+//! parallel get no more than five between them, and a guess that turns out
+//! right still fails if the code was voided or replaced meanwhile.
 //!
 //! The list lives in `paired.json` beside the repo and never syncs. T18
 //! replaces it with signed team membership.
@@ -47,13 +50,25 @@ pub struct PairingCode {
 struct Active {
     code: PairingCode,
     until: Instant,
+    /// Tells this code from one started later.
+    generation: u64,
+    /// Handshakes that have started with this code.
+    guesses: u8,
     failures: u8,
+}
+
+/// One handshake's claim on the code being shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Guess {
+    pub code: PairingCode,
+    generation: u64,
 }
 
 pub(crate) struct Trust {
     path: PathBuf,
     devices: Vec<PairedDevice>,
     active: Option<Active>,
+    generations: u64,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -81,6 +96,7 @@ impl Trust {
             path,
             devices,
             active: None,
+            generations: 0,
         })
     }
 
@@ -157,9 +173,12 @@ impl Trust {
             code: format!("{n:06}"),
             expires_ms: now_ms() + PAIRING_TTL.as_millis() as i64,
         };
+        self.generations += 1;
         self.active = Some(Active {
             code: code.clone(),
             until: Instant::now() + PAIRING_TTL,
+            generation: self.generations,
+            guesses: 0,
             failures: 0,
         });
         code
@@ -181,14 +200,47 @@ impl Trust {
         self.active.as_ref().map(|a| a.code.clone())
     }
 
+    /// Starts a guess at the code being shown, or `None` if no code is
+    /// valid or its five guesses are all taken.
+    pub fn begin_guess(&mut self) -> Option<Guess> {
+        self.pairing()?;
+        let a = self.active.as_mut()?;
+        if a.guesses >= MAX_FAILURES {
+            return None;
+        }
+        a.guesses += 1;
+        Some(Guess {
+            code: a.code.clone(),
+            generation: a.generation,
+        })
+    }
+
     /// A peer confirmed a different code. Voids the code after too many.
-    pub fn pairing_failed(&mut self) {
+    pub fn pairing_failed(&mut self, guess: &Guess) {
         if let Some(a) = &mut self.active {
+            if a.generation != guess.generation {
+                return;
+            }
             a.failures += 1;
             if a.failures >= MAX_FAILURES {
                 self.active = None;
             }
         }
+    }
+
+    /// A peer confirmed the code. True, and the code is used up, if it is
+    /// still the one being shown and still valid; false if it was voided,
+    /// expired or replaced while the handshake ran.
+    pub fn pairing_succeeded(&mut self, guess: &Guess) -> bool {
+        let current = self.pairing().is_some()
+            && self
+                .active
+                .as_ref()
+                .is_some_and(|a| a.generation == guess.generation);
+        if current {
+            self.active = None;
+        }
+        current
     }
 
     fn save(&self) -> io::Result<()> {
@@ -261,11 +313,63 @@ mod tests {
         let code = trust.start_pairing();
         assert_eq!(code.code.len(), 6);
         for _ in 0..4 {
-            trust.pairing_failed();
+            let guess = trust.begin_guess().unwrap();
+            trust.pairing_failed(&guess);
         }
         assert_eq!(trust.pairing(), Some(code));
-        trust.pairing_failed();
+        let guess = trust.begin_guess().unwrap();
+        trust.pairing_failed(&guess);
         assert_eq!(trust.pairing(), None);
+        assert!(!trust.pairing_succeeded(&guess));
+    }
+
+    #[test]
+    fn parallel_guesses_share_five_and_none_succeeds_after_the_code_is_void() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut trust = Trust::load(dir.path().join("paired.json")).unwrap();
+        trust.start_pairing();
+        // Five handshakes start before any finishes; a sixth is refused.
+        let guesses: Vec<Guess> = (0..5).map(|_| trust.begin_guess().unwrap()).collect();
+        assert_eq!(trust.begin_guess(), None);
+        for guess in &guesses[..4] {
+            trust.pairing_failed(guess);
+        }
+        // The fifth guessed right, but the code is still shown: it pairs.
+        assert!(trust.pairing_succeeded(&guesses[4]));
+        assert_eq!(trust.pairing(), None, "a code is used once");
+        assert!(!trust.pairing_succeeded(&guesses[4]));
+
+        trust.start_pairing();
+        let guesses: Vec<Guess> = (0..5).map(|_| trust.begin_guess().unwrap()).collect();
+        for guess in &guesses {
+            trust.pairing_failed(guess);
+        }
+        assert_eq!(
+            trust.pairing(),
+            None,
+            "five parallel failures void the code"
+        );
+        assert_eq!(trust.begin_guess(), None);
+
+        trust.start_pairing();
+        let right = trust.begin_guess().unwrap();
+        trust.stop_pairing();
+        assert!(
+            !trust.pairing_succeeded(&right),
+            "a right guess still running when the code is withdrawn fails"
+        );
+    }
+
+    #[test]
+    fn a_guess_at_a_replaced_code_does_not_count_or_succeed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut trust = Trust::load(dir.path().join("paired.json")).unwrap();
+        trust.start_pairing();
+        let old = trust.begin_guess().unwrap();
+        let code = trust.start_pairing();
+        trust.pairing_failed(&old);
+        assert!(!trust.pairing_succeeded(&old));
+        assert_eq!(trust.pairing(), Some(code));
     }
 
     #[test]

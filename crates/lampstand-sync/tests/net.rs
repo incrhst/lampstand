@@ -202,6 +202,50 @@ async fn a_wrong_code_is_refused_and_five_void_the_code() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn parallel_wrong_codes_get_five_guesses_between_them() {
+    let presenter = peer("Sanctuary").await;
+    let code = presenter.node.start_pairing();
+    let wrong = if code.code == "000000" {
+        "111111"
+    } else {
+        "000000"
+    };
+    let mut attackers = Vec::new();
+    for i in 0..4 {
+        attackers.push(peer(&format!("Attacker {i}")).await);
+    }
+    let mut guessed = 0;
+    let mut rounds = 0;
+    while presenter.node.status().pairing.is_some() {
+        rounds += 1;
+        assert!(rounds < 50, "the code was never voided");
+        let address = presenter.address();
+        let tries = attackers.iter().map(|a| {
+            let node = a.node.clone();
+            let address = address.clone();
+            async move { node.pair(wrong, Some(&address)).await }
+        });
+        for result in futures_util::future::join_all(tries).await {
+            match result {
+                Err(NetError::Refused(why)) if why.contains("did not match") => guessed += 1,
+                Err(NetError::Refused(why))
+                    if why.contains("another device is pairing")
+                        || why.contains("not showing a pairing code") => {}
+                other => panic!("expected a refusal, got {other:?}"),
+            }
+        }
+    }
+    assert_eq!(guessed, 5, "exactly five guesses were checked");
+    // The right code no longer works.
+    assert!(attackers[0]
+        .node
+        .pair(&code.code, Some(&presenter.address()))
+        .await
+        .is_err());
+    assert!(presenter.node.status().paired.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn paired_devices_push_changes_both_ways_at_once() {
     let (presenter, office) = paired().await;
     assert_eq!(presenter.node.status().paired[0].name, "Office PC");
