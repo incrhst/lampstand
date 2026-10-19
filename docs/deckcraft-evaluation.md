@@ -207,7 +207,8 @@ DeckCraft.
 - **PowerPoint as the reference.** LibreOffice was used because PowerPoint's
   AppleScript export stalled on a "file extension has changed" dialog for a
   valid `.pptx`. Exporting by hand from PowerPoint for a dozen slides would
-  confirm the LibreOffice results.
+  confirm the LibreOffice results. Click counts are now checked against
+  PowerPoint; see the [addendum](#addendum-powerpoint-as-the-reference-2026-10-19).
 
 ## Against the PRD
 
@@ -229,6 +230,77 @@ Depend, not fork, not build. Pin `deckcraft-pptx`, `deckcraft-model` and
 `rust-version` to 1.95, and send the paragraph-build fix and our test decks
 upstream. Revisit if PowerPoint-made church decks show gaps that upstream
 won't take. Not added as a dependency in this PR.
+
+## Addendum: PowerPoint as the reference (2026-10-19)
+
+Per-slide results: [eval/deckcraft-powerpoint-clicks.tsv](eval/deckcraft-powerpoint-clicks.tsv).
+
+The two items under [Still to test](#still-to-test) were taken up on the Mac
+used for this evaluation. PowerPoint for Mac 16.108 is installed but
+unlicensed: it opens and plays decks, but every edit, save and export is
+blocked ("Subscription Required to Edit and Save").
+
+**Church decks made in PowerPoint: blocked.** Without a licence PowerPoint
+cannot create or save a deck, so none could be made here. This needs either
+a signed-in PowerPoint or real church decks collected from churches, which
+the PRD's 200-deck corpus needs anyway. DeckCraft's contribution rules also
+bar committing files produced by PowerPoint (its `AGENTS.md`, §1.1), so only
+synthetic reproductions of failures can go upstream, not the church decks
+themselves.
+
+**PowerPoint's own click counts: they agree with the XML, not with DeckCraft,
+where the two differ.** An unlicensed PowerPoint still runs slide shows, and
+its AppleScript `go to next slide` is a clicker press. The new
+[eval/tools/pptclicks.py](eval/tools/pptclicks.py) plays each deck and counts
+the presses each slide takes. It ran over 11 of the 13 decks in
+[eval/deckcraft-builds.tsv](eval/deckcraft-builds.tsv) with 1.5 seconds
+between presses; one deck was re-run with 5 seconds.
+
+| Check | Result |
+| --- | --- |
+| Slides where XML and DeckCraft agree, PowerPoint matches too | 2411-Performance_Up (4 slides), 45541_Footer, 45541_Header (with 5 s), 45545_Comment, EmbeddedAudio, EmbeddedVideo, alterman_security (5 clicks), customGeo (5 slides) |
+| `ca.ubc…HowWeRefactor` slide 27 | XML 6, DeckCraft 18, **PowerPoint 6** |
+| `ca.ubc…HowWeRefactor` slide 9 | XML 1, DeckCraft 4, **PowerPoint 2 or fewer** |
+| `customGeo` slide 18 | XML 5, DeckCraft 0, **PowerPoint 5** |
+| `ca.ubc…HowWeRefactor` slide 21 | XML 2, DeckCraft 1, PowerPoint 3 at 1.5 s: inconclusive |
+| Not played | `keyframes`: PowerPoint itself refuses it ("can't read"), behind the "file extension has changed" alert that stalled the earlier export. DeckCraft and LibreOffice read it. `bug68703`: PowerPoint's sandbox asked for file access. |
+
+How to read the 1.5-second counts: a press that lands while a transition, an
+automatic effect or a timed advance is still running only finishes it, so a
+short pause can add presses but never removes a build step. PowerPoint's
+count is therefore an upper bound on the true count. Wherever DeckCraft plays
+*more* clicks than that bound (UBC slides 9 and 27), DeckCraft is wrong no
+matter the timing. On `45541_Header` the one extra press at 1.5 seconds went
+away at 5 seconds. Most UBC slides, which chain with-previous and timed
+effects, show one extra press at 1.5 seconds; a 5-second rerun of UBC and
+of the slides below is still to do.
+
+Open, not yet explained:
+
+- `ae.ac.uaeu…GeomLec1` slide 14: XML and DeckCraft say 1 click, PowerPoint
+  took 0. This is the one case of PowerPoint taking *fewer* clicks than the
+  XML, which timing can't explain.
+- `at.ecodesign…` slides 22, 24 and 25: one extra press each at 1.5 seconds.
+  These slides have no transition, so they need the 5-second rerun.
+
+**What this means for [ARCHITECTURE.md](ARCHITECTURE.md).** It confirms the
+plan to depend on `deckcraft-pptx`, `deckcraft-model` and `deckcraft-anim`,
+pinned, with our own mapping. It also confirms, against PowerPoint itself,
+that the paragraph-build bug in `crates/pptx/src/read/timing.rs` is
+DeckCraft's: the reader folds per-paragraph effects into one by-paragraph
+build, and PowerPoint plays the clicks the XML describes. The fix (fold only
+runs of on-click effects on consecutive paragraphs, keep the rest as
+per-paragraph animations, which the model already supports) should land
+upstream or in our `[patch]` fork before T29's real-deck fidelity check. The
+same fold also breaks Keynote exports: Keynote writes a paragraph build as a
+background fade with paragraph 1, then one paragraph per click, which
+DeckCraft plays as a single click.
+
+Two limits for T32, which plans PowerPoint-exported reference images: an
+unlicensed PowerPoint cannot export, and the macOS sandbox prompts for file
+access unless the decks sit somewhere it already reads (`~/Downloads` worked
+here). The CI reference images need a licensed PowerPoint, and a person may
+have to grant folder access once.
 
 ## Reproducing
 
@@ -265,3 +337,8 @@ Then:
   `compare.sh DECKS OUT existing` to render and rasterise, then
   `rescore.sh OUT XMLCLICKS.tsv` to score visible slides only (LibreOffice
   leaves hidden slides out of the PDF).
+- **PowerPoint click counts:** copy the decks to `~/Downloads` (PowerPoint's
+  sandbox reads it without asking), then
+  `python3 -I docs/eval/tools/pptclicks.py --delay 5 ~/Downloads/DECKS/*.pptx`.
+  It drives PowerPoint for Mac through AppleScript and only plays decks, so
+  an unlicensed PowerPoint works.
