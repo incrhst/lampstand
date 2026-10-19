@@ -1,0 +1,12 @@
+[package]
+name = "probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+deckcraft-pptx = { path = "../../../../../deckcraft-eval/deckcraft/crates/pptx" }
+deckcraft-anim = { path = "../../../../../deckcraft-eval/deckcraft/crates/anim" }
+deckcraft-model = { path = "../../../../../deckcraft-eval/deckcraft/crates/model" }
+
+[workspace]
