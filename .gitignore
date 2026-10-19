@@ -1,3 +1,5 @@
 /target
 .DS_Store
 node_modules/
+promo/out/
+promo/public/sfx.wav
