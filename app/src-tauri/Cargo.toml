@@ -26,12 +26,16 @@ lampstand-layout.workspace = true
 lampstand-library.workspace = true
 lampstand-live.workspace = true
 lampstand-render.workspace = true
-lampstand-sync.workspace = true
+lampstand-server.workspace = true
+lampstand-sync = { workspace = true, features = ["net"] }
+gethostname.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
 uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }

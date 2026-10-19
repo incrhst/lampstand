@@ -127,16 +127,24 @@ Google Slides arrive as their PPTX export and take the same path. A 200-deck fid
 - **Blobs.** Deck files, images, video and Bible text are content-addressed files (BLAKE3). Peers fetch them by hash on demand. They are never inside documents, which keeps documents small and sync fast.
 - **Wire protocol.** One protocol for every link: a WebSocket carrying Automerge sync messages and blob requests. LAN peers advertise `_lampstand._tcp` over mDNS and connect to each other's local server (CD-2). The relay speaks the same protocol (CD-3). Shared-folder sync (CD-7, Phase 2) writes the same saved chunks to a folder.
 - **No samod.** The repo wraps `automerge` directly: samod cannot create a document under a chosen ID and has no hook to drop changes by author role ([decision 0002](decisions/0002-sync-repo.md)). Document IDs are UUIDs and messages are plain Automerge sync messages, so a relay can still bridge to automerge-repo for the Phase 2 browser planner.
-- **Storage.** `docs/<uuid>/` holds a `kind` file and the document's chunks: one incremental chunk per change, compacted into a snapshot after 32. `blobs/<hash>` holds blobs, written to a temp file, hashed while streaming, then renamed.
+- **Storage.** `docs/<uuid>/` holds a `kind` file and the document's chunks: one incremental chunk per change, compacted into a snapshot after 32. `blobs/<hash>` holds blobs, written to a temp file, hashed while streaming, then renamed. Each `put`, and each batch of received sync messages (`Repo::receive_sync_messages`), is made durable as a unit: on Apple platforms every file gets a plain `fsync` and the batch one `F_FULLFSYNC` (Rust's `sync_all` is a full drive-cache flush there, about 6 ms each), which took a `put` from about 40 ms to about 10 ms.
 - **Team index.** The team document's `index` map (ID → kind) lists every document; its `deleted` map holds tombstones (`Repo::is_deleted` tells a deleted document from one that never existed). Its first change is made by a fixed actor at time zero, so every device's copy shares it and the maps merge. Until T18 the team document's ID is the nil UUID.
 - **Actors.** A change's actor ID is the device's 32-byte public key plus 8 random bytes per `Repo::open`, so peers can find the author's role (`actor_device`) and a device that lost its store never reuses a sequence number.
 - **Sync API.** `Repo::generate_sync_message` and `receive_sync_message` keep one Automerge sync state per (peer device, document) and carry the document's kind, so the receiver can create an unseen document and check permissions. T17 puts them on the WebSocket; tests pass them between in-memory repos.
+- **Network (T17, `sync::net`, behind the `net` feature).** A `SyncNode` per device. Frames are postcard-encoded, one per binary WebSocket message: `Hello`, `Proof`, `Refused`, `Sync { kind, id, data }`, `BlobWant`, `BlobChunk` (256 KiB) and `BlobMissing`. Either device may dial; the server side is `WS /sync` on the local server. If two devices dial each other at once, both keep the connection dialled by the smaller device key.
+  - *Handshake.* Each side sends a hello (device key, name, a fresh nonce), then signs a hash of both hellos with its device key, so neither can claim a key it does not hold and a proof cannot be replayed. A device that is not paired is refused before any document moves.
+  - *Pairing, until T18.* The presenting machine shows a six-digit code for five minutes; the service device types it. The code is never sent: both run SPAKE2 with it inside the handshake and confirm the derived key over the same transcript, so a listener learns nothing and an impostor gets one guess per attempt (five wrong guesses void the code). Each side then adds the other to `paired.json`, which is device-only. T18 replaces the list with team membership and adds role checks at the `// T18:` hook.
+  - *Push, then sweep.* On connect, each side offers every document. After that every local change is offered to every connected peer at once (with the team document, whose index a new document changes), so a fix on a service device reaches the presenting machine in tens of milliseconds. Sync messages that arrive together are applied as one batch. A 500-song first sync takes about 0.7 s (debug build, one machine).
+  - *Reconnect.* Each paired device has a dialler that reconnects with backoff (0.5 s doubling to 10 s, reset after a connection that lasted) to its mDNS address or the address it was last reached at, and wakes when mDNS sees it again. On disconnect the peer's sync state is dropped (`Repo::forget_peer`), so the next connection resumes from a fresh sync handshake and catches up.
+  - *Discovery.* mDNS `_lampstand._tcp` with TXT `id` (device key), `name`, `pairing` and `v`. Church networks often block multicast between Wi-Fi and wired, so every screen that needs a device also takes an address (`host` or `host:port`).
+  - *Blobs* are fetched on request (`SyncNode::fetch_blob`) from whichever connected device has them, and verified on arrival (`BlobStore::put_verified`).
+  - *Measured* (`crates/lampstand-server/tests/sync.rs`, two processes on an M1, debug build): found by mDNS in under 1 s, converged 40 ms after pairing, edit to change on the other process median 19 ms, a restarted peer caught up in under 1 s. `app/src-tauri/tests/sync.rs` times edit to `Event::Loaded` on the presenting app at about 50 ms. Target: under 1 s on a LAN.
 
 ### What syncs and what stays on the device
 
 | Synced | Device only |
 | --- | --- |
-| Songs, services, themes, decks (metadata and current file), translations, team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens), window layout, Google tokens (OS keychain), the device key, caches (parsed decks, thumbnails, search index) |
+| Songs, services, themes, decks (metadata and current file), translations, team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens), window layout, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
 
 ### Teams and roles: signed membership, honest-member threat model
 
@@ -162,6 +170,7 @@ How the app is laid out (T46):
 - `app/src/lib/api.ts` is the only way to the core: `request(req, "Services")` returns the payload of the expected response type and throws `ApiError` on `Response::Error`; `send(req)` for `Ok`; `onEvent(handler)` for the `api-event` stream. `app/src/lib/state.svelte.ts` keeps the loaded service, cursors and overlay current from events.
 - Screens live in `app/src/routes/<name>/`, one folder per ticket (T47 `operate`, T48 `library`, T49 `plan`, T50 `outputs`...). Shared components and design tokens are in `app/src/lib/kit/`.
 - `ServiceRequest::Open` answers `Response::Loaded`: every item with its slides, as the live engine holds them, so the operator view never paginates. `Event::Loaded` brings the same after a reload, and `Event::Live` carries the overlay so Black shows its state.
+- `Request::Team` is answered by `app/src-tauri/src/sync.rs` on the async runtime, without the `App` lock: `Status`, `StartPairing`/`StopPairing`, `Join { invite, address }` (until T18 the invite is the pairing code), `Connect { address }` and `Unpair`, each answering `Response::Team(TeamStatus)`. `Event::SyncStatus` fires when connections or nearby devices change. The devices screen is `app/src/routes/devices/`. A library change wakes the app thread at once, so a synced edit reloads the open service without waiting for the 100 ms tick.
 - Operator keys (in Lampstand's windows): Space, Right or Page Down for Next; Left or Page Up for Previous; full stop for Black; 1 to 9 jump to that verse of the live song; C, B, P, T, I and E jump to the next chorus, bridge, pre-chorus, tag, intro or ending, wrapping round. B means Bridge here, not Black: clickers send B for black, so T56's clicker mode maps the clicker's B to Black while it holds the global shortcuts.
 
 ### Getting songs in
@@ -170,7 +179,7 @@ How the app is laid out (T46):
 
 A first library can come from Worship Leader App's free song database (`lampstand-connectors::song_databases`): about 50 languages, published daily as `.osb` backups. The operator picks a language and the app downloads and imports it. Nothing is bundled: many of those songs are under copyright, and the church's own licence covers projecting them. The database carries no copyright or CCLI numbers, so CCLI reports for those songs need the numbers added. A fresh install also imports two public-domain hymns (`app/src-tauri/seed/`), so there is always something to show.
 
-Importing the 3,100-song English database takes about 110 s on an M1 (release build), almost all of it in `Repo::put`, one document at a time. A batched put in the sync repo is the fix (follow-up).
+Importing the 3,100-song English database took about 110 s on an M1 (release build), almost all of it in `Repo::put`'s drive-cache flushes. T17 made each `put` one flush instead of six (see "Sync", Storage), about four times faster; a `put` of many documents with one flush would close the rest of the gap (follow-up).
 
 ### Media: GStreamer, behind a feature
 
@@ -180,7 +189,7 @@ GStreamer is behind a `gstreamer` feature so contributors and CI can build witho
 
 ### Local server
 
-One axum server on port 7340 serves the OBS browser source, peer sync and the Google picker page. Browser-source URLs carry a per-output random key. The browser source draws scenes in the DOM and gets deck slides as frames rasterised by our renderer. Guest upload links (CD-9) live on the relay, because guests are not on the church network; without a relay, guests paste a share link instead.
+One axum server on port 7340 serves the OBS browser source, peer sync and the Google picker page. T42's skeleton has `Server::start` and `WS /sync`, which hands each socket to the app's `SyncNode` (`Backend::sync`); the other routes answer 404 until T43 and T40. The app listens on every interface; if 7340 is taken (a second copy on one machine) it takes any free port and advertises that one. `LAMPSTAND_PORT`, `LAMPSTAND_DEVICE_NAME` and `LAMPSTAND_NO_MDNS` override the defaults. Browser-source URLs carry a per-output random key. The browser source draws scenes in the DOM and gets deck slides as frames rasterised by our renderer. Guest upload links (CD-9) live on the relay, because guests are not on the church network; without a relay, guests paste a share link instead.
 
 ### Clickers
 

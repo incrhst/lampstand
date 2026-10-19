@@ -163,7 +163,8 @@ impl App {
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
-            Request::Team(_) => Err("teams and sync arrive with T17 and T18".into()),
+            // The shell answers these from `crate::sync`, without the lock.
+            Request::Team(_) => Err("sync is not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }

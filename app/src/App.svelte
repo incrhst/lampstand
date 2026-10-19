@@ -11,11 +11,13 @@
   import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
+  import DevicesView from "./routes/devices/DevicesView.svelte";
 
   const screens = [
     { id: "plan", label: "Plan" },
     { id: "operate", label: "Operate" },
     { id: "outputs", label: "Outputs" },
+    { id: "devices", label: "Devices" },
   ] as const;
   type Screen = (typeof screens)[number]["id"];
 
@@ -46,8 +48,10 @@
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
       <OperateView />
-    {:else}
+    {:else if screen === "outputs"}
       <OutputsView />
+    {:else}
+      <DevicesView />
     {/if}
   </main>
 

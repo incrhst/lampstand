@@ -25,6 +25,30 @@ use crate::DocKind;
 pub struct DeviceKey(pub [u8; 32]);
 
 impl DeviceKey {
+    /// 64 lowercase hex digits.
+    pub fn to_hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    pub fn from_hex(s: &str) -> Option<DeviceKey> {
+        let s = s.trim();
+        if s.len() != 64 || !s.is_ascii() {
+            return None;
+        }
+        let mut key = [0u8; 32];
+        for (i, byte) in key.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+        }
+        Some(DeviceKey(key))
+    }
+
+    /// The first 8 hex digits in two groups, for people to compare:
+    /// "3fa9 c201".
+    pub fn fingerprint(&self) -> String {
+        let hex = self.to_hex();
+        format!("{} {}", &hex[..4], &hex[4..8])
+    }
+
     /// Whether `signature` is this device's ed25519 signature of `message`.
     pub fn verify(&self, message: &[u8], signature: &[u8; 64]) -> bool {
         use ed25519_dalek::Verifier;
@@ -134,6 +158,14 @@ mod tests {
         assert!(!DeviceKeypair::generate()
             .public()
             .verify(b"join team", &signature));
+    }
+
+    #[test]
+    fn device_keys_print_as_hex() {
+        let key = DeviceKeypair::generate().public();
+        assert_eq!(DeviceKey::from_hex(&key.to_hex()), Some(key));
+        assert_eq!(DeviceKey::from_hex("zz"), None);
+        assert_eq!(key.fingerprint().len(), 9);
     }
 
     #[test]

@@ -141,10 +141,83 @@ pub enum OutputRequest {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TeamRequest {
+    /// This device, its paired devices and the devices nearby, as
+    /// `Response::Team`.
     Status,
-    CreateInvite { role: lampstand_sync::team::Role },
-    Join { invite: String },
-    SetRelay { url: Option<String> },
+    CreateInvite {
+        role: lampstand_sync::team::Role,
+    },
+    /// Until T18, `invite` is the six-digit pairing code another device is
+    /// showing. With `address` (`host` or `host:port`), pairs with the
+    /// device there; otherwise with whichever device nearby (mDNS) is
+    /// showing a code and accepts it. Answers `Response::Team`.
+    Join {
+        invite: String,
+        address: Option<String>,
+    },
+    SetRelay {
+        url: Option<String>,
+    },
+    /// Shows a pairing code on this device (the presenting machine) for
+    /// five minutes: `Response::Team`, with `pairing` set.
+    StartPairing,
+    StopPairing,
+    /// Connects to an already paired device by address, for networks that
+    /// block mDNS. Remembered for reconnecting.
+    Connect {
+        address: String,
+    },
+    /// Stops syncing with a paired device (its key in hex).
+    Unpair {
+        device: String,
+    },
+}
+
+/// This device on the network, for the devices screen.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TeamStatus {
+    pub name: String,
+    /// Two groups of four hex digits, for people to compare: "3fa9 c201".
+    pub fingerprint: String,
+    /// Where other devices can reach this one: `"192.168.1.20:7340"`.
+    pub addresses: Vec<String>,
+    /// The pairing code shown now, if any.
+    pub pairing: Option<PairingView>,
+    pub paired: Vec<DeviceView>,
+    /// Lampstand devices seen on the network that are not paired.
+    pub nearby: Vec<NearbyView>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PairingView {
+    pub code: String,
+    /// Unix milliseconds.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub expires_ms: i64,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceView {
+    /// The device key in hex, for `Unpair`.
+    pub device: String,
+    pub fingerprint: String,
+    pub name: String,
+    pub address: Option<String>,
+    pub connected: bool,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NearbyView {
+    pub device: String,
+    pub fingerprint: String,
+    pub name: String,
+    pub address: String,
+    /// It is showing a pairing code now.
+    pub pairing: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -174,6 +247,7 @@ pub enum Response {
     Loaded(LoadedService),
     SongDatabases(Vec<SongDatabase>),
     Text(String),
+    Team(TeamStatus),
 }
 
 /// A song database that can be downloaded to start a library.
@@ -258,6 +332,8 @@ pub enum Event {
         kind: String,
         id: String,
     },
+    /// Connections or nearby devices changed: `peers` paired devices are
+    /// connected now. Refetch `TeamRequest::Status` for the details.
     SyncStatus {
         peers: usize,
         relay_connected: bool,

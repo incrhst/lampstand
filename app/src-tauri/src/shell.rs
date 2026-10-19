@@ -11,6 +11,11 @@
 //! - The **`lampstand-app` thread** locks `App` for everything that is not a
 //!   request: window resizes and closes, render-thread events, library
 //!   changes from sync, display hot-plug polling and the 100 ms live tick.
+//!   A library change wakes it at once, so a synced edit reloads the open
+//!   service without waiting for the tick.
+//! - **Sync** (`crate::sync`) runs on Tauri's async runtime: the local
+//!   server, the sync sessions and the `Team` requests. It never locks
+//!   `App`; remote changes reach it through the library's change feed.
 //! - The **render thread** (`lampstand-render`) owns the GPU and every
 //!   surface, and reports through a callback that only sends on a channel.
 
@@ -32,14 +37,18 @@ use lampstand_sync::DocChanged;
 use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 
+use crate::config::device_key;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
+use crate::sync::{Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
 enum Internal {
     Resized(OutputId, u32, u32),
     Closed(OutputId),
     Render(OutputEvent),
+    /// The library changed; the batch is read from the change feed.
+    LibraryChanged,
 }
 
 struct Shared {
@@ -49,6 +58,8 @@ struct Shared {
     library: Arc<Library>,
     emit: EventSink,
     downloads: PathBuf,
+    /// `None` when the local server could not start.
+    sync: Option<Arc<Sync>>,
 }
 
 fn lock(app: &Mutex<App>) -> MutexGuard<'_, App> {
@@ -68,6 +79,12 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             .map_err(|e| e.to_string())
     };
     match request {
+        Request::Team(request) => Ok(match &state.sync {
+            Some(sync) => sync.handle(request).await,
+            None => Response::Error {
+                message: "sync is off: the local server could not start".into(),
+            },
+        }),
         Request::Library(LibraryRequest::ImportFiles { paths }) => {
             blocking(Box::new(move || {
                 Response::Text(import_files(&library, &paths, &*emit))
@@ -156,7 +173,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         handle: handle.clone(),
         outputs: outputs.clone(),
         windows: windows.clone(),
-        tx,
+        tx: tx.clone(),
     };
     let emitter = handle.clone();
     let emit = Arc::new(move |event: Event| {
@@ -170,9 +187,39 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
     )?;
     let changes = app.library().subscribe();
+    let wake = app.library().subscribe();
     let library = app.library().clone();
     let emit = app.emitter();
     let app = Arc::new(Mutex::new(app));
+
+    let sync = match device_key(data_dir) {
+        Ok(key) => tauri::async_runtime::block_on(Sync::start(
+            &library,
+            key,
+            data_dir,
+            SyncConfig::from_env(),
+            emit.clone(),
+        )),
+        Err(e) => Err(e.to_string()),
+    };
+    let sync = match sync {
+        Ok(sync) => Some(Arc::new(sync)),
+        Err(e) => {
+            eprintln!("lampstand: sync is off: {e}");
+            None
+        }
+    };
+    let wake_tx = tx.clone();
+    std::thread::Builder::new()
+        .name("lampstand-changes".into())
+        .spawn(move || {
+            while wake.recv().is_ok() {
+                if wake_tx.send(Internal::LibraryChanged).is_err() {
+                    return;
+                }
+            }
+        })
+        .map_err(|e| e.to_string())?;
 
     let thread_app = app.clone();
     std::thread::Builder::new()
@@ -184,6 +231,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         library,
         emit,
         downloads: data_dir.join("downloads"),
+        sync,
     })
 }
 
@@ -225,6 +273,7 @@ fn app_step(
         match message {
             Ok(Internal::Resized(id, w, h)) => lock(app).output_resized(id, w, h),
             Ok(Internal::Closed(id)) => lock(app).output_closed(id),
+            Ok(Internal::LibraryChanged) => {}
             Ok(Internal::Render(event)) => match event {
                 OutputEvent::FirstFrame(id) => host.first_frame(id),
                 OutputEvent::Presented(_) => {}

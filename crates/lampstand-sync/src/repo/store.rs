@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use automerge::Automerge;
 use uuid::Uuid;
 
-use super::fsutil::write_atomic;
+use super::fsutil::{write_atomic, Durable};
 use crate::{DocKind, SyncError};
 
 const CHUNK_EXT: &str = "chunk";
@@ -75,15 +75,22 @@ impl DocStore {
         Ok(Some(Loaded { kind, doc, chunks }))
     }
 
-    /// Saves one more chunk of `id`'s changes.
-    pub fn append(&self, id: Uuid, kind: DocKind, bytes: &[u8]) -> Result<(), SyncError> {
+    /// Saves one more chunk of `id`'s changes. Durable once `durable` is
+    /// finished.
+    pub fn append(
+        &self,
+        id: Uuid,
+        kind: DocKind,
+        bytes: &[u8],
+        durable: &mut Durable,
+    ) -> Result<(), SyncError> {
         let dir = self.doc_dir(id);
         let kind_path = dir.join("kind");
         if !kind_path.exists() {
             fs::create_dir_all(&dir)?;
-            write_atomic(&kind_path, kind.as_str().as_bytes())?;
+            durable.write_atomic(&kind_path, kind.as_str().as_bytes())?;
         }
-        write_atomic(&dir.join(chunk_name(bytes)), bytes)?;
+        durable.write_atomic(&dir.join(chunk_name(bytes)), bytes)?;
         Ok(())
     }
 

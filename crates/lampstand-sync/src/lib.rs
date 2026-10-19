@@ -17,6 +17,8 @@
 //! The repo wraps `automerge` directly rather than using samod; see
 //! docs/decisions/0002-sync-repo.md.
 
+#[cfg(feature = "net")]
+pub mod net;
 mod repo;
 pub mod team;
 

@@ -8,17 +8,44 @@ rust-version.workspace = true
 [features]
 # TypeScript bindings for the UI (T45); see lampstand-api.
 ts = ["dep:ts-rs", "lampstand-core/ts"]
+# The network transport (`net`): WebSocket sessions, pairing, mDNS (T17).
+# Off for crates that only need the repo.
+net = [
+    "dep:futures-util",
+    "dep:mdns-sd",
+    "dep:postcard",
+    "dep:serde_json",
+    "dep:spake2",
+    "dep:tokio",
+    "dep:tokio-tungstenite",
+]
 
 [dependencies]
 automerge.workspace = true
 autosurgeon.workspace = true
 blake3.workspace = true
 ed25519-dalek.workspace = true
+futures-util = { workspace = true, optional = true }
 getrandom.workspace = true
 lampstand-core = { workspace = true, features = ["automerge"] }
+
+mdns-sd = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
+spake2 = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { workspace = true, optional = true }
 ts-rs = { workspace = true, optional = true }
 uuid.workspace = true
 
+[target.'cfg(target_vendor = "apple")'.dependencies]
+# Plain fsync(2): std's sync_all is F_FULLFSYNC on Apple platforms, which
+# flushes the whole drive cache; batched writes do that once per batch.
+libc.workspace = true
+
 [dev-dependencies]
+lampstand-sync = { path = ".", features = ["net"] }
 tempfile.workspace = true
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite.workspace = true

@@ -19,9 +19,12 @@ use automerge::{
 use uuid::Uuid;
 
 pub use blobs::BlobStore;
+#[cfg(feature = "net")]
+pub(crate) use fsutil::{random_bytes, write_atomic};
 
 use crate::team::{DeviceKey, DeviceKeypair};
 use crate::{Doc, DocChanged, DocKind, SyncError};
+use fsutil::Durable;
 use store::DocStore;
 
 /// The team document's ID until T18 gives each team its own.
@@ -106,7 +109,9 @@ impl Repo {
                     saved: Vec::new(),
                     chunks: 0,
                 };
-                repo.persist(TEAM_DOC, &mut team)?;
+                let mut durable = Durable::default();
+                repo.persist(TEAM_DOC, &mut team, &mut durable)?;
+                durable.finish()?;
                 st.docs.insert(TEAM_DOC, team);
             }
         }
@@ -149,10 +154,12 @@ impl Repo {
             .transact::<_, _, autosurgeon::ReconcileError>(|tx| autosurgeon::reconcile(tx, doc))
             .map_err(|f| SyncError::Corrupt(format!("{} {id}: {}", T::KIND.as_str(), f.error)))?;
         let changed = loaded.doc.get_heads() != before;
+        let mut durable = Durable::default();
         if changed {
-            self.persist(id, loaded)?;
+            self.persist(id, loaded, &mut durable)?;
         }
-        let indexed = self.set_index(&mut st.docs, id, T::KIND, false)?;
+        let indexed = self.set_index(&mut st.docs, id, T::KIND, false, &mut durable)?;
+        durable.finish()?;
         drop(st);
         if changed || indexed {
             self.notify(T::KIND, id, false);
@@ -165,7 +172,9 @@ impl Repo {
     /// later `put` of the same ID brings it back.
     pub fn delete(&self, kind: DocKind, id: Uuid) -> Result<(), SyncError> {
         let mut st = self.lock();
-        let changed = self.set_index(&mut st.docs, id, kind, true)?;
+        let mut durable = Durable::default();
+        let changed = self.set_index(&mut st.docs, id, kind, true, &mut durable)?;
+        durable.finish()?;
         drop(st);
         if changed {
             self.notify(kind, id, false);
@@ -293,13 +302,85 @@ impl Repo {
             .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
         let changed = loaded.doc.get_heads() != before;
         if changed {
-            self.persist(id, loaded)?;
+            let mut durable = Durable::default();
+            self.persist(id, loaded, &mut durable)?;
+            durable.finish()?;
         }
         drop(st);
         if changed {
             self.notify(kind, id, true);
         }
         Ok(())
+    }
+
+    /// Applies many sync messages from `peer` at once: each changed
+    /// document is written once for the whole batch, rather than once per
+    /// message. Results are per message, in order. A first sync of a large
+    /// library arrives this way.
+    pub fn receive_sync_messages(
+        &self,
+        peer: DeviceKey,
+        messages: Vec<SyncMessage>,
+    ) -> Vec<(Uuid, Result<(), SyncError>)> {
+        let mut results = Vec::with_capacity(messages.len());
+        let mut changed: Vec<(DocKind, Uuid)> = Vec::new();
+        let mut st = self.lock();
+        let State { docs, peers } = &mut *st;
+        for SyncMessage { kind, id, data } in messages {
+            let result = (|| {
+                let decoded = sync::Message::decode(&data)
+                    .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
+                let loaded = self
+                    .load(docs, id, Some(kind))?
+                    .expect("created when missing");
+                check_kind(id, loaded.kind, kind)?;
+                // T18: drop changes whose author's role may not write `kind`.
+                let before = loaded.doc.get_heads();
+                loaded
+                    .doc
+                    .receive_sync_message(peers.entry((peer, id)).or_default(), decoded)
+                    .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
+                if loaded.doc.get_heads() != before && !changed.contains(&(kind, id)) {
+                    changed.push((kind, id));
+                }
+                Ok(())
+            })();
+            results.push((id, result));
+        }
+        let mut persisted = Vec::with_capacity(changed.len());
+        let mut durable = Durable::default();
+        for (kind, id) in changed {
+            let loaded = docs.get_mut(&id).expect("loaded above");
+            match self.persist(id, loaded, &mut durable) {
+                Ok(()) => persisted.push((kind, id)),
+                Err(e) => {
+                    let why = e.to_string();
+                    for (rid, r) in results.iter_mut() {
+                        if *rid == id && r.is_ok() {
+                            *r = Err(SyncError::Corrupt(why.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        if let Err(e) = durable.finish() {
+            let why = e.to_string();
+            for (_, r) in results.iter_mut().filter(|(_, r)| r.is_ok()) {
+                *r = Err(SyncError::Corrupt(why.clone()));
+            }
+            persisted.clear();
+        }
+        drop(st);
+        for (kind, id) in persisted {
+            self.notify(kind, id, true);
+        }
+        results
+    }
+
+    /// The team document's ID: offer it with every new document, as a new
+    /// document changes the team index too.
+    pub fn team_doc(&self) -> Uuid {
+        TEAM_DOC
     }
 
     /// Drops the sync state kept for `peer`, when its connection closes.
@@ -351,12 +432,17 @@ impl Repo {
 
     /// Writes the changes since the last save as one more chunk, compacting
     /// once enough have built up.
-    fn persist(&self, id: Uuid, loaded: &mut Loaded) -> Result<(), SyncError> {
+    fn persist(
+        &self,
+        id: Uuid,
+        loaded: &mut Loaded,
+        durable: &mut Durable,
+    ) -> Result<(), SyncError> {
         let bytes = loaded.doc.save_after(&loaded.saved);
         if bytes.is_empty() {
             return Ok(());
         }
-        self.store.append(id, loaded.kind, &bytes)?;
+        self.store.append(id, loaded.kind, &bytes, durable)?;
         loaded.saved = loaded.doc.get_heads();
         loaded.chunks += 1;
         if loaded.chunks > COMPACT_AFTER {
@@ -388,6 +474,7 @@ impl Repo {
         id: Uuid,
         kind: DocKind,
         deleted: bool,
+        durable: &mut Durable,
     ) -> Result<bool, SyncError> {
         let team = self
             .load(docs, TEAM_DOC, Some(DocKind::Team))?
@@ -412,7 +499,7 @@ impl Repo {
             .map_err(|f| SyncError::Corrupt(format!("team document: {}", f.error)))?;
         let changed = team.doc.get_heads() != before;
         if changed {
-            self.persist(TEAM_DOC, team)?;
+            self.persist(TEAM_DOC, team, durable)?;
         }
         Ok(changed)
     }
