@@ -40,6 +40,11 @@ use crate::{CalibrationPattern, Image, OutputCommand, RenderError, Renderer};
 const IDLE: Duration = Duration::from_millis(500);
 /// Retry delay after a surface reports a timeout or occlusion.
 const RETRY: Duration = Duration::from_millis(16);
+/// Headless outputs have no vsync to pace them. Without this, an animating
+/// headless output re-renders as fast as the loop spins, piling GPU work up
+/// faster than a software adapter (WARP, lavapipe) finishes it, and a
+/// snapshot then waits behind the whole queue.
+const HEADLESS_FRAME: Duration = Duration::from_millis(16);
 /// If a hidden window's surface keeps timing out, show it anyway after
 /// this, so the output is never stuck invisible.
 const FIRST_FRAME_FALLBACK: Duration = Duration::from_millis(500);
@@ -699,6 +704,11 @@ impl Engine {
             Acquired::Headless(view) => {
                 self.composite(id, now_ms, &mut encoder, &view, FORMAT);
                 queue.submit([encoder.finish()]);
+                self.presented(id);
+                if let Some(a) = self.attached.get_mut(&id) {
+                    a.retry_at = Some(Instant::now() + HEADLESS_FRAME);
+                }
+                return;
             }
             Acquired::Surface(frame, suboptimal, view_format) => {
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
