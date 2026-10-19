@@ -1,13 +1,22 @@
+<!-- A titled card, for settings-like screens (Outputs). Working screens
+     use full-height columns (.pane in theme.css) instead. -->
 <script lang="ts">
   import type { Snippet } from "svelte";
 
-  let { title, children, actions }: { title: string; children: Snippet; actions?: Snippet } =
-    $props();
+  let {
+    title,
+    description,
+    children,
+    actions,
+  }: { title: string; description?: string; children: Snippet; actions?: Snippet } = $props();
 </script>
 
 <section>
   <header>
-    <h2>{title}</h2>
+    <div>
+      <h2>{title}</h2>
+      {#if description}<p class="muted">{description}</p>{/if}
+    </div>
     {#if actions}<div class="actions">{@render actions()}</div>{/if}
   </header>
   {@render children()}
@@ -17,23 +26,24 @@
   section {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 0.8rem 1rem 1rem;
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem 1.25rem;
     min-width: 0;
   }
   header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.75rem;
   }
   h2 {
-    font-size: 0.95rem;
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  p {
+    font-size: 0.85rem;
+    margin-top: 0.2rem;
   }
   .actions {
     display: flex;

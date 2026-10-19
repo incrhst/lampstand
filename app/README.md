@@ -13,7 +13,7 @@ natively on one render thread" in docs/ARCHITECTURE.md.
 | `src-tauri/seed/` | Public-domain hymns imported on first run |
 | `src/lib/api.ts` | The TypeScript client every screen uses |
 | `src/lib/api/` | Types generated from `lampstand-api` (never edit) |
-| `src/lib/kit/` | Shared components and design tokens |
+| `src/lib/kit/` | Shared components and design tokens: `theme.css`, `Icon` (our own SVG set in `icons.ts`), `Button`, `Segmented`, `ListRow`, `StatusPill`, `Dot`, `Banner`, `Placeholder` (marks data a ticket will back), `ProgressBar`, `Switch`, `StepRail`, `StatusBar`, `SlidePreview`, `Panel` |
 | `src/routes/<screen>/` | One folder per screen (T47 to T55 replace the bare ones) |
 
 `npm run check` type-checks, `npm test` runs the TypeScript unit tests.
