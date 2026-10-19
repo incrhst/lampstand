@@ -45,6 +45,60 @@ impl Drop for TempFile {
     }
 }
 
+/// Atomic writes made durable together, for a batch of documents.
+///
+/// On Apple platforms `File::sync_all` is `F_FULLFSYNC`, which also flushes
+/// the drive's own cache and costs about 6 ms each, so a `put` (a chunk,
+/// the team index and a `kind` file, each with its directory) took ~40 ms.
+/// Here each file and directory gets a plain `fsync(2)`, which hands the
+/// data to the drive, and [`Durable::finish`] issues one `F_FULLFSYNC` for
+/// the batch, which flushes the drive cache for all of it. Elsewhere
+/// `sync_all` already is `fsync(2)`, so each write is durable on its own.
+#[derive(Default)]
+pub(crate) struct Durable {
+    #[cfg(target_vendor = "apple")]
+    last: Option<File>,
+}
+
+impl Durable {
+    pub(crate) fn write_atomic(&mut self, target: &Path, bytes: &[u8]) -> io::Result<()> {
+        #[cfg(target_vendor = "apple")]
+        {
+            use std::os::fd::AsRawFd;
+            let dir = target.parent().unwrap_or(Path::new("."));
+            let mut tmp = TempFile::new_in(dir)?;
+            tmp.file().write_all(bytes)?;
+            let file = tmp.file.take().expect("temp file open until persisted");
+            fsync(file.as_raw_fd())?;
+            fs::rename(&tmp.path, target)?;
+            fsync(File::open(dir)?.as_raw_fd())?;
+            self.last = Some(file);
+            Ok(())
+        }
+        #[cfg(not(target_vendor = "apple"))]
+        write_atomic(target, bytes)
+    }
+
+    /// Makes everything written so far durable.
+    pub(crate) fn finish(self) -> io::Result<()> {
+        #[cfg(target_vendor = "apple")]
+        if let Some(file) = self.last {
+            file.sync_all()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_vendor = "apple")]
+fn fsync(fd: std::os::fd::RawFd) -> io::Result<()> {
+    // SAFETY: `fd` is an open descriptor owned by a live `File`.
+    if unsafe { libc::fsync(fd) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 pub(crate) fn write_atomic(target: &Path, bytes: &[u8]) -> io::Result<()> {
     let dir = target.parent().unwrap_or(Path::new("."));
     let mut tmp = TempFile::new_in(dir)?;

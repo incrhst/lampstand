@@ -65,7 +65,7 @@ struct Search {
 }
 
 pub struct Library {
-    repo: Repo,
+    repo: Arc<Repo>,
     search: Mutex<Search>,
     /// Decoded Bible text by blob hash. Blobs never change, so an entry
     /// is never stale.
@@ -88,7 +88,7 @@ impl Library {
             index.upsert(&song);
         }
         let library = Self {
-            repo,
+            repo: Arc::new(repo),
             search: Mutex::new(Search { changes, index }),
             bibles: Mutex::new(HashMap::new()),
         };
@@ -98,6 +98,11 @@ impl Library {
 
     pub fn repo(&self) -> &Repo {
         &self.repo
+    }
+
+    /// The repo, for the sync node, which outlives any one borrow.
+    pub fn shared_repo(&self) -> Arc<Repo> {
+        self.repo.clone()
     }
 
     fn ensure_starter_theme(&self) -> Result<(), SyncError> {

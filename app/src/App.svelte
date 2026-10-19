@@ -4,12 +4,14 @@
   import PlanView from "./routes/plan/PlanView.svelte";
   import OperateView from "./routes/operate/OperateView.svelte";
   import OutputsView from "./routes/outputs/OutputsView.svelte";
+  import DevicesView from "./routes/devices/DevicesView.svelte";
   import { live } from "./lib/state.svelte";
 
   const screens = [
     { id: "plan", label: "Plan" },
     { id: "operate", label: "Operate" },
     { id: "outputs", label: "Outputs" },
+    { id: "devices", label: "Devices" },
   ] as const;
   type Screen = (typeof screens)[number]["id"];
 
@@ -33,8 +35,10 @@
     <PlanView onopened={() => (screen = "operate")} />
   {:else if screen === "operate"}
     <OperateView />
-  {:else}
+  {:else if screen === "outputs"}
     <OutputsView />
+  {:else}
+    <DevicesView />
   {/if}
 </main>
 
