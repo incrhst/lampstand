@@ -8,6 +8,7 @@
 //! payload, or `Response::Error`.
 
 use lampstand_core::deck::{Deck, DeckId};
+use lampstand_core::id::Timestamp;
 use lampstand_core::output::OutputId;
 use lampstand_core::output::{DisplayMatch, OutputConfig};
 use lampstand_core::program::Overlay;
@@ -74,8 +75,17 @@ pub enum LibraryRequest {
 pub enum ServiceRequest {
     List,
     Get(ServiceId),
+    /// A new, empty service. `starts_at` is when it is scheduled, if the
+    /// planner picked a time (the UI defaults to the coming Sunday).
     Create {
         title: String,
+        starts_at: Option<Timestamp>,
+    },
+    /// Moves a service to another time, or clears its date with `None`.
+    /// Answers `Response::Service`.
+    Reschedule {
+        service: ServiceId,
+        starts_at: Option<Timestamp>,
     },
     InsertItem {
         service: ServiceId,
@@ -218,7 +228,7 @@ pub struct SongHit {
 pub struct ServiceSummary {
     pub id: ServiceId,
     pub title: String,
-    pub starts_at: Option<lampstand_core::id::Timestamp>,
+    pub starts_at: Option<Timestamp>,
 }
 
 /// Pushed to the UI.

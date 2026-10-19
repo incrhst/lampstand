@@ -9,13 +9,14 @@ use lampstand_api::{
     Event, LibraryRequest, LoadedService, OutputRequest, Request, Response, ServiceRequest,
 };
 use lampstand_app::handler::{App, Placement, WindowHost};
+use lampstand_core::id::Timestamp;
 use lampstand_core::output::{
     BackgroundMode, DisplayMatch, OutputConfig, OutputId, OutputRole, OutputTarget,
 };
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{NodeKind, Scene};
-use lampstand_core::service::{ItemKind, Service};
+use lampstand_core::service::{ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
 use lampstand_live::Command;
@@ -125,8 +126,13 @@ fn search(h: &mut Harness, query: &str) -> Vec<(SongId, String)> {
 }
 
 fn create_service(h: &mut Harness, title: &str) -> Service {
+    create_service_at(h, title, None)
+}
+
+fn create_service_at(h: &mut Harness, title: &str, starts_at: Option<Timestamp>) -> Service {
     match ok(h.app.handle(Request::Service(ServiceRequest::Create {
         title: title.into(),
+        starts_at,
     }))) {
         Response::Service(s) => s,
         other => panic!("{other:?}"),
@@ -329,6 +335,79 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
     assert!(
         matches!(live, Some(Event::Live { live: Some(c), idle: false, overlay: Overlay::None, .. }) if c.slide == 0),
         "{live:?}"
+    );
+}
+
+fn list_titles(h: &mut Harness) -> Vec<String> {
+    match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
+        Response::Services(s) => s.into_iter().map(|s| s.title).collect(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_service_is_created_at_a_time_and_rescheduled() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let sunday = Timestamp(1_792_400_400_000);
+
+    let service = create_service_at(&mut h, "Morning", Some(sunday));
+    assert_eq!(service.starts_at, Some(sunday));
+
+    let later = Timestamp(sunday.0 + 7 * 24 * 3_600_000);
+    let moved = match ok(h.app.handle(Request::Service(ServiceRequest::Reschedule {
+        service: service.id,
+        starts_at: Some(later),
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(moved.starts_at, Some(later));
+    match ok(h
+        .app
+        .handle(Request::Service(ServiceRequest::Get(service.id))))
+    {
+        Response::Service(s) => assert_eq!(s.starts_at, Some(later)),
+        other => panic!("{other:?}"),
+    }
+
+    let cleared = match ok(h.app.handle(Request::Service(ServiceRequest::Reschedule {
+        service: service.id,
+        starts_at: None,
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(cleared.starts_at, None);
+}
+
+#[test]
+fn rescheduling_an_unknown_service_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let response = h.app.handle(Request::Service(ServiceRequest::Reschedule {
+        service: ServiceId::generate(),
+        starts_at: None,
+    }));
+    assert!(matches!(response, Response::Error { .. }), "{response:?}");
+}
+
+#[test]
+fn services_list_dated_ones_by_time_then_undated_newest_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let day = 24 * 3_600_000;
+    let base = 1_792_400_400_000;
+    create_service_at(&mut h, "Second Sunday", Some(Timestamp(base + 7 * day)));
+    create_service(&mut h, "Old draft");
+    create_service_at(&mut h, "First Sunday", Some(Timestamp(base)));
+    // IDs order by the millisecond they were made in.
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    create_service(&mut h, "New draft");
+
+    assert_eq!(
+        list_titles(&mut h),
+        ["First Sunday", "Second Sunday", "New draft", "Old draft"]
     );
 }
 

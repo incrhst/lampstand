@@ -19,7 +19,7 @@
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
-  import { formatWhen } from "../../lib/when";
+  import { comingSunday, formatWhen, fromInputs, toInputs } from "../../lib/when";
 
   let { onopened }: { onopened: () => void } = $props();
 
@@ -27,6 +27,10 @@
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
+  /** The New service form's date and time, as the inputs hold them. */
+  let newWhen = $state(toInputs(comingSunday()));
+  /** The header's date and time while the planner changes them. */
+  let editWhen: { date: string; time: string } | null = $state(null);
   let query = $state("");
   let hits: SongHit[] = $state([]);
   /** Title and author of every song we have looked up, by song ID. */
@@ -54,10 +58,25 @@
     }
   }
 
+  function toggleCreate() {
+    creating = !creating;
+    // Each new service starts on the coming Sunday unless the planner
+    // picks another day.
+    if (creating) newWhen = toInputs(comingSunday());
+  }
+
   async function create() {
     try {
       selected = await request(
-        { area: "Service", request: { Create: { title: newTitle.trim() || "Service" } } },
+        {
+          area: "Service",
+          request: {
+            Create: {
+              title: newTitle.trim() || "Service",
+              starts_at: fromInputs(newWhen.date, newWhen.time),
+            },
+          },
+        },
         "Service",
       );
       live.planning = selected.id;
@@ -68,7 +87,45 @@
     }
   }
 
+  async function reschedule(startsAt: number | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { Reschedule: { service: selected.id, starts_at: startsAt } } },
+        "Service",
+      );
+      editWhen = null;
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  const saveWhen = () => editWhen && reschedule(fromInputs(editWhen.date, editWhen.time));
+  const cancelWhen = () => (editWhen = null);
+
+  /**
+   * Enter submits and Escape cancels from any field. The kit's Button is
+   * `type="button"`, so a form of several fields has no implicit submit.
+   */
+  function onKeys(submit: () => void, cancel?: () => void) {
+    return (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      } else if (e.key === "Escape" && cancel) {
+        cancel();
+      }
+    };
+  }
+
+  function startReschedule() {
+    if (!selected) return;
+    editWhen = toInputs(selected.starts_at ?? comingSunday());
+  }
+
   async function select(id: string) {
+    editWhen = null;
     try {
       selected = await request({ area: "Service", request: { Get: id } }, "Service");
       live.planning = id;
@@ -245,7 +302,6 @@
   let inService = $derived(
     new Set(items.flatMap(([, item]) => ("Song" in item.kind ? [item.kind.Song.song] : []))),
   );
-  let selectedSummary = $derived(services.find((s) => s.id === selected?.id));
 
   // Reordering: drag a row by its handle, or focus the handle and press
   // the up and down arrows. Pointer events rather than HTML drag and drop,
@@ -329,7 +385,7 @@
   <aside class="pane pane-side services" aria-label="Services">
     <div class="pane-head">
       <h2>Services</h2>
-      <Button size="small" icon="plus" onclick={() => (creating = !creating)} pressed={creating}>New service</Button>
+      <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
     </div>
     {#if creating}
       <form
@@ -340,7 +396,11 @@
         }}
       >
         <!-- svelte-ignore a11y_autofocus -->
-        <input aria-label="New service title" bind:value={newTitle} autofocus />
+        <input aria-label="New service title" bind:value={newTitle} onkeydown={onKeys(create)} autofocus />
+        <div class="when">
+          <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
+          <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
+        </div>
         <Button variant="primary" size="small" onclick={create}>Create</Button>
       </form>
     {/if}
@@ -364,10 +424,26 @@
       <div class="order-head">
         <div class="heading">
           <h1 id="service-title">{selected.title}</h1>
-          <p class="muted">
-            {formatWhen(selectedSummary?.starts_at ?? selected.starts_at)} · {items.length}
-            {items.length === 1 ? "item" : "items"}
-          </p>
+          {#if editWhen}
+            <form
+              class="reschedule"
+              onsubmit={(e) => e.preventDefault()}
+            >
+              <input type="date" aria-label="Service date" bind:value={editWhen.date} onkeydown={onKeys(saveWhen, cancelWhen)} />
+              <input type="time" aria-label="Service time" bind:value={editWhen.time} onkeydown={onKeys(saveWhen, cancelWhen)} />
+              <Button variant="primary" size="small" onclick={saveWhen}>Save</Button>
+              <Button variant="ghost" size="small" onclick={() => reschedule(null)} disabled={selected.starts_at == null}>Clear date</Button>
+              <Button variant="ghost" size="small" icon="x" label="Cancel" onclick={cancelWhen} />
+                  </form>
+          {:else}
+            <p class="muted when-line">
+              <span>
+                {formatWhen(selected.starts_at)} · {items.length}
+                {items.length === 1 ? "item" : "items"}
+              </span>
+              <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
+            </p>
+          {/if}
         </div>
         <div class="actions">
           <Button icon="upload" onclick={() => {}} disabled title="Adding a slide deck arrives with T28">Add deck</Button>
@@ -510,13 +586,22 @@
   }
   .create {
     display: flex;
+    flex-direction: column;
     gap: 0.4rem;
     padding: 0 1rem 0.75rem;
   }
-  .create input {
-    flex: 1;
+  .create input,
+  .reschedule input {
     min-width: 0;
     padding: 0.3rem 0.5rem;
+  }
+  .when {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    gap: 0.4rem;
+  }
+  .create > :global(button) {
+    align-self: flex-end;
   }
   .row-status {
     display: flex;
@@ -561,6 +646,21 @@
   .heading p {
     margin-top: 0.25rem;
     font-size: 0.875rem;
+  }
+  .when-line {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .reschedule {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+  }
+  .reschedule input {
+    font-size: 0.85rem;
   }
   .actions {
     display: flex;

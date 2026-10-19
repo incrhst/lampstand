@@ -269,15 +269,30 @@ impl App {
                         starts_at: s.starts_at,
                     })
                     .collect();
-                // Newest first: IDs are time-ordered.
-                services.sort_by_key(|s| std::cmp::Reverse(s.id.uuid()));
+                // Dated services by start time, then undated ones newest
+                // first (IDs are time-ordered).
+                services.sort_by(|a, b| match (a.starts_at, b.starts_at) {
+                    (Some(x), Some(y)) => x.cmp(&y).then_with(|| b.id.uuid().cmp(&a.id.uuid())),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => b.id.uuid().cmp(&a.id.uuid()),
+                });
                 Response::Services(services)
             }
             ServiceRequest::Get(id) => Response::Service(get(id)?),
-            ServiceRequest::Create { title } => {
-                let service = Service::new(title);
+            ServiceRequest::Create { title, starts_at } => {
+                let mut service = Service::new(title);
+                service.starts_at = starts_at;
                 lib.put_service(&service).map_err(err)?;
                 Response::Service(service)
+            }
+            ServiceRequest::Reschedule { service, starts_at } => {
+                let mut s = get(service)?;
+                s.starts_at = starts_at;
+                // The start time is not on any slide, so an open service
+                // needs no reload.
+                lib.put_service(&s).map_err(err)?;
+                Response::Service(s)
             }
             ServiceRequest::InsertItem {
                 service,
