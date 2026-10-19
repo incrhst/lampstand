@@ -178,6 +178,8 @@ async fn a_remote_edit_reloads_the_service_but_never_changes_what_is_on_air() {
     let holy = song_id(&mut presenter, "Holy, Holy, Holy");
     let service = match presenter.request(Request::Service(ServiceRequest::Create {
         title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
     })) {
         Response::Service(s) => s,
         other => panic!("{other:?}"),
