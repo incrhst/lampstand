@@ -47,8 +47,12 @@ impl ImageCache {
             .map(|image| (image.width, image.height))
     }
 
-    /// Forgets every image not in `keep` (T25 calls this as scenes change).
-    #[expect(dead_code, reason = "T25 evicts images as scenes change")]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Forgets every image not in `keep` (the output frame loop calls this
+    /// as scenes change).
     pub fn retain(&mut self, keep: impl Fn(&BlobHash) -> bool) {
         self.entries.retain(|blob, _| keep(blob));
     }

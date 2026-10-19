@@ -18,9 +18,9 @@
 //!
 //! **Device.** One `wgpu::Device` per `Renderer`, on the integrated GPU
 //! where there are two, else any GPU, else a software adapter (lavapipe,
-//! WARP); `RenderError::NoAdapter` if there is none. T25 creates surfaces
-//! from the same `Instance` and checks `Surface::get_capabilities` against
-//! the chosen adapter.
+//! WARP); `RenderError::NoAdapter` if there is none. Output surfaces are
+//! created from the same `Instance` and checked with
+//! `Surface::get_capabilities` against the chosen adapter.
 //!
 //! **Colour.** Every internal texture is `Rgba8Unorm` holding
 //! premultiplied, sRGB-encoded values, and blending happens on those
@@ -43,11 +43,10 @@
 //!    layers get two more passes.
 //!
 //! A scene always renders into a plain `Rgba8Unorm` texture. Offscreen
-//! rendering reads that texture back. T25's outputs keep one such texture
-//! per scene on screen and composite them onto the surface: a cut is one
-//! quad, a fade two, a push or wipe two with offsets or UV clips. Build
-//! animations (T25) change node transforms and opacity before the CPU
-//! half runs, so they need no GPU changes.
+//! rendering reads that texture back. Outputs keep one such texture per
+//! scene on screen and composite them onto the surface (see "Outputs"
+//! below). Build animations change node visibility, opacity and transforms
+//! while the CPU half walks the tree, so they need no GPU changes.
 //!
 //! **Pipelines.** Three, all on `Rgba8Unorm`:
 //!
@@ -60,8 +59,9 @@
 //!   new texture `Source` for the same pipeline.
 //! - `blur`: one direction of a separable Gaussian.
 //!
-//! plus glyphon's own pipeline. T25 adds one `quad` variant per surface
-//! format for the final composite.
+//! plus glyphon's own pipeline, and the outputs' composite pipelines: the
+//! `quad` shader built per surface format, with "over" and additive
+//! blending.
 //!
 //! **Atlases and caches.** One glyphon `TextAtlas` (glyph bitmaps, trimmed
 //! after each frame) and one `SwashCache` (glyph outlines, for text
@@ -75,22 +75,113 @@
 //! non-uniform scale) is drawn upright into a layer at the output scale
 //! and composited through the transform.
 //!
-//! **Not yet.** Meshes are rebuilt every frame; T25 may cache them per node
-//! if profiling asks. Blurs wider than about 30 px (sigma) are clamped.
+//! **Not yet.** Meshes are rebuilt every time a scene is drawn; outputs
+//! draw a scene only when it or its animation changes, so this has not
+//! mattered. Blurs wider than about 30 px (sigma) are clamped.
+//!
+//! # Outputs (T25)
+//!
+//! **One render thread.** `Outputs::spawn` moves a `Renderer` onto a
+//! thread named `lampstand-render`, which owns the device and every
+//! surface. Callers reach it only through an unbounded channel
+//! (`OutputSink::send` and the `Outputs` methods), and it reports back
+//! through a callback that must not block (`OutputEvent`). So the UI never
+//! waits for a frame and the frame loop never waits for the UI. Offscreen
+//! rendering elsewhere (thumbnails) uses its own `Renderer`, so it never
+//! holds the mutex the frame loop needs.
+//!
+//! **Frame loop** (`output::engine`). Each pass drains the channel without
+//! blocking, then draws every output that needs a frame and presents it,
+//! FIFO, one surface after another. An output needs a frame when a command
+//! changed it, a transition or build step is running, or its window has
+//! not shown its first frame. When none does, the loop blocks on the
+//! channel, so a static slide costs no GPU time; a command wakes it at
+//! once. Frame latency is 1 by default (wgpu's
+//! `desired_maximum_frame_latency`): on an idle output the frame for a
+//! click is the next one scanned out.
+//!
+//! **Scenes are drawn once, then composited.** Each output keeps a texture
+//! for the incoming scene, one for the outgoing scene during a transition,
+//! one for the safe-area overlay and one for the calibration pattern. A
+//! scene is drawn into its texture when it arrives and again only while a
+//! build animation runs. Every frame is then a clear plus a few textured
+//! quads, laid out by `output::timeline` (a cut is one quad, a fade two
+//! with additive blending, so stream outputs cross-fade their transparency
+//! correctly too). A new `Show` during a transition starts from the
+//! incoming scene as last drawn; a new `Animate` finishes the running build
+//! step first, as PowerPoint does.
+//!
+//! **Timelines are pure.** `output::timeline` turns (transition, time) into
+//! composite layers and (build steps, time) into per-node `NodeAnim`s, so
+//! all of it is unit-tested without a GPU. `Direction` always names a
+//! side: what a push or cover enters from, where a wipe starts, where a
+//! fly-in comes from and a fly-out goes.
+//!
+//! **Surfaces from any window.** `Outputs::attach` takes anything that
+//! converts into `wgpu::SurfaceTarget<'static>`: an `Arc<winit::Window>`
+//! in the demo and tests, a Tauri window in the app. The surface is created
+//! on the caller's thread (macOS wants the main thread for that) and moved
+//! to the render thread, which configures and presents. Surfaces prefer a
+//! non-sRGB format, since scene textures already hold sRGB-encoded values.
+//! winit is only a dev-dependency.
+//!
+//! **No flash.** Windows are created hidden, borderless, sized to their
+//! display and with a black background. On the first frame the render
+//! thread sends `OutputEvent::FirstFrame` and the window is shown, made
+//! fullscreen and the cursor hidden. Windows and X11 present to hidden
+//! windows, so the frame is already there. macOS does not (wgpu reports a
+//! hidden window as occluded), so there the window appears black and its
+//! first frame follows within one refresh. On macOS "fullscreen" means
+//! simple fullscreen, not a new Space.
+//!
+//! **Displays** (`output::display`). The window system lists monitors as
+//! `DisplayInfo`s and `assign_displays` matches them to outputs' saved
+//! `DisplayMatch`es: name, then size, then nearest position. A display that
+//! matches on neither name nor size is never taken. A missing projector's
+//! output waits, hidden, rather than covering the operator's screen.
+//!
+//! **Unplugging.** A surface error affects only its own output: timeouts
+//! and occlusion retry 16 ms later, outdated surfaces are reconfigured, and
+//! a lost surface reports `SurfaceLost` and stops drawing while the other
+//! outputs carry on. The output's scene is kept, so attaching a new window
+//! when the display returns shows the live slide straight away.
+//!
+//! **Panics.** Each output's frame runs under `catch_unwind`. A panic
+//! resets that output's textures, finishes its transition and build steps,
+//! and draws its last scene again (`OutputEvent::Restarted`). If the same
+//! output panics again within 10 s, its scene is dropped and it shows
+//! black instead of crashing in a loop. A panic outside any one output's
+//! frame resets all of them; three within 10 s blank all of them. The
+//! default wgpu error handler (which panics) is replaced with one that
+//! logs, so one bad frame costs a frame, not the thread.
+//!
+//! **Latency.** `OutputEvent::Presented` carries `FrameTiming` (when the
+//! oldest command in the frame was sent, and when the frame was handed to
+//! the display). With FIFO the frame reaches the screen at the next
+//! refresh, so click-to-photon is at most send→present plus one refresh.
+//! `tests/windows.rs` measures this on three real windows.
+//!
+//! **Video** (T27). `output::video::VideoClock` already tracks which video
+//! nodes keep playing across scenes (same node ID and blob); T27's players
+//! hang off it.
 
 mod encode;
 mod frame;
 mod gpu;
 mod images;
+pub mod output;
 mod paint;
 mod tess;
 mod text;
 
 pub use gpu::AdapterChoice;
+pub use output::{Background, FrameTiming, OutputEvent, OutputOptions, Outputs};
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use lampstand_core::geom::Transform;
+use lampstand_core::id::BlobHash;
 use lampstand_layout::Fonts;
 
 use lampstand_core::output::OutputId;
@@ -245,8 +336,30 @@ impl Renderer {
         let target = gpu::Texture::new(device, "offscreen", width, height, 1, 1);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut encoder = device.create_command_encoder(&Default::default());
-        self.draw(scene, width, height, &target.view, &mut encoder)?;
+        let drawn = self.draw(
+            scene,
+            width,
+            height,
+            &target.view,
+            &mut encoder,
+            &HashMap::new(),
+        );
+        let image = drawn.and_then(|()| self.read_back(&target, encoder));
+        if let Some(error) = pollster::block_on(scope.pop()) {
+            return Err(RenderError::Device(error.to_string()));
+        }
+        image
+    }
 
+    /// Submits `encoder` with a copy of `target` (a `FORMAT` texture) and
+    /// returns its pixels, straight alpha.
+    pub(crate) fn read_back(
+        &self,
+        target: &gpu::Texture,
+        mut encoder: wgpu::CommandEncoder,
+    ) -> Result<Image, RenderError> {
+        let device = &self.gpu.device;
+        let (width, height) = target.size();
         let row = (4 * width).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let readback = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("readback"),
@@ -267,9 +380,6 @@ impl Renderer {
             target.texture.size(),
         );
         self.gpu.queue.submit([encoder.finish()]);
-        if let Some(error) = pollster::block_on(scope.pop()) {
-            return Err(RenderError::Device(error.to_string()));
-        }
 
         let (tx, rx) = std::sync::mpsc::channel();
         readback
@@ -305,15 +415,17 @@ impl Renderer {
     }
 
     /// Records `scene`, stretched to `width` × `height`, into `target`
-    /// (an `Rgba8Unorm` view of that size). T25's frame loop calls this for
-    /// each scene on screen.
-    fn draw(
+    /// (an `Rgba8Unorm` view of that size), with build-animation state
+    /// `anims` applied. The output frame loop calls this for each scene on
+    /// screen.
+    pub(crate) fn draw(
         &self,
         scene: &Scene,
         width: u32,
         height: u32,
         target: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
+        anims: &HashMap<lampstand_core::scene::NodeId, output::timeline::NodeAnim>,
     ) -> Result<(), RenderError> {
         // A panic while drawing leaves nothing half-updated that matters:
         // caches only ever gain complete entries.
@@ -332,6 +444,7 @@ impl Renderer {
             images,
             fonts,
             swash: &mut glyphs.swash,
+            anims,
         };
         let root = builder.push_layer(width, height, None);
         let fit = if scene.width > 0.0 && scene.height > 0.0 {
@@ -357,6 +470,18 @@ impl Renderer {
         glyphs.atlas.trim();
         pool.trim(2);
         result
+    }
+}
+
+impl Renderer {
+    /// Once more than `budget` images are cached, forgets those `keep`
+    /// rejects. Decoding is the slow part of showing a picture, so images
+    /// stay cached until there are many.
+    pub(crate) fn evict_images(&self, budget: usize, keep: impl Fn(&BlobHash) -> bool) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.images.len() > budget {
+            state.images.retain(keep);
+        }
     }
 }
 
