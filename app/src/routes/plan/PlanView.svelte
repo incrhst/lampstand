@@ -1,6 +1,8 @@
-<!-- Bare service planning: list, create, add songs by search, open.
+<!-- Service planning: services down the left, the selected service's
+     order in the middle, the song library on the right.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
     request,
@@ -10,20 +12,39 @@
     type SongHit,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
-  import Panel from "../../lib/kit/Panel.svelte";
+  import Icon from "../../lib/kit/Icon.svelte";
+  import ListRow from "../../lib/kit/ListRow.svelte";
+  import Placeholder from "../../lib/kit/Placeholder.svelte";
+  import Segmented from "../../lib/kit/Segmented.svelte";
+  import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import { formatWhen } from "../../lib/when";
 
   let { onopened }: { onopened: () => void } = $props();
 
   let services: ServiceSummary[] = $state([]);
   let selected: Service | null = $state(null);
+  let creating = $state(false);
   let newTitle = $state("Sunday service");
   let query = $state("");
   let hits: SongHit[] = $state([]);
-  let songTitles: Record<string, string> = $state({});
+  /** Title and author of every song we have looked up, by song ID. */
+  let songInfo: Record<string, { title: string; author: string | null }> = $state({});
   let databases: SongDatabase[] = $state([]);
   let database = $state("en");
   let busy = $state(false);
+  let getSongsOpen = $state(false);
+  /** Songs already looked up with GetSong, so each is fetched once. */
+  const lookedUp = new Set<string>();
+
+  const libraryTabs = [
+    { id: "songs", label: "Songs" },
+    { id: "scripture", label: "Scripture", disabled: "Bible search in the planner arrives with T48" },
+    { id: "media", label: "Media", disabled: "The media library arrives with T48" },
+    { id: "decks", label: "Decks", disabled: "Decks arrive with T28" },
+  ] as const;
+  let libraryTab: (typeof libraryTabs)[number]["id"] = $state("songs");
 
   async function refresh() {
     try {
@@ -40,6 +61,7 @@
         "Service",
       );
       live.planning = selected.id;
+      creating = false;
       await refresh();
     } catch (e) {
       report(e);
@@ -61,9 +83,27 @@
         { area: "Library", request: { SearchSongs: { query, limit: 20 } } },
         "Songs",
       );
-      for (const h of hits) songTitles[h.song] = h.title;
+      for (const h of hits) songInfo[h.song] ??= { title: h.title, author: null };
     } catch (e) {
       report(e);
+    }
+  }
+
+  // Look up songs in the order that a search has not brought in, and
+  // every song's author, which search hits do not carry.
+  async function lookUpSongs(service: Service) {
+    for (const [, item] of ordered(service)) {
+      const k = item.kind;
+      if (!("Song" in k)) continue;
+      const id = k.Song.song;
+      if (lookedUp.has(id)) continue;
+      lookedUp.add(id);
+      try {
+        const song = await request({ area: "Library", request: { GetSong: id } }, "Song");
+        songInfo[id] = { title: song.title, author: song.author };
+      } catch {
+        // A song missing from the library shows as "Song".
+      }
     }
   }
 
@@ -93,6 +133,18 @@
     try {
       selected = await request(
         { area: "Service", request: { RemoveItem: { service: selected.id, item } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function move(item: string, index: number) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { MoveItem: { service: selected.id, item, index } } },
         "Service",
       );
     } catch (e) {
@@ -164,16 +216,89 @@
       );
   }
 
-  function itemTitle(kind: Service["items"][string]): string {
-    if (!kind) return "";
-    const k = kind.kind;
-    if ("Song" in k) return songTitles[k.Song.song] ?? "Song";
+  type Item = NonNullable<Service["items"][string]>;
+
+  function itemTitle(item: Item): string {
+    const k = item.kind;
+    if ("Song" in k) return songInfo[k.Song.song]?.title ?? "Song";
     if ("Header" in k) return k.Header.title;
     if ("Scripture" in k) return "Scripture";
     if ("Deck" in k) return "Presentation";
     if ("Media" in k) return k.Media.name;
     if ("Countdown" in k) return k.Countdown.label;
     return "Announcements";
+  }
+
+  function itemSubtitle(item: Item): string {
+    const k = item.kind;
+    const label = kindLabel[kindName(k)];
+    if ("Song" in k) {
+      const author = songInfo[k.Song.song]?.author;
+      return author ? `${label} · ${author}` : label;
+    }
+    if ("Scripture" in k) return `${label} · ${k.Scripture.translation}`;
+    if ("Media" in k && k.Media.looped) return `${label} · loops`;
+    return label;
+  }
+
+  let items = $derived(selected ? ordered(selected) : []);
+  let inService = $derived(
+    new Set(items.flatMap(([, item]) => ("Song" in item.kind ? [item.kind.Song.song] : []))),
+  );
+  let selectedSummary = $derived(services.find((s) => s.id === selected?.id));
+
+  // Reordering: drag a row by its handle, or focus the handle and press
+  // the up and down arrows. Pointer events rather than HTML drag and drop,
+  // which the webview's own file-drop handling can swallow.
+  let list: HTMLOListElement | undefined = $state();
+  let dragging: { id: string; from: number } | null = $state(null);
+  let dropAt: number | null = $state(null);
+
+  function slotFor(y: number): number {
+    if (!list || !dragging) return 0;
+    const rows = [...list.querySelectorAll<HTMLElement>("[data-row]")];
+    let slot = 0;
+    rows.forEach((row, i) => {
+      if (i === dragging!.from) return;
+      const r = row.getBoundingClientRect();
+      if (y > r.top + r.height / 2) slot++;
+    });
+    return slot;
+  }
+
+  function startDrag(e: PointerEvent, id: string, from: number) {
+    if (e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragging = { id, from };
+    dropAt = from;
+  }
+
+  function dragMove(e: PointerEvent) {
+    if (dragging) dropAt = slotFor(e.clientY);
+  }
+
+  function endDrag() {
+    if (dragging && dropAt !== null && dropAt !== dragging.from) move(dragging.id, dropAt);
+    dragging = null;
+    dropAt = null;
+  }
+
+  function handleKey(e: KeyboardEvent, id: string, index: number) {
+    if (e.key === "ArrowUp" && index > 0) {
+      e.preventDefault();
+      move(id, index - 1);
+    } else if (e.key === "ArrowDown" && index < items.length - 1) {
+      e.preventDefault();
+      move(id, index + 1);
+    }
+  }
+
+  /** Where the drop line shows: above row `i`, or after the last row. */
+  function lineBefore(i: number): boolean {
+    if (!dragging || dropAt === null || dropAt === dragging.from) return false;
+    // `dropAt` counts rows other than the dragged one.
+    const visual = dropAt >= dragging.from ? dropAt + 1 : dropAt;
+    return visual === i;
   }
 
   async function loadDatabases() {
@@ -190,133 +315,454 @@
     search();
   });
 
+  $effect(() => {
+    const service = selected;
+    if (service) untrack(() => lookUpSongs(service));
+  });
+
   refresh();
   loadDatabases();
   if (live.planning) select(live.planning);
 </script>
 
-<div class="grid">
-  <Panel title="Services">
-    <form
-      class="row"
-      onsubmit={(e) => {
-        e.preventDefault();
-        create();
-      }}
-    >
-      <input aria-label="New service title" bind:value={newTitle} />
-      <Button variant="primary" onclick={create}>New service</Button>
-    </form>
-    <ul class="list">
-      {#each services as s (s.id)}
-        <li>
-          <span>{s.title}</span>
-          <Button onclick={() => select(s.id)} pressed={selected?.id === s.id}>Edit</Button>
-        </li>
-      {:else}
-        <li class="muted">No services yet.</li>
-      {/each}
-    </ul>
-  </Panel>
-
-  <Panel title={selected ? selected.title : "No service selected"}>
-    {#snippet actions()}
-      <Button variant="primary" onclick={openService} disabled={!selected}>Open for live</Button>
-    {/snippet}
-    {#if selected}
-      <ul class="list">
-        {#each ordered(selected) as [id, item], i (id)}
-          <li>
-            <span>{i + 1}. {itemTitle(item)}</span>
-            <Button onclick={() => remove(id)}>Remove</Button>
-          </li>
-        {:else}
-          <li class="muted">Empty. Add a song from the library.</li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="muted">Create a service or pick one to edit.</p>
+<div class="plan">
+  <aside class="pane pane-side services" aria-label="Services">
+    <div class="pane-head">
+      <h2>Services</h2>
+      <Button size="small" icon="plus" onclick={() => (creating = !creating)} pressed={creating}>New service</Button>
+    </div>
+    {#if creating}
+      <form
+        class="create"
+        onsubmit={(e) => {
+          e.preventDefault();
+          create();
+        }}
+      >
+        <!-- svelte-ignore a11y_autofocus -->
+        <input aria-label="New service title" bind:value={newTitle} autofocus />
+        <Button variant="primary" size="small" onclick={create}>Create</Button>
+      </form>
     {/if}
-  </Panel>
-
-  <Panel title="Songs">
-    {#snippet actions()}
-      <Button onclick={importFiles} disabled={busy}>Import files…</Button>
-      <Button onclick={importFolder} disabled={busy}>Import folder…</Button>
-    {/snippet}
-    <details class="getsongs" open={hits.length <= 2}>
-      <summary>Get songs</summary>
-      <p class="muted">
-        Download a free song database from worshipleaderapp.com (OpenSong format, updated daily).
-        Many songs are under copyright: your church's licence (CCLI or similar) covers projecting them.
-        Songs you already have are not added twice.
-      </p>
-      <div class="row">
-        <select aria-label="Song database language" bind:value={database}>
-          {#each databases as d (d.code)}
-            <option value={d.code}>{d.name}</option>
-          {/each}
-        </select>
-        <Button variant="primary" onclick={downloadDatabase} disabled={busy}>
-          {busy ? "Working…" : "Download and import"}
-        </Button>
-      </div>
-    </details>
-    <form
-      onsubmit={(e) => {
-        e.preventDefault();
-        search();
-      }}
-    >
-      <input aria-label="Search songs" placeholder="Search titles and lyrics" bind:value={query} oninput={search} />
-    </form>
-    <ul class="list">
-      {#each hits as hit (hit.song)}
-        <li>
-          <span>
-            {hit.title}
-            {#if hit.line}<br /><small class="muted">{hit.line}</small>{/if}
-          </span>
-          <Button onclick={() => addSong(hit.song)} disabled={!selected}>Add</Button>
-        </li>
+    <ul class="plain pane-body">
+      {#each services as s (s.id)}
+        <ListRow title={s.title} subtitle={formatWhen(s.starts_at)} active={selected?.id === s.id} onclick={() => select(s.id)}>
+          {#snippet details()}
+            {#if live.loaded?.service === s.id}
+              <span class="row-status"><span class="live-dot"></span>Open for live</span>
+            {/if}
+          {/snippet}
+        </ListRow>
       {:else}
-        <li class="muted">No songs match.</li>
+        <li class="empty muted">No services yet.</li>
       {/each}
     </ul>
-  </Panel>
+  </aside>
+
+  <section class="pane order" aria-labelledby="service-title">
+    {#if selected}
+      <div class="order-head">
+        <div class="heading">
+          <h1 id="service-title">{selected.title}</h1>
+          <p class="muted">
+            {formatWhen(selectedSummary?.starts_at ?? selected.starts_at)} · {items.length}
+            {items.length === 1 ? "item" : "items"}
+          </p>
+        </div>
+        <div class="actions">
+          <Button icon="upload" onclick={() => {}} disabled title="Adding a slide deck arrives with T28">Add deck</Button>
+          <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
+        </div>
+      </div>
+
+      {#if items.length > 0}
+        <div class="banner">
+          <Banner>
+            <span>Nothing has checked that every item is on this device yet.</span>
+            <Placeholder ticket="T36">Readiness</Placeholder>
+          </Banner>
+        </div>
+      {/if}
+
+      <div class="order-body">
+        {#if items.length === 0}
+          <div class="empty-order">
+            <p><strong>This service is empty</strong></p>
+            <p class="muted">Add songs from the library on the right.</p>
+          </div>
+        {:else}
+          <ol class="plain items" bind:this={list} aria-label="Service order">
+            {#each items as [id, item], i (id)}
+              <li data-row class="item" class:dragging={dragging?.id === id} class:line-before={lineBefore(i)}>
+                <button
+                  type="button"
+                  class="grip"
+                  aria-label="Move {itemTitle(item)}. Drag, or use the up and down arrows."
+                  onpointerdown={(e) => startDrag(e, id, i)}
+                  onpointermove={dragMove}
+                  onpointerup={endDrag}
+                  onpointercancel={endDrag}
+                  onkeydown={(e) => handleKey(e, id, i)}
+                >
+                  <Icon name="grip" />
+                </button>
+                <span class="index num">{i + 1}</span>
+                <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                <span class="text">
+                  <span class="title">{itemTitle(item)}</span>
+                  <span class="subtitle">{itemSubtitle(item)}</span>
+                </span>
+                <span class="remove">
+                  <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />
+                </span>
+              </li>
+            {/each}
+            {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true"></li>{/if}
+          </ol>
+        {/if}
+      </div>
+    {:else}
+      <div class="no-service">
+        <Icon name="calendar" size={24} />
+        <p class="muted">Pick a service on the left, or create a new one.</p>
+      </div>
+    {/if}
+  </section>
+
+  <aside class="pane pane-side library" aria-label="Library">
+    <div class="library-head">
+      <h2 class="title">Library</h2>
+      <Segmented options={libraryTabs} value={libraryTab} onchange={(id) => (libraryTab = id)} label="Library type" stretch />
+      <form
+        class="search"
+        onsubmit={(e) => {
+          e.preventDefault();
+          search();
+        }}
+      >
+        <span class="search-icon"><Icon name="search" /></span>
+        <input type="search" aria-label="Search songs" placeholder="Search titles and lyrics" bind:value={query} oninput={search} />
+      </form>
+    </div>
+
+    <ul class="plain pane-body">
+      {#each hits as hit (hit.song)}
+        <ListRow title={hit.title}>
+          {#snippet details()}
+            {#if hit.line}<span class="snippet">“{hit.line}”</span>{/if}
+          {/snippet}
+          {#snippet trailing()}
+            {#if inService.has(hit.song)}
+              <span class="in-service"><Icon name="check" size={14} />In service</span>
+            {:else}
+              <Button size="small" icon="plus" onclick={() => addSong(hit.song)} disabled={!selected} label="Add {hit.title} to service">
+                Add
+              </Button>
+            {/if}
+          {/snippet}
+        </ListRow>
+      {:else}
+        <li class="empty muted">{query ? `Nothing matches “${query}”.` : "No songs yet. Get some below."}</li>
+      {/each}
+    </ul>
+
+    <div class="get-songs">
+      <button class="get-toggle" aria-expanded={getSongsOpen || hits.length <= 2} onclick={() => (getSongsOpen = !getSongsOpen)}>
+        <Icon name="download" size={14} />
+        Get songs
+      </button>
+      {#if getSongsOpen || hits.length <= 2}
+        <p class="muted">
+          Download a free song database from worshipleaderapp.com (OpenSong format, updated daily).
+          Many songs are under copyright: your church's licence (CCLI or similar) covers projecting them.
+          Songs you already have are not added twice.
+        </p>
+        <div class="row">
+          <select aria-label="Song database language" bind:value={database}>
+            {#each databases as d (d.code)}
+              <option value={d.code}>{d.name}</option>
+            {/each}
+          </select>
+          <Button variant="primary" size="small" onclick={downloadDatabase} disabled={busy}>
+            {busy ? "Working…" : "Download and import"}
+          </Button>
+        </div>
+      {/if}
+      <div class="row">
+        <Button size="small" icon="file" onclick={importFiles} disabled={busy}>Import files…</Button>
+        <Button size="small" icon="folder" onclick={importFolder} disabled={busy}>Import folder…</Button>
+      </div>
+    </div>
+  </aside>
 </div>
 
 <style>
-  .grid {
+  .plan {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
-    gap: 1rem;
-    align-items: start;
+    grid-template-columns: 248px minmax(0, 1fr) 340px;
+    height: 100%;
   }
-  form input {
-    width: 100%;
+  .services {
+    border-right: 1px solid var(--line);
+  }
+  .library {
+    border-left: 1px solid var(--line);
+  }
+  .create {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0 1rem 0.75rem;
+  }
+  .create input {
+    flex: 1;
     min-width: 0;
-    box-sizing: border-box;
-    margin-bottom: 0.5rem;
+    padding: 0.3rem 0.5rem;
   }
-  .getsongs {
-    margin-bottom: 0.8rem;
+  .row-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--muted);
   }
-  .getsongs summary {
-    cursor: pointer;
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--live);
+  }
+  .empty {
+    padding: 2rem 0.75rem;
+    text-align: center;
+    font-size: 0.875rem;
+  }
+
+  /* Service order */
+  .order-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem 2rem 1.25rem;
+  }
+  .heading {
+    min-width: 0;
+  }
+  h1 {
+    font-size: 1.3rem;
     font-weight: 600;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .getsongs p {
+  .heading p {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+  }
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .banner {
+    padding: 0 2rem;
+  }
+  .order-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1rem 2rem 2rem;
+  }
+  .item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .item:last-of-type {
+    border-bottom: none;
+  }
+  .item.dragging {
+    opacity: 0.5;
+  }
+  .item.line-before::before,
+  .line-end {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -1px;
+    height: 2px;
+    background: var(--gold);
+    border-radius: 2px;
+  }
+  .line-end {
+    position: relative;
+    display: block;
+  }
+  .grip {
+    background: none;
+    border: none;
+    color: var(--faint);
+    width: 1.25rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    cursor: grab;
+    touch-action: none;
+  }
+  .grip:hover {
+    color: var(--muted);
+  }
+  .grip:active {
+    cursor: grabbing;
+  }
+  .index {
+    width: 1.25rem;
+    text-align: right;
+    font-size: 0.75rem;
+    color: var(--faint);
+  }
+  .kind {
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius);
+    background: var(--raised);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .subtitle {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .remove {
+    opacity: 0;
+    transition: opacity 150ms var(--ease);
+  }
+  .item:hover .remove,
+  .remove:focus-within {
+    opacity: 1;
+  }
+  .empty-order {
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-lg);
+    padding: 4rem 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+  }
+  .empty-order p + p {
+    margin-top: 0.25rem;
+  }
+  .no-service {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--faint);
+    font-size: 0.875rem;
+  }
+
+  /* Library */
+  .library-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.25rem 1rem 0.75rem;
+  }
+  .search {
+    position: relative;
+  }
+  .search-icon {
+    position: absolute;
+    left: 0.7rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--faint);
+    pointer-events: none;
+  }
+  .search input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 2.2rem;
+  }
+  .snippet {
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--faint);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .in-service {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+  }
+  .in-service :global(.icon) {
+    color: var(--ready-text);
+  }
+  .get-songs {
+    border-top: 1px solid var(--line);
+    padding: 0.75rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .get-toggle {
+    font: inherit;
     font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    background: none;
+    border: none;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  .get-songs p {
+    font-size: 0.78rem;
+    line-height: 1.5;
   }
   .row {
     display: flex;
     gap: 0.5rem;
     align-items: center;
   }
-  form.row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: start;
+  .row select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
   }
 </style>

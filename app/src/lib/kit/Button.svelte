@@ -1,69 +1,132 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import Icon from "./Icon.svelte";
+  import type { IconName } from "./icons";
 
   let {
     onclick,
     children,
-    variant = "normal",
+    variant = "secondary",
+    size = "normal",
+    icon,
     pressed,
     disabled = false,
     title,
+    label,
     shortcut,
   }: {
     onclick: () => void;
-    children: Snippet;
-    variant?: "normal" | "primary" | "danger";
+    children?: Snippet;
+    /** Primary is gold, for the one main action on a screen. Danger turns red when pressed. */
+    variant?: "primary" | "secondary" | "ghost" | "danger";
+    size?: "normal" | "small";
+    icon?: IconName;
     pressed?: boolean;
     disabled?: boolean;
     title?: string;
+    /** Accessible name, needed when there is no visible text. */
+    label?: string;
     /** Shown after the label, e.g. "Space". */
     shortcut?: string;
   } = $props();
 </script>
 
-<button type="button" class={variant} {onclick} {disabled} {title} aria-pressed={pressed}>
-  {@render children()}
+<button
+  type="button"
+  class="{variant} {size}"
+  class:icon-only={!children}
+  {onclick}
+  {disabled}
+  {title}
+  aria-label={label}
+  aria-pressed={pressed}
+>
+  {#if icon}<Icon name={icon} size={size === "small" ? 14 : 16} />{/if}
+  {#if children}{@render children()}{/if}
   {#if shortcut}<kbd>{shortcut}</kbd>{/if}
 </button>
 
 <style>
   button {
     font: inherit;
-    padding: 0.45rem 0.9rem;
-    border-radius: 6px;
-    border: 1px solid var(--line);
-    background: var(--raised);
-    color: var(--text);
+    font-size: 0.875rem;
+    font-weight: 500;
+    height: 2.25rem;
+    padding: 0 0.9rem;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
     cursor: pointer;
     display: inline-flex;
     gap: 0.5rem;
     align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    /* No transition: a pressed state shows at once, and a window that is
+       not frontmost can freeze a transition part way. */
   }
-  button:hover:not(:disabled) {
-    border-color: var(--accent);
+  .small {
+    height: 1.75rem;
+    padding: 0 0.6rem;
+    font-size: 0.78rem;
+    gap: 0.35rem;
   }
-  button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+  .icon-only {
+    width: 2.25rem;
+    padding: 0;
+  }
+  .small.icon-only {
+    width: 1.75rem;
   }
   button:disabled {
-    opacity: 0.5;
-    cursor: default;
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   .primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
+    background: var(--gold);
+    color: var(--on-gold);
+    font-weight: 600;
+  }
+  .primary:hover:not(:disabled) {
+    background: var(--gold-hover);
+  }
+  .secondary,
+  .danger {
+    background: var(--raised);
+    border-color: var(--line);
+    color: var(--text);
+  }
+  .secondary:hover:not(:disabled),
+  .danger:hover:not(:disabled) {
+    border-color: var(--line-strong);
+    background: var(--line);
+  }
+  .ghost {
+    background: none;
+    color: var(--muted);
+  }
+  .ghost:hover:not(:disabled) {
+    background: var(--raised);
+    color: var(--text);
+  }
+  /* Pressed beats hover, so a pressed Blank stays red under the pointer. */
+  .secondary[aria-pressed="true"],
+  .secondary[aria-pressed="true"]:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--gold) 40%, transparent);
+    background: var(--gold-soft);
+    color: var(--gold);
   }
   .danger[aria-pressed="true"],
-  .normal[aria-pressed="true"] {
-    background: var(--danger);
-    border-color: var(--danger);
+  .danger[aria-pressed="true"]:hover:not(:disabled) {
+    background: var(--live-strong);
+    border-color: var(--live-strong);
     color: white;
   }
   kbd {
-    font-size: 0.75em;
+    font: inherit;
+    font-size: 0.72em;
     opacity: 0.7;
-    font-family: inherit;
+    padding: 0 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 3px;
   }
 </style>
