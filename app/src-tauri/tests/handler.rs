@@ -129,10 +129,17 @@ fn create_service(h: &mut Harness, title: &str) -> Service {
     create_service_at(h, title, None)
 }
 
+/// A start time in a year that is safely in the future (or the past, for
+/// a negative `days`), whatever day the tests run on.
+fn days_from_2100(days: i64) -> Timestamp {
+    Timestamp(4_102_444_800_000 + days * 24 * 3_600_000)
+}
+
 fn create_service_at(h: &mut Harness, title: &str, starts_at: Option<Timestamp>) -> Service {
     match ok(h.app.handle(Request::Service(ServiceRequest::Create {
         title: title.into(),
         starts_at,
+        time_zone: starts_at.map(|_| "Europe/London".into()),
     }))) {
         Response::Service(s) => s,
         other => panic!("{other:?}"),
@@ -345,40 +352,56 @@ fn list_titles(h: &mut Harness) -> Vec<String> {
     }
 }
 
+fn reschedule(
+    h: &mut Harness,
+    service: &Service,
+    starts_at: Option<Timestamp>,
+    zone: Option<&str>,
+) -> Service {
+    match ok(h.app.handle(Request::Service(ServiceRequest::Reschedule {
+        service: service.id,
+        starts_at,
+        time_zone: zone.map(Into::into),
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
 fn a_service_is_created_at_a_time_and_rescheduled() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());
-    let sunday = Timestamp(1_792_400_400_000);
+    let sunday = days_from_2100(2);
 
     let service = create_service_at(&mut h, "Morning", Some(sunday));
     assert_eq!(service.starts_at, Some(sunday));
+    assert_eq!(service.time_zone.as_deref(), Some("Europe/London"));
 
-    let later = Timestamp(sunday.0 + 7 * 24 * 3_600_000);
-    let moved = match ok(h.app.handle(Request::Service(ServiceRequest::Reschedule {
-        service: service.id,
-        starts_at: Some(later),
-    }))) {
-        Response::Service(s) => s,
-        other => panic!("{other:?}"),
-    };
+    let later = days_from_2100(9);
+    let moved = reschedule(&mut h, &service, Some(later), Some("America/Jamaica"));
     assert_eq!(moved.starts_at, Some(later));
     match ok(h
         .app
         .handle(Request::Service(ServiceRequest::Get(service.id))))
     {
-        Response::Service(s) => assert_eq!(s.starts_at, Some(later)),
+        Response::Service(s) => {
+            assert_eq!(s.starts_at, Some(later));
+            assert_eq!(s.time_zone.as_deref(), Some("America/Jamaica"));
+        }
+        other => panic!("{other:?}"),
+    }
+    match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
+        Response::Services(list) => {
+            assert_eq!(list[0].starts_at, Some(later));
+            assert_eq!(list[0].time_zone.as_deref(), Some("America/Jamaica"));
+        }
         other => panic!("{other:?}"),
     }
 
-    let cleared = match ok(h.app.handle(Request::Service(ServiceRequest::Reschedule {
-        service: service.id,
-        starts_at: None,
-    }))) {
-        Response::Service(s) => s,
-        other => panic!("{other:?}"),
-    };
+    let cleared = reschedule(&mut h, &service, None, None);
     assert_eq!(cleared.starts_at, None);
+    assert_eq!(cleared.time_zone, None);
 }
 
 #[test]
@@ -388,26 +411,39 @@ fn rescheduling_an_unknown_service_is_an_error() {
     let response = h.app.handle(Request::Service(ServiceRequest::Reschedule {
         service: ServiceId::generate(),
         starts_at: None,
+        time_zone: None,
     }));
     assert!(matches!(response, Response::Error { .. }), "{response:?}");
 }
 
 #[test]
-fn services_list_dated_ones_by_time_then_undated_newest_first() {
+fn services_list_upcoming_then_undated_then_past() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());
-    let day = 24 * 3_600_000;
-    let base = 1_792_400_400_000;
-    create_service_at(&mut h, "Second Sunday", Some(Timestamp(base + 7 * day)));
+    let past = Timestamp(946_684_800_000); // 2000-01-01
+    create_service_at(&mut h, "Second Sunday", Some(days_from_2100(7)));
+    create_service_at(&mut h, "Long ago", Some(past));
     create_service(&mut h, "Old draft");
-    create_service_at(&mut h, "First Sunday", Some(Timestamp(base)));
+    create_service_at(&mut h, "First Sunday", Some(days_from_2100(0)));
+    create_service_at(
+        &mut h,
+        "Last year",
+        Some(Timestamp(past.0 + 365 * 24 * 3_600_000)),
+    );
     // IDs order by the millisecond they were made in.
     std::thread::sleep(std::time::Duration::from_millis(2));
     create_service(&mut h, "New draft");
 
     assert_eq!(
         list_titles(&mut h),
-        ["First Sunday", "Second Sunday", "New draft", "Old draft"]
+        [
+            "First Sunday",
+            "Second Sunday",
+            "New draft",
+            "Old draft",
+            "Last year",
+            "Long ago"
+        ]
     );
 }
 

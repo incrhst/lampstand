@@ -19,7 +19,7 @@
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
-  import { comingSunday, formatWhen, fromInputs, toInputs } from "../../lib/when";
+  import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
   let { onopened }: { onopened: () => void } = $props();
 
@@ -27,10 +27,15 @@
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
-  /** The New service form's date and time, as the inputs hold them. */
-  let newWhen = $state(toInputs(comingSunday()));
-  /** The header's date and time while the planner changes them. */
-  let editWhen: { date: string; time: string } | null = $state(null);
+  /** A date and time as the inputs hold them, in an IANA zone. */
+  type When = { date: string; time: string; zone: string };
+  /** The coming Sunday at 10:00 in `zone`, as the inputs hold it. */
+  const defaultWhen = (zone = deviceZone()): When => ({ ...toInputs(comingSunday(Date.now(), zone), zone), zone });
+  /** The New service form's date, time and zone. */
+  let newWhen: When = $state(defaultWhen());
+  /** The header's date, time and zone while the planner changes them. */
+  let editWhen: When | null = $state(null);
+  const at = (w: When) => fromInputs(w.date, w.time, w.zone);
   let query = $state("");
   let hits: SongHit[] = $state([]);
   /** Title and author of every song we have looked up, by song ID. */
@@ -62,7 +67,7 @@
     creating = !creating;
     // Each new service starts on the coming Sunday unless the planner
     // picks another day.
-    if (creating) newWhen = toInputs(comingSunday());
+    if (creating) newWhen = defaultWhen();
   }
 
   async function create() {
@@ -73,7 +78,8 @@
           request: {
             Create: {
               title: newTitle.trim() || "Service",
-              starts_at: fromInputs(newWhen.date, newWhen.time),
+              starts_at: at(newWhen),
+              time_zone: newWhen.zone,
             },
           },
         },
@@ -87,11 +93,21 @@
     }
   }
 
-  async function reschedule(startsAt: number | null) {
+  async function reschedule(when: When | null) {
     if (!selected) return;
+    const startsAt = when && at(when);
     try {
       selected = await request(
-        { area: "Service", request: { Reschedule: { service: selected.id, starts_at: startsAt } } },
+        {
+          area: "Service",
+          request: {
+            Reschedule: {
+              service: selected.id,
+              starts_at: startsAt,
+              time_zone: startsAt == null ? null : when!.zone,
+            },
+          },
+        },
         "Service",
       );
       editWhen = null;
@@ -101,7 +117,7 @@
     }
   }
 
-  const saveWhen = () => editWhen && reschedule(fromInputs(editWhen.date, editWhen.time));
+  const saveWhen = () => editWhen && reschedule(editWhen);
   const cancelWhen = () => (editWhen = null);
 
   /**
@@ -121,7 +137,11 @@
 
   function startReschedule() {
     if (!selected) return;
-    editWhen = toInputs(selected.starts_at ?? comingSunday());
+    const s = selected;
+    editWhen =
+      s.starts_at == null
+        ? defaultWhen(s.time_zone ?? deviceZone())
+        : { ...toInputs(s.starts_at, s.time_zone ?? deviceZone()), zone: s.time_zone ?? deviceZone() };
   }
 
   async function select(id: string) {
@@ -381,6 +401,14 @@
   if (live.planning) select(live.planning);
 </script>
 
+{#snippet zonePicker(when: When)}
+  <select class="zone" aria-label="Time zone" title="The time zone this service's time is in" bind:value={when.zone}>
+    {#each timeZones(when.zone, deviceZone()) as zone (zone)}
+      <option value={zone}>{zone.replaceAll("_", " ")}{zone === deviceZone() ? " (this device)" : ""}</option>
+    {/each}
+  </select>
+{/snippet}
+
 <div class="plan">
   <aside class="pane pane-side services" aria-label="Services">
     <div class="pane-head">
@@ -401,12 +429,13 @@
           <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
           <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
         </div>
+        {@render zonePicker(newWhen)}
         <Button variant="primary" size="small" onclick={create}>Create</Button>
       </form>
     {/if}
     <ul class="plain pane-body">
       {#each services as s (s.id)}
-        <ListRow title={s.title} subtitle={formatWhen(s.starts_at)} active={selected?.id === s.id} onclick={() => select(s.id)}>
+        <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)}>
           {#snippet details()}
             {#if live.loaded?.service === s.id}
               <span class="row-status"><span class="live-dot"></span>Open for live</span>
@@ -431,6 +460,7 @@
             >
               <input type="date" aria-label="Service date" bind:value={editWhen.date} onkeydown={onKeys(saveWhen, cancelWhen)} />
               <input type="time" aria-label="Service time" bind:value={editWhen.time} onkeydown={onKeys(saveWhen, cancelWhen)} />
+              {@render zonePicker(editWhen)}
               <Button variant="primary" size="small" onclick={saveWhen}>Save</Button>
               <Button variant="ghost" size="small" onclick={() => reschedule(null)} disabled={selected.starts_at == null}>Clear date</Button>
               <Button variant="ghost" size="small" icon="x" label="Cancel" onclick={cancelWhen} />
@@ -438,7 +468,7 @@
           {:else}
             <p class="muted when-line">
               <span>
-                {formatWhen(selected.starts_at)} · {items.length}
+                {formatWhen(selected.starts_at, selected.time_zone)} · {items.length}
                 {items.length === 1 ? "item" : "items"}
               </span>
               <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
@@ -599,6 +629,15 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 6.5rem;
     gap: 0.4rem;
+  }
+  .zone {
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .reschedule .zone {
+    max-width: 12rem;
   }
   .create > :global(button) {
     align-self: flex-end;

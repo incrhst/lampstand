@@ -267,28 +267,32 @@ impl App {
                         id: s.id,
                         title: s.title,
                         starts_at: s.starts_at,
+                        time_zone: s.time_zone,
                     })
                     .collect();
-                // Dated services by start time, then undated ones newest
-                // first (IDs are time-ordered).
-                services.sort_by(|a, b| match (a.starts_at, b.starts_at) {
-                    (Some(x), Some(y)) => x.cmp(&y).then_with(|| b.id.uuid().cmp(&a.id.uuid())),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => b.id.uuid().cmp(&a.id.uuid()),
-                });
+                sort_services(&mut services, now());
                 Response::Services(services)
             }
             ServiceRequest::Get(id) => Response::Service(get(id)?),
-            ServiceRequest::Create { title, starts_at } => {
+            ServiceRequest::Create {
+                title,
+                starts_at,
+                time_zone,
+            } => {
                 let mut service = Service::new(title);
                 service.starts_at = starts_at;
+                service.time_zone = time_zone;
                 lib.put_service(&service).map_err(err)?;
                 Response::Service(service)
             }
-            ServiceRequest::Reschedule { service, starts_at } => {
+            ServiceRequest::Reschedule {
+                service,
+                starts_at,
+                time_zone,
+            } => {
                 let mut s = get(service)?;
                 s.starts_at = starts_at;
+                s.time_zone = time_zone;
                 // The start time is not on any slide, so an open service
                 // needs no reload.
                 lib.put_service(&s).map_err(err)?;
@@ -861,6 +865,33 @@ fn slide_view(slide: &LoadedSlide) -> SlideView {
         lines,
         steps: slide.steps,
     }
+}
+
+/// Upcoming services first, soonest first; then undated ones, newest
+/// first (IDs are time-ordered); then past ones, most recent first. A
+/// service counts as upcoming for a few hours after it starts, so the one
+/// running now stays at the top.
+fn sort_services(services: &mut [ServiceSummary], now: Timestamp) {
+    const RUNNING_MS: i64 = 6 * 3_600_000;
+    let newest_first = |a: &ServiceSummary, b: &ServiceSummary| b.id.uuid().cmp(&a.id.uuid());
+    let group = |s: &ServiceSummary| match s.starts_at {
+        Some(t) if t.0 + RUNNING_MS >= now.0 => 0,
+        None => 1,
+        Some(_) => 2,
+    };
+    services.sort_by(|a, b| {
+        group(a).cmp(&group(b)).then_with(|| match group(a) {
+            0 => a
+                .starts_at
+                .cmp(&b.starts_at)
+                .then_with(|| newest_first(a, b)),
+            1 => newest_first(a, b),
+            _ => b
+                .starts_at
+                .cmp(&a.starts_at)
+                .then_with(|| newest_first(a, b)),
+        })
+    });
 }
 
 fn now() -> Timestamp {

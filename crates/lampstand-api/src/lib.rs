@@ -76,16 +76,19 @@ pub enum ServiceRequest {
     List,
     Get(ServiceId),
     /// A new, empty service. `starts_at` is when it is scheduled, if the
-    /// planner picked a time (the UI defaults to the coming Sunday).
+    /// planner picked a time (the UI defaults to the coming Sunday), and
+    /// `time_zone` the IANA zone it was picked in (`Service::time_zone`).
     Create {
         title: String,
         starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
     },
-    /// Moves a service to another time, or clears its date with `None`.
-    /// Answers `Response::Service`.
+    /// Moves a service to another time and zone, or clears its date with
+    /// `starts_at: None`. Answers `Response::Service`.
     Reschedule {
         service: ServiceId,
         starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
     },
     InsertItem {
         service: ServiceId,
@@ -229,6 +232,7 @@ pub struct ServiceSummary {
     pub id: ServiceId,
     pub title: String,
     pub starts_at: Option<Timestamp>,
+    pub time_zone: Option<String>,
 }
 
 /// Pushed to the UI.
