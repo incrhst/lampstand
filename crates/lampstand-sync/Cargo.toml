@@ -11,6 +11,7 @@ ts = ["dep:ts-rs", "lampstand-core/ts"]
 # The network transport (`net`): WebSocket sessions, pairing, mDNS (T17).
 # Off for crates that only need the repo.
 net = [
+    "dep:chacha20poly1305",
     "dep:futures-util",
     "dep:mdns-sd",
     "dep:postcard",
@@ -18,12 +19,14 @@ net = [
     "dep:spake2",
     "dep:tokio",
     "dep:tokio-tungstenite",
+    "dep:x25519-dalek",
 ]
 
 [dependencies]
 automerge.workspace = true
 autosurgeon.workspace = true
 blake3.workspace = true
+chacha20poly1305 = { workspace = true, optional = true }
 ed25519-dalek.workspace = true
 futures-util = { workspace = true, optional = true }
 getrandom.workspace = true
@@ -38,6 +41,7 @@ tokio = { workspace = true, optional = true, features = ["net", "rt-multi-thread
 tokio-tungstenite = { workspace = true, optional = true }
 ts-rs = { workspace = true, optional = true }
 uuid.workspace = true
+x25519-dalek = { workspace = true, optional = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 # Plain fsync(2): std's sync_all is F_FULLFSYNC on Apple platforms, which
