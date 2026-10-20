@@ -15,7 +15,7 @@
 //!   obvious;
 //! - a 10% grid, to spot keystone and scaling at a glance;
 //! - the current safe area outlined in cyan, with each margin labelled and
-//!   the edge being adjusted drawn in white with its label enlarged;
+//!   the edge being adjusted drawn as a thick lime line with its label enlarged;
 //! - a caption naming the output and its aspect ratio ("32:9").
 //!
 //! Like everything the renderer draws, this is only paths and text, and it
@@ -25,8 +25,8 @@
 use lampstand_core::geom::{Color, Point, Rect, Transform};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{
-    HAlign, Node, NodeKind, Paint, Paragraph, PathCommand, PathNode, Scene, Stroke, TextBlock,
-    TextRun, VAlign,
+    HAlign, Node, NodeKind, Outline, Paint, Paragraph, PathCommand, PathNode, Scene, Stroke,
+    TextBlock, TextRun, VAlign,
 };
 use serde::{Deserialize, Serialize};
 
@@ -218,6 +218,21 @@ impl Builder {
         self.push(NodeKind::Text(block));
     }
 
+    /// Like `text`, with a thin black outline so the digits stay readable
+    /// over the lines and the highlight bar they sit on.
+    fn number(&mut self, rect: Rect, text: &str, size: f32, color: Color) {
+        let mut block = text_block(
+            rect,
+            VAlign::Middle,
+            vec![paragraph(HAlign::Center, text, size, color)],
+        );
+        block.outline = Some(Outline {
+            color: Color::BLACK,
+            width: if size >= 20.0 { 1.5 } else { 1.0 },
+        });
+        self.push(NodeKind::Text(block));
+    }
+
     /// Text centred on (`cx`, `cy`).
     fn label(&mut self, cx: f32, cy: f32, text: &str, size: f32, color: Color) {
         self.text(label_rect(cx, cy, text, size), text, size, color);
@@ -284,7 +299,7 @@ fn label_rect(cx: f32, cy: f32, text: &str, size: f32) -> Rect {
 /// The calibration pattern for an output of `width` × `height` pixels.
 ///
 /// `pattern.current` is the safe area as it is now, `pattern.active` the
-/// edge being adjusted (drawn in white with its label enlarged), and `pattern.label` names
+/// edge being adjusted (drawn as a thick lime line with its label enlarged), and `pattern.label` names
 /// the output in the caption. `pattern.max_percent` is the innermost ring.
 pub fn scene(pattern: &CalibrationPattern, width: f32, height: f32) -> Scene {
     let (w, h) = (width, height);
@@ -544,7 +559,7 @@ pub fn numbers(width: f32, height: f32, max_percent: u32) -> Vec<Number> {
 fn ring_numbers(b: &mut Builder, w: f32, h: f32, max: u32) {
     for number in numbers(w, h, max) {
         let text = number.ring.to_string();
-        b.text(number.rect, &text, number.size, number_color(number.ring));
+        b.number(number.rect, &text, number.size, number_color(number.ring));
     }
 }
 

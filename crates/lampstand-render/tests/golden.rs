@@ -1061,7 +1061,7 @@ mod calibration {
             assert_eq!(px(image, x, top + 2), cyan, "top edge");
         }
         match active {
-            // The edge being adjusted is white.
+            // The edge being adjusted is lime.
             Some(Edge::Left) => {
                 assert_eq!(px(image, left + 8, y), rgba(calibrate::ACTIVE));
                 assert_eq!(px(image, right - 2, y), cyan);
@@ -1132,6 +1132,30 @@ mod calibration {
         (h * 3 / 100..h * 11 / 200)
             .filter(|&y| (cx - 12..cx + 12).any(|x| px(image, x, y)[..3].iter().all(|&c| c > 200)))
             .count()
+    }
+
+    /// The numbers on the highlight bar stay readable: the left "4" sits on
+    /// the thick lime bar at the 4% margin, and has a black outline around
+    /// white digit pixels.
+    #[test]
+    fn numbers_stay_readable_on_the_highlight() {
+        let f = fixture_or_skip!();
+        let scene = calibration_scene(&pattern(Some(Edge::Left)), 1600.0, 900.0);
+        let image = render(f, &scene, 1600, 900);
+        // Ring 4's number: just inside x = 64, on the row for 4 % 3 = 1.
+        let (xs, ys) = (66..80, 288..306);
+        let count = |keep: &dyn Fn([u8; 4]) -> bool| {
+            ys.clone()
+                .flat_map(|y| xs.clone().map(move |x| (x, y)))
+                .filter(|&(x, y)| keep(px(&image, x, y)))
+                .count()
+        };
+        let white = count(&|p| p[..3].iter().all(|&c| c > 200));
+        let black = count(&|p| p[..3].iter().all(|&c| c < 30));
+        let lime = count(&|p| p[..3] == [190, 255, 0]);
+        assert!(white > 10, "digit pixels: {white}");
+        assert!(black > 10, "outline pixels between digit and bar: {black}");
+        assert!(lime > 10, "the bar is behind it: {lime}");
     }
 
     #[test]

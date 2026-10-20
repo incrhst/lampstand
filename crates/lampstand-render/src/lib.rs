@@ -216,7 +216,7 @@ pub struct CalibrationPattern {
     pub current: SafeArea,
     /// Numbers run 0 to `max_percent` from each edge inward.
     pub max_percent: u8,
-    /// The edge being adjusted, drawn in white with its label enlarged.
+    /// The edge being adjusted, drawn as a thick lime line with its label enlarged.
     #[serde(default)]
     pub active: Option<Edge>,
     /// Names the output in the pattern's caption, next to its aspect ratio.
