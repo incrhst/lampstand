@@ -486,6 +486,9 @@ pub struct ServiceSummary {
     pub title: String,
     pub starts_at: Option<Timestamp>,
     pub time_zone: Option<String>,
+    /// Items that put something on screen (headers don't), so Present can
+    /// say a service has nothing in it before it is opened.
+    pub items: u32,
 }
 
 /// Pushed to the UI.

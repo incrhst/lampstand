@@ -408,6 +408,11 @@ impl App {
                         title: s.title,
                         starts_at: s.starts_at,
                         time_zone: s.time_zone,
+                        items: s
+                            .items
+                            .values()
+                            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+                            .count() as u32,
                     })
                     .collect();
                 sort_services(&mut services, now());
