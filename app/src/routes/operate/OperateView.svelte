@@ -191,7 +191,7 @@
   <div class="operate">
     <div class="bar">
       <p class="service">
-        <strong>{live.loaded.title}</strong>
+        <strong title={live.loaded.title}>{live.loaded.title}</strong>
         <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
@@ -344,30 +344,52 @@
     display: flex;
     flex-direction: column;
   }
+  .bar > :global(*) {
+    flex-shrink: 0;
+  }
   .bar {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 0.5rem 1rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
   }
+  /* A long title truncates and the date keeps its width, so the controls
+     stay on one row in the same place whatever the service is called. */
   .service {
+    display: flex;
+    gap: 0.3rem;
+    min-width: 6rem;
+    max-width: 28rem;
     font-size: 0.9rem;
+    white-space: nowrap;
   }
   .service strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 500;
   }
   .when {
+    flex-shrink: 0;
     color: var(--muted);
   }
+  /* The hint gives way first: it takes the room left over and is cut
+     from the end with an ellipsis. */
   .keys {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .keys :global(.icon) {
+    vertical-align: -2px;
+    margin-right: 0.4rem;
   }
   .grid {
     flex: 1;

@@ -61,7 +61,11 @@
     </nav>
     <div class="right">
       {#if live.loaded}
-        <p class="onair">Live service: <strong>{live.loaded.title}</strong>{#if liveWhen}{` · ${liveWhen}`}{/if}</p>
+        <p class="onair">
+          <span class="label">Live service:</span>
+          <strong title={live.loaded.title}>{live.loaded.title}</strong>
+          {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
+        </p>
       {/if}
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
@@ -191,15 +195,23 @@
     color: var(--text);
     background: var(--raised);
   }
+  /* A long title truncates; the label and the date keep their width. */
   .onair {
     min-width: 0;
+    display: flex;
+    gap: 0.3rem;
     font-size: 0.875rem;
     color: var(--muted);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+  .onair .label,
+  .onair .when {
+    flex-shrink: 0;
   }
   .onair strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--text);
     font-weight: 500;
   }
