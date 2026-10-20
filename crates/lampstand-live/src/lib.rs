@@ -24,6 +24,33 @@
 //! - If a synced edit deletes the live item, it stays on air, and `Next`
 //!   and `Previous` carry on from where it stood: to the item that
 //!   followed it by Position, or the one before it.
+//! - `tick` takes the time as an argument; the engine never reads a clock,
+//!   so tests drive it with made-up timestamps. Call it at least every
+//!   100 ms. It returns no events when nothing changed.
+//! - An item with `auto_advance_ms` (an announcement loop) advances itself
+//!   to the next slide each time that many milliseconds pass, and wraps from
+//!   the last slide to the first. The interval is counted from the first
+//!   tick after the slide went live, so a slide that came up by hand gets
+//!   its full time. A late tick (the machine slept) advances once, not once
+//!   per missed interval. Loops step by slide, never by build step, and a
+//!   loop of one slide does nothing.
+//! - Operator control wins over the loop. `Next`, `Previous`, `Show` and
+//!   `GoLive` move as usual and restart the interval. `Next` at the last
+//!   slide leaves the loop for the next item; only `tick` wraps. Black and
+//!   Logo cover the output but the loop keeps running underneath, so
+//!   lifting them shows the slide that is current. `ClearText` and
+//!   `ClearAll` stop the loop (the operator asked for an empty screen)
+//!   until something goes live again. `ClearBackground` does not stop it,
+//!   and the next slide brings the item's background back, as for any slide.
+//! - A countdown shows the time left until its `target`, an absolute
+//!   instant, so a countdown to a time of day needs no time zone here: the
+//!   service item resolves the time of day to a `Timestamp`, and the
+//!   compositor (given a UTC offset) formats it. The engine's part is to
+//!   report `ProgramChanged` whenever the whole seconds on show change, on
+//!   the live slide or in the stage display's "next". At zero it reports
+//!   once, then holds `0:00` with no further events until the operator moves
+//!   on. Under Black it reports nothing; lifting Black recomposes.
+//! - A running loop or countdown is on air, so `is_idle` is false.
 //! - `SongShown` fires when a song item goes live from another item, once
 //!   per visit, for CCLI reporting.
 
@@ -111,7 +138,21 @@ pub struct LiveEngine {
     /// Set while the live item has been deleted by a reload: the index in
     /// `items` where the items that followed it start.
     orphan_slot: Option<usize>,
+    /// The time passed to the latest `tick`.
+    last_now: Option<Timestamp>,
+    /// When the live loop's current slide started its interval. `None`
+    /// until the first tick after it went live.
+    loop_anchor: Option<Timestamp>,
+    /// The operator cleared the screen: the loop waits for the next
+    /// slide to go live.
+    loop_halted: bool,
+    /// Whole seconds left on the live and "next" countdowns as last
+    /// reported, to tell when the display would change.
+    countdown_shown: Option<CountdownKey>,
 }
+
+/// Seconds shown by the live slide and by the stage display's next slide.
+type CountdownKey = (Option<i64>, Option<i64>);
 
 impl LiveEngine {
     pub fn new() -> Self {
@@ -193,6 +234,7 @@ impl LiveEngine {
             Command::ToggleBlack => self.toggle_overlay(Overlay::Black, &mut events),
             Command::ToggleLogo => self.toggle_overlay(Overlay::Logo, &mut events),
             Command::ClearText => {
+                self.loop_halted = true;
                 if self.program.content.take().is_some() {
                     events.push(Event::ProgramChanged);
                 }
@@ -203,6 +245,7 @@ impl LiveEngine {
                 }
             }
             Command::ClearAll => {
+                self.loop_halted = true;
                 let changed = self.program.content.is_some()
                     || self.program.background.is_some()
                     || self.program.overlay != Overlay::None;
@@ -220,8 +263,71 @@ impl LiveEngine {
     /// Drives auto-advancing items and countdowns. Call at least every
     /// 100 ms with the current time.
     pub fn tick(&mut self, now: Timestamp) -> Vec<Event> {
-        let _ = now;
-        todo!("T34")
+        self.last_now = Some(now);
+        let mut events = Vec::new();
+        self.tick_loop(now, &mut events);
+        self.tick_countdown(now, &mut events);
+        events
+    }
+
+    fn tick_loop(&mut self, now: Timestamp, events: &mut Vec<Event>) {
+        let (Some(live), false) = (self.live, self.loop_halted) else {
+            return;
+        };
+        let Some(item) = &self.live_item else { return };
+        let Some(interval) = item.auto_advance_ms.filter(|ms| *ms > 0) else {
+            return;
+        };
+        let slides = item.slides.len();
+        if slides < 2 {
+            return;
+        }
+        // A clock that went backwards starts the interval again.
+        let anchor = match self.loop_anchor {
+            Some(anchor) if anchor <= now => anchor,
+            _ => {
+                self.loop_anchor = Some(now);
+                return;
+            }
+        };
+        let interval = i64::from(interval);
+        let elapsed = now.0 - anchor.0;
+        if elapsed < interval {
+            return;
+        }
+        let next = Cursor {
+            item: live.item,
+            slide: (live.slide + 1) % slides,
+            step: 0,
+        };
+        self.go_live(next, events);
+        // Keep the cadence unless badly late, then start over from now.
+        self.loop_anchor = Some(if elapsed >= 2 * interval {
+            now
+        } else {
+            Timestamp(anchor.0 + interval)
+        });
+    }
+
+    fn tick_countdown(&mut self, now: Timestamp, events: &mut Vec<Event>) {
+        let key = self.countdown_key(now);
+        let previous = self.countdown_shown.replace(key);
+        if key == (None, None) || previous == Some(key) || self.program.overlay == Overlay::Black {
+            return;
+        }
+        events.push(Event::ProgramChanged);
+    }
+
+    fn countdown_key(&self, now: Timestamp) -> CountdownKey {
+        // Rounds up, like the compositor's formatting, so both agree on
+        // which second is showing.
+        let secs = |content: &Option<Content>| match content {
+            Some(Content::Countdown { target, .. }) => {
+                Some(((target.0 - now.0).max(0) + 999) / 1000)
+            }
+            _ => None,
+        };
+        (secs(&self.program.content), secs(&self.program.next))
     }
 
     pub fn program(&self) -> &Program {
@@ -400,6 +506,11 @@ impl LiveEngine {
         self.program.content = content;
         self.live = Some(cursor);
         self.program.next = self.next_content(cursor);
+
+        // A fresh slide gets a full interval and a countdown baseline.
+        self.loop_anchor = None;
+        self.loop_halted = false;
+        self.countdown_shown = self.last_now.map(|now| self.countdown_key(now));
 
         events.push(Event::ProgramChanged);
         if !same_item {
@@ -790,5 +901,287 @@ mod tests {
         assert!(e.apply(Command::Show(past_end)).is_empty());
         assert_eq!(e.live(), None);
         assert!(e.is_idle());
+    }
+
+    // Timers and loops (T34). Time is a plain number of milliseconds.
+
+    fn at(ms: i64) -> Timestamp {
+        Timestamp(1_000_000 + ms)
+    }
+
+    fn looping(ms: u32, slides: &[&str]) -> LoadedItem {
+        LoadedItem {
+            auto_advance_ms: Some(ms),
+            ..item("Announcements", slides.iter().map(|s| text(s)).collect())
+        }
+    }
+
+    fn countdown_item(target: Timestamp) -> LoadedItem {
+        item(
+            "Countdown",
+            vec![LoadedSlide {
+                content: Content::Countdown {
+                    target,
+                    label: "Starts".into(),
+                },
+                steps: 0,
+            }],
+        )
+    }
+
+    /// An engine with the loop live and ticked once at `at(0)`.
+    fn loop_engine(ms: u32) -> LiveEngine {
+        let mut e = LiveEngine::new();
+        e.load(vec![
+            looping(ms, &["l1", "l2", "l3"]),
+            item("Song", vec![text("s1")]),
+        ]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        e.tick(at(0));
+        e
+    }
+
+    #[test]
+    fn loop_advances_on_its_interval_and_wraps() {
+        let mut e = loop_engine(5000);
+        assert_eq!(on_air(&e).as_deref(), Some("l1"));
+        assert!(e.tick(at(4900)).is_empty());
+        assert_eq!(e.tick(at(5000)), [Event::ProgramChanged]);
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        e.tick(at(10_000));
+        e.tick(at(15_000));
+        assert_eq!(on_air(&e).as_deref(), Some("l1"), "wrapped");
+        assert_eq!(e.live().map(|c| c.step), Some(0));
+    }
+
+    #[test]
+    fn loop_keeps_its_cadence_but_does_not_catch_up_after_a_sleep() {
+        let mut e = loop_engine(5000);
+        // A tick 200 ms late does not push the next one back.
+        e.tick(at(5200));
+        assert!(e.tick(at(9900)).is_empty());
+        assert!(!e.tick(at(10_000)).is_empty());
+        assert_eq!(on_air(&e).as_deref(), Some("l3"));
+        // The machine sleeps for ten minutes: one step, then a fresh interval.
+        e.tick(at(600_000));
+        assert_eq!(on_air(&e).as_deref(), Some("l1"));
+        assert!(e.tick(at(604_900)).is_empty());
+        assert!(!e.tick(at(605_000)).is_empty());
+    }
+
+    #[test]
+    fn loop_interval_runs_from_the_first_tick_after_going_live() {
+        let mut e = LiveEngine::new();
+        e.load(vec![looping(1000, &["a", "b"])]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        // The first tick only starts the clock.
+        assert!(e.tick(at(700)).is_empty());
+        assert!(e.tick(at(1600)).is_empty());
+        assert!(!e.tick(at(1700)).is_empty());
+    }
+
+    #[test]
+    fn clock_going_backwards_restarts_the_interval() {
+        let mut e = loop_engine(5000);
+        assert!(e.tick(at(-10_000)).is_empty());
+        assert!(e.tick(at(-6000)).is_empty());
+        assert!(!e.tick(at(-5000)).is_empty());
+    }
+
+    #[test]
+    fn single_slide_and_plain_items_never_advance() {
+        let mut e = LiveEngine::new();
+        e.load(vec![
+            looping(1000, &["only"]),
+            item("Song", vec![text("s1"), text("s2")]),
+        ]);
+        e.apply(Command::Next);
+        e.tick(at(0));
+        assert!(e.tick(at(60_000)).is_empty());
+        e.apply(Command::Next);
+        e.tick(at(61_000));
+        assert!(e.tick(at(120_000)).is_empty());
+        assert_eq!(on_air(&e).as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn tick_with_nothing_live_does_nothing() {
+        let (mut e, _) = service();
+        assert!(e.tick(at(0)).is_empty());
+        assert!(e.tick(at(99_999)).is_empty());
+        assert!(e.is_idle());
+    }
+
+    #[test]
+    fn manual_moves_restart_the_loop_interval() {
+        let mut e = loop_engine(5000);
+        e.tick(at(4000));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        // The interval starts at the first tick after the move.
+        assert!(e.tick(at(4100)).is_empty());
+        assert!(e.tick(at(9000)).is_empty());
+        assert!(!e.tick(at(9100)).is_empty());
+        assert_eq!(on_air(&e).as_deref(), Some("l3"));
+        // Previous restarts it too.
+        e.tick(at(10_000));
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        e.tick(at(10_100));
+        assert!(e.tick(at(15_000)).is_empty());
+        assert!(!e.tick(at(15_100)).is_empty());
+    }
+
+    #[test]
+    fn next_on_the_last_loop_slide_leaves_the_loop() {
+        let mut e = loop_engine(5000);
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("s1"));
+        assert!(e.tick(at(1_000_000)).is_empty());
+    }
+
+    #[test]
+    fn black_does_not_stop_the_loop() {
+        let mut e = loop_engine(5000);
+        e.apply(Command::ToggleBlack);
+        e.tick(at(5000));
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        assert_eq!(e.program().overlay, Overlay::Black);
+        e.apply(Command::ToggleBlack);
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+    }
+
+    #[test]
+    fn clear_text_and_clear_all_stop_the_loop_until_something_goes_live() {
+        for clear in [Command::ClearText, Command::ClearAll] {
+            let mut e = loop_engine(5000);
+            e.apply(clear);
+            assert!(e.tick(at(5000)).is_empty());
+            assert!(e.tick(at(50_000)).is_empty());
+            assert_eq!(on_air(&e), None);
+            let live = e.live().unwrap();
+            e.apply(Command::Show(live));
+            e.tick(at(51_000));
+            assert!(e.tick(at(55_000)).is_empty());
+            assert!(!e.tick(at(56_000)).is_empty());
+            assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        }
+    }
+
+    #[test]
+    fn clear_background_leaves_the_loop_running() {
+        let mut e = loop_engine(5000);
+        e.apply(Command::ClearBackground);
+        e.tick(at(5000));
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        assert!(
+            e.program().background.is_some(),
+            "the next slide restores it"
+        );
+    }
+
+    #[test]
+    fn loop_survives_a_reload_that_deletes_it() {
+        let mut e = loop_engine(5000);
+        e.load(vec![item("Song", vec![text("s1")])]);
+        e.tick(at(5000));
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+    }
+
+    #[test]
+    fn countdown_reports_each_second_then_holds_zero() {
+        let mut e = LiveEngine::new();
+        e.load(vec![countdown_item(at(3000))]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        // Whole seconds round up, as on screen: 2.001 s still shows 3.
+        assert!(e.tick(at(100)).is_empty());
+        assert!(e.tick(at(999)).is_empty());
+        assert_eq!(e.tick(at(1000)), [Event::ProgramChanged]);
+        assert!(e.tick(at(1100)).is_empty());
+        assert_eq!(e.tick(at(2000)), [Event::ProgramChanged]);
+        assert_eq!(e.tick(at(3000)), [Event::ProgramChanged], "reaches zero");
+        assert!(e.tick(at(3100)).is_empty());
+        assert!(e.tick(at(600_000)).is_empty());
+        assert!(matches!(
+            e.program().content,
+            Some(Content::Countdown { .. })
+        ));
+        assert!(!e.is_idle());
+    }
+
+    #[test]
+    fn countdown_already_past_reports_nothing() {
+        let mut e = LiveEngine::new();
+        e.load(vec![countdown_item(at(-5000))]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        assert!(e.tick(at(100)).is_empty());
+        assert!(e.tick(at(10_000)).is_empty());
+    }
+
+    #[test]
+    fn countdown_target_is_an_absolute_instant_whatever_the_local_time() {
+        // A countdown to a time of day arrives as an absolute Timestamp,
+        // so the engine's output is the same in every time zone.
+        let mut e = LiveEngine::new();
+        e.load(vec![countdown_item(Timestamp(1_800_000_090_000))]);
+        e.tick(Timestamp(1_800_000_000_000));
+        e.apply(Command::Next);
+        assert!(e.tick(Timestamp(1_800_000_000_500)).is_empty());
+        assert_eq!(
+            e.tick(Timestamp(1_800_000_001_000)),
+            [Event::ProgramChanged]
+        );
+    }
+
+    #[test]
+    fn countdown_is_quiet_under_black_and_after_clear() {
+        let mut e = LiveEngine::new();
+        e.load(vec![countdown_item(at(10_000))]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        e.apply(Command::ToggleBlack);
+        assert!(e.tick(at(1000)).is_empty());
+        e.apply(Command::ToggleBlack);
+        assert_eq!(e.tick(at(2000)), [Event::ProgramChanged]);
+        e.apply(Command::ClearText);
+        assert!(e.tick(at(3000)).is_empty());
+    }
+
+    #[test]
+    fn stage_next_countdown_updates_too() {
+        let mut e = LiveEngine::new();
+        e.load(vec![
+            item("Welcome", vec![text("a1")]),
+            countdown_item(at(10_000)),
+        ]);
+        e.tick(at(0));
+        e.apply(Command::Next);
+        assert!(e.tick(at(500)).is_empty());
+        assert_eq!(e.tick(at(1000)), [Event::ProgramChanged]);
+    }
+
+    #[test]
+    fn a_running_loop_or_countdown_is_not_idle() {
+        let mut e = loop_engine(5000);
+        assert!(!e.is_idle());
+        e.tick(at(5000));
+        assert!(!e.is_idle());
+        e.apply(Command::ClearAll);
+        assert!(!e.is_idle(), "the service is still under way");
+
+        let mut e = LiveEngine::new();
+        e.load(vec![countdown_item(at(2000))]);
+        assert!(e.is_idle());
+        e.tick(at(0));
+        e.apply(Command::Next);
+        assert!(!e.is_idle());
+        e.tick(at(5000));
+        assert!(!e.is_idle(), "a finished countdown is still on air");
     }
 }

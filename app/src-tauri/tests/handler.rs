@@ -16,7 +16,7 @@ use lampstand_core::output::{
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{NodeKind, Scene};
-use lampstand_core::service::{ItemKind, Service, ServiceId};
+use lampstand_core::service::{CountdownTarget, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
 use lampstand_live::Command;
@@ -730,4 +730,58 @@ fn a_real_song_database_imports() {
     let hits = search(&mut h, "amazing grace");
     eprintln!("search: {:?} in {:?}", hits.first(), started.elapsed());
     assert!(!hits.is_empty());
+}
+
+#[test]
+fn a_countdown_recomposes_each_second_and_only_then() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let t0 = Timestamp(1_800_000_000_000);
+    ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Countdown {
+            target: CountdownTarget::At(Timestamp(t0.0 + 10_000)),
+            label: "Starts".into(),
+        },
+    })));
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+
+    // The first tick starts the engine's clock and shows the real time left.
+    h.app.tick_at(t0);
+    h.sink.take();
+    h.events.lock().unwrap().clear();
+
+    // Ticks within the same displayed second send nothing.
+    h.app.tick_at(Timestamp(t0.0 + 100));
+    h.app.tick_at(Timestamp(t0.0 + 900));
+    assert!(h.sink.take().is_empty());
+
+    // The next second sends a new scene to the output, showing it.
+    h.app.tick_at(Timestamp(t0.0 + 1000));
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(scene_text(&shown[0].1).contains("0:09"));
+    h.app.tick_at(Timestamp(t0.0 + 2000));
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(scene_text(&shown[0].1).contains("0:08"));
+
+    // Nothing about the live state changed, so the UI was not told.
+    assert!(!h
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| matches!(e, Event::Live { .. })));
+
+    // Zero is drawn once; after that the output holds still.
+    h.app.tick_at(Timestamp(t0.0 + 10_000));
+    assert!(scene_text(&shown_scenes(&h.sink)[0].1).contains("0:00"));
+    h.app.tick_at(Timestamp(t0.0 + 11_000));
+    assert!(h.sink.take().is_empty());
 }
