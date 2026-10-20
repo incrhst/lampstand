@@ -232,7 +232,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
 | T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
-| T88 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
+| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -257,7 +257,7 @@ Done when, from a fresh install, the operator can open a service with one song a
 
 **T59. Early-adopter packaging.** The early-adopter release ships on macOS and Linux first (PRD, Phasing). Build a signed and notarised DMG for macOS, an AppImage and a .deb, and an unsigned NSIS installer for Windows, named and released as a preview, with release notes that say SmartScreen will warn. Add the Tauri updater with its own update-signing key, and gate it on `is_idle()` with no service starting within an hour. Done when CI produces all four artefacts on tags, using signing secrets as repository secrets, with steps documented, and the DMG opens on a clean Mac without a Gatekeeper warning.
 
-**T88. Launch packaging.** For Phase 1: sign the Windows installer (MSI or NSIS) so SmartScreen accepts it, and publish a Flatpak on Flathub. Done when CI signs the Windows installer on tags, it installs on a clean Windows 10 machine without a SmartScreen block, and the Flathub manifest builds and is accepted.
+**T95. Launch packaging.** For Phase 1: sign the Windows installer (MSI or NSIS) so SmartScreen accepts it, and publish a Flatpak on Flathub. Done when CI signs the Windows installer on tags, it installs on a clean Windows 10 machine without a SmartScreen block, and the Flathub manifest builds and is accepted.
 
 **T60. Accessibility.** Run axe on each screen, check contrast, add focus rings, labels and shortcuts for every live action. Done when there are zero axe violations at AA and a keyboard-only mock service runs end to end.
 
@@ -416,15 +416,15 @@ Done when the review's media repro is refused, the counting-allocator test bound
 
 [Decision 0005](decisions/0005-manage-obs-not-replace.md): OBS stays the streaming engine, and Lampstand drives it so a volunteer never opens OBS during a service.
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` |
-| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` |
-| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md |
-| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` |
-| T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` |
-| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view |
-| T94 | Stream destination and virtual camera | S | T89 | OB-9 | `app/src-tauri/src/`, `app/src/routes/` |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review ([#33](https://github.com/incrhst/lampstand/pull/33)) |
+| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Not started |
+| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
+| T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
+| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view | Not started |
+| T94 | Stream destination and virtual camera | S | T89 | OB-9 | `app/src-tauri/src/`, `app/src/routes/` | Not started |
 
 **T88. OBS WebSocket client.** A client for obs-websocket protocol v5 (OBS 28 and later): `Hello`, `Identify` with the SHA-256 challenge, `Request` by id, and event subscriptions (scene, stream, record, virtual camera, input mute, `ExitStarted`). Reconnect with backoff, and expose a status stream (disconnected, connecting, connected, auth failed) plus typed calls for what T89 to T93 need. Behind a `obs` feature like `net`. Done when tests against a mock server cover auth, a wrong password, a dropped connection that reconnects, and an event arriving while a request is in flight.
 
@@ -456,7 +456,7 @@ These sit on the critical path, but no session can do them:
 - Start Google OAuth app verification for the `drive.file` scope and the Picker.
 - Assemble the 200-deck fidelity corpus with permission from the churches who supply them, plus PowerPoint PNG exports of each.
 - Set up an Apple Developer ID now: the early-adopter release (T59) needs it.
-- Get a Windows code-signing certificate and a Flathub account before launch (T88).
+- Get a Windows code-signing certificate and a Flathub account before launch (T95).
 - Decide the open PRD questions: the public relay (CD-4) and the product name.
 
 ## Parallelism at a glance
