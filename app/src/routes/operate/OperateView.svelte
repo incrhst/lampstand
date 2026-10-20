@@ -15,6 +15,11 @@
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import Banner from "../../lib/kit/Banner.svelte";
+
+  /** Opens Setup › Screens, for the prompt shown when no screen is on. */
+  let { onsetup }: { onsetup?: () => void } = $props();
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
 
   async function command(c: Command) {
     try {
@@ -126,8 +131,16 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet noScreen()}
+  <Banner tone="warn">
+    <span>No screen is on, so nothing reaches the projector.</span>
+    {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+  </Banner>
+{/snippet}
+
 {#if !live.loaded}
   <div class="none">
+    {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
     <Icon name="play" size={20} />
     <p class="muted">No service is open. Open one from Plan to go live.</p>
   </div>
@@ -138,7 +151,7 @@
       <Placeholder ticket="T36">Readiness</Placeholder>
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
-      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Output" />
+      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
 
@@ -167,11 +180,12 @@
         </ol>
       </nav>
 
-      <section class="pane centre" aria-label="Live output">
+      <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
+          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
           <div class="live-head">
             <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-            <span class="muted">{output?.name ?? "No output yet"}</span>
+            <span class="muted">{output?.name ?? "No screen yet"}</span>
             {#if liveItem && live.live}
               <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
             {/if}
@@ -249,7 +263,7 @@
         </section>
 
         <section>
-          <h2 class="title">Outputs</h2>
+          <h2 class="title">Screens</h2>
           <ul class="plain outputs">
             {#each live.outputs as o (o.id)}
               <li>
@@ -258,7 +272,7 @@
                 <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
               </li>
             {:else}
-              <li class="faint small">No outputs. Add one in Outputs.</li>
+              <li class="faint small">No screens. Add one in Setup › Screens.</li>
             {/each}
           </ul>
         </section>
@@ -324,6 +338,19 @@
     color: var(--gold);
   }
 
+  .no-screen {
+    margin-bottom: 1rem;
+  }
+  .none .no-screen {
+    width: min(36rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .no-screen :global(.body) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
   .centre-body {
     flex: 1;
     min-height: 0;
