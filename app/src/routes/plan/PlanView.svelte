@@ -1,15 +1,18 @@
 <!-- Service planning: services down the left, the selected service's
-     order in the middle, the song library on the right.
+     order in the middle, the song and scripture library on the right.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
   import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
+    ApiError,
     request,
     type Service,
+    type Response,
     type ServiceSummary,
     type SongDatabase,
     type SongHit,
+    type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
@@ -19,6 +22,7 @@
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
   let { onopened }: { onopened: () => void } = $props();
@@ -49,11 +53,22 @@
 
   const libraryTabs = [
     { id: "songs", label: "Songs" },
-    { id: "scripture", label: "Scripture", disabled: "Bible search in the planner arrives with T48" },
+    { id: "scripture", label: "Scripture" },
     { id: "media", label: "Media", disabled: "The media library arrives with T48" },
     { id: "decks", label: "Decks", disabled: "Decks arrive with T28" },
   ] as const;
   let libraryTab: (typeof libraryTabs)[number]["id"] = $state("songs");
+
+  let translations: Translation[] = $state([]);
+  let translation = $state("");
+  let reference = $state("");
+  type Looked = Extract<Response, { type: "Passage" }>["data"];
+  /** The passage last looked up, and the translation it was read from. */
+  let found: (Looked & { translation: string }) | null = $state(null);
+  let lookupError = $state("");
+  let abbreviation = $derived(
+    Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
+  );
 
   async function refresh() {
     try {
@@ -205,6 +220,55 @@
     }
   }
 
+  async function loadTranslations() {
+    try {
+      translations = await request({ area: "Library", request: "ListTranslations" }, "Translations");
+      translations.sort((a, b) => a.name.localeCompare(b.name));
+      if (!translations.some((t) => t.id === translation)) translation = translations[0]?.id ?? "";
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function lookUp() {
+    found = null;
+    lookupError = "";
+    if (!reference.trim() || !translation) return;
+    try {
+      const looked = await request(
+        { area: "Library", request: { LookupPassage: { reference, translation } } },
+        "Passage",
+      );
+      found = { ...looked, translation };
+    } catch (e) {
+      // The core answers a bad reference with its parser's error name.
+      lookupError = e instanceof ApiError && !/not (on|in) this/.test(e.message)
+        ? `“${reference.trim()}” is not a reference I can read. Try “John 3:16-18” or “Ps 23”.`
+        : String(e instanceof Error ? e.message : e);
+    }
+  }
+
+  async function addScripture() {
+    if (!selected || !found) return;
+    try {
+      selected = await request(
+        {
+          area: "Service",
+          request: {
+            InsertItem: {
+              service: selected.id,
+              index: Object.keys(selected.items).length,
+              kind: { Scripture: { passage: found.passage, translation: found.translation } },
+            },
+          },
+        },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
   async function remove(item: string) {
     if (!selected) return;
     try {
@@ -244,6 +308,7 @@
     try {
       live.status = await request({ area: "Library", request: { ImportFiles: { paths } } }, "Text");
       await search();
+      await loadTranslations();
     } catch (e) {
       report(e);
     } finally {
@@ -299,7 +364,7 @@
     const k = item.kind;
     if ("Song" in k) return songInfo[k.Song.song]?.title ?? "Song";
     if ("Header" in k) return k.Header.title;
-    if ("Scripture" in k) return "Scripture";
+    if ("Scripture" in k) return formatPassage(k.Scripture.passage);
     if ("Deck" in k) return "Presentation";
     if ("Media" in k) return k.Media.name;
     if ("Countdown" in k) return k.Countdown.label;
@@ -313,7 +378,10 @@
       const author = songInfo[k.Song.song]?.author;
       return author ? `${label} · ${author}` : label;
     }
-    if ("Scripture" in k) return `${label} · ${k.Scripture.translation}`;
+    if ("Scripture" in k) {
+      const t = abbreviation[k.Scripture.translation];
+      return t ? `${label} · ${t}` : label;
+    }
     if ("Media" in k && k.Media.looped) return `${label} · loops`;
     return label;
   }
@@ -385,10 +453,11 @@
     }
   }
 
-  // Refetch songs after an import finishes elsewhere.
+  // Refetch songs and Bibles after an import finishes elsewhere.
   $effect(() => {
     void live.songsVersion;
     search();
+    loadTranslations();
   });
 
   $effect(() => {
@@ -494,7 +563,7 @@
         {#if items.length === 0}
           <div class="empty-order">
             <p><strong>This service is empty</strong></p>
-            <p class="muted">Add songs from the library on the right.</p>
+            <p class="muted">Add songs and scripture from the library on the right.</p>
           </div>
         {:else}
           <ol class="plain items" bind:this={list} aria-label="Service order">
@@ -539,6 +608,7 @@
     <div class="library-head">
       <h2 class="title">Library</h2>
       <Segmented options={libraryTabs} value={libraryTab} onchange={(id) => (libraryTab = id)} label="Library type" stretch />
+      {#if libraryTab === "songs"}
       <form
         class="search"
         onsubmit={(e) => {
@@ -549,7 +619,70 @@
         <span class="search-icon"><Icon name="search" /></span>
         <input type="search" aria-label="Search songs" placeholder="Search titles and lyrics" bind:value={query} oninput={search} />
       </form>
+      {:else if libraryTab === "scripture" && translations.length > 0}
+        <form
+          class="scripture"
+          onsubmit={(e) => {
+            e.preventDefault();
+            lookUp();
+          }}
+        >
+          <div class="search">
+            <span class="search-icon"><Icon name="search" /></span>
+            <input
+              type="search"
+              aria-label="Bible reference"
+              placeholder="John 3:16-18, Ps 23, Rom 8"
+              bind:value={reference}
+              oninput={() => {
+                found = null;
+                lookupError = "";
+              }}
+            />
+          </div>
+          <div class="row">
+            <select aria-label="Translation" bind:value={translation} onchange={() => (found = null)}>
+              {#each translations as t (t.id)}
+                <option value={t.id}>{t.abbreviation ? `${t.abbreviation} · ${t.name}` : t.name}</option>
+              {/each}
+            </select>
+            <Button size="small" onclick={lookUp} disabled={!reference.trim()}>Look up</Button>
+          </div>
+        </form>
+      {/if}
     </div>
+
+    {#if libraryTab === "scripture"}
+      <div class="pane-body passage">
+        {#if translations.length === 0}
+          <div class="empty muted">
+            <p>No Bibles on this device yet.</p>
+            <p>Import one (OSIS, USFM, Zefania, OpenSong or OpenLP) to add readings.</p>
+          </div>
+        {:else if lookupError}
+          <p class="empty muted" role="alert">{lookupError}</p>
+        {:else if found}
+          <div class="passage-head">
+            <span class="passage-title">{found.display} · {abbreviation[found.translation]}</span>
+            <Button size="small" icon="plus" onclick={addScripture} disabled={!selected} label="Add {found.display} to service">
+              Add
+            </Button>
+          </div>
+          <div class="verses">
+            {#each found.verses as [chapter, verse, text] (`${chapter}:${verse}`)}
+              <p><sup class="num">{verse}</sup>{text}</p>
+            {/each}
+          </div>
+        {:else}
+          <p class="empty muted">Type a reference and press Enter.</p>
+        {/if}
+      </div>
+      <div class="get-songs">
+        <div class="row">
+          <Button size="small" icon="file" onclick={importFiles} disabled={busy}>Import Bible…</Button>
+        </div>
+      </div>
+    {:else}
 
     <ul class="plain pane-body">
       {#each hits as hit (hit.song)}
@@ -599,6 +732,7 @@
         <Button size="small" icon="folder" onclick={importFolder} disabled={busy}>Import folder…</Button>
       </div>
     </div>
+    {/if}
   </aside>
 </div>
 
@@ -847,6 +981,46 @@
     width: 100%;
     box-sizing: border-box;
     padding-left: 2.2rem;
+  }
+  .scripture {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .passage .empty p + p {
+    margin-top: 0.25rem;
+  }
+  .passage-head {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .passage-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .verses {
+    padding: 0.75rem 1rem 1rem;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  .verses p + p {
+    margin-top: 0.4rem;
+  }
+  .verses sup {
+    margin-right: 0.3rem;
+    font-size: 0.65rem;
+    color: var(--faint);
   }
   .snippet {
     margin-top: 0.2rem;
