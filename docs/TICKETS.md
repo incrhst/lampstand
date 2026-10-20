@@ -419,7 +419,7 @@ Done when the review's media repro is refused, the counting-allocator test bound
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
-| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review ([#33](https://github.com/incrhst/lampstand/pull/33)) |
 | T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Not started |
 | T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
