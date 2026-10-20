@@ -7,7 +7,7 @@
   import OperateView from "./routes/operate/OperateView.svelte";
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import { request } from "./lib/api";
-  import { isCalibrated, live, refreshOutputs } from "./lib/state.svelte";
+  import { isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
@@ -47,6 +47,7 @@
   });
 
   refreshOutputs();
+  refreshObs();
 </script>
 
 <div class="shell">
@@ -78,7 +79,7 @@
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView onsetup={() => openSetup("screens")} onplan={() => (screen = "plan")} />
+      <OperateView onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} onplan={() => (screen = "plan")} />
     {:else}
       <SetupView tab={setupTab} onchange={(tab) => (setupTab = tab)} />
     {/if}
