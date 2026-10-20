@@ -49,7 +49,7 @@ use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
 };
 use lampstand_library::{starter_theme, starter_theme_id, Library};
-use lampstand_live::{Cursor, LiveEngine, LoadedItem, LoadedSlide};
+use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
@@ -58,6 +58,7 @@ use lampstand_sync::DocChanged;
 use crate::config::{device_key, KeyStore, OutputStore};
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
+use crate::journal::{Journal, LiveRecord};
 use crate::seed;
 
 /// Where an output window goes.
@@ -153,6 +154,11 @@ pub struct App {
     /// Parsed decks by the blob they were parsed from, for the decks in
     /// the open service.
     parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
+    /// What is on air, for crash recovery (T57).
+    journal: Journal,
+    /// Set from `open` until the journal is restored, so the windows
+    /// being placed and the half-restored state do not overwrite it.
+    restoring: bool,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -165,7 +171,9 @@ impl App {
     /// Opens (or creates) everything under `data_dir`: the library in
     /// `library/`, the device key, `outputs.json` and
     /// `browser-sources.json`. On first run the seed hymns are imported.
-    /// Enabled outputs get their windows, or their browser-source URL.
+    /// Enabled outputs get their windows, or their browser-source URL, and
+    /// a service that was live less than 10 minutes ago (the crash journal,
+    /// `journal.json`) is reopened on the same slide.
     pub fn open(
         data_dir: &Path,
         fonts: Fonts,
@@ -197,8 +205,11 @@ impl App {
             told_ui: None,
             loaded: None,
             parsed: HashMap::new(),
+            journal: Journal::new(data_dir),
+            restoring: true,
         };
         app.place_windows();
+        app.restore();
         Ok(app)
     }
 
@@ -795,6 +806,7 @@ impl App {
             }
             self.told_ui = Some(state);
         }
+        self.write_journal(now);
     }
 
     /// Steps 3 and 4 of the click: compose per output, send `Show`.
@@ -1054,6 +1066,7 @@ impl App {
         }
         self.place_streams();
         self.present();
+        self.write_journal(now());
     }
 
     /// Gives every enabled browser-source output its URL in the hub, with
@@ -1124,6 +1137,7 @@ impl App {
                 });
             }
         }
+        self.write_journal(now());
     }
 
     /// Displays came or went: place display outputs again.
@@ -1143,6 +1157,103 @@ impl App {
         if !events.is_empty() {
             self.after_live_at(events, now, true);
         }
+        // The heartbeat while live, and an fsync a burst of clicks put off.
+        self.write_journal(now);
+    }
+
+    // ---- Crash recovery (T57) ----------------------------------------
+
+    /// What is on air now, as the journal keeps it.
+    fn live_record(&self) -> LiveRecord {
+        let program = self.live.program();
+        let mut outputs: Vec<OutputId> = self.sizes.keys().copied().collect();
+        outputs.sort();
+        LiveRecord {
+            service: self.loaded.as_ref().map(|l| l.view.service),
+            live: self.live.live(),
+            preview: self.live.preview(),
+            overlay: program.overlay,
+            text: program.content.is_some(),
+            background: program.background.is_some(),
+            outputs,
+        }
+    }
+
+    fn write_journal(&mut self, now: Timestamp) {
+        if !self.restoring {
+            let record = self.live_record();
+            self.journal.record(&record, now);
+        }
+    }
+
+    /// Reopens the service the journal says was live, on the same slide,
+    /// with the same overlay, preview and cleared text or background.
+    fn restore(&mut self) {
+        let record = self.journal.recover(now());
+        let loaded = match record.as_ref().and_then(|r| r.service) {
+            Some(service) => self.load_service(service).map(|_| ()),
+            None => Ok(()),
+        };
+        self.restoring = false;
+        let Some(record) = record else {
+            return;
+        };
+        if let Err(e) = loaded {
+            eprintln!("lampstand: cannot restore the live service: {e}");
+            return;
+        }
+        let mut commands = Vec::new();
+        commands.extend(record.live.map(Command::Show));
+        match record.overlay {
+            Overlay::Black => commands.push(Command::ToggleBlack),
+            Overlay::Logo => commands.push(Command::ToggleLogo),
+            Overlay::None => {}
+        }
+        if !record.text {
+            commands.push(Command::ClearText);
+        }
+        if !record.background {
+            commands.push(Command::ClearBackground);
+        }
+        commands.extend(record.preview.map(Command::Preview));
+        let events = commands
+            .into_iter()
+            .flat_map(|c| self.live.apply(c))
+            .collect();
+        self.after_live(events);
+        let missing = record
+            .outputs
+            .iter()
+            .filter(|id| !self.sizes.contains_key(id))
+            .count();
+        eprintln!(
+            "lampstand: restored the live service after a crash{}",
+            if missing > 0 {
+                format!(" ({missing} of its outputs are not connected)")
+            } else {
+                String::new()
+            }
+        );
+    }
+
+    /// A clean quit: the journal goes, so the next start does not reopen
+    /// the service.
+    pub fn closing(&mut self) {
+        self.journal.clear();
+    }
+
+    /// Tells the UI what is loaded and on air, for a webview that was not
+    /// listening when it happened (a restore at start, or a reload).
+    pub fn announce(&self) {
+        if let Some(loaded) = &self.loaded {
+            (self.emit)(Event::Loaded(loaded.view.clone()));
+        }
+        (self.emit)(Event::Live {
+            live: self.live.live(),
+            preview: self.live.preview(),
+            idle: self.live.is_idle(),
+            overlay: self.live.program().overlay,
+        });
     }
 
     /// Documents changed here or on another device: tell the UI, and
