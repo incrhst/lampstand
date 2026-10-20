@@ -359,7 +359,7 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
 | T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30) |
 | T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Not started |
-| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Not started |
+| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Done ([#26](https://github.com/incrhst/lampstand/pull/26)) |
 | T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | Done |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
@@ -419,7 +419,7 @@ Done when the review's media repro is refused, the counting-allocator test bound
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
-| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review ([#33](https://github.com/incrhst/lampstand/pull/33)) |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | Done ([#33](https://github.com/incrhst/lampstand/pull/33)) |
 | T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Not started |
 | T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
