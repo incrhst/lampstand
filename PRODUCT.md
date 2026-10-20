@@ -8,7 +8,7 @@ web (the public landing page). The product itself is a desktop app for Windows, 
 
 ## Stack
 
-Landing page: static HTML and CSS with no build step, published on GitHub Pages at incrhst.github.io/lampstand (default address, no custom domain).
+Landing page: static HTML and CSS with no build step, published on GitHub Pages at lampstand.dbain.com (custom domain; `site/CNAME` records it, and the repository's Pages settings hold it).
 
 ## Users
 

@@ -7,7 +7,7 @@ related_targets: []
 
 # Surface brief: landing page (site/index.html)
 
-Scope: the public landing page on GitHub Pages (incrhst.github.io/lampstand). Mode: Persuade.
+Scope: the public landing page on GitHub Pages (lampstand.dbain.com). Mode: Persuade.
 Audience: church volunteers and staff choosing a projection tool; open-source contributors.
 Action: star or follow the repo on GitHub. Honest pre-release status: no download yet.
 Proof: the 45 s promo video; a working demo of the operator advancing a service order; real requirement IDs from the PRD.
