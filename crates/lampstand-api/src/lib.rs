@@ -243,7 +243,7 @@ pub enum TeamRequest {
 }
 
 /// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
-/// `Response::Obs`.
+/// `Response::Obs`, except `Screenshot`.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ObsRequest {
@@ -271,6 +271,13 @@ pub enum ObsRequest {
     SetScene { scene: String },
     /// Ends a hold and switches to the live item's scene, if it has one.
     Resume,
+    /// A JPEG of what OBS shows now, `width` pixels wide, for the live
+    /// preview in Present's OBS drawer (T91). `scene: None` is the program
+    /// scene; a name previews that scene before switching to it. Answers
+    /// `Response::Thumbnail`.
+    Screenshot { scene: Option<String>, width: u32 },
+    /// Mutes or unmutes one of OBS's audio inputs (T91).
+    SetMute { input: String, muted: bool },
 }
 
 /// OBS as the operator and Setup see it. Also pushed as `Event::Obs`
@@ -304,6 +311,17 @@ pub struct ObsView {
     /// The live item's scene couldn't be switched to; cleared by the next
     /// switch that works.
     pub scene_problem: Option<ObsSceneProblem>,
+    /// OBS's audio inputs (microphones, desktop audio, media with sound)
+    /// in OBS's order, while connected, for the mute toggles (T91).
+    pub audio: Vec<ObsAudioInput>,
+}
+
+/// One of OBS's audio inputs and whether it is muted.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObsAudioInput {
+    pub name: String,
+    pub muted: bool,
 }
 
 /// Why the live item's OBS scene isn't on air.
@@ -572,6 +590,7 @@ pub enum Event {
         total: usize,
         message: String,
     },
-    /// OBS's connection, streaming or recording changed.
-    Obs(ObsView),
+    /// OBS's connection, streaming, recording, scenes or mutes changed.
+    /// Boxed: the view is much bigger than the other events.
+    Obs(Box<ObsView>),
 }

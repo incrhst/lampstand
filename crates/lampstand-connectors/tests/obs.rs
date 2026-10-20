@@ -152,6 +152,14 @@ async fn serve(
                 ok(Value::Null)
             }
             "GetVirtualCamStatus" => ok(json!({ "outputActive": true })),
+            // OBS 30 labels its JPEGs "image/jpg".
+            "GetSourceScreenshot" if data["sourceName"] == "Worship" => ok(json!({
+                "imageData": format!("data:image/jpg;base64,{}", data["imageWidth"]),
+            })),
+            "GetSourceScreenshot" => json!({
+                "requestType": request_type, "requestId": id,
+                "requestStatus": { "result": false, "code": 600, "comment": "No source was found." },
+            }),
             "SetCurrentProgramScene" if data["sceneName"] == "Nowhere" => json!({
                 "requestType": request_type, "requestId": id,
                 "requestStatus": { "result": false, "code": 600, "comment": "No source was found by the name of `Nowhere`." },
@@ -232,6 +240,36 @@ async fn connects_with_a_password_and_answers_requests() {
         [json!({ "sceneName": "Pastor and slides" })]
     );
     assert!(obs.virtual_cam_active().await.unwrap());
+}
+
+#[tokio::test]
+async fn takes_a_screenshot_of_a_scene() {
+    let mock = MockObs::start(None).await;
+    let obs = Obs::start(mock.config(None));
+    wait_for(&mut obs.status(), connected).await;
+    assert_eq!(
+        obs.screenshot("Worship", 480).await.unwrap(),
+        "data:image/jpeg;base64,480"
+    );
+    // Out-of-range widths are clamped to what OBS accepts.
+    assert_eq!(
+        obs.screenshot("Worship", 0).await.unwrap(),
+        "data:image/jpeg;base64,8"
+    );
+    assert_eq!(
+        mock.requests_of("GetSourceScreenshot")[0],
+        json!({
+            "sourceName": "Worship", "imageFormat": "jpg",
+            "imageWidth": 480, "imageCompressionQuality": 70,
+        })
+    );
+    assert!(matches!(
+        obs.screenshot("Nowhere", 480).await,
+        Err(ObsError::Request {
+            code: codes::RESOURCE_NOT_FOUND,
+            ..
+        })
+    ));
 }
 
 #[tokio::test]

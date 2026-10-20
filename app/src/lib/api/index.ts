@@ -24,6 +24,7 @@ export * from "./LoadedItemView";
 export * from "./LoadedService";
 export * from "./MediaFile";
 export * from "./NearbyView";
+export * from "./ObsAudioInput";
 export * from "./ObsConnection";
 export * from "./ObsOutputView";
 export * from "./ObsProblem";

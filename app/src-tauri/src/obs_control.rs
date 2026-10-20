@@ -28,6 +28,12 @@
 //!   service: it shows as `ObsView::scene_problem`, and a switch that
 //!   couldn't happen because OBS was away happens when it connects.
 //!   [`Follower`] holds these rules, apart from any I/O.
+//! - **Present's OBS drawer (T91).** Scene buttons send `SetScene`; the
+//!   live preview asks for `Screenshot`s of the program scene (or of a
+//!   scene the operator points at) a few times a second while the drawer
+//!   is open, and nothing while it is shut. The audio inputs and their
+//!   mutes are read on connect, follow `InputMuteStateChanged`, and are
+//!   read again when inputs are added, removed or renamed.
 
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -38,10 +44,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lampstand_api::{
-    Event, ObsConnection, ObsOutputView, ObsProblem, ObsRequest, ObsSceneFailure, ObsSceneProblem,
-    ObsView, Response,
+    Event, ObsAudioInput, ObsConnection, ObsOutputView, ObsProblem, ObsRequest, ObsSceneFailure,
+    ObsSceneProblem, ObsView, Response,
 };
-use lampstand_connectors::obs::{codes, Obs, ObsConfig, ObsError, ObsEvent, ObsStatus};
+use lampstand_connectors::obs::{codes, Input, Obs, ObsConfig, ObsError, ObsEvent, ObsStatus};
 use lampstand_core::service::ItemId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
@@ -605,6 +611,8 @@ pub struct ObsControl {
     /// OBS's scenes (kept after a disconnect, for planning) and the one on
     /// air (while connected).
     scenes: Mutex<(Vec<String>, Option<String>)>,
+    /// OBS's audio inputs and their mutes, for Present's toggles (T91).
+    audio: Mutex<Vec<ObsAudioInput>>,
     cues: SceneCues,
 }
 
@@ -634,6 +642,7 @@ impl ObsControl {
             told: Mutex::new(None),
             follower: Mutex::new(Follower::default()),
             scenes: Mutex::new((Vec::new(), None)),
+            audio: Mutex::new(Vec::new()),
             cues,
         });
         tokio::spawn(watch_obs(
@@ -686,6 +695,26 @@ impl ObsControl {
                 }
                 self.publish();
                 Ok(())
+            }
+            ObsRequest::Screenshot { scene, width } => {
+                return match self.screenshot(scene, width).await {
+                    Ok(image) => Response::Thumbnail(image),
+                    Err(message) => Response::Error { message },
+                };
+            }
+            ObsRequest::SetMute { input, muted } => {
+                let verb = if muted { "mute" } else { "unmute" };
+                let done = self
+                    .obs
+                    .set_input_muted(&input, muted)
+                    .await
+                    .map_err(|e| format!("OBS didn't {verb} {input}: {e}"));
+                if done.is_ok() {
+                    // OBS's event says the same; this way the answer has it.
+                    self.muted(&input, muted);
+                }
+                self.publish();
+                done
             }
         };
         match result {
@@ -818,6 +847,52 @@ impl ObsControl {
         }
     }
 
+    /// A picture of `scene`, or of the program scene, for the drawer's live
+    /// preview. Asked for a few times a second while the drawer is open.
+    async fn screenshot(&self, scene: Option<String>, width: u32) -> Result<String, String> {
+        let known = scene.or_else(|| lock(&self.scenes).1.clone());
+        let source = match known {
+            Some(source) => source,
+            None => {
+                self.obs
+                    .scene_list()
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .program
+            }
+        };
+        self.obs
+            .screenshot(&source, width)
+            .await
+            .map_err(|e| format!("No picture of {source} from OBS: {e}"))
+    }
+
+    /// OBS's audio devices (microphones, desktop audio) and whether each is
+    /// muted; cameras and browser sources with sound are left out
+    /// ([`Input::is_audio_device`]). A failure keeps what was known.
+    async fn refresh_audio(&self) {
+        let Ok(inputs) = self.obs.inputs().await else {
+            return;
+        };
+        let mut audio = Vec::new();
+        for input in inputs.into_iter().filter(Input::is_audio_device) {
+            if let Ok(muted) = self.obs.input_muted(&input.name).await {
+                audio.push(ObsAudioInput {
+                    name: input.name,
+                    muted,
+                });
+            }
+        }
+        *lock(&self.audio) = audio;
+    }
+
+    /// An input was muted or unmuted, here or in OBS.
+    fn muted(&self, input: &str, muted: bool) {
+        if let Some(a) = lock(&self.audio).iter_mut().find(|a| a.name == input) {
+            a.muted = muted;
+        }
+    }
+
     /// An item went live.
     async fn cue(&self, cue: SceneCue) {
         let next = lock(&self.follower).item_live(cue.scene);
@@ -830,6 +905,7 @@ impl ObsControl {
     /// wait for it.
     async fn on_connected(&self) {
         self.refresh_scenes().await;
+        self.refresh_audio().await;
         let next = lock(&self.follower).next();
         if let Some(scene) = next {
             self.switch(scene).await;
@@ -865,6 +941,11 @@ impl ObsControl {
             program_scene: program_scene.filter(|_| connected),
             held: follower.held(),
             scene_problem: follower.problem().cloned(),
+            audio: if connected {
+                lock(&self.audio).clone()
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -889,7 +970,7 @@ impl ObsControl {
         if told.as_ref() != Some(&view) {
             *told = Some(view.clone());
             drop(told);
-            (self.emit)(Event::Obs(view));
+            (self.emit)(Event::Obs(Box::new(view)));
         }
     }
 
@@ -943,9 +1024,28 @@ async fn watch_obs(
                     lock(&c.scenes).1 = Some(scene);
                     (false, false)
                 }
-                Ok(ObsEvent::SceneListChanged | ObsEvent::SceneCollectionChanged { .. }) => {
+                Ok(ObsEvent::SceneListChanged) => {
                     let Some(c) = control.upgrade() else { return };
                     c.refresh_scenes().await;
+                    (false, false)
+                }
+                // Another collection has other scenes and inputs.
+                Ok(ObsEvent::SceneCollectionChanged { .. }) => {
+                    let Some(c) = control.upgrade() else { return };
+                    c.refresh_scenes().await;
+                    c.refresh_audio().await;
+                    (false, false)
+                }
+                Ok(ObsEvent::InputMuteChanged { input, muted }) => {
+                    let Some(c) = control.upgrade() else { return };
+                    c.muted(&input, muted);
+                    (false, false)
+                }
+                Ok(ObsEvent::Other { event_type, .. })
+                    if matches!(event_type.as_str(), "InputCreated" | "InputRemoved" | "InputNameChanged") =>
+                {
+                    let Some(c) = control.upgrade() else { return };
+                    c.refresh_audio().await;
                     (false, false)
                 }
                 Ok(_) => continue,

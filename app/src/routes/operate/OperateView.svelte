@@ -2,6 +2,9 @@
      the slides of the item in view in the middle, Next and notes on the
      right. While a deck is on air the middle is its presenter view
      (current slide at its build step, next click, speaker notes, timer).
+     Where OBS matters, the bar has one OBS control (the scene on air and
+     the next item's scene) that opens the OBS drawer (T91); OBS's
+     connection status is in the footer.
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
@@ -19,8 +22,9 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import ObsDrawer from "./ObsDrawer.svelte";
   import ObsNotice from "./ObsNotice.svelte";
-  import { obsPill } from "../../lib/obs";
+  import { isConnected, obsPill, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
 
@@ -29,6 +33,18 @@
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
+
+  // The OBS drawer (T91), from the strip or with O. Closing it gives focus
+  // back to the strip, so the keyboard carries on where it was.
+  let obsOpen = $state(false);
+  let obsToggle: HTMLButtonElement | undefined = $state();
+  function setObsOpen(open: boolean) {
+    obsOpen = open;
+    if (!open) obsToggle?.focus({ preventScroll: true });
+  }
+  $effect(() => {
+    if (!pill) obsOpen = false;
+  });
 
   // With no service open, offer the next few to open: the core lists
   // upcoming ones first, then undated ones newest first.
@@ -97,6 +113,16 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (pill && live.loaded && (e.key === "o" || e.key === "O")) {
+      e.preventDefault();
+      setObsOpen(!obsOpen);
+      return;
+    }
+    if (obsOpen && e.key === "Escape") {
+      e.preventDefault();
+      setObsOpen(false);
+      return;
+    }
     const keys: Record<string, Command> = {
       " ": "Next",
       ArrowRight: "Next",
@@ -233,6 +259,15 @@
 
   let notes = $derived(liveItem ? (service?.items[liveItem.id]?.notes ?? "") : "");
 
+  let obsOn = $derived(isConnected(live.obs));
+  let nextObsScene = $derived(
+    upcomingScene(
+      items.map((i) => service?.items[i.id]?.obs_scene),
+      liveIndex,
+      live.obs?.program_scene ?? null,
+    ),
+  );
+
   const stateLabel = { None: "LIVE", Black: "BLANK", Logo: "LOGO" } as const;
   const outputState = { None: "Showing", Black: "Blank", Logo: "Logo" } as const;
 </script>
@@ -285,11 +320,29 @@
       </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       {#if pill}
-        <button class="obs-pill" onclick={onobs} title={pill.title} aria-label="OBS: {pill.text}. Open Setup › OBS">
-          <StatusPill tone={pill.tone} icon={pill.tone === "live" ? undefined : "play"}>{pill.text}</StatusPill>
+        <!-- The OBS controller: what OBS has on air and what the next item
+             switches to. Opens the drawer of scenes, preview and mutes. The
+             connection's status sits quietly in the footer. -->
+        <button
+          bind:this={obsToggle}
+          class="obs-control"
+          class:open={obsOpen}
+          onclick={() => setObsOpen(!obsOpen)}
+          aria-expanded={obsOpen}
+          aria-controls="obs-drawer"
+          title="OBS: switch scenes, preview them, mute audio (O)"
+        >
+          <span class="obs-tag"><Icon name="broadcast" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
+          {#if obsOn && live.obs?.program_scene}
+            <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
+            {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
+          {:else}
+            <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
+          {/if}
+          <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
         </button>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
+      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
       <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
@@ -299,6 +352,9 @@
     <!-- While a deck is on air the presenter view takes the right column
          too; outputs stay in the status bar. -->
     <div class="grid" class:presenting>
+      {#if obsOpen}
+        <ObsDrawer view={live.obs} onclose={() => setObsOpen(false)} onsetup={onobs} />
+      {/if}
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head"><h2>Service order</h2></div>
         <ol class="plain pane-body">
@@ -457,13 +513,74 @@
     flex-direction: column;
     gap: 0.5rem;
   }
-  .obs-pill {
+  /* A clear control, not a status label: framed, with an OBS tag, the
+     scene on air and a chevron. "Next: …" gives way first when the bar is
+     short of room, then the scene's name. */
+  .obs-control {
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--text);
     display: inline-flex;
-    padding: 0;
-    border: 0;
-    background: none;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 9rem;
+    max-width: 24rem;
+    height: 2.1rem;
+    padding: 0 0.6rem 0 0.25rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--raised);
     cursor: pointer;
-    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .obs-control:hover {
+    border-color: var(--muted);
+  }
+  .obs-control.open {
+    border-color: var(--gold);
+  }
+  .obs-tag {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.55rem;
+    padding: 0 0.45rem;
+    border-radius: 4px;
+    background: var(--panel);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  .obs-control > span:not(.obs-tag):not(.chevron) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .obs-control > .on-air {
+    min-width: 3.5rem;
+    flex: 0 1 auto;
+    font-weight: 500;
+  }
+  .obs-control > .next {
+    flex: 0 100 auto;
+    color: var(--muted);
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .chevron {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--muted);
+    transition: transform 120ms var(--ease);
+  }
+  .obs-control.open .chevron {
+    transform: rotate(90deg);
   }
   .none {
     height: 100%;
@@ -491,6 +608,16 @@
     gap: 0.5rem 1rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
+  }
+  /* At tablet width the controls don't fit on one row: they wrap rather
+     than squeeze the OBS strip or the screen buttons to nothing. */
+  @media (max-width: 900px) {
+    .bar {
+      flex-wrap: wrap;
+    }
+    .keys {
+      display: none;
+    }
   }
   /* A long title truncates and the date keeps its width, so the controls
      stay on one row in the same place whatever the service is called. */
@@ -528,6 +655,7 @@
     margin-right: 0.4rem;
   }
   .grid {
+    position: relative;
     flex: 1;
     min-height: 0;
     display: grid;

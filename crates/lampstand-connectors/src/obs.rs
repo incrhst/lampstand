@@ -230,6 +230,19 @@ pub struct Input {
     pub kind: String,
 }
 
+impl Input {
+    /// A microphone, line in or desktop/app audio capture: what OBS's
+    /// mixer is mostly for and what an operator mutes. Video, screen and
+    /// browser sources can carry sound too (OBS lets you mute those), but
+    /// listing every camera as a mute button buries the microphones.
+    pub fn is_audio_device(&self) -> bool {
+        let kind = self.kind.as_str();
+        kind.ends_with("_input_capture")
+            || kind.ends_with("_output_capture")
+            || matches!(kind, "sck_audio_capture" | "jack_output_client")
+    }
+}
+
 /// Where OBS sends the stream (Settings › Stream).
 #[derive(Clone, PartialEq, Eq)]
 pub enum StreamDestination {
@@ -384,6 +397,35 @@ impl Obs {
         self.request("SetCurrentProgramScene", json!({ "sceneName": scene }))
             .await
             .map(drop)
+    }
+
+    /// A JPEG of what a scene (or any source) shows now, `width` pixels
+    /// wide with OBS keeping the aspect ratio, as a `data:` URL for an
+    /// `<img>`. OBS renders a scene that isn't on program too, so this
+    /// previews a scene before switching to it (OB-8).
+    pub async fn screenshot(&self, source: &str, width: u32) -> Result<String, ObsError> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(rename = "imageData")]
+            image: String,
+        }
+        let raw: Raw = self
+            .call(
+                "GetSourceScreenshot",
+                json!({
+                    "sourceName": source,
+                    "imageFormat": "jpg",
+                    // OBS refuses widths under 8 or over 4096.
+                    "imageWidth": width.clamp(8, 4096),
+                    "imageCompressionQuality": 70,
+                }),
+            )
+            .await?;
+        // OBS labels it "image/jpg", which isn't a registered type.
+        Ok(match raw.image.strip_prefix("data:image/jpg;") {
+            Some(rest) => format!("data:image/jpeg;{rest}"),
+            None => raw.image,
+        })
     }
 
     // Streaming, recording and the virtual camera (OB-5, OB-6).
@@ -973,6 +1015,39 @@ fn event(d: &Value) -> ObsEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audio_devices_are_mics_and_desktop_audio() {
+        let input = |kind: &str| Input {
+            name: "x".into(),
+            kind: kind.into(),
+        };
+        for kind in [
+            "coreaudio_input_capture",
+            "coreaudio_output_capture",
+            "sck_audio_capture",
+            "wasapi_input_capture",
+            "wasapi_output_capture",
+            "wasapi_process_output_capture",
+            "pulse_input_capture",
+            "pulse_output_capture",
+            "alsa_input_capture",
+            "jack_output_client",
+        ] {
+            assert!(input(kind).is_audio_device(), "{kind}");
+        }
+        for kind in [
+            "screen_capture",
+            "av_capture_input_v2",
+            "macos-avcapture",
+            "dshow_input",
+            "browser_source",
+            "ffmpeg_source",
+            "ndi_source",
+        ] {
+            assert!(!input(kind).is_audio_device(), "{kind}");
+        }
+    }
 
     /// The worked example in the obs-websocket protocol docs.
     #[test]
