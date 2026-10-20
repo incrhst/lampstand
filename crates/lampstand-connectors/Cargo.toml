@@ -5,12 +5,31 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# The OBS WebSocket client (`obs`, T88). Off for crates that don't drive OBS.
+obs = [
+    "dep:futures-util",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:tokio",
+    "dep:tokio-tungstenite",
+]
+
 [dependencies]
 base64.workspace = true
+futures-util = { workspace = true, optional = true }
 reqwest.workspace = true
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["net", "rt", "sync", "time"] }
+tokio-tungstenite = { workspace = true, optional = true }
 url.workspace = true
 
 [dev-dependencies]
+lampstand-connectors = { path = ".", features = ["obs"] }
+tokio-tungstenite.workspace = true
 tokio.workspace = true
 wiremock.workspace = true
 tempfile.workspace = true
