@@ -59,7 +59,7 @@ LAMPSTAND_DATA_DIR=/tmp/lampstand-fresh npm run tauri dev
 
 First run: two public-domain hymns are already in the library. Under
 **Plan**, create a service, add a song and click **Open for live**. Under
-**Outputs**, add a window output and tick **Enabled**. Under **Operate**,
+**Setup › Screens**, add a window and turn it on. Under **Present**,
 press Space or Right for Next, Left for Previous and full stop for Black;
 1 to 9 jump to a verse, C to the chorus, B to the bridge. To fill the
 library, use **Get songs** (a free song database by language) or **Import
