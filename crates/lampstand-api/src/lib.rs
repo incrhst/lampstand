@@ -167,8 +167,13 @@ pub enum OutputRequest {
         output: OutputId,
         safe_area: SafeArea,
     },
-    /// The URL to paste into OBS for a browser-source output.
+    /// The URL to paste into OBS for a browser-source output, as
+    /// `Response::Text`: `http://<host>:<port>/obs/<output>?k=<key>`.
     BrowserSourceUrl(OutputId),
+    /// Gives a browser-source output a new key, so a leaked URL stops
+    /// working; answers the new URL as `Response::Text`. Pages already
+    /// open keep going until they reload.
+    RotateBrowserSourceKey(OutputId),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

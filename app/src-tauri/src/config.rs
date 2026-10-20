@@ -1,8 +1,9 @@
-//! Device-local settings: output configuration and the device key. They
-//! belong to this machine's screens and identity, so they live as plain
-//! files in the app-data folder and never sync (ARCHITECTURE.md, "What
-//! syncs and what stays on the device").
+//! Device-local settings: output configuration, browser-source keys and
+//! the device key. They belong to this machine's screens and identity, so
+//! they live as plain files in the app-data folder and never sync
+//! (ARCHITECTURE.md, "What syncs and what stays on the device").
 
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -65,6 +66,59 @@ impl OutputStore {
 
     fn save(&self) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(&self.outputs).map_err(io::Error::other)?;
+        write_atomically(&self.path, &json)
+    }
+}
+
+/// `browser-sources.json`: the key in each browser-source output's OBS
+/// URL, kept beside `outputs.json` so the URL pasted into OBS survives
+/// restarts. A key is a secret of this machine, so it is not in
+/// `OutputConfig` (which the UI lists) and never syncs.
+pub struct KeyStore {
+    path: PathBuf,
+    keys: BTreeMap<OutputId, String>,
+}
+
+impl KeyStore {
+    /// Reads `path`, or starts empty if it does not exist or does not
+    /// parse (a lost key only means pasting a new URL into OBS).
+    pub fn load(path: PathBuf) -> io::Result<Self> {
+        let keys = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                eprintln!(
+                    "lampstand: {} is unreadable ({e}); browser sources get new URLs",
+                    path.display()
+                );
+                BTreeMap::new()
+            }),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => BTreeMap::new(),
+            Err(e) => return Err(e),
+        };
+        Ok(Self { path, keys })
+    }
+
+    pub fn get(&self, output: OutputId) -> Option<&str> {
+        self.keys.get(&output).map(String::as_str)
+    }
+
+    /// Sets an output's key, and saves if it changed.
+    pub fn put(&mut self, output: OutputId, key: &str) -> io::Result<()> {
+        if self.get(output) == Some(key) {
+            return Ok(());
+        }
+        self.keys.insert(output, key.to_string());
+        self.save()
+    }
+
+    pub fn remove(&mut self, output: OutputId) -> io::Result<()> {
+        if self.keys.remove(&output).is_some() {
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    fn save(&self) -> io::Result<()> {
+        let json = serde_json::to_vec_pretty(&self.keys).map_err(io::Error::other)?;
         write_atomically(&self.path, &json)
     }
 }
@@ -138,6 +192,22 @@ mod tests {
         std::fs::write(&path, b"{not json").unwrap();
         assert!(OutputStore::load(path.clone()).unwrap().all().is_empty());
         assert!(dir.path().join("outputs.json.bad").exists());
+    }
+
+    #[test]
+    fn browser_source_keys_survive_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("browser-sources.json");
+        let (a, b) = (OutputId::generate(), OutputId::generate());
+        let mut keys = KeyStore::load(path.clone()).unwrap();
+        keys.put(a, "0123456789abcdef").unwrap();
+        keys.put(b, "fedcba9876543210").unwrap();
+        keys.remove(b).unwrap();
+        let again = KeyStore::load(path.clone()).unwrap();
+        assert_eq!(again.get(a), Some("0123456789abcdef"));
+        assert_eq!(again.get(b), None);
+        std::fs::write(&path, b"[").unwrap();
+        assert_eq!(KeyStore::load(path).unwrap().get(a), None);
     }
 
     #[test]
