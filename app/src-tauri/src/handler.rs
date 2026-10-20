@@ -20,11 +20,12 @@ use lampstand_api::{
     Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest, Request, Response,
     ServiceRequest, ServiceSummary, SlideView, SongDatabase, SongHit,
 };
-use lampstand_core::id::Timestamp;
+use lampstand_core::deck::{Deck, DeckId};
+use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::program::{Content, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
-use lampstand_core::scene::Animation;
+use lampstand_core::scene::{Animation, Scene};
 use lampstand_core::scripture::parse_reference;
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
@@ -36,6 +37,7 @@ use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_sync::DocChanged;
 
 use crate::config::{device_key, OutputStore};
+use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
 use crate::seed;
 
@@ -90,10 +92,14 @@ fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
 struct Loaded {
     view: LoadedService,
     /// Build-step animations by (item, slide), each a list per step.
-    /// Empty until decks load (T29 to T31).
+    /// Empty until the parser reads builds (T30).
     builds: HashMap<(ItemId, usize), Vec<Vec<Animation>>>,
     /// The songs in the service, so edits to them reload it.
     songs: Vec<lampstand_core::song::SongId>,
+    /// The decks in the service, so an accepted update reloads it.
+    decks: Vec<DeckId>,
+    /// Each deck slide's scene by (item, slide), for thumbnails.
+    scenes: HashMap<(ItemId, usize), Arc<Scene>>,
 }
 
 pub struct App {
@@ -113,6 +119,9 @@ pub struct App {
     sent: HashMap<OutputId, Sent>,
     told_ui: Option<LiveState>,
     loaded: Option<Loaded>,
+    /// Parsed decks by the blob they were parsed from, for the decks in
+    /// the open service.
+    parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -150,6 +159,7 @@ impl App {
             sent: HashMap::new(),
             told_ui: None,
             loaded: None,
+            parsed: HashMap::new(),
         };
         app.place_windows();
         Ok(app)
@@ -261,9 +271,26 @@ impl App {
                 // downloads it and then imports as `ImportFiles` does.
                 return Err("song databases are downloaded by the app shell".into());
             }
-            LibraryRequest::AddDeckFromLink { .. } | LibraryRequest::AcceptDeckUpdate(_) => {
-                return Err("decks arrive with T29 to T41".into())
+            LibraryRequest::ListDecks => {
+                let mut decks = lib.decks().map_err(err)?;
+                decks.sort_by_key(|d| d.title.to_lowercase());
+                Response::Decks(decks)
             }
+            LibraryRequest::AddDeckFile { path } => {
+                Response::Deck(decks::add_deck_file(lib, &path)?)
+            }
+            LibraryRequest::AddDeckFromLink { .. } => {
+                // A download, like a song database: the shell fetches it
+                // and then adds it as `AddDeckFile` does.
+                return Err("deck links are downloaded by the app shell".into());
+            }
+            LibraryRequest::AcceptDeckUpdate(_) => {
+                return Err("linked deck updates arrive with T41".into())
+            }
+            LibraryRequest::AddMediaFile { path } => {
+                Response::Media(decks::add_media_file(lib, &path)?)
+            }
+            LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
     }
 
@@ -349,6 +376,10 @@ impl App {
                 Response::Service(s)
             }
             ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
+            ServiceRequest::SlideThumbnail { .. } => {
+                // It needs a GPU, so the shell draws it from `slide_scene`.
+                return Err("thumbnails are drawn by the app shell".into());
+            }
             ServiceRequest::Readiness(_) => {
                 return Err("the readiness check arrives with T36".into())
             }
@@ -430,13 +461,39 @@ impl App {
         let primary = self.primary_output();
         let mut items = Vec::new();
         let mut views = Vec::new();
+        let mut builds = HashMap::new();
+        let mut scenes = HashMap::new();
+        let mut decks = Vec::new();
+        let mut blobs = Vec::new();
         for (item_id, item) in service.ordered() {
             let loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            if let ItemKind::Deck { deck } = &item.kind {
+                decks.push(*deck);
+                let parsed = self
+                    .library
+                    .deck(*deck)
+                    .ok()
+                    .flatten()
+                    .and_then(|d| self.parsed.get(&d.current.blob).cloned().map(|p| (d, p)));
+                if let Some((d, parsed)) = parsed {
+                    blobs.push(d.current.blob);
+                    for (i, slide) in parsed.slides.iter().enumerate() {
+                        if !slide.builds.is_empty() {
+                            builds.insert((item_id, i), slide.builds.clone());
+                        }
+                    }
+                }
+            }
             views.push(LoadedItemView {
                 id: item_id,
                 title: loaded.title.clone(),
                 slides: loaded.slides.iter().map(slide_view).collect(),
             });
+            for (i, slide) in loaded.slides.iter().enumerate() {
+                if let Content::DeckSlide { scene, .. } = &slide.content {
+                    scenes.insert((item_id, i), scene.clone());
+                }
+            }
             items.push(LoadedItem {
                 theme: service.theme,
                 ..loaded
@@ -447,10 +504,14 @@ impl App {
             title: service.title.clone(),
             items: views,
         };
+        // Parsed decks no service uses any more are let go.
+        self.parsed.retain(|blob, _| blobs.contains(blob));
         self.loaded = Some(Loaded {
             view: view.clone(),
-            builds: HashMap::new(),
+            builds,
             songs: items.iter().filter_map(|i| i.song).collect(),
+            decks,
+            scenes,
         });
         let events = self.live.load(items);
         (self.emit)(Event::Loaded(view.clone()));
@@ -516,10 +577,29 @@ impl App {
                     .collect();
                 item(reference, slides)
             }
-            ItemKind::Deck { .. } => item(
-                "Presentation (decks arrive with T29 to T31)".into(),
-                Vec::new(),
-            ),
+            ItemKind::Deck { deck } => match self.library.deck(*deck).map_err(err)? {
+                Some(d) => match self.parsed_deck(&d) {
+                    Ok(parsed) => {
+                        let slides = parsed
+                            .slides
+                            .iter()
+                            .map(|slide| LoadedSlide {
+                                content: Content::DeckSlide {
+                                    deck: *deck,
+                                    index: slide.index,
+                                    step: 0,
+                                    scene: slide.scene.clone(),
+                                    notes: slide.notes.clone(),
+                                },
+                                steps: slide.builds.len(),
+                            })
+                            .collect();
+                        item(d.title.clone(), slides)
+                    }
+                    Err(why) => item(format!("{} ({why})", d.title), Vec::new()),
+                },
+                None => item("Missing presentation".into(), Vec::new()),
+            },
             ItemKind::Media { blob, name, looped } => {
                 let video = [".mp4", ".mov", ".m4v", ".webm", ".mkv"]
                     .iter()
@@ -561,6 +641,16 @@ impl App {
                 )
             },
         })
+    }
+
+    /// A deck's slides, parsed once per version while its service is open.
+    fn parsed_deck(&mut self, deck: &Deck) -> Result<Arc<ParsedSlides>> {
+        if let Some(parsed) = self.parsed.get(&deck.current.blob) {
+            return Ok(parsed.clone());
+        }
+        let parsed = Arc::new(decks::parse(&self.library, deck, &self.fonts)?);
+        self.parsed.insert(deck.current.blob, parsed.clone());
+        Ok(parsed)
     }
 
     /// Composes and sends the program to every output that changed, and
@@ -829,7 +919,8 @@ impl App {
     }
 
     /// Documents changed here or on another device: tell the UI, and
-    /// reload the open service if it, one of its songs or a theme changed.
+    /// reload the open service if it, one of its songs or decks or a theme
+    /// changed.
     /// A large batch (an import) becomes one `Changed` per kind.
     pub fn library_changed(&mut self, changes: &[DocChanged]) {
         const MANY: usize = 20;
@@ -865,12 +956,19 @@ impl App {
                     && loaded
                         .songs
                         .contains(&lampstand_core::song::SongId::from_uuid(c.id)))
+                || (c.kind == lampstand_sync::DocKind::Deck
+                    && loaded.decks.contains(&DeckId::from_uuid(c.id)))
         });
         if affects {
             if let Err(e) = self.load_service(service) {
                 eprintln!("lampstand: reloading the service failed: {e}");
             }
         }
+    }
+
+    /// The scene of a deck slide in the open service, for a thumbnail.
+    pub fn slide_scene(&self, item: ItemId, slide: usize) -> Option<Arc<Scene>> {
+        self.loaded.as_ref()?.scenes.get(&(item, slide)).cloned()
     }
 
     /// For the live view: what is on air, as text.

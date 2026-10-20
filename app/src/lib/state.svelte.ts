@@ -26,6 +26,8 @@ class LiveState {
   planning: string | null = $state(null);
   /** Bumped when songs change in bulk (an import), so lists refetch. */
   songsVersion: number = $state(0);
+  /** Bumped when a deck is added or changes (here or synced in). */
+  decksVersion: number = $state(0);
 
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
@@ -57,6 +59,9 @@ onEvent((event) => {
       } else {
         live.progress = { done: event.data.done, total: event.data.total };
       }
+      break;
+    case "Changed":
+      if (event.data.kind === "deck") live.decksVersion++;
       break;
   }
 });

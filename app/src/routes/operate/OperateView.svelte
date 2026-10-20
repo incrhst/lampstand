@@ -2,7 +2,8 @@
      the slides of the item in view in the middle, Next and notes on the
      right. T47 replaces this with the full operator view. -->
 <script lang="ts">
-  import { request, send, type Command, type Cursor, type Service } from "../../lib/api";
+  import { untrack } from "svelte";
+  import { request, send, type Command, type Cursor, type Service, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { nextSlide } from "../../lib/cursor";
@@ -110,6 +111,49 @@
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
+
+  // Deck slides have no lines to draw, so the core renders a picture of
+  // each, fetched once per loaded service as slides come into view.
+  const THUMB_WIDTH = 480;
+  let thumbs: Record<string, string> = $state({});
+  const asked = new Set<string>();
+  const thumbKey = (item: string, slide: number) => `${item}/${slide}`;
+  const isDeckSlide = (slide: SlideView) => slide.lines.length === 0 && /^Slide \d+$/.test(slide.label ?? "");
+
+  async function fetchThumb(item: string, slide: number) {
+    const key = thumbKey(item, slide);
+    if (asked.has(key)) return;
+    asked.add(key);
+    try {
+      thumbs[key] = await request(
+        { area: "Service", request: { SlideThumbnail: { item, slide, width: THUMB_WIDTH } } },
+        "Thumbnail",
+      );
+    } catch {
+      // No picture (no GPU, or the deck reloaded): the slide shows its label.
+    }
+  }
+
+  const thumbFor = (item: string | undefined, slide: number) => (item ? thumbs[thumbKey(item, slide)] : undefined);
+
+  // A reload can change a deck's slides, so pictures are fetched again.
+  $effect(() => {
+    void live.loaded;
+    untrack(() => {
+      thumbs = {};
+      asked.clear();
+    });
+  });
+
+  $effect(() => {
+    const want: [string, number][] = [];
+    if (viewed) viewed.slides.forEach((s, i) => isDeckSlide(s) && want.push([viewed.id, i]));
+    if (liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)) want.push([liveItem.id, live.live.slide]);
+    if (upcoming && isDeckSlide(upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide]);
+    untrack(async () => {
+      for (const [item, slide] of want) await fetchThumb(item, slide);
+    });
+  });
   let output = $derived(mainOutput(live.outputs));
   let showGuide = $state(true);
 
@@ -175,10 +219,14 @@
             {#if liveItem && live.live}
               <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
             {/if}
+            {#if live.liveSlide?.label === "Video"}
+              <Placeholder ticket="T27">Video plays on screen</Placeholder>
+            {/if}
           </div>
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
+              image={live.live ? thumbFor(liveItem?.id, live.live.slide) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
               {showGuide}
@@ -210,11 +258,13 @@
                     onclick={() => show({ item: viewed.id, slide: i, step: 0 })}
                     aria-current={isLive(viewed.id, i) ? "true" : undefined}
                   >
-                    <SlidePreview lines={slide.lines} size="small" />
+                    <SlidePreview lines={slide.lines} image={thumbFor(viewed.id, i)} size="small" />
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
                       {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
+                      <!-- The core labels video slides "Video"; the output draws nothing for them yet. -->
+                      {#if slide.label === "Video"}<Placeholder ticket="T27">Not on screen yet</Placeholder>{/if}
                     </span>
                   </button>
                 </li>
@@ -232,7 +282,11 @@
           </div>
           <div class="next">
             {#if upcoming}
-              <SlidePreview lines={upcoming.slide.lines} safeArea={output?.safe_area} />
+              <SlidePreview
+                lines={upcoming.slide.lines}
+                image={thumbFor(upcoming.cursor.item, upcoming.cursor.slide)}
+                safeArea={output?.safe_area}
+              />
             {:else}
               <SlidePreview empty="End of service" />
             {/if}

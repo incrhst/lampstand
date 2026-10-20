@@ -785,3 +785,130 @@ fn a_countdown_recomposes_each_second_and_only_then() {
     h.app.tick_at(Timestamp(t0.0 + 11_000));
     assert!(h.sink.take().is_empty());
 }
+
+fn deck_path(name: &str) -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/lampstand-slides/tests/decks")
+        .join(format!("{name}.pptx"))
+        .display()
+        .to_string()
+}
+
+fn insert(h: &mut Harness, service: &Service, kind: ItemKind) -> Service {
+    match ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind,
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_deck_and_a_video_from_disk_play_in_a_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+
+    let deck = match ok(h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: deck_path("10-church-service"),
+    }))) {
+        Response::Deck(d) => d,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(deck.title, "10-church-service");
+    let listed = match ok(h.app.handle(Request::Library(LibraryRequest::ListDecks))) {
+        Response::Decks(d) => d,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(listed, vec![deck.clone()]);
+
+    let video = dir.path().join("Welcome loop.mp4");
+    std::fs::write(&video, b"not really a video").unwrap();
+    let media = match ok(h.app.handle(Request::Library(LibraryRequest::AddMediaFile {
+        path: video.display().to_string(),
+    }))) {
+        Response::Media(m) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(media.name, "Welcome loop.mp4");
+
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(&mut h, &service, ItemKind::Deck { deck: deck.id });
+    let service = insert(
+        &mut h,
+        &service,
+        ItemKind::Media {
+            blob: media.blob,
+            name: media.name.clone(),
+            looped: true,
+        },
+    );
+    let listed = match ok(h.app.handle(Request::Library(LibraryRequest::ListMedia))) {
+        Response::MediaFiles(m) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(listed, vec![media.clone()]);
+
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "10-church-service");
+    // The deck's hidden slide is left out.
+    let slides = &loaded.items[0].slides;
+    assert!(slides.len() >= 2, "{slides:?}");
+    assert_eq!(slides[0].label.as_deref(), Some("Slide 1"));
+    assert_eq!(loaded.items[1].title, "Welcome loop.mp4");
+    assert_eq!(loaded.items[1].slides[0].label.as_deref(), Some("Video"));
+    // Deck slides have a scene for the operator's thumbnails; video has none.
+    assert!(h.app.slide_scene(loaded.items[0].id, 0).is_some());
+    assert!(h.app.slide_scene(loaded.items[1].id, 0).is_none());
+    h.sink.take();
+
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let program = h.app.program().clone();
+    assert!(
+        matches!(&program.content, Some(Content::DeckSlide { deck: d, index: 0, .. }) if *d == deck.id),
+        "{program:?}"
+    );
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(scene_text(&shown[0].1).contains("Amazing grace, how sweet the sound"));
+
+    for _ in 0..slides.len() {
+        ok(h.app.handle(Request::Live(Command::Next)));
+    }
+    let program = h.app.program().clone();
+    assert!(
+        matches!(&program.content, Some(Content::Video { blob, looped: true }) if *blob == media.blob),
+        "{program:?}"
+    );
+}
+
+#[test]
+fn a_file_that_is_not_a_deck_is_refused_and_a_missing_deck_still_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let path = dir.path().join("hymns.pptx");
+    std::fs::write(&path, b"plain text").unwrap();
+    let response = h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: path.display().to_string(),
+    }));
+    assert!(
+        matches!(&response, Response::Error { message } if message.contains("not a PowerPoint")),
+        "{response:?}"
+    );
+
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(
+        &mut h,
+        &service,
+        ItemKind::Deck {
+            deck: lampstand_core::deck::DeckId::generate(),
+        },
+    );
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "Missing presentation");
+    assert!(loaded.items[0].slides.is_empty());
+}

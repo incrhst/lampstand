@@ -1,11 +1,14 @@
 <!-- Service planning: services down the left, the selected service's
-     order in the middle, the song library on the right.
+     order in the middle, the song, deck and media library on the right.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
   import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
     request,
+    type Deck,
+    type ItemKind,
+    type MediaFile,
     type Service,
     type ServiceSummary,
     type SongDatabase,
@@ -19,6 +22,9 @@
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import { deckExtensions, deckSourceLabel, imageExtensions, isVideo, mediaKind, onePath, videoExtensions } from "../../lib/media";
+  import DeckLibrary from "./DeckLibrary.svelte";
+  import MediaLibrary from "./MediaLibrary.svelte";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
   let { onopened }: { onopened: () => void } = $props();
@@ -50,10 +56,13 @@
   const libraryTabs = [
     { id: "songs", label: "Songs" },
     { id: "scripture", label: "Scripture", disabled: "Bible search in the planner arrives with T48" },
-    { id: "media", label: "Media", disabled: "The media library arrives with T48" },
-    { id: "decks", label: "Decks", disabled: "Decks arrive with T28" },
+    { id: "media", label: "Media" },
+    { id: "decks", label: "Decks" },
   ] as const;
   let libraryTab: (typeof libraryTabs)[number]["id"] = $state("songs");
+  let decks: Deck[] = $state([]);
+  let media: MediaFile[] = $state([]);
+  let deckById = $derived(Object.fromEntries(decks.map((d) => [d.id, d])) as Record<string, Deck>);
 
   async function refresh() {
     try {
@@ -184,7 +193,8 @@
     }
   }
 
-  async function addSong(song: string) {
+  /** Adds an item at the end of the selected service. */
+  async function addItem(kind: ItemKind) {
     if (!selected) return;
     try {
       selected = await request(
@@ -194,7 +204,7 @@
             InsertItem: {
               service: selected.id,
               index: Object.keys(selected.items).length,
-              kind: { Song: { song, arrangement: null } },
+              kind,
             },
           },
         },
@@ -203,6 +213,95 @@
     } catch (e) {
       report(e);
     }
+  }
+
+  const addSong = (song: string) => addItem({ Song: { song, arrangement: null } });
+
+  async function loadDecks() {
+    try {
+      decks = await request({ area: "Library", request: "ListDecks" }, "Decks");
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function loadMedia() {
+    try {
+      media = await request({ area: "Library", request: "ListMedia" }, "MediaFiles");
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** Puts a newly added deck in the library list and the service. */
+  async function deckAdded(deck: Deck) {
+    live.status = `Added ${deck.title}`;
+    await loadDecks();
+    await addItem({ Deck: { deck: deck.id } });
+  }
+
+  // Parsing checks the deck, so a big one takes a moment.
+  async function pickDeck() {
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: "Add a PowerPoint deck",
+          filters: [{ name: "PowerPoint", extensions: deckExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      await deckAdded(await request({ area: "Library", request: { AddDeckFile: { path } } }, "Deck"));
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function addDeckLink(url: string): Promise<boolean> {
+    busy = true;
+    try {
+      await deckAdded(await request({ area: "Library", request: { AddDeckFromLink: { url } } }, "Deck"));
+      return true;
+    } catch (e) {
+      report(e);
+      return false;
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Video is copied into the library, so a long one takes a moment.
+  async function pickMedia() {
+    if (!selected) return;
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: "Add a video or image",
+          filters: [
+            { name: "Video and images", extensions: [...videoExtensions, ...imageExtensions] },
+            { name: "Video", extensions: videoExtensions },
+            { name: "Images", extensions: imageExtensions },
+          ],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddMediaFile: { path } } }, "Media");
+      await addMedia(file);
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function addMedia(file: MediaFile) {
+    await addItem({ Media: { blob: file.blob, name: file.name, looped: false } });
+    await loadMedia();
   }
 
   async function remove(item: string) {
@@ -300,7 +399,7 @@
     if ("Song" in k) return songInfo[k.Song.song]?.title ?? "Song";
     if ("Header" in k) return k.Header.title;
     if ("Scripture" in k) return "Scripture";
-    if ("Deck" in k) return "Presentation";
+    if ("Deck" in k) return deckById[k.Deck.deck]?.title ?? "Presentation";
     if ("Media" in k) return k.Media.name;
     if ("Countdown" in k) return k.Countdown.label;
     return "Announcements";
@@ -314,13 +413,23 @@
       return author ? `${label} · ${author}` : label;
     }
     if ("Scripture" in k) return `${label} · ${k.Scripture.translation}`;
-    if ("Media" in k && k.Media.looped) return `${label} · loops`;
+    if ("Deck" in k) {
+      const deck = deckById[k.Deck.deck];
+      return deck ? `${label} · ${deckSourceLabel(deck.source)}` : label;
+    }
+    if ("Media" in k) return `${mediaKind(k.Media.name)}${k.Media.looped ? " · loops" : ""}`;
     return label;
   }
 
   let items = $derived(selected ? ordered(selected) : []);
   let inService = $derived(
     new Set(items.flatMap(([, item]) => ("Song" in item.kind ? [item.kind.Song.song] : []))),
+  );
+  let decksInService = $derived(
+    new Set(items.flatMap(([, item]) => ("Deck" in item.kind ? [item.kind.Deck.deck] : []))),
+  );
+  let mediaInService = $derived(
+    new Set(items.flatMap(([, item]) => ("Media" in item.kind ? [item.kind.Media.blob] : []))),
   );
 
   // Reordering: drag a row by its handle, or focus the handle and press
@@ -394,6 +503,16 @@
   $effect(() => {
     const service = selected;
     if (service) untrack(() => lookUpSongs(service));
+  });
+
+  // Refetch decks when one is added or synced in.
+  $effect(() => {
+    void live.decksVersion;
+    loadDecks();
+  });
+
+  $effect(() => {
+    if (libraryTab === "media") untrack(loadMedia);
   });
 
   refresh();
@@ -476,7 +595,8 @@
           {/if}
         </div>
         <div class="actions">
-          <Button icon="upload" onclick={() => {}} disabled title="Adding a slide deck arrives with T28">Add deck</Button>
+          <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
+          <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
           <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
         </div>
       </div>
@@ -494,7 +614,7 @@
         {#if items.length === 0}
           <div class="empty-order">
             <p><strong>This service is empty</strong></p>
-            <p class="muted">Add songs from the library on the right.</p>
+            <p class="muted">Add songs, decks and media from the library on the right.</p>
           </div>
         {:else}
           <ol class="plain items" bind:this={list} aria-label="Service order">
@@ -518,6 +638,9 @@
                   <span class="title">{itemTitle(item)}</span>
                   <span class="subtitle">{itemSubtitle(item)}</span>
                 </span>
+                {#if "Media" in item.kind && isVideo(item.kind.Media.name)}
+                  <Placeholder ticket="T27">Not on screen yet</Placeholder>
+                {/if}
                 <span class="remove">
                   <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />
                 </span>
@@ -539,6 +662,7 @@
     <div class="library-head">
       <h2 class="title">Library</h2>
       <Segmented options={libraryTabs} value={libraryTab} onchange={(id) => (libraryTab = id)} label="Library type" stretch />
+      {#if libraryTab === "songs"}
       <form
         class="search"
         onsubmit={(e) => {
@@ -549,8 +673,22 @@
         <span class="search-icon"><Icon name="search" /></span>
         <input type="search" aria-label="Search songs" placeholder="Search titles and lyrics" bind:value={query} oninput={search} />
       </form>
+      {/if}
     </div>
 
+    {#if libraryTab === "decks"}
+      <DeckLibrary
+        {decks}
+        inService={decksInService}
+        canAdd={!!selected}
+        {busy}
+        onadd={(deck) => addItem({ Deck: { deck } })}
+        onpick={pickDeck}
+        onlink={addDeckLink}
+      />
+    {:else if libraryTab === "media"}
+      <MediaLibrary {media} inService={mediaInService} canAdd={!!selected} {busy} onadd={addMedia} onpick={pickMedia} />
+    {:else}
     <ul class="plain pane-body">
       {#each hits as hit (hit.song)}
         <ListRow title={hit.title}>
@@ -599,6 +737,7 @@
         <Button size="small" icon="folder" onclick={importFolder} disabled={busy}>Import folder…</Button>
       </div>
     </div>
+    {/if}
   </aside>
 </div>
 

@@ -24,7 +24,12 @@
 //!   (its rows times its grid's width);
 //! - once more for every further reference to a part from another part's
 //!   attributes (a slide listed twice in `sldIdLst` is parsed twice),
-//!   with everything that part references in turn.
+//!   with everything that part references in turn;
+//! - for every entry, XML or not: its inflated bytes twice (`HELD`), for
+//!   DeckCraft's package and its copy of each media part.
+//!
+//! One total bounds all of it (`LIMITS`), so the estimate stands for the
+//! whole import's peak, media included.
 //!
 //! The charges are measured, with room to spare, by `tests/memory.rs`,
 //! which also parses hostile decks built from the whole DrawingML
@@ -42,19 +47,23 @@ use crate::ImportError;
 /// What one deck may cost.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Limits {
-    /// Bytes every entry inflates to, together (media included), counted
-    /// while reading.
-    pub unpacked: u64,
-    /// The estimated allocation of parsing the deck, in bytes.
+    /// The estimated peak of the whole import, in bytes: the parse
+    /// estimate plus every entry's inflated bytes `HELD` times.
     pub memory: u64,
 }
 
-/// The largest real deck measured (the Apache POI corpus's
-/// HowWeRefactor) peaks at 123 MB; see `tests/memory.rs`.
-pub(crate) const LIMITS: Limits = Limits {
-    unpacked: 1 << 30,
-    memory: 512 << 20,
-};
+/// One number for the whole import (T87). The largest real deck measured
+/// (the Apache POI corpus's HowWeRefactor) peaks at 123 MB, a 200-slide
+/// sermon deck with 100 photos at 148 MB, and a deck with one 350 MB
+/// embedded video is charged about 700 MB; see `tests/memory.rs`.
+pub(crate) const LIMITS: Limits = Limits { memory: 1 << 30 };
+
+/// How many copies of each entry's inflated bytes an import holds at once:
+/// DeckCraft's `Package` keeps every entry inflated, and `media_for`
+/// copies each media part out of it. So every entry is charged twice,
+/// whatever the XML scan made of it: binary media stops the scan at once
+/// and costs nothing there.
+const HELD: u64 = 2;
 
 /// Every element: an `El` with a name `String` and two `Vec`s.
 const ELEMENT: u64 = 160;
@@ -102,9 +111,10 @@ pub(crate) fn check_with(bytes: &[u8], limits: &Limits) -> Result<Cost, ImportEr
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ImportError::Corrupt(format!("unreadable package: {e}")))?;
     let declared = zip.decompressed_size().unwrap_or(0);
-    if declared > u128::from(limits.unpacked) {
+    let unpacked_limit = limits.memory / HELD;
+    if declared > u128::from(unpacked_limit) {
         let found = u64::try_from(declared).unwrap_or(u64::MAX);
-        return Err(too_large("unpacked bytes".into(), found, limits.unpacked));
+        return Err(too_large("unpacked bytes".into(), found, unpacked_limit));
     }
 
     // Relationships first: which attribute values in a part refer to which
@@ -147,21 +157,17 @@ pub(crate) fn check_with(bytes: &[u8], limits: &Limits) -> Result<Cost, ImportEr
             .get(&name)
             .map(|r| r.keys().cloned().collect())
             .unwrap_or_default();
-        // Read at most one byte past what is left of either budget.
-        let left = limits.unpacked - deck.unpacked;
+        // Read at most one byte past what is left of the budget once the
+        // entry's bytes are held `HELD` times.
         let room = limits.memory.saturating_sub(deck.memory);
-        let part = scan(entry.take(left + 1), &ids, room).map_err(|found| {
+        let part = scan(entry.take(room / HELD + 1), &ids, room).map_err(|found| {
             too_large(format!("UTF-16 bytes in {raw_name}"), found, MAX_UTF16_PART)
         })?;
         deck.unpacked += part.unpacked;
-        deck.memory += part.memory;
-        if deck.unpacked > limits.unpacked {
-            return Err(too_large(
-                "unpacked bytes".into(),
-                deck.unpacked,
-                limits.unpacked,
-            ));
-        }
+        deck.memory = deck
+            .memory
+            .saturating_add(part.memory)
+            .saturating_add(HELD.saturating_mul(part.unpacked));
         if deck.memory > limits.memory {
             return Err(too_large(
                 format!("estimated bytes to parse (at {raw_name})"),
@@ -656,10 +662,7 @@ mod tests {
             }
             bytes
         };
-        let small = Limits {
-            unpacked: 1000,
-            ..LIMITS
-        };
+        let small = Limits { memory: 2000 };
         // Declared honestly: refused.
         assert!(matches!(
             check_with(&package(None), &small),
@@ -678,7 +681,6 @@ mod tests {
     fn corpus_costs() {
         let dir = std::env::var("LAMPSTAND_CORPUS").expect("LAMPSTAND_CORPUS");
         let unlimited = Limits {
-            unpacked: u64::MAX / 2,
             memory: u64::MAX / 2,
         };
         let mut worst = (0, String::new());

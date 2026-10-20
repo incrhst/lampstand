@@ -8,7 +8,7 @@
 //! payload, or `Response::Error`.
 
 use lampstand_core::deck::{Deck, DeckId};
-use lampstand_core::id::Timestamp;
+use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::OutputId;
 use lampstand_core::output::{DisplayMatch, OutputConfig};
 use lampstand_core::program::Overlay;
@@ -64,10 +64,31 @@ pub enum LibraryRequest {
     DownloadSongDatabase {
         code: String,
     },
+    /// The decks in the library, by title, as `Response::Decks`.
+    ListDecks,
+    /// A PPTX picked from disk (PS-1). It is parsed once to check it,
+    /// stored as a blob and added as a `Deck` with a `File` source, titled
+    /// by its file name. Answers `Response::Deck`.
+    AddDeckFile {
+        path: String,
+    },
+    /// A pasted "anyone with the link" Google Slides, Google Drive or
+    /// OneDrive link: downloaded, checked and added as `AddDeckFile` does,
+    /// with the link as its source. Answers `Response::Deck`.
     AddDeckFromLink {
         url: String,
     },
     AcceptDeckUpdate(DeckId),
+    /// An image or video picked from disk, copied into the blob store for
+    /// a `Media` item. Answers `Response::Media` with the blob and the
+    /// file's name; the caller inserts the item.
+    AddMediaFile {
+        path: String,
+    },
+    /// Every image and video used in a service, once each, by name, as
+    /// `Response::MediaFiles`. Media has no document of its own; the
+    /// services are its library.
+    ListMedia,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -107,6 +128,14 @@ pub enum ServiceRequest {
     /// Load into the live engine (and start pre-service caching). Answers
     /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),
+    /// A picture of one slide of the open service, `width` pixels wide,
+    /// for the operator view: `Response::Thumbnail`. Deck slides only for
+    /// now; text slides are drawn from their lines (T47 draws the rest).
+    SlideThumbnail {
+        item: ItemId,
+        slide: usize,
+        width: u32,
+    },
     Readiness(ServiceId),
     ExportPackage {
         service: ServiceId,
@@ -240,6 +269,10 @@ pub enum Response {
     Service(Service),
     Services(Vec<ServiceSummary>),
     Deck(Deck),
+    Decks(Vec<Deck>),
+    /// A file added to the blob store by `AddMediaFile`.
+    Media(MediaFile),
+    MediaFiles(Vec<MediaFile>),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
@@ -248,6 +281,20 @@ pub enum Response {
     SongDatabases(Vec<SongDatabase>),
     Text(String),
     Team(TeamStatus),
+    /// A PNG as a `data:` URL, for an `<img>`.
+    Thumbnail(String),
+}
+
+/// An image or video in the blob store, as a `Media` item names it.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaFile {
+    pub blob: BlobHash,
+    /// The file name it was added with: "Welcome loop.mp4".
+    pub name: String,
+    /// Whether its bytes are on this device (a synced service can name a
+    /// blob that has not arrived yet).
+    pub on_device: bool,
 }
 
 /// A song database that can be downloaded to start a library.

@@ -3046,8 +3046,10 @@ dependencies = [
 name = "lampstand-app"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "chrono",
  "gethostname",
+ "image",
  "lampstand-api",
  "lampstand-connectors",
  "lampstand-core",
@@ -3057,6 +3059,7 @@ dependencies = [
  "lampstand-live",
  "lampstand-render",
  "lampstand-server",
+ "lampstand-slides",
  "lampstand-sync",
  "serde",
  "serde_json",
