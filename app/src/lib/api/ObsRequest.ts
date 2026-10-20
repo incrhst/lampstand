@@ -4,4 +4,4 @@
  * Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
  * `Response::Obs`.
  */
-export type ObsRequest = "Status" | { "Configure": { host: string, port: number, password: string | null, } } | "Launch";
+export type ObsRequest = "Status" | { "Configure": { host: string, port: number, password: string | null, } } | "Launch" | "Download";

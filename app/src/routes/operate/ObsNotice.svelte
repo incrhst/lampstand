@@ -14,6 +14,14 @@
   let n = $derived(notice(view));
   let opening = $state(false);
 
+  async function download() {
+    try {
+      await obs("Download");
+    } catch (e) {
+      report(e);
+    }
+  }
+
   async function open() {
     opening = true;
     try {
@@ -38,6 +46,8 @@
     </div>
     {#if n.action === "open"}
       <Button size="small" icon="play" onclick={open} disabled={opening}>{opening ? "Opening OBS…" : "Open OBS"}</Button>
+    {:else if n.action === "get"}
+      <Button size="small" icon="download" onclick={download}>Get OBS</Button>
     {:else if n.action === "setup" && onsetup}
       <Button size="small" icon="setup" onclick={onsetup}>OBS settings</Button>
     {/if}
