@@ -79,7 +79,7 @@ impl SlideCx<'_, '_> {
     /// Maps `s`, placed by `parent` (its parent's child space → slide),
     /// onto the end of `self.nodes`.
     pub(crate) fn shape(&mut self, ctx: &Ctx, s: &Shape, parent: Transform, depth: usize) {
-        if depth > MAX_DEPTH || s.hidden {
+        if depth > MAX_DEPTH || s.hidden || self.full() {
             return;
         }
         let x = resolve::xfrm(ctx, s);

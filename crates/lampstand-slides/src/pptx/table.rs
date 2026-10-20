@@ -50,6 +50,9 @@ pub(crate) fn nodes(
     let mut texts = Vec::new();
     for (r, row) in t.rows.iter().enumerate() {
         for (c, cell) in row.cells.iter().enumerate() {
+            if sc.full() {
+                break;
+            }
             if cell.is_covered() {
                 continue;
             }

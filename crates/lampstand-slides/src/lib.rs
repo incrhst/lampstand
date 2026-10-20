@@ -105,11 +105,13 @@ pub enum ImportError {
     /// Password-protected PPTX (an encrypted OLE container).
     Encrypted,
     Corrupt(String),
-    /// The deck would unpack to more than `limit` bytes (its zip directory
-    /// says `unpacked`). Too big to hold in memory; embedded video this
-    /// large should be linked or added as a media item instead.
+    /// The deck would cost too much memory to parse: `found` of `what`
+    /// ("unpacked bytes", "XML elements in ppt/slides/slide3.xml"...) where
+    /// at most `limit` are allowed. Real decks stay far below the limits;
+    /// embedded video this large should be linked or added as a media item.
     TooLarge {
-        unpacked: u64,
+        what: String,
+        found: u64,
         limit: u64,
     },
 }

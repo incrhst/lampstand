@@ -22,9 +22,11 @@
 //! their stored heights.
 //!
 //! Decks are untrusted (guest speakers send them): numbers from the XML go
-//! through `limits` before they size, repeat or allocate anything, and a
-//! deck that would unpack past `MAX_UNPACKED_BYTES` is refused.
+//! through `limits` before they size, repeat or allocate anything, a deck
+//! that would cost too much to parse is refused (`budget`), and a slide
+//! stops at `MAX_NODES` nodes.
 
+mod budget;
 mod geometry;
 mod limits;
 mod paint;
@@ -46,10 +48,6 @@ use crate::{DeckSlide, FidelityReport, ImportError, Issue, IssueKind, MediaPart,
 #[cfg(test)]
 mod tests;
 
-/// The most a deck may unpack to: the sizes its zip directory declares,
-/// summed. The parsed deck holds that much in memory, once.
-pub(crate) const MAX_UNPACKED_BYTES: u64 = 1 << 30;
-
 /// Parses a PPTX file. See `crate::import_pptx`.
 pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
     if deckcraft_pptx::is_encrypted(bytes) {
@@ -58,18 +56,7 @@ pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck,
     if !deckcraft_pptx::sniff(bytes) {
         return Err(ImportError::NotAPresentation);
     }
-    // DeckCraft allows 2 GiB of inflated parts. Check our own, lower limit
-    // first, from the zip directory, before anything is inflated.
-    let unpacked = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .ok()
-        .and_then(|z| z.decompressed_size())
-        .unwrap_or(0);
-    if unpacked > u128::from(MAX_UNPACKED_BYTES) {
-        return Err(ImportError::TooLarge {
-            unpacked: u64::try_from(unpacked).unwrap_or(u64::MAX),
-            limit: MAX_UNPACKED_BYTES,
-        });
-    }
+    budget::check(bytes)?;
     let (pres, skipped) = deckcraft_pptx::import_checked(bytes).map_err(|e| match e {
         deckcraft_pptx::PptxError::NotPptx(_) => ImportError::NotAPresentation,
         other => ImportError::Corrupt(other.to_string()),
@@ -184,6 +171,13 @@ impl<'a> Deck<'a> {
                 sc.backdrop(&ctx, slide);
                 for s in &slide.shapes {
                     sc.shape(&ctx, s, Transform::IDENTITY, 0);
+                }
+                if sc.truncated {
+                    sc.issue(IssueKind::UnsupportedContent {
+                        what: format!(
+                            "a slide of more than {MAX_NODES} drawn parts; the rest are left out"
+                        ),
+                    });
                 }
                 if sc.exhausted {
                     sc.issue(IssueKind::UnsupportedContent {
@@ -306,6 +300,11 @@ fn notes_text(slide: &Slide) -> String {
         .to_string()
 }
 
+/// The most nodes one slide's scene may have. Real slides have hundreds;
+/// a hostile one (a 1000 × 400 table) could have millions, more than a
+/// renderer can draw.
+pub(crate) const MAX_NODES: usize = 100_000;
+
 /// Per-slide state: the nodes so far and the next free node ID.
 pub(crate) struct SlideCx<'d, 'a> {
     pub(crate) deck: &'d mut Deck<'a>,
@@ -317,6 +316,8 @@ pub(crate) struct SlideCx<'d, 'a> {
     wrapped: bool,
     /// Every content ID is in use: the slide cannot be mapped.
     exhausted: bool,
+    /// The slide reached `MAX_NODES`; later shapes were left out.
+    truncated: bool,
     /// IDs handed out so far.
     issued: BTreeSet<NodeId>,
     /// The slide's background, for shapes filled with it (`useBgFill`).
@@ -346,6 +347,7 @@ impl<'d, 'a> SlideCx<'d, 'a> {
             next_id,
             wrapped: false,
             exhausted: false,
+            truncated: false,
             issued: BTreeSet::new(),
             background: None,
             taken,
@@ -374,6 +376,16 @@ impl<'d, 'a> SlideCx<'d, 'a> {
                 return id;
             }
         }
+    }
+
+    /// Whether the slide has as many nodes as it may have. Once it does,
+    /// mapping stops adding shapes (and table cells) and the slide is
+    /// reported.
+    pub(crate) fn full(&mut self) -> bool {
+        if self.issued.len() >= MAX_NODES {
+            self.truncated = true;
+        }
+        self.truncated
     }
 
     /// The node ID for a slide shape: its own ID where it is free.

@@ -18,26 +18,44 @@ fn deck_bytes(name: &str) -> Vec<u8> {
 
 /// `name` with `from` replaced by `to` (once) in package part `part`.
 fn patched(name: &str, part: &str, from: &str, to: &str) -> Vec<u8> {
+    patched_many(name, &[(part, from, to)])
+}
+
+/// `name` with each (part, from, to) replacement made once, in order. Parts
+/// are stored uncompressed, so building a large test deck stays quick.
+fn patched_many(name: &str, edits: &[(&str, &str, &str)]) -> Vec<u8> {
     let mut zip = zip::ZipArchive::new(Cursor::new(deck_bytes(name))).unwrap();
     let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let mut found = false;
+    let mut done = 0;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).unwrap();
         let file_name = file.name().unwrap().to_string();
         let mut data = Vec::new();
         file.read_to_end(&mut data).unwrap();
-        if file_name == part {
+        for (part, from, to) in edits.iter().filter(|(p, _, _)| *p == file_name) {
             let xml = String::from_utf8(data).unwrap();
             assert!(xml.contains(from), "{part} has no {from:?}");
             data = xml.replacen(from, to, 1).into_bytes();
-            found = true;
+            done += 1;
         }
-        out.start_file(file_name, zip::write::SimpleFileOptions::default())
-            .unwrap();
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        out.start_file(file_name, options).unwrap();
         out.write_all(&data).unwrap();
     }
-    assert!(found, "no part {part}");
+    assert_eq!(done, edits.len(), "not every edit applied");
     out.finish().unwrap().into_inner()
+}
+
+/// The limit a refused deck hit.
+fn refused(bytes: &[u8]) -> (String, u64, u64) {
+    match import_pptx(bytes, &Fonts::bundled_only()) {
+        Err(ImportError::TooLarge { what, found, limit }) => {
+            assert!(found > limit, "{what}: {found} > {limit}");
+            (what, found, limit)
+        }
+        other => panic!("{other:?}"),
+    }
 }
 
 fn parse(bytes: &[u8]) -> ParsedDeck {
@@ -175,10 +193,107 @@ fn a_deck_that_unpacks_past_the_limit_is_refused() {
         .position(|w| w == [0x50, 0x4b, 0x01, 0x02])
         .unwrap();
     bytes[central + 24..central + 28].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
-    match import_pptx(&bytes, &Fonts::bundled_only()) {
-        Err(ImportError::TooLarge { unpacked, limit }) => {
-            assert!(unpacked > limit, "{unpacked} > {limit}");
-        }
-        other => panic!("{other:?}"),
-    }
+    assert_eq!(refused(&bytes).0, "unpacked bytes");
+}
+
+/// The re-review's repro, scaled to stay quick: one slide of 600,000 tiny
+/// elements (a 1000 × 400 table is 2.8 million) would take DeckCraft's DOM
+/// to gigabytes. It is refused from a streaming count, before parsing.
+#[test]
+fn a_slide_of_too_many_elements_is_refused() {
+    let cells = format!("<a:tr h=\"1\">{}</a:tr>", "<a:tc/>".repeat(600_000));
+    let bytes = patched(
+        "08-tables",
+        "ppt/slides/slide1.xml",
+        r#"<a:tr h="609600">"#,
+        &format!(r#"{cells}<a:tr h="609600">"#),
+    );
+    let (what, found, _) = refused(&bytes);
+    assert_eq!(what, "XML elements in ppt/slides/slide1.xml");
+    assert!(found >= 600_000);
+}
+
+#[test]
+fn a_part_too_big_to_parse_is_refused() {
+    // 17 MB of text in one run.
+    let text = "x".repeat(17 << 20);
+    let bytes = patched(
+        "08-tables",
+        "ppt/slides/slide1.xml",
+        "<a:t>Time</a:t>",
+        &format!("<a:t>{text}</a:t>"),
+    );
+    assert_eq!(refused(&bytes).0, "bytes in ppt/slides/slide1.xml");
+}
+
+#[test]
+fn a_deck_of_too_many_elements_is_refused() {
+    // 400,000 elements on each of four slides: each part is allowed, the
+    // deck is not.
+    let filler = format!("<p:spTree>{}", "<a:x/>".repeat(400_000));
+    let parts: Vec<String> = [1, 2, 3, 5]
+        .iter()
+        .map(|n| format!("ppt/slides/slide{n}.xml"))
+        .collect();
+    let edits: Vec<(&str, &str, &str)> = parts
+        .iter()
+        .map(|part| (part.as_str(), "<p:spTree>", filler.as_str()))
+        .collect();
+    let bytes = patched_many("01-masters-placeholders", &edits);
+    assert_eq!(refused(&bytes).0, "XML elements");
+}
+
+/// A table under the parse limits that would still give the renderer
+/// 120,000 nodes: the slide stops at `MAX_NODES` and says so.
+#[test]
+fn a_slide_stops_at_its_node_budget() {
+    let cols = 100;
+    let grid = format!(
+        "<a:tblGrid>{}",
+        r#"<a:gridCol w="12700"/>"#.repeat(cols - 3)
+    );
+    let cell =
+        "<a:tc><a:txBody><a:bodyPr/><a:p><a:r><a:t>x</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>";
+    let row = format!(r#"<a:tr h="12700">{}</a:tr>"#, cell.repeat(cols));
+    let rows = format!(r#"{}<a:tr h="609600">"#, row.repeat(200));
+    let bytes = patched_many(
+        "08-tables",
+        &[
+            ("ppt/slides/slide1.xml", "<a:tblGrid>", grid.as_str()),
+            (
+                "ppt/slides/slide1.xml",
+                r#"<a:tr h="609600">"#,
+                rows.as_str(),
+            ),
+        ],
+    );
+    let deck = parse(&bytes);
+    let nodes = walk(&deck.slides[0].scene.nodes).len();
+    assert!(nodes <= 100_000 + 10, "{nodes} nodes");
+    assert!(
+        nodes > 50_000,
+        "the table was mapped up to the budget: {nodes}"
+    );
+    assert!(deck.report.issues.iter().any(|i| matches!(
+        &i.kind,
+        lampstand_slides::IssueKind::UnsupportedContent { what } if what.contains("drawn parts")
+    )));
+}
+
+/// The re-review's full-size repro: run by hand with `--ignored` under
+/// `/usr/bin/time -l` to see the peak memory.
+#[test]
+#[ignore]
+fn reviewer_repro_full_size() {
+    let cell =
+        "<a:tc><a:txBody><a:bodyPr/><a:p><a:r><a:t>x</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>";
+    let row = format!(r#"<a:tr h="12700">{}</a:tr>"#, cell.repeat(400));
+    let rows = format!(r#"{}<a:tr h="609600">"#, row.repeat(1000));
+    let bytes = patched(
+        "08-tables",
+        "ppt/slides/slide1.xml",
+        r#"<a:tr h="609600">"#,
+        &rows,
+    );
+    eprintln!("{:?}", refused(&bytes));
 }
