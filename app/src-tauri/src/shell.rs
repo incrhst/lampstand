@@ -10,7 +10,10 @@
 //! - **`api` requests** run on Tauri's blocking pool and lock `App`.
 //! - The **`lampstand-app` thread** locks `App` for everything that is not a
 //!   request: window resizes and closes, render-thread events, library
-//!   changes from sync, display hot-plug polling and the 100 ms live tick.
+//!   changes from sync, display hot-plug polling, the 100 ms live tick, and
+//!   the clicker's global shortcuts (`crate::keys`): it presses them into
+//!   the live engine and registers or releases them as clicker mode, the
+//!   open service and output-window focus change.
 //!   A library change wakes it at once, so a synced edit reloads the open
 //!   service without waiting for the tick.
 //! - **Sync** (`crate::sync`) runs on Tauri's async runtime: the local
@@ -22,7 +25,7 @@
 //! - The **render thread** (`lampstand-render`) owns the GPU and every
 //!   surface, and reports through a callback that only sends on a channel.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -40,11 +43,13 @@ use lampstand_sync::DocChanged;
 use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::config::device_key;
 use crate::decks;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
+use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::sync::{Obs, Sync, SyncConfig};
 
@@ -55,6 +60,10 @@ enum Internal {
     Render(OutputEvent),
     /// The library changed; the batch is read from the change feed.
     LibraryChanged,
+    /// A global shortcut was pressed (T56).
+    Key(Key),
+    /// An output window gained or lost focus.
+    Focused(OutputId, bool),
 }
 
 struct Shared {
@@ -300,6 +309,30 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         .map_err(|e| format!("{e:?}"))?,
     );
 
+    // Global shortcuts for clickers (T56). A press only goes to the app
+    // thread: the handler runs on the main thread, which never locks `App`.
+    let key_tx = tx.clone();
+    let shortcuts = handle
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |_, shortcut, event| {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if let Some(key) = Key::ALL.into_iter().find(|k| shortcut_for(*k) == *shortcut)
+                    {
+                        let _ = key_tx.send(Internal::Key(key));
+                    }
+                })
+                .build(),
+        )
+        .inspect_err(|e| eprintln!("lampstand: no clicker shortcuts: {e}"))
+        .is_ok();
+    let keys = Keys::new(TauriShortcuts {
+        handle: handle.clone(),
+        enabled: shortcuts,
+    });
+
     let windows = Arc::new(Mutex::new(HashMap::new()));
     let host = TauriWindows {
         handle: handle.clone(),
@@ -374,7 +407,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let thread_app = app.clone();
     std::thread::Builder::new()
         .name("lampstand-app".into())
-        .spawn(move || app_thread(thread_app, host, rx, changes))
+        .spawn(move || app_thread(thread_app, host, keys, rx, changes))
         .map_err(|e| e.to_string())?;
     Ok(Shared {
         app,
@@ -390,6 +423,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
 fn app_thread(
     app: Arc<Mutex<App>>,
     host: TauriWindows,
+    keys: Keys<TauriShortcuts>,
     rx: Receiver<Internal>,
     changes: Receiver<DocChanged>,
 ) {
@@ -397,6 +431,10 @@ fn app_thread(
     let mut displays = host.displays();
     let mut polled = Instant::now();
     let mut ticked = Instant::now();
+    let mut clicker = Clicker {
+        keys,
+        focused: HashSet::new(),
+    };
     loop {
         // Messages must not postpone the tick: wait only for what is left
         // of this one.
@@ -410,6 +448,7 @@ fn app_thread(
             app_step(
                 &app,
                 &host,
+                &mut clicker,
                 message,
                 &changes,
                 &mut displays,
@@ -423,9 +462,18 @@ fn app_thread(
     }
 }
 
+/// The global shortcuts the app thread holds, and the output windows with
+/// focus.
+struct Clicker {
+    keys: Keys<TauriShortcuts>,
+    focused: HashSet<OutputId>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn app_step(
     app: &Mutex<App>,
     host: &TauriWindows,
+    clicker: &mut Clicker,
     message: Result<Internal, RecvTimeoutError>,
     changes: &Receiver<DocChanged>,
     displays: &mut Vec<DisplayInfo>,
@@ -437,8 +485,23 @@ fn app_step(
     {
         match message {
             Ok(Internal::Resized(id, w, h)) => lock(app).output_resized(id, w, h),
-            Ok(Internal::Closed(id)) => lock(app).output_closed(id),
+            Ok(Internal::Closed(id)) => {
+                clicker.focused.remove(&id);
+                lock(app).output_closed(id)
+            }
             Ok(Internal::LibraryChanged) => {}
+            Ok(Internal::Key(key)) => {
+                if let Response::Error { message } = lock(app).handle(Request::Live(key.command()))
+                {
+                    eprintln!("lampstand: {key:?}: {message}");
+                }
+            }
+            Ok(Internal::Focused(id, true)) => {
+                clicker.focused.insert(id);
+            }
+            Ok(Internal::Focused(id, false)) => {
+                clicker.focused.remove(&id);
+            }
             Ok(Internal::Render(event)) => match event {
                 OutputEvent::FirstFrame(id) => host.first_frame(id),
                 OutputEvent::Presented(_) => {}
@@ -479,6 +542,53 @@ fn app_step(
                 lock(app).displays_changed();
             }
         }
+        // Without the `App` lock: registering waits on the main thread.
+        let mut state = lock(app).key_state();
+        state.output_focused = !clicker.focused.is_empty();
+        clicker.keys.update(state);
+    }
+}
+
+/// The global shortcut for a key: the key alone, no modifiers.
+fn shortcut_for(key: Key) -> Shortcut {
+    let code = match key {
+        Key::PageUp => Code::PageUp,
+        Key::PageDown => Code::PageDown,
+        Key::B => Code::KeyB,
+        Key::Period => Code::Period,
+        Key::Left => Code::ArrowLeft,
+        Key::Right => Code::ArrowRight,
+        Key::Space => Code::Space,
+    };
+    Shortcut::new(None, code)
+}
+
+/// `tauri-plugin-global-shortcut` behind `keys::ShortcutHost`.
+struct TauriShortcuts {
+    handle: AppHandle,
+    /// False if the plugin did not start; every registration then fails.
+    enabled: bool,
+}
+
+impl ShortcutHost for TauriShortcuts {
+    fn register(&mut self, key: Key) -> Result<(), String> {
+        if !self.enabled {
+            return Err("global shortcuts are not available".into());
+        }
+        self.handle
+            .global_shortcut()
+            .register(shortcut_for(key))
+            .map_err(|e| e.to_string())
+    }
+
+    fn unregister(&mut self, key: Key) -> Result<(), String> {
+        if !self.enabled {
+            return Ok(());
+        }
+        self.handle
+            .global_shortcut()
+            .unregister(shortcut_for(key))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -657,6 +767,11 @@ impl TauriWindows {
                 // The app closes it, after the render thread lets go.
                 api.prevent_close();
                 let _ = tx.send(Internal::Closed(output));
+            }
+            // It has no webview to see keys, so the app thread takes the
+            // operator keys for it while it has focus (T56).
+            WindowEvent::Focused(focused) => {
+                let _ = tx.send(Internal::Focused(output, *focused));
             }
             _ => {}
         });

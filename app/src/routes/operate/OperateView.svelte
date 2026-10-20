@@ -207,6 +207,25 @@
   let output = $derived(mainOutput(live.outputs));
   let showGuide = $state(true);
 
+  // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
+  // Down, B (Black) and full stop work whichever window has focus. It is
+  // this machine's setting, so it is read from the core, not kept here.
+  let clicker = $state(false);
+  $effect(() => {
+    request({ area: "Settings", request: "Get" }, "Settings")
+      .then((s) => (clicker = s.clicker_mode))
+      .catch(report);
+  });
+
+  async function toggleClicker() {
+    try {
+      const s = await request({ area: "Settings", request: { Put: { clicker_mode: !clicker } } }, "Settings");
+      clicker = s.clicker_mode;
+    } catch (e) {
+      report(e);
+    }
+  }
+
   function kindOf(id: string) {
     const item = service?.items[id];
     return item ? kindName(item.kind) : null;
@@ -272,6 +291,7 @@
       {/if}
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
+      <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>

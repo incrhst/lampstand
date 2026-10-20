@@ -6,7 +6,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use lampstand_api::{
-    Event, LibraryRequest, LoadedService, OutputRequest, Request, Response, ServiceRequest,
+    DeviceSettings, Event, LibraryRequest, LoadedService, OutputRequest, Request, Response,
+    ServiceRequest, SettingsRequest,
 };
 use lampstand_app::handler::{App, Placement, WindowHost};
 use lampstand_core::id::Timestamp;
@@ -1112,4 +1113,34 @@ fn find_revealed(before: &[Node], after: &[Node]) -> Option<u32> {
     ids(before, &mut all);
     all.into_iter()
         .find(|id| drawn(before, *id) == Some(false) && drawn(after, *id) == Some(true))
+}
+
+#[test]
+fn clicker_mode_is_a_device_setting_and_takes_keys_only_once_a_service_is_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let settings = |h: &mut Harness, request| match ok(h.app.handle(Request::Settings(request))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert!(!settings(&mut h, SettingsRequest::Get).clicker_mode);
+    let on = DeviceSettings { clicker_mode: true };
+    assert_eq!(settings(&mut h, SettingsRequest::Put(on.clone())), on);
+    let state = h.app.key_state();
+    assert!(state.clicker_mode && !state.live);
+    assert!(state.wanted().is_empty(), "nothing open, nothing taken");
+
+    let (song, _) = search(&mut h, "Amazing Grace")[0].clone();
+    let service = create_service(&mut h, "Sunday");
+    insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    assert_eq!(
+        h.app.key_state().wanted(),
+        lampstand_app::keys::Key::CLICKER.into_iter().collect()
+    );
+
+    // It stays on this machine across restarts.
+    drop(h);
+    let h = open(dir.path());
+    assert!(h.app.key_state().clicker_mode);
 }
