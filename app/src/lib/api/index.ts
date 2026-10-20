@@ -28,6 +28,8 @@ export * from "./ObsConnection";
 export * from "./ObsOutputView";
 export * from "./ObsProblem";
 export * from "./ObsRequest";
+export * from "./ObsSceneFailure";
+export * from "./ObsSceneProblem";
 export * from "./ObsView";
 export * from "./Outline";
 export * from "./OutputConfig";

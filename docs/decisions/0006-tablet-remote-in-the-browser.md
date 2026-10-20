@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T95 to T98)
+- Status: accepted (T99 to T102)
 - Date: 2026-10-20
 
 ## Question
@@ -98,7 +98,7 @@ close that gap:
    engine, and sends its commands there. It draws slides from the synced
    service, songs and decks, so no images cross the link.
 4. **One gate for every remote.** On the presenting machine, a command
-   from a browser session (T95) and one from a sync peer go through the
+   from a browser session (T99) and one from a sync peer go through the
    same check before reaching the live engine. Until T18, being paired is
    enough for a peer. After T18, only an operator or admin may send live
    commands. Then the tablet and the second machine can't drift apart in

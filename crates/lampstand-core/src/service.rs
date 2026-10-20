@@ -57,6 +57,12 @@ pub struct ServiceItem {
     pub kind: ItemKind,
     /// Planner's notes for the operator; never projected.
     pub notes: String,
+    /// The OBS scene to switch to when this item goes live (OB-4, T90),
+    /// by name; `None` leaves OBS as it is. Items saved before this field
+    /// existed lack the key and read as `None`.
+    #[serde(default)]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub obs_scene: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -226,6 +232,7 @@ impl Service {
             position,
             kind,
             notes: String::new(),
+            obs_scene: None,
         };
         self.items.insert(id, item);
         id
@@ -324,6 +331,7 @@ mod tests {
                 position: p.clone(),
                 kind: header(title),
                 notes: String::new(),
+                obs_scene: None,
             };
             s.items.insert(ItemId::generate(), item);
         }

@@ -24,8 +24,10 @@ OB-9, into one piece of work:
    (not running, not installed, or its WebSocket server is off) and offers to
    open it (OB-5, T89).
 4. **Scenes from the service order and by hand:** a service item can name an OBS
-   scene to switch to when it goes live (OB-4, T90), and Present shows OBS's
-   scenes as buttons with mute toggles for its audio inputs (OB-8, T91).
+   scene to switch to when it goes live (OB-4, T90), each kind of item has a
+   default scene (OB-10, T96), and Present shows OBS's scenes as buttons with
+   mute toggles for its audio inputs, a click away (OB-8, T91). See "One
+   operator" below.
 5. **Stream and record from the service order** (OB-6, T92).
 6. **One-click setup:** Lampstand creates a "Lampstand" scene collection in OBS,
    with starter scenes and the browser source already pointing at the stream
@@ -34,6 +36,32 @@ OB-9, into one piece of work:
    service or a custom server, with its key) and turn the virtual camera on and
    off (OB-9, T94). OBS sends to one destination; several at once needs a
    plugin or a restream service.
+
+## One operator
+
+Most churches have one person running both the screens and the stream, so the
+design gives them one job: press Next. A volunteer's tablet may later become a
+second control surface, but nothing may depend on having one.
+
+- **The live view is already the source.** The stream output is the browser
+  source in OBS and always shows what is on air, with its own layout (lyrics as
+  a lower third, decks full screen). OBS scenes decide only the cameras around
+  it, so a church needs a handful of scenes, and one-click setup (T93) puts the
+  Lampstand source in each.
+- **Scenes come from the plan, not the operator.** Each kind of item has a
+  default scene, set once in Setup › OBS (songs on "Worship", scripture and
+  decks on "Slides"); an item can override its kind's default (T90, T96). When
+  an item goes live, OBS follows.
+- **Present has one quiet strip, not a mixer.** It shows the pill (LIVE and the
+  timecode), the scene on air and the next item's scene, so a change is never a
+  surprise. Scene buttons and mutes are a click away (T91). A hand pick holds
+  only until the next item. Warnings appear only when something is wrong. No
+  volume faders: audio stays on the desk.
+- **Starting and stopping are in the order.** The pre-service countdown starts
+  the stream (T92). Stopping always asks.
+- **A second device is a bonus.** Every control is web UI over the same API, so
+  a tablet can become the OBS panel (scenes and mutes) for a second volunteer
+  without changing what a single operator does.
 
 ## Why not our own compositor
 

@@ -20,7 +20,16 @@
 //! - **Launch** starts OBS minimised to the tray. Lampstand never edits
 //!   OBS's own settings.
 //! - **Download** opens OBS's download page in the default browser.
+//! - **Scenes follow the live item (T90).** `App` sends a [`SceneCue`]
+//!   whenever an item goes live, forwards or back. If the item names a
+//!   scene, OBS switches to it; moving between slides of one item never
+//!   switches. A scene picked by hand, in Present or in OBS itself, holds
+//!   until the next item goes live. A failed switch never blocks the
+//!   service: it shows as `ObsView::scene_problem`, and a switch that
+//!   couldn't happen because OBS was away happens when it connects.
+//!   [`Follower`] holds these rules, apart from any I/O.
 
+use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -29,11 +38,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lampstand_api::{
-    Event, ObsConnection, ObsOutputView, ObsProblem, ObsRequest, ObsView, Response,
+    Event, ObsConnection, ObsOutputView, ObsProblem, ObsRequest, ObsSceneFailure, ObsSceneProblem,
+    ObsView, Response,
 };
-use lampstand_connectors::obs::{Obs, ObsConfig, ObsEvent, ObsStatus};
+use lampstand_connectors::obs::{codes, Obs, ObsConfig, ObsError, ObsEvent, ObsStatus};
+use lampstand_core::service::ItemId;
 use serde::{Deserialize, Serialize};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 use crate::handler::EventSink;
 
@@ -429,6 +440,146 @@ fn whole_seconds(timecode: &str) -> String {
     timecode.split('.').next().unwrap_or_default().to_string()
 }
 
+// Scenes per item (T90).
+
+/// An item went live: its OBS scene, if it names one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneCue {
+    pub item: ItemId,
+    pub scene: Option<String>,
+}
+
+/// Where `App` sends cues. Unbounded: a cue is tiny, and the live engine
+/// must never wait for OBS.
+pub type SceneCues = mpsc::UnboundedSender<SceneCue>;
+
+/// When to switch OBS's scene, apart from talking to OBS.
+///
+/// - A new item clears any hold and asks for its scene.
+/// - A scene picked by hand holds until the next item.
+/// - A switch that failed because OBS was away is tried again when it
+///   connects; one OBS refused (no such scene) waits for the next item or
+///   `resume`.
+/// - OBS reports every program-scene change, including ours. Scenes this
+///   side asked for are remembered until OBS echoes them, so only a change
+///   nobody here asked for counts as a hand pick in OBS itself.
+#[derive(Debug, Default)]
+pub struct Follower {
+    wanted: Option<String>,
+    done: bool,
+    held: bool,
+    asked: VecDeque<String>,
+    problem: Option<ObsSceneProblem>,
+}
+
+impl Follower {
+    /// An item went live. Returns the scene to switch to now.
+    pub fn item_live(&mut self, scene: Option<String>) -> Option<String> {
+        self.wanted = scene;
+        self.done = false;
+        self.held = false;
+        self.problem = None;
+        self.next()
+    }
+
+    /// The scene to switch to now, if any.
+    pub fn next(&self) -> Option<String> {
+        if self.held || self.done {
+            None
+        } else {
+            self.wanted.clone()
+        }
+    }
+
+    /// About to ask OBS for `scene`.
+    pub fn asking(&mut self, scene: &str) {
+        self.asked.push_back(scene.to_string());
+    }
+
+    /// OBS answered a switch to `scene`.
+    pub fn switched(&mut self, scene: &str, result: &Result<(), ObsError>) {
+        if self.wanted.as_deref() != Some(scene) {
+            // A hand pick, or a cue since replaced: nothing to track.
+            if result.is_err() {
+                self.forget(scene);
+            }
+            return;
+        }
+        let failure = match result {
+            Ok(()) => {
+                self.done = true;
+                self.problem = None;
+                return;
+            }
+            Err(ObsError::NotConnected | ObsError::Disconnected) => {
+                // Tried again on connect.
+                self.forget(scene);
+                ObsSceneFailure::NotConnected
+            }
+            Err(ObsError::Request { code, .. }) if *code == codes::RESOURCE_NOT_FOUND => {
+                self.done = true;
+                self.forget(scene);
+                ObsSceneFailure::Missing
+            }
+            Err(e) => {
+                self.done = true;
+                self.forget(scene);
+                ObsSceneFailure::Failed {
+                    message: e.to_string(),
+                }
+            }
+        };
+        self.problem = Some(ObsSceneProblem {
+            scene: scene.to_string(),
+            reason: failure,
+        });
+    }
+
+    /// OBS reports `scene` on air.
+    pub fn obs_switched(&mut self, scene: &str) {
+        if let Some(i) = self.asked.iter().position(|s| s == scene) {
+            // Our own switch (and any older ones OBS skipped past).
+            self.asked.drain(..=i);
+            return;
+        }
+        // Somebody switched in OBS itself.
+        self.hand_pick();
+    }
+
+    /// The operator picked a scene by hand.
+    pub fn hand_pick(&mut self) {
+        self.held = true;
+        self.problem = None;
+    }
+
+    /// Ends a hold: the live item's scene applies again.
+    pub fn resume(&mut self) -> Option<String> {
+        self.held = false;
+        self.done = false;
+        self.problem = None;
+        self.next()
+    }
+
+    /// The connection dropped: echoes of what was asked won't come.
+    pub fn disconnected(&mut self) {
+        self.asked.clear();
+    }
+
+    pub fn held(&self) -> bool {
+        self.held
+    }
+
+    pub fn problem(&self) -> Option<&ObsSceneProblem> {
+        self.problem.as_ref()
+    }
+
+    fn forget(&mut self, scene: &str) {
+        if let Some(i) = self.asked.iter().rposition(|s| s == scene) {
+            self.asked.remove(i);
+        }
+    }
+}
+
 // The controller.
 
 /// OBS for the app: settings, the connection, and the view pushed to the UI.
@@ -449,6 +600,12 @@ pub struct ObsControl {
     outputs: Mutex<(Option<ObsOutputView>, Option<ObsOutputView>)>,
     /// The last view pushed, so an unchanged one isn't sent again.
     told: Mutex<Option<ObsView>>,
+    /// Scenes per item (T90).
+    follower: Mutex<Follower>,
+    /// OBS's scenes (kept after a disconnect, for planning) and the one on
+    /// air (while connected).
+    scenes: Mutex<(Vec<String>, Option<String>)>,
+    cues: SceneCues,
 }
 
 impl ObsControl {
@@ -463,6 +620,7 @@ impl ObsControl {
     ) -> Arc<Self> {
         let settings = SettingsStore::load(data_dir.join("obs.json"));
         let obs = Obs::start(settings.settings().config());
+        let (cues, cue_rx) = mpsc::unbounded_channel();
         let control = Arc::new(Self {
             obs,
             settings: Mutex::new(settings),
@@ -474,9 +632,21 @@ impl ObsControl {
             found: Mutex::new(None),
             outputs: Mutex::new((None, None)),
             told: Mutex::new(None),
+            follower: Mutex::new(Follower::default()),
+            scenes: Mutex::new((Vec::new(), None)),
+            cues,
         });
-        tokio::spawn(watch_obs(Arc::downgrade(&control), control.obs.status()));
+        tokio::spawn(watch_obs(
+            Arc::downgrade(&control),
+            control.obs.status(),
+            cue_rx,
+        ));
         control
+    }
+
+    /// Where `App` sends an item's scene when it goes live.
+    pub fn cues(&self) -> SceneCues {
+        self.cues.clone()
     }
 
     /// The connection, for tests and the typed calls later tickets add.
@@ -497,6 +667,26 @@ impl ObsControl {
             } => self.configure(host, port, password).await,
             ObsRequest::Launch => self.launch().await,
             ObsRequest::Download => self.open_download().await,
+            ObsRequest::SetScene { scene } => {
+                {
+                    let mut follower = lock(&self.follower);
+                    follower.hand_pick();
+                    follower.asking(&scene);
+                }
+                let result = self.obs.set_program_scene(&scene).await;
+                lock(&self.follower).switched(&scene, &result);
+                let done = result.map_err(|e| format!("OBS didn't switch to {scene}: {e}"));
+                self.publish();
+                done
+            }
+            ObsRequest::Resume => {
+                let next = lock(&self.follower).resume();
+                if let Some(scene) = next {
+                    self.switch(scene).await;
+                }
+                self.publish();
+                Ok(())
+            }
         };
         match result {
             Ok(()) => Response::Obs(self.view()),
@@ -614,6 +804,38 @@ impl ObsControl {
         }
     }
 
+    /// Switches OBS to the live item's scene and records the outcome.
+    async fn switch(&self, scene: String) {
+        lock(&self.follower).asking(&scene);
+        let result = self.obs.set_program_scene(&scene).await;
+        lock(&self.follower).switched(&scene, &result);
+    }
+
+    /// OBS's scene list and program scene. A failure keeps what was known.
+    async fn refresh_scenes(&self) {
+        if let Ok(list) = self.obs.scene_list().await {
+            *lock(&self.scenes) = (list.scenes, Some(list.program));
+        }
+    }
+
+    /// An item went live.
+    async fn cue(&self, cue: SceneCue) {
+        let next = lock(&self.follower).item_live(cue.scene);
+        if let Some(scene) = next {
+            self.switch(scene).await;
+        }
+    }
+
+    /// OBS connected: learn its scenes, then make any switch that had to
+    /// wait for it.
+    async fn on_connected(&self) {
+        self.refresh_scenes().await;
+        let next = lock(&self.follower).next();
+        if let Some(scene) = next {
+            self.switch(scene).await;
+        }
+    }
+
     pub fn view(&self) -> ObsView {
         let (settings, saved) = {
             let store = lock(&self.settings);
@@ -622,11 +844,14 @@ impl ObsControl {
         let connection = connection(&self.shown_status());
         let found = lock(&self.found).clone();
         let problem = diagnose(&connection, is_local(&settings.host), found.as_ref());
-        let (stream, record) = if matches!(connection, ObsConnection::Connected { .. }) {
+        let connected = matches!(connection, ObsConnection::Connected { .. });
+        let (stream, record) = if connected {
             lock(&self.outputs).clone()
         } else {
             (None, None)
         };
+        let (scenes, program_scene) = lock(&self.scenes).clone();
+        let follower = lock(&self.follower);
         ObsView {
             host: settings.host,
             port: settings.port,
@@ -636,6 +861,10 @@ impl ObsControl {
             relevant: saved || self.streaming.load(Ordering::Relaxed),
             stream,
             record,
+            scenes,
+            program_scene: program_scene.filter(|_| connected),
+            held: follower.held(),
+            scene_problem: follower.problem().cloned(),
         }
     }
 
@@ -672,7 +901,11 @@ impl ObsControl {
 
 /// Follows the connection and OBS's events, and pushes the view when it
 /// changes. Ends when the controller is dropped.
-async fn watch_obs(control: std::sync::Weak<ObsControl>, mut status: watch::Receiver<ObsStatus>) {
+async fn watch_obs(
+    control: std::sync::Weak<ObsControl>,
+    mut status: watch::Receiver<ObsStatus>,
+    mut cues: mpsc::UnboundedReceiver<SceneCue>,
+) {
     let mut events = match control.upgrade() {
         Some(c) => c.obs.events(),
         None => return,
@@ -687,10 +920,34 @@ async fn watch_obs(control: std::sync::Weak<ObsControl>, mut status: watch::Rece
                 if changed.is_err() {
                     return;
                 }
+                let Some(c) = control.upgrade() else { return };
+                let now = status.borrow_and_update().clone();
+                match now {
+                    ObsStatus::Connected { .. } => c.on_connected().await,
+                    ObsStatus::Connecting => {}
+                    _ => lock(&c.follower).disconnected(),
+                }
                 (true, true)
+            }
+            cue = cues.recv() => {
+                let Some(cue) = cue else { return };
+                let Some(c) = control.upgrade() else { return };
+                c.cue(cue).await;
+                (false, false)
             }
             event = events.recv() => match event {
                 Ok(ObsEvent::StreamStateChanged { .. } | ObsEvent::RecordStateChanged { .. }) => (true, false),
+                Ok(ObsEvent::ProgramSceneChanged { scene }) => {
+                    let Some(c) = control.upgrade() else { return };
+                    lock(&c.follower).obs_switched(&scene);
+                    lock(&c.scenes).1 = Some(scene);
+                    (false, false)
+                }
+                Ok(ObsEvent::SceneListChanged | ObsEvent::SceneCollectionChanged { .. }) => {
+                    let Some(c) = control.upgrade() else { return };
+                    c.refresh_scenes().await;
+                    (false, false)
+                }
                 Ok(_) => continue,
                 // Missed some: refresh everything.
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => (true, false),
@@ -1009,6 +1266,119 @@ mod tests {
             ..ObsSettings::default()
         };
         assert!(!format!("{settings:?}").contains("hunter2"));
+    }
+
+    fn scene(name: &str) -> Option<String> {
+        Some(name.to_string())
+    }
+
+    /// Asks for whatever the follower wants and reports `result`.
+    fn switch(f: &mut Follower, result: Result<(), ObsError>) -> Option<String> {
+        let next = f.next()?;
+        f.asking(&next);
+        f.switched(&next, &result);
+        if result.is_ok() {
+            f.obs_switched(&next);
+        }
+        Some(next)
+    }
+
+    #[test]
+    fn an_item_going_live_switches_to_its_scene_once() {
+        let mut f = Follower::default();
+        assert_eq!(f.item_live(scene("Worship")), scene("Worship"));
+        switch(&mut f, Ok(()));
+        assert_eq!(f.next(), None, "on air: nothing more to do");
+        assert!(!f.held(), "our own switch isn't a hand pick");
+        assert_eq!(f.problem(), None);
+
+        // An item with no scene leaves OBS alone.
+        assert_eq!(f.item_live(None), None);
+        // Previous back to the earlier item switches back.
+        assert_eq!(f.item_live(scene("Worship")), scene("Worship"));
+    }
+
+    #[test]
+    fn a_missing_scene_warns_and_the_service_carries_on() {
+        let mut f = Follower::default();
+        f.item_live(scene("Pastor and slides"));
+        let missing = Err(ObsError::Request {
+            code: codes::RESOURCE_NOT_FOUND,
+            comment: None,
+        });
+        switch(&mut f, missing);
+        assert_eq!(
+            f.problem(),
+            Some(&ObsSceneProblem {
+                scene: "Pastor and slides".into(),
+                reason: ObsSceneFailure::Missing,
+            })
+        );
+        assert_eq!(f.next(), None, "not retried until the next item");
+        f.item_live(scene("Worship"));
+        assert_eq!(f.problem(), None, "the next item clears it");
+    }
+
+    #[test]
+    fn a_switch_waits_for_a_disconnected_obs() {
+        let mut f = Follower::default();
+        f.item_live(scene("Sermon"));
+        switch(&mut f, Err(ObsError::NotConnected));
+        assert_eq!(
+            f.problem().map(|p| &p.reason),
+            Some(&ObsSceneFailure::NotConnected)
+        );
+        // On connect the controller asks again.
+        f.disconnected();
+        assert_eq!(switch(&mut f, Ok(())), scene("Sermon"));
+        assert_eq!(f.problem(), None);
+    }
+
+    #[test]
+    fn a_hand_pick_holds_until_the_next_item() {
+        let mut f = Follower::default();
+        f.item_live(scene("Sermon"));
+        switch(&mut f, Ok(()));
+        // Someone cuts to the wide shot in OBS itself.
+        f.obs_switched("Wide");
+        assert!(f.held());
+        // OBS reconnecting doesn't undo it.
+        f.disconnected();
+        assert_eq!(f.next(), None);
+        // The next item applies its own scene and ends the hold.
+        assert_eq!(f.item_live(scene("Worship")), scene("Worship"));
+        assert!(!f.held());
+    }
+
+    #[test]
+    fn a_hand_pick_before_obs_answers_still_holds() {
+        let mut f = Follower::default();
+        f.item_live(scene("Sermon"));
+        // Lampstand asks for Sermon, then the operator picks Wide before
+        // OBS has echoed either.
+        f.asking("Sermon");
+        f.hand_pick();
+        f.asking("Wide");
+        f.switched("Sermon", &Ok(()));
+        f.obs_switched("Sermon");
+        f.obs_switched("Wide");
+        assert!(f.held(), "echoes of both are ours, and the pick holds");
+    }
+
+    #[test]
+    fn resume_ends_a_hold() {
+        let mut f = Follower::default();
+        f.item_live(scene("Sermon"));
+        switch(&mut f, Ok(()));
+        f.hand_pick();
+        assert_eq!(f.resume(), scene("Sermon"));
+        assert!(!f.held());
+
+        // With no scene on the live item, resume just ends the hold.
+        f.item_live(None);
+        f.hand_pick();
+        assert_eq!(f.resume(), None);
+        assert!(!f.held());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { droppedPercent, notice, obsPill } from "./obs.ts";
+import { droppedPercent, notice, obsPill, sceneNotice } from "./obs.ts";
 import type { ObsOutputView, ObsView } from "./api";
 
 const connected = { Connected: { obs_version: "30.2.3", websocket_version: "5.5.2" } } as const;
@@ -15,6 +15,10 @@ function view(over: Partial<ObsView> = {}): ObsView {
     relevant: true,
     stream: null,
     record: null,
+    scenes: [],
+    program_scene: null,
+    held: false,
+    scene_problem: null,
     ...over,
   };
 }
@@ -91,4 +95,31 @@ test("connecting is neutral and has no notice", () => {
 test("dropped frames are a percentage to one decimal", () => {
   assert.equal(droppedPercent(output({ skipped_frames: 1, total_frames: 3 })), 33.3);
   assert.equal(droppedPercent(output()), null);
+});
+
+test("a missing scene warns and says what's on air", () => {
+  const n = sceneNotice(view({ program_scene: "Worship", scene_problem: { scene: "Pastor", reason: "Missing" } }));
+  assert.equal(n?.tone, "warn");
+  assert.match(n!.message, /no scene “Pastor”, so it stayed on “Worship”/);
+  assert.equal(n?.resume, false);
+});
+
+test("a scene waiting for OBS is quiet when OBS's own notice shows", () => {
+  const waiting = { scene: "Sermon", reason: "NotConnected" } as const;
+  const down = { Disconnected: { reason: "x" } } as const;
+  assert.equal(sceneNotice(view({ connection: down, problem: "NotRunning", scene_problem: waiting })), null);
+  assert.match(sceneNotice(view({ scene_problem: waiting }))!.message, /switches to “Sermon” when it connects/);
+});
+
+test("a failed switch shows OBS's reason", () => {
+  const n = sceneNotice(view({ scene_problem: { scene: "Sermon", reason: { Failed: { message: "OBS did not answer in time" } } } }));
+  assert.match(n!.message, /didn't switch to “Sermon”: OBS did not answer in time/);
+});
+
+test("a hand pick offers Resume", () => {
+  const n = sceneNotice(view({ held: true, program_scene: "Wide" }));
+  assert.deepEqual([n?.tone, n?.resume], ["neutral", true]);
+  assert.match(n!.message, /“Wide”, picked by hand/);
+  assert.equal(sceneNotice(view()), null);
+  assert.equal(sceneNotice(view({ relevant: false, held: true, program_scene: "Wide" })), null);
 });

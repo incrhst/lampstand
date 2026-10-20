@@ -64,6 +64,7 @@ fn header(position: &str, title: &str) -> ServiceItem {
             title: title.into(),
         },
         notes: String::new(),
+        obs_scene: None,
     }
 }
 
@@ -197,6 +198,7 @@ fn every_item_kind() -> Service {
             position: pos(&format!("a{i}")),
             kind,
             notes: format!("note {i}"),
+            obs_scene: (i % 2 == 0).then(|| format!("Scene {i}")),
         };
         s.items.insert(ItemId::generate(), item);
     }
@@ -267,6 +269,29 @@ fn a_service_saved_before_time_zones_reads_without_one() {
     doc.delete(automerge::ROOT, "time_zone").unwrap();
     let read: Service = autosurgeon::hydrate(&doc).unwrap();
     assert_eq!(read, service);
+}
+
+/// An item written before items could name an OBS scene has no
+/// `obs_scene` key; it reads as `None`.
+#[test]
+fn an_item_saved_before_obs_scenes_reads_without_one() {
+    use automerge::transaction::Transactable;
+    use automerge::ReadDoc;
+    let mut service = Service::new("Old");
+    let id = service.insert(
+        0,
+        ItemKind::Header {
+            title: "Welcome".into(),
+        },
+    );
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    let (_, items) = doc.get(automerge::ROOT, "items").unwrap().unwrap();
+    let (_, item) = doc.get(&items, id.to_string()).unwrap().unwrap();
+    doc.delete(&item, "obs_scene").unwrap();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+    assert_eq!(read.items[&id].obs_scene, None);
 }
 
 #[test]
