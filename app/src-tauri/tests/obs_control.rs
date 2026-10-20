@@ -488,6 +488,19 @@ async fn unconfigured_obs_matters_only_with_a_stream_output() {
         h.machine.launched.lock().unwrap().as_slice(),
         ["flatpak run com.obsproject.Studio --minimize-to-tray"]
     );
+    assert!(matches!(
+        h.control.handle(ObsRequest::Download).await,
+        Response::Obs(_)
+    ));
+    assert_eq!(
+        h.machine
+            .launched
+            .lock()
+            .unwrap()
+            .last()
+            .map(String::as_str),
+        Some("xdg-open https://obsproject.com/download")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -19,6 +19,7 @@
 //!   any connection.
 //! - **Launch** starts OBS minimised to the tray. Lampstand never edits
 //!   OBS's own settings.
+//! - **Download** opens OBS's download page in the default browser.
 //! - **Scenes follow the live item (T90).** `App` sends a [`SceneCue`]
 //!   whenever an item goes live, forwards or back. If the item names a
 //!   scene, OBS switches to it; moving between slides of one item never
@@ -227,6 +228,9 @@ pub enum Launcher {
 
 const FLATPAK_ID: &str = "com.obsproject.Studio";
 
+/// Where "Get OBS" goes.
+pub const DOWNLOAD_URL: &str = "https://obsproject.com/download";
+
 /// What [`detect`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
@@ -364,6 +368,21 @@ pub fn launch(probe: &dyn Probe, os: Os) -> Result<(), String> {
         Launcher::Flatpak => probe.spawn(Path::new("flatpak"), &["run", FLATPAK_ID, ARGS[0]], None),
     };
     started.map_err(|e| format!("Could not start OBS: {e}"))
+}
+
+/// Opens [`DOWNLOAD_URL`] in the default browser.
+pub fn open_download(probe: &dyn Probe, os: Os) -> Result<(), String> {
+    let started = match os {
+        Os::MacOs => probe.spawn(Path::new("open"), &[DOWNLOAD_URL], None),
+        // Not `cmd /c start`, which would need the URL quoted for cmd.
+        Os::Windows => probe.spawn(
+            Path::new("rundll32"),
+            &["url.dll,FileProtocolHandler", DOWNLOAD_URL],
+            None,
+        ),
+        Os::Linux => probe.spawn(Path::new("xdg-open"), &[DOWNLOAD_URL], None),
+    };
+    started.map_err(|e| format!("Could not open {DOWNLOAD_URL}: {e}"))
 }
 
 /// Whether `host` is this machine, where detection means something.
@@ -647,6 +666,7 @@ impl ObsControl {
                 password,
             } => self.configure(host, port, password).await,
             ObsRequest::Launch => self.launch().await,
+            ObsRequest::Download => self.open_download().await,
             ObsRequest::SetScene { scene } => {
                 {
                     let mut follower = lock(&self.follower);
@@ -720,6 +740,14 @@ impl ObsControl {
         // connection's own retries pick it up, and the view follows.
         self.refresh_found().await;
         Ok(())
+    }
+
+    async fn open_download(&self) -> Result<(), String> {
+        let probe = self.probe.clone();
+        let os = self.os;
+        tokio::task::spawn_blocking(move || open_download(&*probe, os))
+            .await
+            .map_err(|e| e.to_string())?
     }
 
     /// Looks for OBS again if it isn't connected and is meant to be here.
@@ -1067,6 +1095,32 @@ mod tests {
             flatpak.spawned.lock().unwrap()[0].1,
             ["run", "com.obsproject.Studio", "--minimize-to-tray"]
         );
+    }
+
+    #[test]
+    fn get_obs_opens_the_download_page_in_the_browser() {
+        let expected: [(Os, &str, &[&str]); 3] = [
+            (Os::MacOs, "open", &[DOWNLOAD_URL]),
+            (
+                Os::Windows,
+                "rundll32",
+                &["url.dll,FileProtocolHandler", DOWNLOAD_URL],
+            ),
+            (Os::Linux, "xdg-open", &[DOWNLOAD_URL]),
+        ];
+        for (os, program, args) in expected {
+            let fake = Fake::default();
+            open_download(&fake, os).unwrap();
+            assert_eq!(
+                fake.spawned.lock().unwrap().as_slice(),
+                [(
+                    PathBuf::from(program),
+                    args.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+                    None
+                )],
+                "{os:?}"
+            );
+        }
     }
 
     #[test]
