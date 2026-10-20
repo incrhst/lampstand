@@ -10,8 +10,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use lampstand_api::{Event, ObsConnection, ObsProblem, ObsRequest, ObsView, Response};
-use lampstand_app::obs_control::{ObsControl, Os, Probe};
+use lampstand_api::{
+    Event, ObsConnection, ObsProblem, ObsRequest, ObsSceneFailure, ObsSceneProblem, ObsView,
+    Response,
+};
+use lampstand_app::obs_control::{ObsControl, Os, Probe, SceneCue};
 use lampstand_connectors::obs::auth_response;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
@@ -28,14 +31,33 @@ const CHALLENGE: &str = "Y2hhbGxlbmdl";
 struct MockObs {
     port: u16,
     streaming: Arc<AtomicBool>,
+    /// Its scenes (`MOCK_SCENES`, top of the list first), the one on air and every
+    /// `SetCurrentProgramScene` it accepted.
+    scenes: Arc<Mutex<Scenes>>,
     events: mpsc::UnboundedSender<Value>,
     stop: watch::Sender<bool>,
 }
 
+#[derive(Default)]
+struct Scenes {
+    program: String,
+    switched: Vec<String>,
+}
+
+const MOCK_SCENES: [&str; 3] = ["Worship", "Sermon", "Wide"];
+
 impl MockObs {
     async fn start(password: Option<&'static str>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        Self::start_on(TcpListener::bind("127.0.0.1:0").await.unwrap(), password)
+    }
+
+    /// On a given port, for an OBS that starts after Lampstand.
+    fn start_on(listener: TcpListener, password: Option<&'static str>) -> Self {
         let port = listener.local_addr().unwrap().port();
+        let scenes = Arc::new(Mutex::new(Scenes {
+            program: "Worship".into(),
+            switched: Vec::new(),
+        }));
         let streaming = Arc::new(AtomicBool::new(false));
         let (events, events_rx) = mpsc::unbounded_channel::<Value>();
         let events_rx = Arc::new(tokio::sync::Mutex::new(events_rx));
@@ -43,6 +65,7 @@ impl MockObs {
         let mock = Self {
             port,
             streaming: streaming.clone(),
+            scenes: scenes.clone(),
             events,
             stop,
         };
@@ -58,6 +81,7 @@ impl MockObs {
                     ws,
                     password,
                     streaming.clone(),
+                    scenes.clone(),
                     events_rx.clone(),
                     stopped.clone(),
                 ));
@@ -69,6 +93,21 @@ impl MockObs {
     fn stop(&self) {
         self.stop.send_replace(true);
     }
+
+    fn switched(&self) -> Vec<String> {
+        self.scenes.lock().unwrap().switched.clone()
+    }
+
+    /// Someone switches scene in OBS itself.
+    fn switch_in_obs(&self, scene: &str) {
+        self.scenes.lock().unwrap().program = scene.into();
+        self.events
+            .send(json!({
+                "eventType": "CurrentProgramSceneChanged", "eventIntent": 4,
+                "eventData": { "sceneName": scene },
+            }))
+            .unwrap();
+    }
 }
 
 type ServerWs = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
@@ -77,6 +116,7 @@ async fn serve(
     mut ws: ServerWs,
     password: Option<&'static str>,
     streaming: Arc<AtomicBool>,
+    scenes: Arc<Mutex<Scenes>>,
     events: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<Value>>>,
     mut stopped: watch::Receiver<bool>,
 ) {
@@ -112,7 +152,31 @@ async fn serve(
                 let d = &message["d"];
                 let request_type = d["requestType"].as_str().unwrap_or_default();
                 let on = streaming.load(Ordering::SeqCst);
+                let mut status = json!({ "result": true, "code": 100 });
+                let mut echo = None;
                 let data = match request_type {
+                    "GetSceneList" => {
+                        let program = scenes.lock().unwrap().program.clone();
+                        let list: Vec<Value> = MOCK_SCENES
+                            .iter()
+                            .rev()
+                            .enumerate()
+                            .map(|(i, name)| json!({ "sceneIndex": i, "sceneName": name }))
+                            .collect();
+                        json!({ "currentProgramSceneName": program, "currentPreviewSceneName": null, "scenes": list })
+                    }
+                    "SetCurrentProgramScene" => {
+                        let name = d["requestData"]["sceneName"].as_str().unwrap_or_default().to_string();
+                        if MOCK_SCENES.contains(&name.as_str()) {
+                            let mut sc = scenes.lock().unwrap();
+                            sc.program = name.clone();
+                            sc.switched.push(name.clone());
+                            echo = Some(name);
+                        } else {
+                            status = json!({ "result": false, "code": 600, "comment": format!("No source was found by the name of `{name}`.") });
+                        }
+                        Value::Null
+                    }
                     "GetVersion" => json!({ "obsVersion": "30.2.3" }),
                     "GetStreamStatus" => json!({
                         "outputActive": on, "outputReconnecting": false,
@@ -125,9 +189,17 @@ async fn serve(
                     }),
                     _ => Value::Null,
                 };
+                // Like OBS: the event announcing the switch can arrive
+                // before the answer to the request.
+                if let Some(scene) = echo {
+                    send(&mut ws, 5, json!({
+                        "eventType": "CurrentProgramSceneChanged", "eventIntent": 4,
+                        "eventData": { "sceneName": scene },
+                    })).await;
+                }
                 send(&mut ws, 7, json!({
                     "requestType": request_type, "requestId": d["requestId"],
-                    "requestStatus": { "result": true, "code": 100 },
+                    "requestStatus": status,
                     "responseData": data,
                 })).await;
             }
@@ -484,4 +556,111 @@ async fn real_obs_on_this_machine() {
     }
     let after = status().await;
     println!("after: {:?} problem={:?}", after.connection, after.problem);
+}
+
+fn cue(item: lampstand_core::service::ItemId, scene: Option<&str>) -> SceneCue {
+    SceneCue {
+        item,
+        scene: scene.map(str::to_string),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn items_switch_scenes_and_a_hand_pick_holds() {
+    use lampstand_core::service::ItemId;
+    let mock = MockObs::start(None).await;
+    let h = harness(mock.port, None).await;
+    let view = h.wait_for(|v| connected(v) && !v.scenes.is_empty()).await;
+    assert_eq!(view.scenes, MOCK_SCENES, "top of OBS's list first");
+    assert_eq!(view.program_scene.as_deref(), Some("Worship"));
+
+    // The sermon goes live: OBS switches, and its echo isn't a hand pick.
+    let cues = h.control.cues();
+    cues.send(cue(ItemId::generate(), Some("Sermon"))).unwrap();
+    let view = h
+        .wait_for(|v| v.program_scene.as_deref() == Some("Sermon"))
+        .await;
+    assert!(!view.held);
+    assert_eq!(view.scene_problem, None);
+    assert_eq!(mock.switched(), ["Sermon"]);
+
+    // Someone cuts to the wide shot in OBS: held, and nothing fights it.
+    mock.switch_in_obs("Wide");
+    let view = h.wait_for(|v| v.held).await;
+    assert_eq!(view.program_scene.as_deref(), Some("Wide"));
+
+    // The closing song applies its own scene and ends the hold.
+    cues.send(cue(ItemId::generate(), Some("Worship"))).unwrap();
+    let view = h
+        .wait_for(|v| !v.held && v.program_scene.as_deref() == Some("Worship"))
+        .await;
+    assert_eq!(view.scene_problem, None);
+    assert_eq!(mock.switched(), ["Sermon", "Worship"]);
+
+    // Picked by hand in Present (T91), then resumed.
+    assert!(matches!(
+        h.control
+            .handle(ObsRequest::SetScene {
+                scene: "Wide".into()
+            })
+            .await,
+        Response::Obs(ObsView { held: true, .. })
+    ));
+    let Response::Obs(view) = h.control.handle(ObsRequest::Resume).await else {
+        panic!("resume failed")
+    };
+    assert!(!view.held);
+    assert_eq!(mock.switched(), ["Sermon", "Worship", "Wide", "Worship"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_missing_scene_warns_without_stopping_anything() {
+    use lampstand_core::service::ItemId;
+    let mock = MockObs::start(None).await;
+    let h = harness(mock.port, None).await;
+    h.wait_for(connected).await;
+    h.control
+        .cues()
+        .send(cue(ItemId::generate(), Some("Pastor and slides")))
+        .unwrap();
+    let view = h.wait_for(|v| v.scene_problem.is_some()).await;
+    assert_eq!(
+        view.scene_problem,
+        Some(ObsSceneProblem {
+            scene: "Pastor and slides".into(),
+            reason: ObsSceneFailure::Missing,
+        })
+    );
+    assert!(mock.switched().is_empty());
+    assert!(connected(&view), "OBS is still connected and usable");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_switch_while_obs_is_away_happens_when_it_connects() {
+    use lampstand_core::service::ItemId;
+    // OBS isn't running yet: reserve a port for it.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let h = harness(port, None).await;
+    h.wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
+        .await;
+
+    h.control
+        .cues()
+        .send(cue(ItemId::generate(), Some("Sermon")))
+        .unwrap();
+    let view = h.wait_for(|v| v.scene_problem.is_some()).await;
+    assert_eq!(
+        view.scene_problem.map(|p| p.reason),
+        Some(ObsSceneFailure::NotConnected)
+    );
+
+    // OBS starts on that port: the sermon's scene goes on air.
+    let mock = MockObs::start_on(TcpListener::bind(("127.0.0.1", port)).await.unwrap(), None);
+    let view = h
+        .wait_for(|v| v.program_scene.as_deref() == Some("Sermon"))
+        .await;
+    assert_eq!(view.scene_problem, None);
+    assert_eq!(mock.switched(), ["Sermon"]);
 }

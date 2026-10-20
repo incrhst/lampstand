@@ -16,7 +16,7 @@ use lampstand_core::output::{
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Direction, Effect, Node, NodeKind, Scene, Transition, TransitionKind};
-use lampstand_core::service::{CountdownTarget, ItemKind, Service, ServiceId};
+use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
 use lampstand_live::Command;
@@ -1060,4 +1060,81 @@ fn find_revealed(before: &[Node], after: &[Node]) -> Option<u32> {
     ids(before, &mut all);
     all.into_iter()
         .find(|id| drawn(before, *id) == Some(false) && drawn(after, *id) == Some(true))
+}
+
+fn set_obs_scene(h: &mut Harness, service: &Service, item: ItemId, scene: Option<&str>) -> Service {
+    match ok(h.app.handle(Request::Service(ServiceRequest::SetObsScene {
+        service: service.id,
+        item,
+        scene: scene.map(str::to_string),
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// T90: each item going live, forwards or back, cues its OBS scene;
+/// moving within an item doesn't.
+#[test]
+fn items_going_live_cue_their_obs_scenes() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (cues, mut received) = tokio::sync::mpsc::unbounded_channel();
+    h.app.set_obs_cues(cues);
+    let service = create_service(&mut h, "Sunday");
+    let countdown = |label: &str| ItemKind::Countdown {
+        target: CountdownTarget::At(Timestamp(1_800_000_000_000)),
+        label: label.into(),
+    };
+    insert(&mut h, &service, countdown("Welcome"));
+    let s = insert(&mut h, &service, countdown("Sermon"));
+    let order: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
+
+    let s = set_obs_scene(&mut h, &service, order[0], Some("  Worship  "));
+    assert_eq!(s.items[&order[0]].obs_scene.as_deref(), Some("Worship"));
+    let s = set_obs_scene(&mut h, &service, order[1], Some("   "));
+    assert_eq!(s.items[&order[1]].obs_scene, None, "blank means none");
+    set_obs_scene(&mut h, &service, order[1], Some("Pastor and slides"));
+    open_service(&mut h, &service);
+    assert!(received.try_recv().is_err(), "opening shows nothing yet");
+
+    let mut next = |h: &mut Harness, command: Command| {
+        ok(h.app.handle(Request::Live(command)));
+        let mut got = Vec::new();
+        while let Ok(cue) = received.try_recv() {
+            got.push((cue.item, cue.scene));
+        }
+        got
+    };
+    assert_eq!(
+        next(&mut h, Command::Next),
+        [(order[0], Some("Worship".to_string()))]
+    );
+    assert_eq!(
+        next(&mut h, Command::Next),
+        [(order[1], Some("Pastor and slides".to_string()))]
+    );
+    assert_eq!(
+        next(&mut h, Command::Previous),
+        [(order[0], Some("Worship".to_string()))]
+    );
+    // Black keeps the item live: no cue.
+    assert!(next(&mut h, Command::ToggleBlack).is_empty());
+
+    // Clearing a scene: that item cues `None` (it still ends a hold).
+    set_obs_scene(&mut h, &service, order[1], None);
+    assert_eq!(next(&mut h, Command::Next), [(order[1], None)]);
+}
+
+#[test]
+fn setting_the_scene_of_an_unknown_item_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let service = create_service(&mut h, "Sunday");
+    let response = h.app.handle(Request::Service(ServiceRequest::SetObsScene {
+        service: service.id,
+        item: ItemId::generate(),
+        scene: Some("Worship".into()),
+    }));
+    assert!(matches!(response, Response::Error { .. }), "{response:?}");
 }

@@ -126,6 +126,13 @@ pub enum ServiceRequest {
         service: ServiceId,
         item: ItemId,
     },
+    /// The OBS scene an item switches to when it goes live (T90); `None`
+    /// (or blank) leaves OBS as it is. Answers `Response::Service`.
+    SetObsScene {
+        service: ServiceId,
+        item: ItemId,
+        scene: Option<String>,
+    },
     /// Load into the live engine (and start pre-service caching). Answers
     /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),
@@ -232,6 +239,11 @@ pub enum ObsRequest {
     /// Starts OBS on this machine (the "Open OBS" button). Never changes
     /// OBS's own settings.
     Launch,
+    /// The operator picks a scene by hand (T91). It holds until the next
+    /// item goes live: the live item's own scene isn't applied again.
+    SetScene { scene: String },
+    /// Ends a hold and switches to the live item's scene, if it has one.
+    Resume,
 }
 
 /// OBS as the operator and Setup see it. Also pushed as `Event::Obs`
@@ -254,6 +266,36 @@ pub struct ObsView {
     /// `None` until connected.
     pub stream: Option<ObsOutputView>,
     pub record: Option<ObsOutputView>,
+    /// OBS's scenes, top of its list first; empty until connected. For
+    /// the scene picker in Plan and the buttons in Present.
+    pub scenes: Vec<String>,
+    /// The scene on air in OBS, while connected.
+    pub program_scene: Option<String>,
+    /// The operator chose a scene by hand (here or in OBS itself), so the
+    /// live item's scene isn't applied until the next item goes live.
+    pub held: bool,
+    /// The live item's scene couldn't be switched to; cleared by the next
+    /// switch that works.
+    pub scene_problem: Option<ObsSceneProblem>,
+}
+
+/// Why the live item's OBS scene isn't on air.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObsSceneProblem {
+    pub scene: String,
+    pub reason: ObsSceneFailure,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ObsSceneFailure {
+    /// OBS has no scene of that name (renamed or deleted).
+    Missing,
+    /// OBS isn't connected; it switches when OBS connects.
+    NotConnected,
+    /// OBS refused or didn't answer; `message` is for people.
+    Failed { message: String },
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

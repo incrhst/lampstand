@@ -2,6 +2,7 @@
 import type { ObsConnection } from "./ObsConnection";
 import type { ObsOutputView } from "./ObsOutputView";
 import type { ObsProblem } from "./ObsProblem";
+import type { ObsSceneProblem } from "./ObsSceneProblem";
 
 /**
  * OBS as the operator and Setup see it. Also pushed as `Event::Obs`
@@ -26,4 +27,23 @@ relevant: boolean,
 /**
  * `None` until connected.
  */
-stream: ObsOutputView | null, record: ObsOutputView | null, };
+stream: ObsOutputView | null, record: ObsOutputView | null, 
+/**
+ * OBS's scenes, top of its list first; empty until connected. For
+ * the scene picker in Plan and the buttons in Present.
+ */
+scenes: Array<string>, 
+/**
+ * The scene on air in OBS, while connected.
+ */
+program_scene: string | null, 
+/**
+ * The operator chose a scene by hand (here or in OBS itself), so the
+ * live item's scene isn't applied until the next item goes live.
+ */
+held: boolean, 
+/**
+ * The live item's scene couldn't be switched to; cleared by the next
+ * switch that works.
+ */
+scene_problem: ObsSceneProblem | null, };

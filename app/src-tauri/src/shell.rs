@@ -308,6 +308,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             emit.clone(),
         )
     });
+    lock(&app).set_obs_cues(obs_control.cues());
 
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(

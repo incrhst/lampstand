@@ -419,8 +419,8 @@ Done when the review's media repro is refused, the counting-allocator test bound
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
-| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review ([#33](https://github.com/incrhst/lampstand/pull/33)) |
-| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Not started |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | Done |
+| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | In review |
 | T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
 | T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view | Not started |
@@ -440,7 +440,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 
 **T90. Scene per service item (Opus).** Add an optional OBS scene name to a service item (a contract change to `core`; record it in ARCHITECTURE.md). When the item goes live, call `SetCurrentProgramScene`. If OBS isn't connected, or the scene no longer exists, show a warning in Present and carry on. Readiness (T36) flags items whose scene OBS doesn't have, when OBS is connected. Decide whether Previous also switches the scene back, and what happens while the operator holds a manual scene from T91. Done when tests cover go-live, a missing scene, a disconnected OBS and a manual hold.
 
-**T91. Run OBS from Present.** Show OBS's scenes as buttons, with the program scene marked and following OBS's own events. Clicking a button switches the scene. Show a mute toggle for each audio input that follows `InputMuteStateChanged`. No volume faders: mixing stays in OBS or on the desk. Done when the UI follows changes made in OBS itself as well as in Lampstand.
+**T91. Run OBS from Present.** T90 already has `ObsRequest::SetScene` (a hand pick that holds until the next item), `Resume`, and the scene list and program scene in `ObsView`; T91 is their buttons, plus the mutes. Show OBS's scenes as buttons, with the program scene marked and following OBS's own events. Clicking a button switches the scene. Show a mute toggle for each audio input that follows `InputMuteStateChanged`. No volume faders: mixing stays in OBS or on the desk. Done when the UI follows changes made in OBS itself as well as in Lampstand.
 
 **T92. Stream and record from the service order.** A service item (typically the pre-service countdown) can start streaming and/or recording when it goes live. Stopping is never automatic: Present has a stop button that asks for confirmation. Done when tests cover starting when already streaming, OBS refusing (no stream key), and a disconnected OBS.
 

@@ -6,4 +6,10 @@ export type ServiceItem = { position: Position, kind: ItemKind,
 /**
  * Planner's notes for the operator; never projected.
  */
-notes: string, };
+notes: string, 
+/**
+ * The OBS scene to switch to when this item goes live (OB-4, T90),
+ * by name; `None` leaves OBS as it is. Items saved before this field
+ * existed lack the key and read as `None`.
+ */
+obs_scene: string | null, };

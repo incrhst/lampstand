@@ -230,7 +230,7 @@
 {#if !live.loaded}
   <div class="none">
     {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-    {#if pill?.tone === "warn" && live.obs?.problem}<div class="no-screen"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+    {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
     <div class="pick">
       <div class="pick-head">
         <h1>No service is open</h1>
@@ -306,7 +306,7 @@
       <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
           {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-          {#if pill?.tone === "warn" && live.obs?.problem}<div class="no-screen"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+          {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
           {#if presenting && liveItem && live.live}
             {#key liveItem.id}
               <PresenterView
@@ -437,6 +437,11 @@
 {/if}
 
 <style>
+  .obs-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
   .obs-pill {
     display: inline-flex;
     padding: 0;

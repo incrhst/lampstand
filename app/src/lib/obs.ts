@@ -117,3 +117,44 @@ export function notice(view: ObsView | null): ObsNotice | null {
 function where(view: ObsView): string {
   return `${view.host}:${view.port}`;
 }
+
+export interface SceneNotice {
+  tone: "warn" | "neutral";
+  message: string;
+  /** Offer Resume: go back to the live item's scene. */
+  resume: boolean;
+}
+
+/**
+ * What to say about the live item's OBS scene (T90): a switch that failed,
+ * one waiting for OBS, or a scene picked by hand that is holding. Null when
+ * there's nothing to say.
+ */
+export function sceneNotice(view: ObsView | null): SceneNotice | null {
+  if (!view || !view.relevant) return null;
+  const p = view.scene_problem;
+  if (p) {
+    const on = view.program_scene ? `, so it stayed on “${view.program_scene}”` : "";
+    if (p.reason === "Missing") {
+      return {
+        tone: "warn",
+        message: `OBS has no scene “${p.scene}”${on}. Check the name in Plan, or add the scene in OBS.`,
+        resume: false,
+      };
+    }
+    if (p.reason === "NotConnected") {
+      // The connection notice already says OBS is away.
+      if (view.problem) return null;
+      return { tone: "neutral", message: `OBS switches to “${p.scene}” when it connects.`, resume: false };
+    }
+    return { tone: "warn", message: `OBS didn't switch to “${p.scene}”: ${p.reason.Failed.message}`, resume: false };
+  }
+  if (view.held && view.program_scene) {
+    return {
+      tone: "neutral",
+      message: `OBS is on “${view.program_scene}”, picked by hand. The next item switches scenes again.`,
+      resume: true,
+    };
+  }
+  return null;
+}

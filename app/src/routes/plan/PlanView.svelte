@@ -28,6 +28,7 @@
   import { deckExtensions, deckSourceLabel, imageExtensions, isVideo, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import DeckLibrary from "./DeckLibrary.svelte";
   import MediaLibrary from "./MediaLibrary.svelte";
+  import ObsScenePicker from "./ObsScenePicker.svelte";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
@@ -380,6 +381,19 @@
     }
   }
 
+  /** The OBS scene an item switches to when it goes live (T90). */
+  async function setObsScene(item: string, scene: string | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetObsScene: { service: selected.id, item, scene } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
   async function move(item: string, index: number) {
     if (!selected) return;
     try {
@@ -709,6 +723,15 @@
                 </span>
                 {#if "Media" in item.kind && isVideo(item.kind.Media.name)}
                   <Placeholder ticket="T27">Not on screen yet</Placeholder>
+                {/if}
+                <!-- Only where OBS matters; a scene already set always shows. -->
+                {#if !("Header" in item.kind) && (live.obs?.relevant || item.obs_scene)}
+                  <ObsScenePicker
+                    value={item.obs_scene}
+                    scenes={live.obs?.scenes ?? []}
+                    label="OBS scene for {itemTitle(item)}"
+                    onchange={(scene) => setObsScene(id, scene)}
+                  />
                 {/if}
                 <span class="remove">
                   <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />

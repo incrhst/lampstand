@@ -1,9 +1,10 @@
 <!-- Why OBS isn't connected and what to do about it (T89): Open OBS, where
-     to get it, or the steps to turn its WebSocket server on. Shows nothing
-     unless OBS matters on this device (see lib/obs.ts). -->
+     to get it, or the steps to turn its WebSocket server on. Then the live
+     item's scene (T90): a switch that failed, or a hand pick holding, with
+     Resume. Shows nothing unless OBS matters on this device (lib/obs.ts). -->
 <script lang="ts">
   import type { ObsView } from "../../lib/api";
-  import { notice } from "../../lib/obs";
+  import { notice, sceneNotice } from "../../lib/obs";
   import { obs, report } from "../../lib/state.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
@@ -12,6 +13,15 @@
   let { view, onsetup }: { view: ObsView | null; onsetup?: () => void } = $props();
 
   let n = $derived(notice(view));
+  let scene = $derived(sceneNotice(view));
+
+  async function resume() {
+    try {
+      await obs("Resume");
+    } catch (e) {
+      report(e);
+    }
+  }
   let opening = $state(false);
 
   async function open() {
@@ -41,6 +51,12 @@
     {:else if n.action === "setup" && onsetup}
       <Button size="small" icon="setup" onclick={onsetup}>OBS settings</Button>
     {/if}
+  </Banner>
+{/if}
+{#if scene}
+  <Banner tone={scene.tone} icon="play">
+    <span>{scene.message}</span>
+    {#if scene.resume}<Button size="small" onclick={resume}>Resume</Button>{/if}
   </Banner>
 {/if}
 

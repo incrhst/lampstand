@@ -59,6 +59,7 @@ use lampstand_sync::DocChanged;
 use crate::config::{device_key, KeyStore, OutputStore};
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
+use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
 
 /// Where an output window goes.
@@ -123,6 +124,8 @@ struct Loaded {
     /// The parsed decks the service shows, for stepped scenes, entry
     /// animations and transitions.
     slides: HashMap<DeckId, Arc<ParsedSlides>>,
+    /// Each item's OBS scene, for `SceneCue`s (T90).
+    obs_scenes: HashMap<ItemId, String>,
 }
 
 pub struct App {
@@ -146,6 +149,9 @@ pub struct App {
     /// Whether any enabled output streams, for OBS warnings (T89): read
     /// by `obs_control` without the `App` lock.
     streaming: Arc<AtomicBool>,
+    /// Where an item going live sends its OBS scene (T90), once the shell
+    /// has started `obs_control`.
+    obs_cues: Option<SceneCues>,
     /// Each browser-source output's URL key.
     keys: KeyStore,
     /// `host:port` of the local server, for browser-source URLs; `None`
@@ -196,6 +202,7 @@ impl App {
             streams: HashMap::new(),
             hub: Arc::new(SceneHub::new()),
             streaming: Arc::new(AtomicBool::new(false)),
+            obs_cues: None,
             keys,
             server: None,
             sent: HashMap::new(),
@@ -232,6 +239,11 @@ impl App {
     /// OBS settings are saved).
     pub fn streaming(&self) -> Arc<AtomicBool> {
         self.streaming.clone()
+    }
+
+    /// Where items going live send their OBS scenes (T90).
+    pub fn set_obs_cues(&mut self, cues: SceneCues) {
+        self.obs_cues = Some(cues);
     }
 
     /// Where the local server listens (`host:port`), for the URLs
@@ -438,6 +450,20 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetObsScene {
+                service,
+                item,
+                scene,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                entry.obs_scene = scene
+                    .map(|name| name.trim().to_string())
+                    .filter(|name| !name.is_empty());
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
             ServiceRequest::SlideThumbnail { .. } => {
                 // It needs a GPU, so the shell draws it from `slide_scene`.
@@ -560,7 +586,11 @@ impl App {
         let mut decks = Vec::new();
         let mut blobs = Vec::new();
         let mut parsed_decks = HashMap::new();
+        let mut obs_scenes = HashMap::new();
         for (item_id, item) in service.ordered() {
+            if let Some(scene) = item.obs_scene.as_ref().filter(|s| !s.trim().is_empty()) {
+                obs_scenes.insert(item_id, scene.clone());
+            }
             let loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
             if let ItemKind::Deck { deck } = &item.kind {
                 decks.push(*deck);
@@ -605,6 +635,7 @@ impl App {
             decks,
             scenes,
             slides: parsed_decks,
+            obs_scenes,
         });
         let events = self.live.load(items);
         (self.emit)(Event::Loaded(view.clone()));
@@ -769,8 +800,10 @@ impl App {
                     program_changed = true;
                     cursors_changed = true;
                 }
-                lampstand_live::Event::PreviewChanged | lampstand_live::Event::ItemLive { .. } => {
-                    cursors_changed = true
+                lampstand_live::Event::PreviewChanged => cursors_changed = true,
+                lampstand_live::Event::ItemLive { item } => {
+                    cursors_changed = true;
+                    self.cue_obs(*item);
                 }
                 // Comes with `ProgramChanged`: `present_with` sends it as
                 // `Animate` to the outputs showing the step before.
@@ -812,6 +845,19 @@ impl App {
     }
 
     /// Steps 3 and 4 of the click: compose per output, send `Show`.
+    /// Tells `obs_control` which item went live and its scene. Every item
+    /// is cued, with or without a scene, because a new item ends a manual
+    /// hold either way.
+    fn cue_obs(&self, item: ItemId) {
+        let Some(cues) = &self.obs_cues else { return };
+        let scene = self
+            .loaded
+            .as_ref()
+            .and_then(|l| l.obs_scenes.get(&item))
+            .cloned();
+        let _ = cues.send(SceneCue { item, scene });
+    }
+
     fn present(&mut self) {
         self.present_at(now());
     }
