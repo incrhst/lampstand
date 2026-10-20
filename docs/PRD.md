@@ -62,7 +62,7 @@ Goals:
 
 Non-goals:
 
-- **Replacing OBS.** We integrate with it. OBS is free, already used by most streaming churches, and owns encoding, audio mixing, camera switching and multi-platform streaming. Rebuilding that would take years and give churches nothing they lack. We send OBS clean graphics and cues, and run it from Lampstand (OB-4 to OB-9); OBS stays the streaming engine. See [decision 0005](decisions/0005-manage-obs-not-replace.md).
+- **Replacing OBS.** We integrate with it. OBS is free, already used by most streaming churches, and owns encoding, audio mixing, camera switching and multi-platform streaming. Rebuilding that would take years and give churches nothing they lack. We send OBS clean graphics and cues, and run it from Lampstand (OB-4 to OB-10); OBS stays the streaming engine. See [decision 0005](decisions/0005-manage-obs-not-replace.md).
 - Editing PowerPoint or Google Slides content. We play decks and offer light changes (hide a slide, reorder); authoring stays in the source app.
 - Video editing, audio mixing, or lighting desk replacement. We trigger external systems, we do not replace them.
 - Church management (giving, membership, check-in). We integrate with Planning Center and similar tools.
@@ -112,6 +112,7 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 | OB-7 | One-click OBS setup: Lampstand creates a scene collection with starter scenes and the browser source already pointing at the stream output. It never changes the church's own scenes. | P1 |
 | OB-8 | Run OBS from the operator view: its scenes as buttons with the live one marked, and a mute toggle for each audio input, so nobody opens OBS during a service. | P1 |
 | OB-9 | Set where OBS streams (a listed service such as YouTube, or a custom server, with its stream key) and turn OBS's virtual camera on and off from Lampstand. The stream key stays on the device and is never synced. | P1 |
+| OB-10 | One operator runs projection and the stream together by pressing Next. Each kind of item has a default OBS scene, set once (songs on "Worship", decks and scripture on "Slides"), and an item can override its kind's default. Present shows the scene on air and the next item's scene in one quiet strip, with scene buttons a click away and warnings only when something is wrong. | P1 |
 
 ### Songs and library
 
