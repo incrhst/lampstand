@@ -128,12 +128,16 @@ pub enum ServiceRequest {
     /// Load into the live engine (and start pre-service caching). Answers
     /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),
-    /// A picture of one slide of the open service, `width` pixels wide,
-    /// for the operator view: `Response::Thumbnail`. Deck slides only for
-    /// now; text slides are drawn from their lines (T47 draws the rest).
+    /// A picture of one slide of the open service after `step` build
+    /// steps (0: as it arrives, with anything that plays by itself done),
+    /// `width` pixels wide, for the operator view: `Response::Thumbnail`.
+    /// Deck slides only for now; text slides are drawn from their lines
+    /// (T47 draws the rest).
     SlideThumbnail {
         item: ItemId,
         slide: usize,
+        #[serde(default)]
+        step: usize,
         width: u32,
     },
     Readiness(ServiceId),
@@ -337,6 +341,10 @@ pub struct SlideView {
     pub lines: Vec<String>,
     /// Build steps after the slide appears (deck slides).
     pub steps: usize,
+    /// Speaker notes (deck slides), one line per paragraph; empty when
+    /// there are none.
+    #[serde(default)]
+    pub notes: String,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

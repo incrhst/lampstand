@@ -32,6 +32,10 @@ pub(crate) const DASH: (f32, f32) = (0.1, 1000.0);
 /// Dash and gap entries in one pattern.
 pub(crate) const DASH_ENTRIES: usize = 32;
 /// Thin spaces padding a folded bullet (see `text::hang_bullet`).
+/// Grow/Shrink emphasis: PowerPoint offers up to 400%; a hostile factor
+/// cannot blow a shape up past the slide many times over.
+pub(crate) const MAX_SCALE: f64 = 10.0;
+
 pub(crate) const BULLET_PAD: usize = 64;
 
 /// `v` within `lo..=hi`; `fallback` when it is not a finite number.

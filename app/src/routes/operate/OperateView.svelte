@@ -1,12 +1,14 @@
 <!-- Operator panel: the running order on the left, what is on air and
      the slides of the item in view in the middle, Next and notes on the
-     right. T47 replaces this with the full operator view. -->
+     right. While a deck is on air the middle is its presenter view
+     (current slide at its build step, next click, speaker notes, timer).
+     T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
   import { request, send, type Command, type Cursor, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { nextSlide } from "../../lib/cursor";
+  import { nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -16,6 +18,7 @@
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import PresenterView from "./PresenterView.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
 
@@ -132,27 +135,34 @@
     if (item) viewing = item;
   });
 
+  const isDeckSlide = (slide: SlideView) => slide.lines.length === 0 && /^Slide \d+$/.test(slide.label ?? "");
+
   let items = $derived(live.loaded?.items ?? []);
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
+  // A deck on air gets the presenter view, whose Next is the next click.
+  let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
+  let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
 
   // Deck slides have no lines to draw, so the core renders a picture of
-  // each, fetched once per loaded service as slides come into view.
+  // each at a build step, fetched once per loaded service as slides come
+  // into view. Slides in the strip show every build; the live slide and
+  // the next click show the step they are at.
   const THUMB_WIDTH = 480;
+  const LARGE_WIDTH = 1280;
   let thumbs: Record<string, string> = $state({});
   const asked = new Set<string>();
-  const thumbKey = (item: string, slide: number) => `${item}/${slide}`;
-  const isDeckSlide = (slide: SlideView) => slide.lines.length === 0 && /^Slide \d+$/.test(slide.label ?? "");
+  const thumbKey = (item: string, slide: number, step: number, width: number) => `${item}/${slide}/${step}/${width}`;
 
-  async function fetchThumb(item: string, slide: number) {
-    const key = thumbKey(item, slide);
+  async function fetchThumb(item: string, slide: number, step: number, width = THUMB_WIDTH) {
+    const key = thumbKey(item, slide, step, width);
     if (asked.has(key)) return;
     asked.add(key);
     try {
       thumbs[key] = await request(
-        { area: "Service", request: { SlideThumbnail: { item, slide, width: THUMB_WIDTH } } },
+        { area: "Service", request: { SlideThumbnail: { item, slide, step, width } } },
         "Thumbnail",
       );
     } catch {
@@ -160,7 +170,10 @@
     }
   }
 
-  const thumbFor = (item: string | undefined, slide: number) => (item ? thumbs[thumbKey(item, slide)] : undefined);
+  const thumbFor = (item: string | undefined, slide: number, step: number, width = THUMB_WIDTH) =>
+    item ? thumbs[thumbKey(item, slide, step, width)] : undefined;
+  /** The strip shows a deck slide fully built. */
+  const builtThumb = (item: string, slide: number) => thumbFor(item, slide, items.find((i) => i.id === item)?.slides[slide]?.steps ?? 0);
 
   // A reload can change a deck's slides, so pictures are fetched again.
   $effect(() => {
@@ -172,12 +185,18 @@
   });
 
   $effect(() => {
-    const want: [string, number][] = [];
-    if (viewed) viewed.slides.forEach((s, i) => isDeckSlide(s) && want.push([viewed.id, i]));
-    if (liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)) want.push([liveItem.id, live.live.slide]);
-    if (upcoming && isDeckSlide(upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide]);
+    // Most urgent first: the slide on air and what the next click shows.
+    const want: [string, number, number, number][] = [];
+    if (liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)) {
+      want.push([liveItem.id, live.live.slide, live.live.step, presenting ? LARGE_WIDTH : THUMB_WIDTH]);
+    }
+    if (presenting && clickNext && isDeckSlide(clickNext.slide)) {
+      want.push([clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH]);
+    }
+    if (upcoming && isDeckSlide(upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide, upcoming.slide.steps, THUMB_WIDTH]);
+    if (viewed) viewed.slides.forEach((s, i) => isDeckSlide(s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
     untrack(async () => {
-      for (const [item, slide] of want) await fetchThumb(item, slide);
+      for (const [item, slide, step, width] of want) await fetchThumb(item, slide, step, width);
     });
   });
   let output = $derived(mainOutput(live.outputs));
@@ -246,7 +265,9 @@
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
 
-    <div class="grid">
+    <!-- While a deck is on air the presenter view takes the right column
+         too; outputs stay in the status bar. -->
+    <div class="grid" class:presenting>
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head"><h2>Service order</h2></div>
         <ol class="plain pane-body">
@@ -274,11 +295,29 @@
       <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
           {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-          <div class="live-head">
-            <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-            <span class="muted">{output?.name ?? "No screen yet"}</span>
-            {#if liveItem && live.live}
-              <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
+          {#if presenting && liveItem && live.live}
+            {#key liveItem.id}
+              <PresenterView
+                item={liveItem}
+                cursor={live.live}
+                upcoming={clickNext}
+                current={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)}
+                nextImage={clickNext ? thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH) : undefined}
+                overlay={live.overlay}
+                safeArea={output?.safe_area}
+                {showGuide}
+                plannerNotes={notes}
+                onprevious={() => command("Previous")}
+                onnext={() => command("Next")}
+                onblank={() => command("ToggleBlack")}
+              />
+            {/key}
+          {:else}
+            <div class="live-head">
+              <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+              <span class="muted">{output?.name ?? "No screen yet"}</span>
+              {#if liveItem && live.live}
+                <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
             {/if}
             {#if live.liveSlide?.label === "Video"}
               <Placeholder ticket="T27">Video plays on screen</Placeholder>
@@ -287,7 +326,7 @@
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
-              image={live.live ? thumbFor(liveItem?.id, live.live.slide) : null}
+              image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
               {showGuide}
@@ -301,6 +340,7 @@
             <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
             <Button variant="ghost" onclick={() => command("ClearAll")} title="Clear text, background and overlay">Clear all</Button>
           </div>
+          {/if}
 
           {#if viewed}
             <div class="slides-head">
@@ -319,7 +359,7 @@
                     onclick={() => show({ item: viewed.id, slide: i, step: 0 })}
                     aria-current={isLive(viewed.id, i) ? "true" : undefined}
                   >
-                    <SlidePreview lines={slide.lines} image={thumbFor(viewed.id, i)} size="small" />
+                    <SlidePreview lines={slide.lines} image={builtThumb(viewed.id, i)} size="small" />
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
@@ -335,49 +375,51 @@
         </div>
       </section>
 
-      <aside class="pane pane-side side" aria-label="Next and notes">
-        <section>
-          <div class="side-head">
-            <h2 class="title">Next</h2>
-            {#if upcoming}<span class="muted">{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}</span>{/if}
-          </div>
-          <div class="next">
-            {#if upcoming}
-              <SlidePreview
-                lines={upcoming.slide.lines}
-                image={thumbFor(upcoming.cursor.item, upcoming.cursor.slide)}
-                safeArea={output?.safe_area}
-              />
+      {#if !presenting}
+        <aside class="pane pane-side side" aria-label="Next and notes">
+          <section>
+            <div class="side-head">
+              <h2 class="title">Next</h2>
+              {#if upcoming}<span class="muted">{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}</span>{/if}
+            </div>
+            <div class="next">
+              {#if upcoming}
+                <SlidePreview
+                  lines={upcoming.slide.lines}
+                  image={builtThumb(upcoming.cursor.item, upcoming.cursor.slide)}
+                  safeArea={output?.safe_area}
+                />
+              {:else}
+                <SlidePreview empty="End of service" />
+              {/if}
+            </div>
+          </section>
+
+          <section>
+            <h2 class="title">Notes</h2>
+            {#if notes}
+              <p class="notes">{notes}</p>
             {:else}
-              <SlidePreview empty="End of service" />
+              <p class="faint small">No planner notes on this item.</p>
             {/if}
-          </div>
-        </section>
+          </section>
 
-        <section>
-          <h2 class="title">Notes</h2>
-          {#if notes}
-            <p class="notes">{notes}</p>
-          {:else}
-            <p class="faint small">No planner notes on this item.</p>
-          {/if}
-        </section>
-
-        <section>
-          <h2 class="title">Screens</h2>
-          <ul class="plain outputs">
-            {#each live.outputs as o (o.id)}
-              <li>
-                <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
-                <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
-                <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
-              </li>
-            {:else}
-              <li class="faint small">No screens. Add one in Setup › Screens.</li>
-            {/each}
-          </ul>
-        </section>
-      </aside>
+          <section>
+            <h2 class="title">Screens</h2>
+            <ul class="plain outputs">
+              {#each live.outputs as o (o.id)}
+                <li>
+                  <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
+                  <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
+                  <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
+                </li>
+              {:else}
+                <li class="faint small">No screens. Add one in Setup › Screens.</li>
+              {/each}
+            </ul>
+          </section>
+        </aside>
+      {/if}
     </div>
   </div>
 {/if}
@@ -450,6 +492,9 @@
     min-height: 0;
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr) 320px;
+  }
+  .grid.presenting {
+    grid-template-columns: 250px minmax(0, 1fr);
   }
   .queue {
     border-right: 1px solid var(--line);

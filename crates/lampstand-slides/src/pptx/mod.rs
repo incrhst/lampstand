@@ -17,6 +17,9 @@
 //! widths, insets and font sizes stay in slide points. Each node's local
 //! space is the shape's box at its size on the slide.
 //!
+//! Builds and transitions come from DeckCraft's `deckcraft-anim`; `anim`
+//! says how, including how paragraph builds get a node per paragraph.
+//!
 //! Not resolved here: text measurement. `normAutofit` applies the scale the
 //! file was saved with (as PowerPoint does on open), and table rows keep
 //! their stored heights.
@@ -26,6 +29,7 @@
 //! that would cost too much to parse is refused (`budget`), and a slide
 //! stops at `MAX_NODES` nodes.
 
+mod anim;
 mod budget;
 mod geometry;
 mod limits;
@@ -43,7 +47,9 @@ use lampstand_core::id::BlobHash;
 use lampstand_core::scene::{Node, NodeId, NodeKind, Scene, Transition, COMPOSITOR_NODE_BASE};
 use lampstand_core::{FontLookup, FontMatch};
 
-use crate::{DeckSlide, FidelityReport, ImportError, Issue, IssueKind, MediaPart, ParsedDeck};
+use crate::{
+    BuildStep, DeckSlide, FidelityReport, ImportError, Issue, IssueKind, MediaPart, ParsedDeck,
+};
 
 #[cfg(test)]
 mod tests;
@@ -195,9 +201,11 @@ impl<'a> Deck<'a> {
         } else {
             Ctx::for_slide(self.pres, slide)
         };
-        let nodes = match ctx {
+        let mapped = match ctx {
             Some(ctx) => {
+                let timeline = anim::timeline(slide, size);
                 let mut sc = SlideCx::new(self, index, slide);
+                sc.para_groups = anim::paragraph_groups(&timeline);
                 sc.background(&ctx, slide, size);
                 sc.backdrop(&ctx, slide);
                 for s in &slide.shapes {
@@ -213,26 +221,34 @@ impl<'a> Deck<'a> {
                     });
                 }
                 sc.deck.nodes += sc.issued.len() + sc.text_parts;
+                let transition = anim::transition(&mut sc, slide.transition.as_ref());
                 if sc.exhausted {
                     sc.issue(IssueKind::UnsupportedContent {
                         what: "a slide with more shapes than node IDs; left blank".into(),
                     });
-                    Vec::new()
+                    (Vec::new(), BuildStep::default(), Vec::new(), transition)
                 } else {
-                    sc.nodes
+                    let (entry, builds) = anim::steps(&mut sc, slide, &timeline);
+                    (sc.nodes, entry, builds, transition)
                 }
             }
-            None => Vec::new(),
+            None => (
+                Vec::new(),
+                BuildStep::default(),
+                Vec::new(),
+                Transition::CUT,
+            ),
         };
+        let (nodes, entry, builds, transition) = mapped;
         DeckSlide {
             scene: Scene {
                 width: size.0,
                 height: size.1,
                 nodes,
             },
-            // T30 maps `p:timing` and `p:transition`.
-            builds: Vec::new(),
-            transition: Transition::CUT,
+            entry,
+            builds,
+            transition,
             notes: notes_text(slide),
             hidden: slide.hidden,
         }
@@ -369,10 +385,14 @@ pub(crate) struct SlideCx<'d, 'a> {
     /// IDs the slide's own shapes use and have not claimed yet.
     taken: BTreeSet<NodeId>,
     /// Mapping master or layout graphics: no shape keeps its own ID.
-    backdrop: bool,
+    pub(crate) backdrop: bool,
     /// The fill of the group being mapped, for children filled with it
     /// (`grpFill`).
     pub(crate) group_fill: Option<deckcraft_model::Fill>,
+    /// Paragraph groups of each shape's by-paragraph builds (`anim`).
+    pub(crate) para_groups: BTreeMap<u32, Vec<Vec<usize>>>,
+    /// The node each built paragraph got, by (shape, paragraph).
+    pub(crate) para_nodes: BTreeMap<(u32, usize), NodeId>,
 }
 
 impl<'d, 'a> SlideCx<'d, 'a> {
@@ -398,6 +418,8 @@ impl<'d, 'a> SlideCx<'d, 'a> {
             taken,
             backdrop: false,
             group_fill: None,
+            para_groups: BTreeMap::new(),
+            para_nodes: BTreeMap::new(),
         }
     }
 

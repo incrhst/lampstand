@@ -95,7 +95,12 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             }))
             .await
         }
-        Request::Service(ServiceRequest::SlideThumbnail { item, slide, width }) => {
+        Request::Service(ServiceRequest::SlideThumbnail {
+            item,
+            slide,
+            step,
+            width,
+        }) => {
             let Some(renderer) = state.thumbnails.clone() else {
                 return Ok(Response::Error {
                     message: "thumbnails are off: no GPU for them".into(),
@@ -103,7 +108,7 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             };
             let app = state.app.clone();
             blocking(Box::new(move || {
-                let Some(scene) = lock(&app).slide_scene(item, slide) else {
+                let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
                     return Response::Error {
                         message: "no picture for this slide".into(),
                     };

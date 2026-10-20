@@ -12,7 +12,10 @@
 use std::path::Path;
 
 use lampstand_core::geom::Color;
-use lampstand_core::scene::{Fit, Node, NodeKind, Paint, PathCommand, TextBlock};
+use lampstand_core::scene::{
+    Direction, Effect, Fit, Node, NodeKind, Paint, PathCommand, TextBlock, Transition,
+    TransitionKind,
+};
 use lampstand_layout::Fonts;
 use lampstand_slides::{import_pptx, ImportError, IssueKind, ParsedDeck};
 use serde_json::{json, Value};
@@ -85,12 +88,25 @@ fn snapshot(name: &str) {
         .slides
         .iter()
         .map(|s| {
-            json!({
+            let mut v = json!({
                 "hidden": s.hidden,
                 "notes": s.notes,
                 "builds": s.builds.len(),
                 "scene": serde_json::to_value(&s.scene).unwrap(),
-            })
+            });
+            // Only decks with builds or transitions carry these, so the
+            // other snapshots stay as T29 reviewed them.
+            if s.transition != Transition::CUT {
+                v["transition"] = serde_json::to_value(s.transition).unwrap();
+            }
+            if !s.entry.animations.is_empty() {
+                v["entry"] = serde_json::to_value(&s.entry.animations).unwrap();
+            }
+            if !s.builds.is_empty() {
+                let steps: Vec<_> = s.builds.iter().map(|b| &b.animations).collect();
+                v["steps"] = serde_json::to_value(steps).unwrap();
+            }
+            v
         })
         .collect();
     let media: Vec<Value> = deck
@@ -127,6 +143,7 @@ fn snapshots() {
         "08-tables",
         "09-backgrounds",
         "10-church-service",
+        "11-builds-transitions",
     ] {
         snapshot(name);
     }
@@ -605,5 +622,172 @@ fn paths_have_finite_points() {
                 }
             }
         }
+    }
+}
+
+/// The node with this ID, anywhere in the tree.
+fn node(nodes: &[Node], id: u32) -> &Node {
+    walk(nodes)
+        .into_iter()
+        .find(|n| n.id == id)
+        .unwrap_or_else(|| panic!("no node {id}"))
+}
+
+/// The paragraphs a text node shows (the others are there, transparent).
+fn shown(n: &Node) -> Vec<String> {
+    let NodeKind::Text(t) = &n.kind else {
+        panic!("not text: {n:?}")
+    };
+    t.paragraphs
+        .iter()
+        .filter(|p| p.runs.iter().any(|r| r.color.a > 0))
+        .map(|p| p.runs.iter().map(|r| r.text.as_str()).collect())
+        .collect()
+}
+
+#[test]
+fn builds_and_transitions() {
+    let deck = parse("11-builds-transitions");
+    let s = &deck.slides;
+    let kinds: Vec<(TransitionKind, u32)> = s
+        .iter()
+        .map(|s| (s.transition.kind, s.transition.duration_ms))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (TransitionKind::Fade, 750),
+            (TransitionKind::Push(Direction::Down), 1000),
+            (TransitionKind::Wipe(Direction::Up), 500),
+            (TransitionKind::Cover(Direction::Right), 500),
+            (TransitionKind::Fade, 500),
+        ]
+    );
+    assert!(s[0].builds.is_empty() && s[0].entry.animations.is_empty());
+
+    // By paragraph: one click per first-level paragraph, the second-level
+    // one building with its parent. Each built paragraph is its own node.
+    let points = &s[1];
+    assert_eq!(points.builds.len(), 3);
+    assert!(points.entry.animations.is_empty());
+    let ids: Vec<u32> = points
+        .builds
+        .iter()
+        .map(|b| {
+            assert_eq!(b.animations.len(), 1);
+            assert_eq!(b.animations[0].effect, Effect::FadeIn);
+            b.animations[0].node
+        })
+        .collect();
+    let before = points.scene_at_step(0);
+    assert_eq!(before, points.scene, "nothing plays as the slide arrives");
+    for id in &ids {
+        assert!(!node(&before.nodes, *id).visible);
+    }
+    assert_eq!(
+        shown(node(&before.nodes, ids[0])),
+        // A nested bullet is folded into its text (T29).
+        ["God is with us", "\u{2013}\u{2009}Even in the valley"]
+    );
+    assert_eq!(shown(node(&before.nodes, ids[1])), ["We are not alone"]);
+    assert_eq!(
+        shown(node(&before.nodes, ids[2])),
+        ["Hope does not disappoint"]
+    );
+    // Every copy lays out the whole block, so nothing moves as it builds.
+    let block = |id| match &node(&before.nodes, id).kind {
+        NodeKind::Text(t) => (t.rect, t.paragraphs.len()),
+        _ => unreachable!(),
+    };
+    assert!(ids.iter().all(|id| block(*id) == block(ids[0])));
+    let visible = |step: usize| -> Vec<bool> {
+        let scene = points.scene_at_step(step);
+        ids.iter()
+            .map(|id| node(&scene.nodes, *id).visible)
+            .collect()
+    };
+    assert_eq!(visible(1), [true, false, false]);
+    assert_eq!(visible(2), [true, true, false]);
+    assert_eq!(visible(3), [true, true, true]);
+    assert_eq!(visible(9), [true, true, true]);
+    assert_eq!(
+        points.notes,
+        "Reveal one point at a time.\nPause after the second."
+    );
+
+    // With and after previous fold into delays within a click.
+    let fly = &s[2];
+    let steps: Vec<Vec<(Effect, u32)>> = fly
+        .builds
+        .iter()
+        .map(|b| {
+            b.animations
+                .iter()
+                .map(|a| (a.effect, a.delay_ms))
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            vec![
+                (Effect::FlyIn(Direction::Left), 0),
+                (Effect::WipeIn(Direction::Down), 250),
+            ],
+            vec![(Effect::Spin(90.0), 0), (Effect::FadeOut, 1000)],
+        ]
+    );
+    let (left, right) = (
+        fly.builds[0].animations[0].node,
+        fly.builds[0].animations[1].node,
+    );
+    assert!(!node(&fly.scene.nodes, left).visible && !node(&fly.scene.nodes, right).visible);
+    let end = fly.scene_at_step(2);
+    assert!(node(&end.nodes, left).visible && !node(&end.nodes, right).visible);
+    assert_ne!(
+        node(&end.nodes, left).transform,
+        node(&fly.scene.nodes, left).transform,
+        "the spin stays"
+    );
+
+    // An effect that starts after the previous one before any click plays
+    // as the slide arrives.
+    let arrives = &s[3];
+    assert_eq!(arrives.entry.animations.len(), 1);
+    assert_eq!(arrives.entry.animations[0].effect, Effect::FadeIn);
+    let first = arrives.entry.animations[0].node;
+    assert!(!node(&arrives.scene.nodes, first).visible);
+    assert!(node(&arrives.scene_at_step(0).nodes, first).visible);
+    assert_eq!(
+        arrives.builds.len(),
+        2,
+        "the motion path's click still counts"
+    );
+    let click: Vec<Effect> = arrives.builds[0]
+        .animations
+        .iter()
+        .map(|a| a.effect)
+        .collect();
+    assert_eq!(
+        click,
+        [Effect::GrowShrink(1.5), Effect::ZoomIn, Effect::Pulse]
+    );
+    assert!(arrives.builds[1].animations.is_empty());
+
+    let issues: Vec<String> = deck
+        .report
+        .issues
+        .iter()
+        .map(|i| format!("{:?}", i.kind))
+        .collect();
+    for expected in [
+        "ApproximatedEffect { name: \"Teeter\", used: \"Pulse\" }",
+        "UnsupportedEffect { name: \"Lines\" }",
+        "ApproximatedEffect { name: \"Split transition\", used: \"Fade\" }",
+    ] {
+        assert!(
+            issues.iter().any(|i| i == expected),
+            "{expected} in {issues:?}"
+        );
     }
 }

@@ -869,7 +869,181 @@ def deck_10():
     save(prs, "10-church-service.pptx")
 
 
-DECKS = [deck_01, deck_02, deck_03, deck_04, deck_05, deck_06, deck_07, deck_08, deck_09, deck_10]
+# --- builds and transitions --------------------------------------------------
+#
+# python-pptx has no API for `p:timing` or `p:transition`, so these write the
+# XML PowerPoint writes: each click a `par` whose start waits for the click,
+# effects that start after the previous one in a `par` of their own, and the
+# effect `cTn`s carrying `presetClass`, `presetID`, `presetSubtype` and
+# `nodeType`. A by-paragraph build is one effect per paragraph (`pRg`) with a
+# `bldP build="p"` for the shape.
+
+P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+
+def transition(slide, xml):
+    el = etree.fromstring(f'<p:transition xmlns:p="{P}" {xml}</p:transition>')
+    slide._element.append(el)
+
+
+class Effect:
+    def __init__(self, spid, cls, preset, subtype=0, start="click", dur=500, delay=0, para=None, extra=""):
+        self.spid, self.cls, self.preset, self.subtype = spid, cls, preset, subtype
+        self.start, self.dur, self.delay, self.para, self.extra = start, dur, delay, para, extra
+
+
+def timing(slide, effects, by_paragraph=()):
+    """Writes `p:timing` for `effects` in Animation Pane order."""
+    ids = iter(range(3, 100000))
+    clicks = []
+    for e in effects:
+        if e.start == "click" or not clicks:
+            clicks.append([[e]])
+        elif e.start == "after":
+            clicks[-1].append([e])
+        else:
+            clicks[-1][-1].append(e)
+
+    def target(e):
+        rg = f'<p:txEl><p:pRg st="{e.para}" end="{e.para}"/></p:txEl>' if e.para is not None else ""
+        return f'<p:tgtEl><p:spTgt spid="{e.spid}">{rg}</p:spTgt></p:tgtEl>'
+
+    def effect(e):
+        node = {"click": "clickEffect", "with": "withEffect", "after": "afterEffect"}[e.start]
+        behaviours = ""
+        if e.cls == "entr":
+            behaviours += (
+                f'<p:set><p:cBhvr><p:cTn id="{next(ids)}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>'
+                f'{target(e)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>'
+                '<p:to><p:strVal val="visible"/></p:to></p:set>'
+            )
+        if e.extra:
+            behaviours += e.extra.format(id=next(ids), dur=e.dur, target=target(e))
+        else:
+            transition_ = "out" if e.cls == "exit" else "in"
+            behaviours += (
+                f'<p:animEffect transition="{transition_}" filter="fade"><p:cBhvr>'
+                f'<p:cTn id="{next(ids)}" dur="{e.dur}"/>{target(e)}</p:cBhvr></p:animEffect>'
+            )
+        grp = 0
+        return (
+            f'<p:par><p:cTn id="{next(ids)}" presetID="{e.preset}" presetClass="{e.cls}" presetSubtype="{e.subtype}" '
+            f'fill="hold" grpId="{grp}" nodeType="{node}"><p:stCondLst><p:cond delay="{e.delay}"/></p:stCondLst>'
+            f'<p:childTnLst>{behaviours}</p:childTnLst></p:cTn></p:par>'
+        )
+
+    pars = ""
+    for i, click in enumerate(clicks):
+        auto = i == 0 and click[0][0].start != "click"
+        begin = '<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>' if auto else '<p:cond delay="indefinite"/>'
+        groups = ""
+        at = 0
+        for group in click:
+            groups += (
+                f'<p:par><p:cTn id="{next(ids)}" fill="hold"><p:stCondLst><p:cond delay="{at}"/></p:stCondLst>'
+                f'<p:childTnLst>{"".join(effect(e) for e in group)}</p:childTnLst></p:cTn></p:par>'
+            )
+            at += max(e.delay + e.dur for e in group)
+        pars += (
+            f'<p:par><p:cTn id="{next(ids)}" fill="hold"><p:stCondLst>{begin}</p:stCondLst>'
+            f'<p:childTnLst>{groups}</p:childTnLst></p:cTn></p:par>'
+        )
+    builds = "".join(f'<p:bldP spid="{spid}" grpId="0" build="p"/>' for spid in by_paragraph)
+    xml = (
+        f'<p:timing xmlns:p="{P}"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">'
+        '<p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq">'
+        f'<p:childTnLst>{pars}</p:childTnLst></p:cTn>'
+        '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
+        '<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst>'
+        '</p:seq></p:childTnLst></p:cTn></p:par></p:tnLst>'
+        f'{"<p:bldLst>" + builds + "</p:bldLst>" if builds else ""}</p:timing>'
+    )
+    slide._element.append(etree.fromstring(xml))
+
+
+FLY = (
+    '<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="{id}" dur="{dur}" fill="hold"/>{target}'
+    '<p:attrNameLst><p:attrName>ppt_x</p:attrName></p:attrNameLst></p:cBhvr>'
+    '<p:tavLst><p:tav tm="0"><p:val><p:strVal val="0-#ppt_w/2"/></p:val></p:tav>'
+    '<p:tav tm="100000"><p:val><p:strVal val="#ppt_x"/></p:val></p:tav></p:tavLst></p:anim>'
+)
+WIPE = (
+    '<p:animEffect transition="in" filter="wipe(up)"><p:cBhvr><p:cTn id="{id}" dur="{dur}"/>{target}</p:cBhvr></p:animEffect>'
+)
+SPIN_90 = (
+    '<p:animRot by="5400000"><p:cBhvr><p:cTn id="{id}" dur="{dur}" fill="hold"/>{target}'
+    '<p:attrNameLst><p:attrName>r</p:attrName></p:attrNameLst></p:cBhvr></p:animRot>'
+)
+GROW_150 = (
+    '<p:animScale><p:cBhvr><p:cTn id="{id}" dur="{dur}" fill="hold"/>{target}</p:cBhvr>'
+    '<p:by x="150000" y="150000"/></p:animScale>'
+)
+LINE_PATH = (
+    '<p:animMotion origin="layout" path="M 0 0 L 0 0.25 E" pathEditMode="relative"><p:cBhvr>'
+    '<p:cTn id="{id}" dur="{dur}" fill="hold"/>{target}<p:attrNameLst><p:attrName>ppt_x</p:attrName>'
+    '<p:attrName>ppt_y</p:attrName></p:attrNameLst></p:cBhvr></p:animMotion>'
+)
+
+
+def deck_11():
+    prs = Presentation()
+
+    # 1: fades in, no builds.
+    s = prs.slides.add_slide(layout(prs, "Title Slide"))
+    s.shapes.title.text = "Builds and transitions"
+    s.placeholders[1].text = "Welcome"
+    transition(s, 'spd="med"><p:fade/>')
+
+    # 2: a by-paragraph build; the second-level paragraph comes with its
+    # parent. Pushes in from the bottom.
+    s = prs.slides.add_slide(layout(prs, "Title and Content"))
+    s.shapes.title.text = "Three points"
+    body = s.placeholders[1]
+    tf = body.text_frame
+    for i, (text, level) in enumerate((("God is with us", 0), ("Even in the valley", 1), ("We are not alone", 0), ("Hope does not disappoint", 0))):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = text
+        p.level = level
+    notes(s, "Reveal one point at a time.\nPause after the second.")
+    transition(s, 'spd="slow"><p:push dir="u"/>')
+    timing(s, [Effect(body.shape_id, "entr", 10, para=i) for i in range(4)], by_paragraph=[body.shape_id])
+
+    # 3: fly in from the left with a wipe up alongside, then a spin followed
+    # by a fade out. Wipes in from the top.
+    s = title_only(prs, "Fly, wipe and spin")
+    left = add_box(s, 0.8, 2.0, 3.6, 2.0, "Fly in", 28)
+    right = add_box(s, 5.6, 2.0, 3.6, 2.0, "Wipe up", 28, MSO_SHAPE.ROUNDED_RECTANGLE)
+    transition(s, '><p:wipe dir="d"/>')
+    timing(s, [
+        Effect(left.shape_id, "entr", 2, 8, extra=FLY),
+        Effect(right.shape_id, "entr", 22, 4, start="with", delay=250, extra=WIPE),
+        Effect(left.shape_id, "emph", 8, start="click", dur=1000, extra=SPIN_90),
+        Effect(right.shape_id, "exit", 10, start="after"),
+    ])
+
+    # 4: the first box fades in as the slide arrives; a click grows it and
+    # zooms the second in. Covers from the right; a motion path and a
+    # Teeter are not drawn as PowerPoint draws them.
+    s = title_only(prs, "Arrives by itself")
+    first = add_box(s, 0.8, 2.0, 3.6, 2.0, "By itself", 28)
+    second = add_box(s, 5.6, 2.0, 3.6, 2.0, "On the click", 28, MSO_SHAPE.OVAL)
+    transition(s, 'spd="fast"><p:cover dir="l"/>')
+    timing(s, [
+        Effect(first.shape_id, "entr", 10, start="after"),
+        Effect(first.shape_id, "emph", 6, start="click", extra=GROW_150),
+        Effect(second.shape_id, "entr", 53, 16, start="with"),
+        Effect(first.shape_id, "emph", 32, start="after"),
+        Effect(second.shape_id, "path", 64, start="click", dur=2000, extra=LINE_PATH),
+    ])
+
+    # 5: Split, which we draw as a fade.
+    s = title_only(prs, "Split transition")
+    transition(s, '><p:split orient="vert" dir="out"/>')
+
+    save(prs, "11-builds-transitions.pptx")
+
+
+DECKS = [deck_01, deck_02, deck_03, deck_04, deck_05, deck_06, deck_07, deck_08, deck_09, deck_10, deck_11]
 
 if __name__ == "__main__":
     only = sys.argv[1:]
