@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 lampstand-core.workspace = true
 lampstand-layout.workspace = true
+lampstand-media.workspace = true
 bytemuck = { workspace = true }
 cosmic-text.workspace = true
 glyphon.workspace = true

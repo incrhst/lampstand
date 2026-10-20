@@ -1,7 +1,9 @@
 //! Image textures: decoded once per blob, premultiplied, mipmapped, cached.
 //!
-//! T27 adds video textures beside these; both are drawn by the quad
-//! pipeline, so a video node is an image node whose texture changes.
+//! Video frames are drawn by the same quad pipeline from textures the
+//! output frame loop updates (`output::video`). Offscreen rendering
+//! (thumbnails) shows a video's first frame instead, cached here like an
+//! image under the video's blob.
 
 use std::collections::HashMap;
 
@@ -47,6 +49,26 @@ impl ImageCache {
             .map(|image| (image.width, image.height))
     }
 
+    /// Loads the first frame of the video `blob` if it is not cached yet;
+    /// returns its size.
+    pub fn load_poster(
+        &mut self,
+        gpu: &Gpu,
+        pipelines: &Pipelines,
+        blobs: &dyn BlobSource,
+        blob: &BlobHash,
+    ) -> Option<(u32, u32)> {
+        self.entries
+            .entry(*blob)
+            .or_insert_with(|| {
+                let frame = lampstand_media::poster(&blobs.path(blob)?).ok()?;
+                let rgba = image::RgbaImage::from_raw(frame.width, frame.height, frame.rgba)?;
+                upload(gpu, pipelines, image::DynamicImage::ImageRgba8(rgba))
+            })
+            .as_ref()
+            .map(|image| (image.width, image.height))
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -65,7 +87,11 @@ fn decode(
     blob: &BlobHash,
 ) -> Option<CachedImage> {
     let bytes = std::fs::read(blobs.path(blob)?).ok()?;
-    let image = image::load_from_memory(&bytes).ok()?;
+    upload(gpu, pipelines, image::load_from_memory(&bytes).ok()?)
+}
+
+/// Premultiplies, uploads and mipmaps `image`, scaled down to fit the GPU.
+fn upload(gpu: &Gpu, pipelines: &Pipelines, image: image::DynamicImage) -> Option<CachedImage> {
     let (width, height) = (image.width(), image.height());
     if width == 0 || height == 0 {
         return None;

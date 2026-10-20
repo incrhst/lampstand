@@ -1016,6 +1016,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-deque"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622f3fc73690be383c7214310406f28a90e6edeadc3cea882f9d71e495b9711a"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1198,6 +1217,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckcraft-av1"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-bitstream",
+ "rayon",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "deckcraft-bitstream"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+
+[[package]]
 name = "deckcraft-color"
 version = "0.8.0"
 source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
@@ -1215,6 +1249,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckcraft-h264"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-bitstream",
+ "rayon",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "deckcraft-hevc"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-bitstream",
+ "rayon",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "deckcraft-isobmff"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-bitstream",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "deckcraft-matroska"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+
+[[package]]
+name = "deckcraft-media"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-av1",
+ "deckcraft-h264",
+ "deckcraft-hevc",
+ "deckcraft-isobmff",
+ "deckcraft-matroska",
+ "deckcraft-ogg",
+ "deckcraft-opus",
+ "deckcraft-vp9",
+ "image",
+ "log",
+ "symphonia",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "deckcraft-model"
 version = "0.8.0"
 source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
@@ -1228,6 +1315,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckcraft-ogg"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+
+[[package]]
+name = "deckcraft-opus"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+
+[[package]]
 name = "deckcraft-pptx"
 version = "0.8.0"
 source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
@@ -1239,6 +1336,16 @@ dependencies = [
  "quick-xml 0.41.0",
  "thiserror 2.0.21",
  "zip 3.0.0",
+]
+
+[[package]]
+name = "deckcraft-vp9"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-bitstream",
+ "rayon",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1619,6 +1726,12 @@ checksum = "f1a05365e3b1c6d1650318537c7460c6923f1abdd272ad6842baa2b509957a06"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "extended"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
 
 [[package]]
 name = "fallible-iterator"
@@ -3169,6 +3282,9 @@ dependencies = [
 [[package]]
 name = "lampstand-media"
 version = "0.1.0"
+dependencies = [
+ "deckcraft-media",
+]
 
 [[package]]
 name = "lampstand-relay"
@@ -3187,6 +3303,7 @@ dependencies = [
  "image",
  "lampstand-core",
  "lampstand-layout",
+ "lampstand-media",
  "lyon",
  "objc2 0.5.3",
  "objc2-app-kit 0.2.2",
@@ -5000,6 +5117,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "read-fonts"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6064,6 +6201,201 @@ dependencies = [
  "base64 0.21.7",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "symphonia"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5773a4c030a19d9bfaa090f49746ff35c75dfddfa700df7a5939d5e076a57039"
+dependencies = [
+ "lazy_static",
+ "symphonia-bundle-flac",
+ "symphonia-bundle-mp3",
+ "symphonia-codec-aac",
+ "symphonia-codec-adpcm",
+ "symphonia-codec-alac",
+ "symphonia-codec-pcm",
+ "symphonia-codec-vorbis",
+ "symphonia-core",
+ "symphonia-format-caf",
+ "symphonia-format-isomp4",
+ "symphonia-format-mkv",
+ "symphonia-format-ogg",
+ "symphonia-format-riff",
+ "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-bundle-flac"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c91565e180aea25d9b80a910c546802526ffd0072d0b8974e3ebe59b686c9976"
+dependencies = [
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-bundle-mp3"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4872dd6bb56bf5eac799e3e957aa1981086c3e613b27e0ac23b176054f7c57ed"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-codec-aac"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c263845aa86881416849c1729a54c7f55164f8b96111dba59de46849e73a790"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-adpcm"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dddc50e2bbea4cfe027441eece77c46b9f319748605ab8f3443350129ddd07f"
+dependencies = [
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-alac"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8413fa754942ac16a73634c9dfd1500ed5c61430956b33728567f667fdd393ab"
+dependencies = [
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-pcm"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e89d716c01541ad3ebe7c91ce4c8d38a7cf266a3f7b2f090b108fb0cb031d95"
+dependencies = [
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-vorbis"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f025837c309cd69ffef572750b4a2257b59552c5399a5e49707cc5b1b85d1c73"
+dependencies = [
+ "log",
+ "symphonia-core",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-core"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea00cc4f79b7f6bb7ff87eddc065a1066f3a43fe1875979056672c9ef948c2af"
+dependencies = [
+ "arrayvec",
+ "bitflags 1.3.2",
+ "bytemuck",
+ "lazy_static",
+ "log",
+]
+
+[[package]]
+name = "symphonia-format-caf"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8faf379316b6b6e6bbc274d00e7a592e0d63ff1a7e182ce8ba25e24edd3d096"
+dependencies = [
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-format-isomp4"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "243739585d11f81daf8dac8d9f3d18cc7898f6c09a259675fc364b382c30e0a5"
+dependencies = [
+ "encoding_rs",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-format-mkv"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "122d786d2c43a49beb6f397551b4a050d8229eaa54c7ddf9ee4b98899b8742d0"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-format-ogg"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b4955c67c1ed3aa8ae8428d04ca8397fbef6a19b2b051e73b5da8b1435639cb"
+dependencies = [
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-format-riff"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2d7c3df0e7d94efb68401d81906eae73c02b40d5ec1a141962c592d0f11a96f"
+dependencies = [
+ "extended",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-metadata"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36306ff42b9ffe6e5afc99d49e121e0bd62fe79b9db7b9681d48e29fa19e6b16"
+dependencies = [
+ "encoding_rs",
+ "lazy_static",
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-utils-xiph"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee27c85ab799a338446b68eec77abf42e1a6f1bb490656e121c6e27bfbab9f16"
+dependencies = [
+ "symphonia-core",
+ "symphonia-metadata",
 ]
 
 [[package]]

@@ -21,7 +21,7 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
-  import { deckExtensions, deckSourceLabel, imageExtensions, isVideo, mediaKind, onePath, videoExtensions } from "../../lib/media";
+  import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import Library from "./Library.svelte";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
@@ -577,9 +577,6 @@
                   <span class="title">{itemTitle(item)}</span>
                   <span class="subtitle">{itemSubtitle(item)}</span>
                 </span>
-                {#if "Media" in item.kind && isVideo(item.kind.Media.name)}
-                  <Placeholder ticket="T27">Not on screen yet</Placeholder>
-                {/if}
                 <span class="remove">
                   <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />
                 </span>
