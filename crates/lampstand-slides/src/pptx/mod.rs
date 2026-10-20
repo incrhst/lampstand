@@ -147,6 +147,10 @@ pub(crate) struct Deck<'a> {
     issues: Vec<Issue>,
     fonts_checked: BTreeSet<String>,
     reported: BTreeSet<(Option<usize>, String)>,
+    /// Nodes the slides mapped so far have.
+    nodes: usize,
+    /// The most nodes the whole deck may have (`MAX_DECK_NODES`).
+    node_limit: usize,
 }
 
 impl<'a> Deck<'a> {
@@ -159,12 +163,29 @@ impl<'a> Deck<'a> {
             issues: Vec::new(),
             fonts_checked: BTreeSet::new(),
             reported: BTreeSet::new(),
+            nodes: 0,
+            node_limit: MAX_DECK_NODES,
         }
     }
 
     fn slide(&mut self, index: usize, slide: &Slide) -> DeckSlide {
         let size = slide_size(self.pres);
-        let nodes = match Ctx::for_slide(self.pres, slide) {
+        let ctx = if self.nodes >= self.node_limit {
+            // The deck has used its node budget: the rest come back blank.
+            self.issue(
+                None,
+                IssueKind::UnsupportedContent {
+                    what: format!(
+                        "a deck of more than {} drawn parts; later slides are left blank",
+                        self.node_limit
+                    ),
+                },
+            );
+            None
+        } else {
+            Ctx::for_slide(self.pres, slide)
+        };
+        let nodes = match ctx {
             Some(ctx) => {
                 let mut sc = SlideCx::new(self, index, slide);
                 sc.background(&ctx, slide, size);
@@ -175,10 +196,13 @@ impl<'a> Deck<'a> {
                 if sc.truncated {
                     sc.issue(IssueKind::UnsupportedContent {
                         what: format!(
-                            "a slide of more than {MAX_NODES} drawn parts; the rest are left out"
+                            "a slide past the drawn-part budget ({MAX_NODES} a slide, {} a deck); \
+                             the rest are left out",
+                            sc.deck.node_limit
                         ),
                     });
                 }
+                sc.deck.nodes += sc.issued.len();
                 if sc.exhausted {
                     sc.issue(IssueKind::UnsupportedContent {
                         what: "a slide with more shapes than node IDs; left blank".into(),
@@ -305,6 +329,13 @@ fn notes_text(slide: &Slide) -> String {
 /// renderer can draw.
 pub(crate) const MAX_NODES: usize = 100_000;
 
+/// The most nodes the whole deck may have. Master and layout graphics are
+/// mapped onto every slide that shows them (scenes can't share nodes), so
+/// a heavy master costs elements once but nodes on every slide; this bounds
+/// that. A real 200-slide deck has about 100,000; a node costs a few
+/// hundred bytes.
+pub(crate) const MAX_DECK_NODES: usize = 1_000_000;
+
 /// Per-slide state: the nodes so far and the next free node ID.
 pub(crate) struct SlideCx<'d, 'a> {
     pub(crate) deck: &'d mut Deck<'a>,
@@ -378,11 +409,13 @@ impl<'d, 'a> SlideCx<'d, 'a> {
         }
     }
 
-    /// Whether the slide has as many nodes as it may have. Once it does,
+    /// Whether the slide (or the deck) has as many nodes as it may have.
+    /// Once it does,
     /// mapping stops adding shapes (and table cells) and the slide is
     /// reported.
     pub(crate) fn full(&mut self) -> bool {
-        if self.issued.len() >= MAX_NODES {
+        let here = self.issued.len();
+        if here >= MAX_NODES || self.deck.nodes + here >= self.deck.node_limit {
             self.truncated = true;
         }
         self.truncated

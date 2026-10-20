@@ -94,3 +94,47 @@ fn slide_sizes_stay_in_the_schema_range() {
     };
     assert_eq!(slide_size(&pres), (4032.0, 540.0));
 }
+
+/// The re-review's second repro, in miniature: a master with many shapes
+/// shown on many slides costs its elements once but its nodes on every
+/// slide. The deck budget stops it.
+#[test]
+fn a_heavy_master_on_many_slides_stops_at_the_deck_budget() {
+    let mut pres = Presentation::default();
+    let master = Arc::make_mut(&mut pres.masters[0]);
+    master.shapes.extend((0..1000).map(|i| Shape {
+        id: ShapeId(10_000 + i),
+        xfrm: Some(deckcraft_geom::Xfrm::new(1.0, 1.0, 5.0, 5.0)),
+        fill: Some(deckcraft_model::Fill::solid(
+            deckcraft_model::ColorRef::rgb(deckcraft_model::Rgba::BLACK),
+        )),
+        ..Default::default()
+    }));
+    let layout = master.layouts[0].id;
+    let slide = Slide {
+        layout,
+        ..Default::default()
+    };
+    let mut deck = Deck::new(&pres, &AllFonts);
+    deck.node_limit = 20_000;
+    let slides: Vec<DeckSlide> = (0..60).map(|i| deck.slide(i, &slide)).collect();
+    let total: usize = slides.iter().map(|s| count(&s.scene.nodes)).sum();
+    // Each slide has about 1,000 nodes: the budget is spent by slide 20.
+    assert!(total <= 20_000 + 5, "{total} nodes");
+    assert!(slides[5].scene.nodes.len() > 1000);
+    assert!(slides[59].scene.nodes.is_empty());
+    assert!(deck.issues.iter().any(|i| i.slide.is_none()
+        && matches!(&i.kind, IssueKind::UnsupportedContent { what } if what.contains("later slides"))));
+}
+
+fn count(nodes: &[Node]) -> usize {
+    nodes
+        .iter()
+        .map(|n| {
+            1 + match &n.kind {
+                NodeKind::Group(kids) => count(kids),
+                _ => 0,
+            }
+        })
+        .sum()
+}

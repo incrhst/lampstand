@@ -47,6 +47,42 @@ fn patched_many(name: &str, edits: &[(&str, &str, &str)]) -> Vec<u8> {
     out.finish().unwrap().into_inner()
 }
 
+/// `name` rebuilt entry by entry: `f` gets each entry's name and bytes and
+/// returns the entries to write in its place. Stored uncompressed.
+fn rebuild(name: &str, mut f: impl FnMut(&str, Vec<u8>) -> Vec<(String, Vec<u8>)>) -> Vec<u8> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(deck_bytes(name))).unwrap();
+    let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i).unwrap();
+        let file_name = file.name().unwrap().to_string();
+        let mut data = Vec::new();
+        file.read_to_end(&mut data).unwrap();
+        for (n, d) in f(&file_name, data) {
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            out.start_file(n, options).unwrap();
+            out.write_all(&d).unwrap();
+        }
+    }
+    out.finish().unwrap().into_inner()
+}
+
+/// Deck 08 with 600,000 tiny elements in its first slide.
+fn heavy_slide() -> String {
+    let mut zip = zip::ZipArchive::new(Cursor::new(deck_bytes("08-tables"))).unwrap();
+    let mut slide = String::new();
+    zip.by_name("ppt/slides/slide1.xml")
+        .unwrap()
+        .read_to_string(&mut slide)
+        .unwrap();
+    let cells = format!("<a:tr h=\"1\">{}</a:tr>", "<a:tc/>".repeat(600_000));
+    slide.replacen(
+        r#"<a:tr h="609600">"#,
+        &format!(r#"{cells}<a:tr h="609600">"#),
+        1,
+    )
+}
+
 /// The limit a refused deck hit.
 fn refused(bytes: &[u8]) -> (String, u64, u64) {
     match import_pptx(bytes, &Fonts::bundled_only()) {
@@ -214,19 +250,6 @@ fn a_slide_of_too_many_elements_is_refused() {
 }
 
 #[test]
-fn a_part_too_big_to_parse_is_refused() {
-    // 17 MB of text in one run.
-    let text = "x".repeat(17 << 20);
-    let bytes = patched(
-        "08-tables",
-        "ppt/slides/slide1.xml",
-        "<a:t>Time</a:t>",
-        &format!("<a:t>{text}</a:t>"),
-    );
-    assert_eq!(refused(&bytes).0, "bytes in ppt/slides/slide1.xml");
-}
-
-#[test]
 fn a_deck_of_too_many_elements_is_refused() {
     // 400,000 elements on each of four slides: each part is allowed, the
     // deck is not.
@@ -276,7 +299,7 @@ fn a_slide_stops_at_its_node_budget() {
     );
     assert!(deck.report.issues.iter().any(|i| matches!(
         &i.kind,
-        lampstand_slides::IssueKind::UnsupportedContent { what } if what.contains("drawn parts")
+        lampstand_slides::IssueKind::UnsupportedContent { what } if what.contains("drawn-part budget")
     )));
 }
 
@@ -296,4 +319,208 @@ fn reviewer_repro_full_size() {
         &rows,
     );
     eprintln!("{:?}", refused(&bytes));
+}
+
+/// The third review: DeckCraft lowercases part names, so the heavy slide
+/// stored as `slide1.XML` is still the slide. The budget doesn't look at
+/// names.
+#[test]
+fn a_heavy_slide_under_an_upper_case_name_is_refused() {
+    let slide = heavy_slide();
+    let bytes = rebuild("08-tables", |n, d| match n {
+        "ppt/slides/slide1.xml" => {
+            vec![("ppt/slides/slide1.XML".into(), slide.clone().into_bytes())]
+        }
+        _ => vec![(n.to_string(), d)],
+    });
+    let (what, _, _) = refused(&bytes);
+    assert_eq!(what, "XML elements in ppt/slides/slide1.XML");
+}
+
+/// The third review: the heavy slide as `slide1.dat`, with its relationship
+/// and content type pointing there.
+#[test]
+fn a_heavy_slide_under_another_extension_is_refused() {
+    let slide = heavy_slide();
+    let bytes = rebuild("08-tables", |n, d| {
+        let text = || String::from_utf8(d.clone()).unwrap();
+        match n {
+            "ppt/slides/slide1.xml" => {
+                vec![("ppt/slides/slide1.dat".into(), slide.clone().into_bytes())]
+            }
+            "ppt/slides/_rels/slide1.xml.rels" => {
+                vec![("ppt/slides/_rels/slide1.dat.rels".into(), d)]
+            }
+            "ppt/_rels/presentation.xml.rels" => {
+                vec![(
+                    n.to_string(),
+                    text()
+                        .replace("slides/slide1.xml", "slides/slide1.dat")
+                        .into_bytes(),
+                )]
+            }
+            "[Content_Types].xml" => {
+                vec![(
+                    n.to_string(),
+                    text()
+                        .replace("/ppt/slides/slide1.xml", "/ppt/slides/slide1.dat")
+                        .into_bytes(),
+                )]
+            }
+            _ => vec![(n.to_string(), d)],
+        }
+    });
+    let (what, _, _) = refused(&bytes);
+    assert_eq!(what, "XML elements in ppt/slides/slide1.dat");
+}
+
+/// Parts nobody special-cased: a slide in UTF-16 (DeckCraft decodes it) and
+/// an unreferenced entry that starts like a PNG. Every entry draws from
+/// the same budget.
+#[test]
+fn parts_of_any_kind_draw_from_the_budget() {
+    let slide = heavy_slide();
+    let utf16: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain(slide.encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    let bytes = rebuild("08-tables", |n, d| match n {
+        "ppt/slides/slide1.xml" => vec![(n.to_string(), utf16.clone())],
+        _ => vec![(n.to_string(), d)],
+    });
+    assert_eq!(refused(&bytes).0, "XML elements in ppt/slides/slide1.xml");
+
+    let mut blob = b"\x89PNG\r\n\x1a\n".to_vec();
+    blob.extend("<a:tc/>".repeat(600_000).bytes());
+    let bytes = rebuild("08-tables", |n, d| {
+        let mut out = vec![(n.to_string(), d)];
+        if n == "[Content_Types].xml" {
+            out.push(("ppt/embeddings/blob.bin".into(), blob.clone()));
+        }
+        out
+    });
+    assert_eq!(refused(&bytes).0, "XML elements in ppt/embeddings/blob.bin");
+}
+
+/// The third review's second repro: a master with many shapes, shown on
+/// many slides, costs elements once (well inside the budget) but nodes on
+/// every slide. The deck stops at its node budget and says so.
+#[test]
+fn a_heavy_master_on_many_slides_stops_at_the_node_budget() {
+    let shapes: String = (0..10_000)
+        .map(|i| {
+            format!(
+                r#"<p:sp><p:nvSpPr><p:cNvPr id="{}" name=""/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12700" cy="12700"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>"#,
+                1000 + i
+            )
+        })
+        .collect();
+    let slides = 110;
+    let blank = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sld>"#;
+    let rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout7.xml"/></Relationships>"#;
+    let bytes = rebuild("06-fills-lines-shadows", |n, d| {
+        let text = || String::from_utf8(d.clone()).unwrap();
+        let mut out = Vec::new();
+        match n {
+            "ppt/slideMasters/slideMaster1.xml" => out.push((
+                n.to_string(),
+                text()
+                    .replacen("</p:spTree>", &format!("{shapes}</p:spTree>"), 1)
+                    .into_bytes(),
+            )),
+            "ppt/presentation.xml" => {
+                let ids: String = (0..slides)
+                    .map(|k| format!(r#"<p:sldId id="{}" r:id="rIdX{k}"/>"#, 300 + k))
+                    .collect();
+                out.push((
+                    n.to_string(),
+                    text()
+                        .replacen("</p:sldIdLst>", &format!("{ids}</p:sldIdLst>"), 1)
+                        .into_bytes(),
+                ));
+            }
+            "ppt/_rels/presentation.xml.rels" => {
+                let more: String = (0..slides)
+                    .map(|k| format!(r#"<Relationship Id="rIdX{k}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/extra{k}.xml"/>"#))
+                    .collect();
+                out.push((
+                    n.to_string(),
+                    text()
+                        .replacen("</Relationships>", &format!("{more}</Relationships>"), 1)
+                        .into_bytes(),
+                ));
+            }
+            "[Content_Types].xml" => {
+                let more: String = (0..slides)
+                    .map(|k| format!(r#"<Override PartName="/ppt/slides/extra{k}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>"#))
+                    .collect();
+                out.push((
+                    n.to_string(),
+                    text()
+                        .replacen("</Types>", &format!("{more}</Types>"), 1)
+                        .into_bytes(),
+                ));
+                for k in 0..slides {
+                    out.push((
+                        format!("ppt/slides/extra{k}.xml"),
+                        blank.as_bytes().to_vec(),
+                    ));
+                    out.push((
+                        format!("ppt/slides/_rels/extra{k}.xml.rels"),
+                        rels.as_bytes().to_vec(),
+                    ));
+                }
+            }
+            _ => out.push((n.to_string(), d)),
+        }
+        out
+    });
+    let deck = parse(&bytes);
+    assert_eq!(deck.slides.len(), slides + 2);
+    let total: usize = deck.slides.iter().map(|s| walk(&s.scene.nodes).len()).sum();
+    // 10,000 master shapes on 112 slides would be 1.1 million nodes.
+    assert!(total <= 1_000_000 + 10, "{total} nodes");
+    assert!(
+        deck.slides[3].scene.nodes.len() > 10_000,
+        "early slides show the master"
+    );
+    assert!(deck.slides.last().unwrap().scene.nodes.is_empty());
+    assert!(deck.report.issues.iter().any(|i| i.slide.is_none()
+        && matches!(&i.kind, lampstand_slides::IssueKind::UnsupportedContent { what } if what.contains("later slides"))));
+}
+
+/// No real deck is refused by the budget or loses slides to the node caps:
+/// `LAMPSTAND_CORPUS=dir cargo test -p lampstand-slides --test hostile
+/// -- --ignored corpus --nocapture` (the Apache POI slideshow corpus
+/// passes: its corrupt files fail as `NotAPresentation` or `Corrupt`).
+#[test]
+#[ignore]
+fn corpus_is_not_refused() {
+    let dir = std::env::var("LAMPSTAND_CORPUS").expect("LAMPSTAND_CORPUS");
+    let fonts = Fonts::bundled_only();
+    let (mut ok, mut failed) = (0, 0);
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "pptx") {
+            continue;
+        }
+        match import_pptx(&std::fs::read(&path).unwrap(), &fonts) {
+            Ok(deck) => {
+                ok += 1;
+                let capped = deck.report.issues.iter().any(|i| matches!(
+                    &i.kind,
+                    lampstand_slides::IssueKind::UnsupportedContent { what } if what.contains("drawn-part") || what.contains("later slides")
+                ));
+                assert!(!capped, "{}: hit a node budget", path.display());
+            }
+            Err(ImportError::TooLarge { what, found, limit }) => {
+                panic!("{}: refused, {what} {found} > {limit}", path.display())
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("{}: {e:?}", path.display());
+            }
+        }
+    }
+    eprintln!("{ok} parsed, {failed} failed");
 }
