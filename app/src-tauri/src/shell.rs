@@ -37,8 +37,9 @@ use lampstand_library::Library;
 use lampstand_render::output::DisplayInfo;
 use lampstand_render::{Background, BlobSource, OutputEvent, OutputOptions, Outputs, Renderer};
 use lampstand_sync::DocChanged;
+use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
 
 use crate::config::device_key;
 use crate::decks;
@@ -236,8 +237,36 @@ pub fn run() {
             tauri_app.manage(shared);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Lampstand");
+        .on_page_load(|webview, payload| {
+            // A service restored after a crash was loaded before the UI
+            // was listening; a reloaded webview has forgotten it.
+            // This runs on the main thread, which never locks `App`.
+            if payload.event() == PageLoadEvent::Finished {
+                if let Some(shared) = webview.try_state::<Shared>() {
+                    let app = shared.app.clone();
+                    tauri::async_runtime::spawn_blocking(move || lock(&app).announce());
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Lampstand")
+        .run(|handle, event| {
+            if let RunEvent::Exit = event {
+                // A clean quit: do not reopen the service next time. The
+                // main thread never locks `App` (a request may be waiting
+                // on it), so another thread does, and the quit waits for it
+                // only briefly; if it times out, the next start restores.
+                if let Some(shared) = handle.try_state::<Shared>() {
+                    let app = shared.app.clone();
+                    let (done, wait) = mpsc::channel();
+                    std::thread::spawn(move || {
+                        lock(&app).closing();
+                        let _ = done.send(());
+                    });
+                    let _ = wait.recv_timeout(Duration::from_secs(1));
+                }
+            }
+        });
 }
 
 /// Starts the render thread, opens the app state and starts the app thread.
