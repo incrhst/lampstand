@@ -3147,6 +3147,7 @@ dependencies = [
  "lampstand-render",
  "serde_json",
  "tempfile",
+ "zip 9.0.5",
 ]
 
 [[package]]

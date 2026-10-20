@@ -14,8 +14,8 @@ use deckcraft_model::{Fill, Shape};
 use lampstand_core::geom::Rect;
 use lampstand_core::scene::{HAlign, Outline, Paragraph, Shadow, TextBlock, TextRun, VAlign};
 
-use super::paint;
 use super::SlideCx;
+use super::{limits, paint};
 
 /// What the text block needs from its shape beyond the body itself.
 pub(crate) struct Frame {
@@ -80,7 +80,11 @@ pub(crate) fn block(
     } else {
         r
     };
-    let inset = |v: Option<f64>, d: f64| v.filter(|v| v.is_finite()).unwrap_or(d) as f32;
+    let inset = |v: Option<f64>, d: f32| {
+        v.map_or(d, |v| {
+            limits::clamp(v, -limits::DISTANCE, limits::DISTANCE, d)
+        })
+    };
     let (l, t) = (inset(bp.inset_l, 7.2), inset(bp.inset_t, 3.6));
     let (rr, b) = (inset(bp.inset_r, 7.2), inset(bp.inset_b, 3.6));
     let mut rect = Rect {
@@ -101,16 +105,13 @@ pub(crate) fn block(
             let rp = resolve::run(ctx, shape, para, &run.props);
             let family = resolve::font_family(ctx, &rp);
             sc.deck.check_font(sc.index, &family);
-            let mut text = match &run.kind {
+            let text = match &run.kind {
                 RunKind::Break => "\n".to_string(),
                 RunKind::Field { field } if field == "slidenum" => {
                     sc.deck.pres.slide_number(sc.index).to_string()
                 }
                 _ => run.text.replace('\u{b}', "\n"),
             };
-            if matches!(rp.caps, Some(Caps::All | Caps::Small)) {
-                text = text.to_uppercase();
-            }
             if shadow.is_none() {
                 if let Some(sh) = &rp.shadow {
                     shadow =
@@ -120,16 +121,24 @@ pub(crate) fn block(
             if outline.is_none() {
                 outline = text_outline(ctx, &rp);
             }
-            runs.push(TextRun {
+            let run = TextRun {
                 text,
                 font_family: family,
-                size: (rp.size.unwrap_or(18.0) * scale) as f32,
+                size: font_size(rp.size, scale),
                 weight: if rp.bold.unwrap_or(false) { 700 } else { 400 },
                 italic: rp.italic.unwrap_or(false),
                 underline: rp.underline.as_deref().is_some_and(|u| u != "none"),
                 strike: matches!(rp.strike, Some(Strike::Single | Strike::Double)),
                 color: paint::color(resolve::text_color(ctx, &rp)),
-            });
+            };
+            match rp.caps {
+                Some(Caps::All) => runs.push(TextRun {
+                    text: run.text.to_uppercase(),
+                    ..run
+                }),
+                Some(Caps::Small) => runs.extend(small_caps(run)),
+                _ => runs.push(run),
+            }
         }
         // An empty paragraph still takes a line, at its end-of-paragraph size.
         let empty = runs.iter().all(|r| r.text.is_empty());
@@ -138,7 +147,7 @@ pub(crate) fn block(
             runs = vec![TextRun {
                 text: " ".into(),
                 font_family: resolve::font_family(ctx, &rp),
-                size: (rp.size.unwrap_or(18.0) * scale) as f32,
+                size: font_size(rp.size, scale),
                 weight: 400,
                 italic: false,
                 underline: false,
@@ -148,18 +157,27 @@ pub(crate) fn block(
         }
         let size = runs.iter().map(|r| r.size).fold(0.0_f32, f32::max).max(1.0);
         let first = runs.first().map_or(size, |r| r.size);
+        let pct = |f: f64| limits::clamp(f, 0.0, limits::SPACING_PERCENT, 1.0);
+        let pts = |v: f64| limits::clamp(v, 0.0, limits::SPACING_POINTS, 0.0);
+        let reduce = reduce as f32;
         let line_spacing = match pp.line_spacing {
-            Some(Spacing::Pct(f)) => 1.2 * ((f - reduce).max(f * 0.1).max(0.0)) as f32,
-            Some(Spacing::Pts(v)) => (v * (1.0 - reduce)) as f32 / size,
-            None => 1.2 * (1.0 - reduce) as f32,
+            Some(Spacing::Pct(f)) => 1.2 * (pct(f) - reduce).max(pct(f) * 0.1),
+            Some(Spacing::Pts(v)) => pts(v) * (1.0 - reduce) / size,
+            None => 1.2 * (1.0 - reduce),
         };
         let spacing = |s: Option<Spacing>| match s {
-            Some(Spacing::Pct(f)) => (f as f32) * first * 1.2,
-            Some(Spacing::Pts(v)) => v as f32,
+            Some(Spacing::Pct(f)) => pct(f) * first * 1.2,
+            Some(Spacing::Pts(v)) => pts(v),
             None => 0.0,
         };
-        let margin = pp.margin_left.unwrap_or(0.0).max(0.0) as f32;
-        let hang = pp.indent.unwrap_or(0.0) as f32;
+        // Bounded here: `hang_bullet` turns them into padding.
+        let margin = limits::clamp(pp.margin_left.unwrap_or(0.0), 0.0, limits::TEXT_MARGIN, 0.0);
+        let hang = limits::clamp(
+            pp.indent.unwrap_or(0.0),
+            -limits::TEXT_INDENT,
+            limits::TEXT_INDENT,
+            0.0,
+        );
         let bullet = if empty {
             numbering.skip(para.level);
             None
@@ -238,8 +256,49 @@ fn hang_bullet(p: &mut Paragraph, bullet_at: f32) {
     };
     let em = first.size.max(1.0);
     let room = gap - 0.55 * em * bullet.chars().count() as f32;
-    let spaces = ((room / (0.2 * em)).round() as usize).max(1);
+    let spaces = ((room / (0.2 * em)).round().max(1.0) as usize).min(limits::BULLET_PAD);
     first.text = format!("{bullet}{}{}", "\u{2009}".repeat(spaces), first.text);
+}
+
+/// A run's size in points at the body's autofit scale, within
+/// `ST_TextFontSize`.
+fn font_size(size: Option<f64>, scale: f64) -> f32 {
+    let (lo, hi) = limits::FONT_SIZE;
+    limits::clamp(size.unwrap_or(18.0), lo, hi, 18.0) * scale as f32
+}
+
+/// Small capitals: lower-case letters set as capitals at 80% of the size
+/// (PowerPoint's synthesised small caps, near enough), the rest as written.
+fn small_caps(run: TextRun) -> Vec<TextRun> {
+    let mut out: Vec<TextRun> = Vec::new();
+    let mut piece = String::new();
+    let mut lower = None;
+    let flush = |out: &mut Vec<TextRun>, piece: &mut String, lower: bool| {
+        if piece.is_empty() {
+            return;
+        }
+        let (text, size) = if lower {
+            (piece.to_uppercase(), run.size * 0.8)
+        } else {
+            (piece.clone(), run.size)
+        };
+        out.push(TextRun {
+            text,
+            size,
+            ..run.clone()
+        });
+        piece.clear();
+    };
+    for c in run.text.chars() {
+        let is_lower = c.is_lowercase();
+        if lower.is_some_and(|l| l != is_lower) {
+            flush(&mut out, &mut piece, lower.unwrap_or(false));
+        }
+        lower = Some(is_lower);
+        piece.push(c);
+    }
+    flush(&mut out, &mut piece, lower.unwrap_or(false));
+    out
 }
 
 fn text_outline(ctx: &Ctx, rp: &deckcraft_model::RunProps) -> Option<Outline> {
@@ -248,7 +307,7 @@ fn text_outline(ctx: &Ctx, rp: &deckcraft_model::RunProps) -> Option<Outline> {
         Fill::Solid { color } => paint::color(ctx.color(color, None)),
         _ => return None,
     };
-    let width = line.width.unwrap_or(0.75) as f32;
+    let width = limits::clamp(line.width.unwrap_or(0.75), 0.0, limits::LINE_WIDTH, 0.75);
     // A DrawingML text outline is centred on the glyph edge.
     (width > 0.0).then_some(Outline {
         color,
@@ -281,7 +340,7 @@ impl Numbering {
             }
             Some(Bullet::AutoNum { scheme, start_at }) => {
                 let n = match &self.levels[level] {
-                    Some((s, n)) if s == scheme => n + 1,
+                    Some((s, n)) if s == scheme => n.saturating_add(1),
                     _ => (*start_at).max(1),
                 };
                 self.levels[level] = Some((scheme.clone(), n));
@@ -363,6 +422,54 @@ fn roman(mut n: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run(text: &str, size: f32) -> TextRun {
+        TextRun {
+            text: text.into(),
+            font_family: "Arial".into(),
+            size,
+            weight: 400,
+            italic: false,
+            underline: false,
+            strike: false,
+            color: lampstand_core::geom::Color::BLACK,
+        }
+    }
+
+    #[test]
+    fn a_huge_bullet_gap_is_bounded() {
+        // The review's repro: marL and indent of ±9e18 EMU. They are
+        // clamped where they are read; this is the second line of defence.
+        let mut p = Paragraph {
+            align: HAlign::Left,
+            line_spacing: 1.2,
+            space_before: 0.0,
+            space_after: 0.0,
+            indent: 7.0e14,
+            bullet: Some("•".into()),
+            runs: vec![run("Point", 20.0)],
+        };
+        hang_bullet(&mut p, 1.0);
+        assert!(p.runs[0].text.chars().count() <= 1 + limits::BULLET_PAD + 5);
+    }
+
+    #[test]
+    fn font_sizes_stay_in_the_schema_range() {
+        assert_eq!(font_size(Some(1.0e15), 1.0), 4000.0);
+        assert_eq!(font_size(Some(-3.0), 1.0), 1.0);
+        assert_eq!(font_size(Some(f64::NAN), 0.5), 9.0);
+    }
+
+    #[test]
+    fn small_caps_shrink_only_the_lower_case() {
+        let got: Vec<(String, f32)> = small_caps(run("Hello World", 20.0))
+            .into_iter()
+            .map(|r| (r.text, r.size))
+            .collect();
+        let want = [("H", 20.0), ("ELLO", 16.0), (" W", 20.0), ("ORLD", 16.0)]
+            .map(|(t, s)| (t.to_string(), s));
+        assert_eq!(got, want);
+    }
 
     #[test]
     fn auto_numbers_follow_powerpoint_schemes() {

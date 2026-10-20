@@ -105,6 +105,13 @@ pub enum ImportError {
     /// Password-protected PPTX (an encrypted OLE container).
     Encrypted,
     Corrupt(String),
+    /// The deck would unpack to more than `limit` bytes (its zip directory
+    /// says `unpacked`). Too big to hold in memory; embedded video this
+    /// large should be linked or added as a media item instead.
+    TooLarge {
+        unpacked: u64,
+        limit: u64,
+    },
 }
 
 /// Parses a PPTX file (PowerPoint, Keynote or Google Slides export).

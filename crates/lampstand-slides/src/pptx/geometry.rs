@@ -6,7 +6,7 @@
 //! rectangle, and the slide gets a fidelity issue.
 
 use deckcraft_geom::preset::{self, FillMode, Geometry, SubPath};
-use deckcraft_geom::{BezPath, PathEl};
+use deckcraft_geom::{BezPath, KurboShape, PathEl};
 use deckcraft_model::{Geom, Shape};
 use lampstand_core::geom::Point;
 use lampstand_core::scene::PathCommand;
@@ -66,6 +66,18 @@ pub(crate) const COMMON_PRESETS: [&str; 40] = [
 /// A shape's geometry at its size on the slide, and whether its preset was
 /// unknown (and is drawn as its bounding rectangle).
 pub(crate) fn geometry(shape: &Shape, w: f64, h: f64) -> (Geometry, bool) {
+    let (mut g, unknown) = build(shape, w, h);
+    // Our scenes fill non-zero; make even-odd sub-paths fill the same way.
+    for sp in &mut g.paths {
+        if sp.even_odd {
+            sp.path = nonzero_from_even_odd(&sp.path);
+            sp.even_odd = false;
+        }
+    }
+    (g, unknown)
+}
+
+fn build(shape: &Shape, w: f64, h: f64) -> (Geometry, bool) {
     let full = deckcraft_geom::Rect::new(0.0, 0.0, w, h);
     match &shape.geom {
         Geom::Preset { name, adj } => match preset::build(name, w, h, adj) {
@@ -97,6 +109,49 @@ pub(crate) fn geometry(shape: &Shape, w: f64, h: f64) -> (Geometry, bool) {
             )
         }
     }
+}
+
+/// Contours in one even-odd sub-path, rewound so the non-zero rule (the
+/// only one scenes have) fills the same area: a contour inside an even
+/// number of others runs clockwise, one inside an odd number runs
+/// anticlockwise. DeckCraft winds the holes of `donut`, `frame`,
+/// `noSmoking` and `funnel` the same way as their outlines, and custom
+/// shapes (converted icons, outlined text) can wind them either way.
+/// Contours that cross each other are left as they are.
+fn nonzero_from_even_odd(path: &BezPath) -> BezPath {
+    // Quadratic in the number of contours; icons with more are left alone.
+    const MAX_CONTOURS: usize = 256;
+    let contours: Vec<BezPath> = path
+        .subpaths()
+        .map(|els| BezPath::from_vec(els.to_vec()))
+        .collect();
+    if contours.len() < 2 || contours.len() > MAX_CONTOURS {
+        return path.clone();
+    }
+    let mut out = BezPath::new();
+    for (i, contour) in contours.iter().enumerate() {
+        let area = contour.area();
+        let start = match contour.elements().first() {
+            Some(PathEl::MoveTo(p)) => *p,
+            _ => {
+                out.extend(contour.iter());
+                continue;
+            }
+        };
+        let depth = contours
+            .iter()
+            .enumerate()
+            .filter(|(j, other)| *j != i && other.winding(start) != 0)
+            .count();
+        // kurbo's area is positive for clockwise contours in y-down space.
+        let want_positive = depth % 2 == 0;
+        if area != 0.0 && (area > 0.0) != want_positive {
+            out.extend(contour.reverse_subpaths().iter());
+        } else {
+            out.extend(contour.iter());
+        }
+    }
+    out
 }
 
 fn rect_geometry(w: f64, h: f64) -> Geometry {
@@ -136,6 +191,18 @@ pub(crate) fn commands(path: &BezPath) -> Vec<PathCommand> {
         x: q.x as f32,
         y: q.y as f32,
     };
+    let ok = |p: &deckcraft_geom::Point| p.x.is_finite() && p.y.is_finite();
+    let finite = path.elements().iter().all(|el| match el {
+        PathEl::MoveTo(a) | PathEl::LineTo(a) => ok(a),
+        PathEl::QuadTo(a, b) => ok(a) && ok(b),
+        PathEl::CurveTo(a, b, c) => ok(a) && ok(b) && ok(c),
+        PathEl::ClosePath => true,
+    });
+    // A point that is not a number drops the whole sub-path: dropping just
+    // that segment would join its neighbours with a stray line.
+    if !finite {
+        return Vec::new();
+    }
     path.elements()
         .iter()
         .map(|el| match *el {
@@ -144,10 +211,6 @@ pub(crate) fn commands(path: &BezPath) -> Vec<PathCommand> {
             PathEl::QuadTo(a, b) => PathCommand::QuadTo(p(a), p(b)),
             PathEl::CurveTo(a, b, c) => PathCommand::CubicTo(p(a), p(b), p(c)),
             PathEl::ClosePath => PathCommand::Close,
-        })
-        .filter(|c| match c {
-            PathCommand::MoveTo(a) | PathCommand::LineTo(a) => a.x.is_finite() && a.y.is_finite(),
-            _ => true,
         })
         .collect()
 }
@@ -402,6 +465,64 @@ mod tests {
                 PathCommand::LineTo(p(100.0, 45.0)),
             ]
         );
+    }
+
+    /// Signed areas of a path's contours.
+    fn contour_areas(path: &BezPath) -> Vec<f64> {
+        path.subpaths()
+            .map(|els| BezPath::from_vec(els.to_vec()).area())
+            .collect()
+    }
+
+    #[test]
+    fn holes_wind_against_their_outlines() {
+        for name in ["donut", "frame", "noSmoking", "funnel"] {
+            let shape = Shape {
+                geom: Geom::preset(name),
+                ..Default::default()
+            };
+            let (g, _) = geometry(&shape, 200.0, 100.0);
+            let holed = g
+                .paths
+                .iter()
+                .map(|p| contour_areas(&p.path))
+                .find(|a| a.len() >= 2)
+                .unwrap_or_else(|| panic!("{name} has no hole"));
+            // The outline and the hole (the first two contours) now wind
+            // opposite ways, so non-zero leaves the hole empty.
+            assert!(holed[0] * holed[1] < 0.0, "{name}: {holed:?}");
+            assert!(g.paths.iter().all(|p| !p.even_odd));
+        }
+    }
+
+    #[test]
+    fn a_custom_icon_keeps_its_holes() {
+        // Outer square and inner square wound the same way; even-odd made
+        // the inner one a hole.
+        let shape = Shape {
+            geom: Geom::Custom {
+                paths: vec![deckcraft_model::CustomPath {
+                    w: 10.0,
+                    h: 10.0,
+                    d: "M 0 0 L 10 0 L 10 10 L 0 10 Z M 3 3 L 7 3 L 7 7 L 3 7 Z".into(),
+                    ..Default::default()
+                }],
+            },
+            ..Default::default()
+        };
+        let (g, _) = geometry(&shape, 10.0, 10.0);
+        let areas = contour_areas(&g.paths[0].path);
+        assert_eq!(areas.len(), 2);
+        assert!(areas[0] * areas[1] < 0.0, "{areas:?}");
+    }
+
+    #[test]
+    fn a_sub_path_with_a_point_that_is_not_a_number_is_dropped() {
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((10.0, 0.0));
+        p.curve_to((f64::NAN, 1.0), (2.0, 2.0), (3.0, 3.0));
+        assert!(commands(&p).is_empty());
     }
 
     #[test]

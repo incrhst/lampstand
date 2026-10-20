@@ -12,7 +12,7 @@ use lampstand_core::scene::{
 
 use super::geometry::{self, commands};
 use super::text::{self, Frame};
-use super::{paint, table, SlideCx};
+use super::{limits, paint, table, SlideCx};
 use crate::IssueKind;
 
 /// Deeper nesting than any real deck; a hostile file stops here.
@@ -40,13 +40,17 @@ impl Local {
         let sy = m.c.hypot(m.d);
         let ok = |k: f32| k.is_finite() && k > 1e-6;
         let (sx, sy) = (if ok(sx) { sx } else { 1.0 }, if ok(sy) { sy } else { 1.0 });
-        let (w, h) = (x.w as f32 * sx, x.h as f32 * sy);
-        if !(w.is_finite() && h.is_finite()) {
+        let side = |v: f64, k: f32| v * f64::from(k);
+        let (w, h) = (side(x.w, sx), side(x.h, sy));
+        if !(w.is_finite() && h.is_finite() && m.e.is_finite() && m.f.is_finite()) {
             return None;
         }
+        // Boxes past any visible size (only a hostile file has them) are
+        // cut down, so preset geometry is built at a sane size.
+        let max = limits::SHAPE_SIDE as f32;
         Some(Self {
-            w: w.max(0.0),
-            h: h.max(0.0),
+            w: limits::clamp(w, 0.0, max, 0.0),
+            h: limits::clamp(h, 0.0, max, 0.0),
             transform: Transform::scale(1.0 / sx, 1.0 / sy).then(m),
         })
     }
@@ -444,23 +448,23 @@ impl SlideCx<'_, '_> {
         let mut rect = local.rect();
         let fit = match &pf.mode {
             PictureMode::Stretch { fill_rect } => {
-                let [l, t, r, b] = fill_rect.map(|v| if v.is_finite() { v as f32 } else { 0.0 });
+                let [l, t, r, b] = insets(*fill_rect);
                 rect = Rect {
                     x: l * local.w,
                     y: t * local.h,
-                    width: local.w * (1.0 - l - r),
-                    height: local.h * (1.0 - t - b),
+                    width: local.w * (1.0 - l - r).max(0.0),
+                    height: local.h * (1.0 - t - b).max(0.0),
                 };
                 Fit::Fill
             }
             PictureMode::Tile { .. } => Fit::Cover,
         };
-        let [l, t, r, b] = pf.crop.map(|v| if v.is_finite() { v as f32 } else { 0.0 });
+        let [l, t, r, b] = insets(pf.crop);
         let crop = (pf.crop.iter().any(|v| *v != 0.0)).then_some(Rect {
             x: l,
             y: t,
-            width: 1.0 - l - r,
-            height: 1.0 - t - b,
+            width: (1.0 - l - r).max(1e-3),
+            height: (1.0 - t - b).max(1e-3),
         });
         Some(NodeKind::Image(ImageNode {
             blob,
@@ -509,6 +513,12 @@ impl SlideCx<'_, '_> {
         }
         out
     }
+}
+
+/// `srcRect` or `fillRect` insets (left, top, right, bottom) as fractions of
+/// the box: negative pads, and no inset can take more than 99% of it.
+fn insets(v: [f64; 4]) -> [f32; 4] {
+    v.map(|v| limits::clamp(v, -10.0, 0.99, 0.0))
 }
 
 /// `t` applied about `c`.

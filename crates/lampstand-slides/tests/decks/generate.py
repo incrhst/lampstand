@@ -594,6 +594,15 @@ def deck_04():
             shp.fill.fore_color.rgb = RGBColor.from_string(fills[i % 8])
             shp.line.color.rgb = RGBColor(0x22, 0x22, 0x22)
             shp.line.width = Pt(1.5)
+    # Presets with holes: DeckCraft builds them as even-odd paths, and
+    # scenes fill non-zero, so the parser rewinds the holes.
+    s = title_only(prs, "Shapes with holes")
+    for i, name in enumerate(("DONUT", "FRAME", "NO_SYMBOL", "FUNNEL")):
+        shp = s.shapes.add_shape(getattr(MSO_SHAPE, name), Inches(0.7 + i * 3.1), Inches(2.2), Inches(2.6), Inches(2.6))
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = RGBColor.from_string(fills[i])
+        shp.line.color.rgb = RGBColor(0x22, 0x22, 0x22)
+        shp.line.width = Pt(1.5)
     save(prs, "04-preset-shapes.pptx")
 
 

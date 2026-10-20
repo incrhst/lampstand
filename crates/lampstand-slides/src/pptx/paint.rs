@@ -8,6 +8,8 @@ use deckcraft_model::style::{Fill, GradientShape, Line};
 use lampstand_core::geom::{Color, Point, Transform};
 use lampstand_core::scene::{GradientStop, Paint, Shadow, Stroke};
 
+use super::limits;
+
 pub(crate) fn color(c: Rgba) -> Color {
     Color {
         r: c.r,
@@ -186,7 +188,7 @@ pub(crate) fn stroke(ctx: &Ctx, line: &Line, ph: Option<Rgba>, w: f32, h: f32) -
         Fill::Solid { .. } | Fill::Gradient(_) | Fill::Pattern(_) => paint(ctx, fill, ph, w, h)?,
         _ => return None,
     };
-    let width = line.width.unwrap_or(0.75).max(0.0) as f32;
+    let width = limits::clamp(line.width.unwrap_or(0.75), 0.0, limits::LINE_WIDTH, 0.75);
     if width <= 0.0 {
         return None;
     }
@@ -195,12 +197,27 @@ pub(crate) fn stroke(ctx: &Ctx, line: &Line, ph: Option<Rgba>, w: f32, h: f32) -
         .as_ref()
         .map(|d| d.pattern())
         .filter(|p| !p.is_empty())
-        .map(|p| {
-            p.into_iter()
-                .map(|v| (v as f32 * width).max(0.01))
-                .collect::<Vec<f32>>()
-        });
+        .map(|p| dash_pattern(&p, width))
+        .filter(|d| !d.is_empty());
     Some(Stroke { paint, width, dash })
+}
+
+/// Dash and gap lengths in points from a pattern in multiples of the line
+/// width. A hostile custom pattern (thousands of entries, or lengths near
+/// zero along a long line) would have the renderer cut millions of
+/// segments, so entries and lengths are bounded.
+fn dash_pattern(pattern: &[f64], width: f32) -> Vec<f32> {
+    let (lo, hi) = limits::DASH;
+    let mut out: Vec<f32> = pattern
+        .iter()
+        .take(limits::DASH_ENTRIES)
+        .map(|v| limits::clamp(*v, lo, hi, 1.0) * width.max(0.1))
+        .collect();
+    // Dash, gap pairs.
+    if out.len() % 2 == 1 {
+        out.pop();
+    }
+    out
 }
 
 /// The colour a line is drawn in (for arrowheads): its solid colour, or a
@@ -227,8 +244,9 @@ pub(crate) fn shadow(
         return None;
     }
     let c = color(ctx.color(&sh.color, ph));
-    let dir = (sh.dir as f32).to_radians();
-    let (dx, dy) = (dir.cos() * sh.dist as f32, dir.sin() * sh.dist as f32);
+    let dir = limits::clamp(sh.dir, -360.0, 720.0, 0.0).to_radians();
+    let dist = limits::clamp(sh.dist, 0.0, limits::DISTANCE, 0.0);
+    let (dx, dy) = (dir.cos() * dist, dir.sin() * dist);
     let offset = if sh.rotate_with_shape {
         Point { x: dx, y: dy }
     } else {
@@ -240,7 +258,7 @@ pub(crate) fn shadow(
     Some(Shadow {
         color: c,
         offset,
-        blur: (sh.blur.max(0.0) as f32) * 2.0 / 3.0,
+        blur: limits::clamp(sh.blur, 0.0, limits::DISTANCE, 0.0) * 2.0 / 3.0,
     })
 }
 
@@ -285,6 +303,16 @@ mod tests {
             mix(Color::WHITE, Color::BLACK, 0.25),
             Color::rgb(191, 191, 191)
         );
+    }
+
+    #[test]
+    fn hostile_dash_patterns_are_bounded() {
+        let many = vec![1.0e-9; 100_000];
+        let got = dash_pattern(&many, 2.0);
+        assert_eq!(got.len(), limits::DASH_ENTRIES);
+        assert!(got.iter().all(|d| *d >= 0.2));
+        let huge = dash_pattern(&[1.0e300, f64::NAN], 2.0);
+        assert_eq!(huge, vec![2000.0, 2.0]);
     }
 
     #[test]

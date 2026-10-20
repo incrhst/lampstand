@@ -21,7 +21,7 @@ use lampstand_core::scene::{Node, NodeKind, Paint, PathCommand, PathNode, Stroke
 
 use super::shape::{node, Local};
 use super::text::{self, Frame};
-use super::{geometry, paint, SlideCx};
+use super::{geometry, limits, paint, SlideCx};
 
 /// A cell's look from the table style.
 #[derive(Default)]
@@ -53,8 +53,12 @@ pub(crate) fn nodes(
             if cell.is_covered() {
                 continue;
             }
-            let c1 = (c + cell.grid_span.max(1) as usize).min(xs.len() - 1);
-            let r1 = (r + cell.row_span.max(1) as usize).min(ys.len() - 1);
+            let c1 = c
+                .saturating_add(cell.grid_span.max(1) as usize)
+                .min(xs.len() - 1);
+            let r1 = r
+                .saturating_add(cell.row_span.max(1) as usize)
+                .min(ys.len() - 1);
             let (Some(&x0), Some(&x1), Some(&y0), Some(&y1)) =
                 (xs.get(c), xs.get(c1), ys.get(r), ys.get(r1))
             else {
@@ -152,7 +156,8 @@ fn edges(sizes: &[f64]) -> Vec<f64> {
     let mut at = 0.0;
     out.push(at);
     for s in sizes {
-        at += if s.is_finite() { s.max(0.0) } else { 0.0 };
+        // Each column or row is at most as big as a shape can be.
+        at += f64::from(limits::clamp(*s, 0.0, limits::SHAPE_SIDE as f32, 0.0));
         out.push(at);
     }
     out
@@ -209,8 +214,8 @@ fn look_def(ctx: &Ctx, def: &TableStyleDef, t: &Table, r: usize, c: usize) -> Lo
     let (rows, cols) = (t.rows.len(), t.cols.len());
     let (r1, c1) = t.cell(r, c).map_or((r, c), |cell| {
         (
-            r + cell.row_span.max(1) as usize - 1,
-            c + cell.grid_span.max(1) as usize - 1,
+            r.saturating_add(cell.row_span.max(1) as usize - 1),
+            c.saturating_add(cell.grid_span.max(1) as usize - 1),
         )
     });
     let last_r = rows.saturating_sub(1);
@@ -424,6 +429,11 @@ fn builtin(ctx: &Ctx, t: &Table, r: usize, c: usize) -> Look {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edges_are_bounded() {
+        assert_eq!(edges(&[1.0e300, f64::NAN]), vec![0.0, 100_000.0, 100_000.0]);
+    }
 
     #[test]
     fn edges_run_on_from_zero() {

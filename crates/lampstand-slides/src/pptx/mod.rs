@@ -20,8 +20,13 @@
 //! Not resolved here: text measurement. `normAutofit` applies the scale the
 //! file was saved with (as PowerPoint does on open), and table rows keep
 //! their stored heights.
+//!
+//! Decks are untrusted (guest speakers send them): numbers from the XML go
+//! through `limits` before they size, repeat or allocate anything, and a
+//! deck that would unpack past `MAX_UNPACKED_BYTES` is refused.
 
 mod geometry;
+mod limits;
 mod paint;
 mod shape;
 mod table;
@@ -38,6 +43,13 @@ use lampstand_core::{FontLookup, FontMatch};
 
 use crate::{DeckSlide, FidelityReport, ImportError, Issue, IssueKind, MediaPart, ParsedDeck};
 
+#[cfg(test)]
+mod tests;
+
+/// The most a deck may unpack to: the sizes its zip directory declares,
+/// summed. The parsed deck holds that much in memory, once.
+pub(crate) const MAX_UNPACKED_BYTES: u64 = 1 << 30;
+
 /// Parses a PPTX file. See `crate::import_pptx`.
 pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
     if deckcraft_pptx::is_encrypted(bytes) {
@@ -46,33 +58,77 @@ pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck,
     if !deckcraft_pptx::sniff(bytes) {
         return Err(ImportError::NotAPresentation);
     }
+    // DeckCraft allows 2 GiB of inflated parts. Check our own, lower limit
+    // first, from the zip directory, before anything is inflated.
+    let unpacked = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .ok()
+        .and_then(|z| z.decompressed_size())
+        .unwrap_or(0);
+    if unpacked > u128::from(MAX_UNPACKED_BYTES) {
+        return Err(ImportError::TooLarge {
+            unpacked: u64::try_from(unpacked).unwrap_or(u64::MAX),
+            limit: MAX_UNPACKED_BYTES,
+        });
+    }
     let (pres, skipped) = deckcraft_pptx::import_checked(bytes).map_err(|e| match e {
         deckcraft_pptx::PptxError::NotPptx(_) => ImportError::NotAPresentation,
         other => ImportError::Corrupt(other.to_string()),
     })?;
-    let mut deck = Deck::new(&pres, fonts);
-    for part in skipped {
-        deck.issue(
-            None,
-            IssueKind::UnsupportedContent {
-                what: format!("slide part {part} could not be read"),
-            },
-        );
-    }
-    let mut slides = Vec::with_capacity(pres.slides.len());
-    for (index, slide) in pres.slides.iter().enumerate() {
-        slides.push(deck.slide(index, slide));
-    }
     let size = slide_size(&pres);
+    let (slides, issues, used) = {
+        let mut deck = Deck::new(&pres, fonts);
+        for part in skipped {
+            deck.issue(
+                None,
+                IssueKind::UnsupportedContent {
+                    what: format!("slide part {part} could not be read"),
+                },
+            );
+        }
+        let mut slides = Vec::with_capacity(pres.slides.len());
+        for (index, slide) in pres.slides.iter().enumerate() {
+            slides.push(deck.slide(index, slide));
+        }
+        (slides, deck.issues, deck.used)
+    };
     Ok(ParsedDeck {
         width: size.0,
         height: size.1,
         slides,
-        media: deck.media,
-        report: FidelityReport {
-            issues: deck.issues,
-        },
+        media: take_media(pres, used),
+        report: FidelityReport { issues },
     })
+}
+
+/// The media the slides use, moved out of the presentation rather than
+/// copied (a deck's video can be most of its size).
+fn take_media(
+    mut pres: Presentation,
+    used: BTreeMap<BlobHash, Used>,
+) -> BTreeMap<BlobHash, MediaPart> {
+    let mut out = BTreeMap::new();
+    for (hash, used) in used {
+        let Some(item) = pres.media.iter_mut().find(|m| m.id == used.id) else {
+            continue;
+        };
+        let data = std::mem::take(&mut item.data);
+        let bytes =
+            std::sync::Arc::try_unwrap(data).unwrap_or_else(|shared| shared.as_ref().clone());
+        out.insert(
+            hash,
+            MediaPart {
+                content_type: used.content_type,
+                bytes,
+            },
+        );
+    }
+    out
+}
+
+/// A media item a slide uses: which one, and its content type.
+struct Used {
+    id: MediaId,
+    content_type: String,
 }
 
 /// The slide size in points. EMU sizes rarely land on whole points
@@ -84,7 +140,9 @@ fn slide_size(pres: &Presentation) -> (f32, f32) {
             return fallback;
         }
         let r = v.round();
-        (if (v - r).abs() < 0.05 { r } else { v }) as f32
+        let v = if (v - r).abs() < 0.05 { r } else { v };
+        let (lo, hi) = limits::SLIDE_SIDE;
+        limits::clamp(v, lo, hi, fallback)
     };
     (
         side(pres.slide_size.width, 960.0),
@@ -97,7 +155,7 @@ fn slide_size(pres: &Presentation) -> (f32, f32) {
 pub(crate) struct Deck<'a> {
     pres: &'a Presentation,
     fonts: &'a dyn FontLookup,
-    media: BTreeMap<BlobHash, MediaPart>,
+    used: BTreeMap<BlobHash, Used>,
     by_id: BTreeMap<MediaId, BlobHash>,
     issues: Vec<Issue>,
     fonts_checked: BTreeSet<String>,
@@ -109,7 +167,7 @@ impl<'a> Deck<'a> {
         Self {
             pres,
             fonts,
-            media: BTreeMap::new(),
+            used: BTreeMap::new(),
             by_id: BTreeMap::new(),
             issues: Vec::new(),
             fonts_checked: BTreeSet::new(),
@@ -127,7 +185,14 @@ impl<'a> Deck<'a> {
                 for s in &slide.shapes {
                     sc.shape(&ctx, s, Transform::IDENTITY, 0);
                 }
-                sc.nodes
+                if sc.exhausted {
+                    sc.issue(IssueKind::UnsupportedContent {
+                        what: "a slide with more shapes than node IDs; left blank".into(),
+                    });
+                    Vec::new()
+                } else {
+                    sc.nodes
+                }
             }
             None => Vec::new(),
         };
@@ -192,9 +257,9 @@ impl<'a> Deck<'a> {
             return None;
         }
         let hash = BlobHash::of(&item.data);
-        self.media.entry(hash).or_insert_with(|| MediaPart {
+        self.used.entry(hash).or_insert_with(|| Used {
+            id,
             content_type: content_type(&item.content_type, &item.name),
-            bytes: item.data.as_ref().clone(),
         });
         self.by_id.insert(id, hash);
         Some(hash)
@@ -247,9 +312,16 @@ pub(crate) struct SlideCx<'d, 'a> {
     pub(crate) index: usize,
     pub(crate) nodes: Vec<Node>,
     next_id: NodeId,
+    /// `next_id` has run up to `COMPOSITOR_NODE_BASE` and started again
+    /// from 1, looking for gaps.
+    wrapped: bool,
+    /// Every content ID is in use: the slide cannot be mapped.
+    exhausted: bool,
+    /// IDs handed out so far.
+    issued: BTreeSet<NodeId>,
     /// The slide's background, for shapes filled with it (`useBgFill`).
     pub(crate) background: Option<lampstand_core::scene::Paint>,
-    /// IDs the slide's own shapes use.
+    /// IDs the slide's own shapes use and have not claimed yet.
     taken: BTreeSet<NodeId>,
     /// Mapping master or layout graphics: no shape keeps its own ID.
     backdrop: bool,
@@ -262,7 +334,7 @@ impl<'d, 'a> SlideCx<'d, 'a> {
     fn new(deck: &'d mut Deck<'a>, index: usize, slide: &Slide) -> Self {
         let mut taken = BTreeSet::new();
         deckcraft_model::walk(&slide.shapes, &mut |s, _| {
-            if s.id.0 < COMPOSITOR_NODE_BASE {
+            if (1..COMPOSITOR_NODE_BASE).contains(&s.id.0) {
                 taken.insert(s.id.0);
             }
         });
@@ -272,6 +344,9 @@ impl<'d, 'a> SlideCx<'d, 'a> {
             index,
             nodes: Vec::new(),
             next_id,
+            wrapped: false,
+            exhausted: false,
+            issued: BTreeSet::new(),
             background: None,
             taken,
             backdrop: false,
@@ -279,20 +354,35 @@ impl<'d, 'a> SlideCx<'d, 'a> {
         }
     }
 
-    /// A fresh node ID for a node the mapping adds.
+    /// A fresh node ID for a node the mapping adds: after the slide's
+    /// largest shape ID, then any gap below it. IDs are never reused and
+    /// never reach `COMPOSITOR_NODE_BASE`. If every content ID is in use
+    /// the slide is marked exhausted (and dropped by `Deck::slide`).
     pub(crate) fn fresh_id(&mut self) -> NodeId {
-        while self.taken.contains(&self.next_id) {
+        loop {
+            if self.next_id >= COMPOSITOR_NODE_BASE {
+                if self.wrapped {
+                    self.exhausted = true;
+                    return 0;
+                }
+                self.wrapped = true;
+                self.next_id = 1;
+            }
+            let id = self.next_id;
             self.next_id += 1;
+            if !self.taken.contains(&id) && self.issued.insert(id) {
+                return id;
+            }
         }
-        let id = self.next_id;
-        self.next_id = (self.next_id + 1).min(COMPOSITOR_NODE_BASE - 1);
-        id
     }
 
     /// The node ID for a slide shape: its own ID where it is free.
     pub(crate) fn shape_id(&mut self, own: Option<u32>) -> NodeId {
         match own {
-            Some(id) if !self.backdrop && id < COMPOSITOR_NODE_BASE && self.taken.remove(&id) => id,
+            Some(id) if !self.backdrop && self.taken.remove(&id) => {
+                self.issued.insert(id);
+                id
+            }
             _ => self.fresh_id(),
         }
     }

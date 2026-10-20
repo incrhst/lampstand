@@ -276,9 +276,63 @@ fn common_presets_need_no_fallback() {
         "{:?}",
         deck.report.issues
     );
-    for slide in &deck.slides {
+    for slide in &deck.slides[..2] {
         // Background (2), title, 20 shapes.
         assert_eq!(slide.scene.nodes.len(), 23);
+    }
+}
+
+/// Signed areas of a path's contours, from their points (control points
+/// included, which is enough to tell the winding).
+fn contour_areas(commands: &[PathCommand]) -> Vec<f32> {
+    let mut out = Vec::new();
+    let mut pts: Vec<(f32, f32)> = Vec::new();
+    let mut close = |pts: &mut Vec<(f32, f32)>| {
+        if pts.len() > 2 {
+            let n = pts.len();
+            out.push(
+                (0..n)
+                    .map(|i| {
+                        let (a, b) = (pts[i], pts[(i + 1) % n]);
+                        a.0 * b.1 - b.0 * a.1
+                    })
+                    .sum::<f32>()
+                    / 2.0,
+            );
+        }
+        pts.clear();
+    };
+    for c in commands {
+        match c {
+            PathCommand::MoveTo(p) => {
+                close(&mut pts);
+                pts.push((p.x, p.y));
+            }
+            PathCommand::LineTo(p) => pts.push((p.x, p.y)),
+            PathCommand::QuadTo(a, p) => pts.extend([(a.x, a.y), (p.x, p.y)]),
+            PathCommand::CubicTo(a, b, p) => pts.extend([(a.x, a.y), (b.x, b.y), (p.x, p.y)]),
+            PathCommand::Close => {}
+        }
+    }
+    close(&mut pts);
+    out
+}
+
+#[test]
+fn shapes_with_holes_keep_them() {
+    // Scenes fill non-zero: each hole must wind against its outline.
+    let deck = parse("04-preset-shapes");
+    let holed: Vec<Vec<f32>> = walk(&deck.slides[2].scene.nodes)
+        .into_iter()
+        .filter_map(|n| match &n.kind {
+            NodeKind::Path(p) if p.fill.is_some() => Some(contour_areas(&p.commands)),
+            _ => None,
+        })
+        .filter(|areas| areas.len() >= 2)
+        .collect();
+    assert_eq!(holed.len(), 4, "donut, frame, no-symbol and funnel");
+    for areas in holed {
+        assert!(areas[0] * areas[1] < 0.0, "{areas:?}");
     }
 }
 
@@ -519,13 +573,18 @@ fn rejects_what_is_not_a_presentation() {
         import_pptx(b"hello", &fonts),
         Err(ImportError::NotAPresentation)
     );
-    // An OLE compound file holding an encrypted package.
+    // A password-protected deck (ECMA-376 agile encryption, password
+    // "lampstand"), made with `msoffcrypto-tool -e` from a one-slide
+    // python-pptx deck.
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/encrypted.pptx");
+    let encrypted = std::fs::read(path).unwrap();
+    assert_eq!(import_pptx(&encrypted, &fonts), Err(ImportError::Encrypted));
+    // An OLE compound file that is not an encrypted package.
     let mut ole = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     ole.resize(4096, 0);
-    let err = import_pptx(&ole, &fonts).unwrap_err();
-    assert!(
-        matches!(err, ImportError::NotAPresentation | ImportError::Encrypted),
-        "{err:?}"
+    assert_eq!(
+        import_pptx(&ole, &fonts),
+        Err(ImportError::NotAPresentation)
     );
 }
 
