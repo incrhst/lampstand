@@ -58,7 +58,7 @@
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView onsetup={() => openSetup("screens")} />
+      <OperateView onsetup={() => openSetup("screens")} onplan={() => (screen = "plan")} />
     {:else}
       <SetupView tab={setupTab} onchange={(tab) => (setupTab = tab)} />
     {/if}

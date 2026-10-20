@@ -2,7 +2,7 @@
      the slides of the item in view in the middle, Next and notes on the
      right. T47 replaces this with the full operator view. -->
 <script lang="ts">
-  import { request, send, type Command, type Cursor, type Service } from "../../lib/api";
+  import { request, send, type Command, type Cursor, type Service, type ServiceSummary } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { nextSlide } from "../../lib/cursor";
@@ -16,9 +16,30 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import Banner from "../../lib/kit/Banner.svelte";
+  import { formatWhen } from "../../lib/when";
 
-  /** Opens Setup › Screens, for the prompt shown when no screen is on. */
-  let { onsetup }: { onsetup?: () => void } = $props();
+  /** Opens Setup › Screens (the no-screen prompt) and Plan (the blank view). */
+  let { onsetup, onplan }: { onsetup?: () => void; onplan?: () => void } = $props();
+
+  // With no service open, offer the next few to open: the core lists
+  // upcoming ones first, then undated ones newest first.
+  const OFFERED = 5;
+  let services: ServiceSummary[] = $state([]);
+  $effect(() => {
+    if (live.loaded) return;
+    request({ area: "Service", request: "List" }, "Services")
+      .then((all) => (services = all.slice(0, OFFERED)))
+      .catch(report);
+  });
+
+  async function openService(id: string) {
+    try {
+      live.planning = id;
+      live.loaded = await request({ area: "Service", request: { Open: id } }, "Loaded");
+    } catch (e) {
+      report(e);
+    }
+  }
   let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
 
   async function command(c: Command) {
@@ -141,8 +162,30 @@
 {#if !live.loaded}
   <div class="none">
     {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-    <Icon name="play" size={20} />
-    <p class="muted">No service is open. Open one from Plan to go live.</p>
+    <div class="pick">
+      <div class="pick-head">
+        <h1>No service is open</h1>
+        <p class="muted">Open one to go live, or plan a new one.</p>
+      </div>
+      {#if services.length > 0}
+        <ul class="plain pick-list" aria-label="Services to open">
+          {#each services as svc (svc.id)}
+            <ListRow title={svc.title} subtitle={formatWhen(svc.starts_at, svc.time_zone)} divided>
+              {#snippet trailing()}
+                <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  Open
+                </Button>
+              {/snippet}
+            </ListRow>
+          {/each}
+        </ul>
+      {/if}
+      {#if onplan}
+        <div class="pick-foot">
+          <Button icon="calendar" onclick={onplan}>{services.length > 0 ? "All services in Plan" : "Go to Plan"}</Button>
+        </div>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="operate">
@@ -340,6 +383,31 @@
 
   .no-screen {
     margin-bottom: 1rem;
+  }
+  .pick {
+    width: min(32rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .pick-head {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  .pick-head h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .pick-head p {
+    margin-top: 0.25rem;
+  }
+  .pick-list {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+  .pick-foot {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
   }
   .none .no-screen {
     width: min(36rem, calc(100% - 2rem));
