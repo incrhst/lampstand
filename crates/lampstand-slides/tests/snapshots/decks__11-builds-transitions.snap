@@ -1,0 +1,2275 @@
+---
+source: crates/lampstand-slides/tests/decks.rs
+expression: value
+---
+{
+  "height": 540.0,
+  "issues": [
+    "Issue { slide: Some(0), kind: MissingFont { requested: \"Calibri\", substitute: Some(\"Carlito\") } }",
+    "Issue { slide: Some(3), kind: ApproximatedEffect { name: \"Teeter\", used: \"Pulse\" } }",
+    "Issue { slide: Some(3), kind: UnsupportedEffect { name: \"Lines\" } }",
+    "Issue { slide: Some(4), kind: ApproximatedEffect { name: \"Split transition\", used: \"Fade\" } }"
+  ],
+  "media": [],
+  "slides": [
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Builds and transitions",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 108.55,
+                  "width": 597.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 54.0,
+              "f": 167.75
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 137,
+                          "g": 137,
+                          "r": 137
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 32.0,
+                        "strike": false,
+                        "text": "Welcome",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 7.68
+                  }
+                ],
+                "rect": {
+                  "height": 130.8,
+                  "width": 489.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Top"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 108.0,
+              "f": 306.0
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      },
+      "transition": {
+        "duration_ms": 750,
+        "kind": "Fade"
+      }
+    },
+    {
+      "builds": 3,
+      "hidden": false,
+      "notes": "Reveal one point at a time.\nPause after the second.",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Three points",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 8,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "God is with us",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 36.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "– Even in the valley",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 6.72
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "We are not alone",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "Hope does not disappoint",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        }
+                      ],
+                      "rect": {
+                        "height": 349.18,
+                        "width": 633.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": false
+                },
+                {
+                  "id": 9,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "God is with us",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 36.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "– Even in the valley",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 6.72
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "We are not alone",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "Hope does not disappoint",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        }
+                      ],
+                      "rect": {
+                        "height": 349.18,
+                        "width": 633.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": false
+                },
+                {
+                  "id": 10,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "God is with us",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 36.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "– Even in the valley",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 6.72
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 0,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "We are not alone",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        },
+                        {
+                          "align": "Left",
+                          "bullet": "•",
+                          "indent": 27.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 32.0,
+                              "strike": false,
+                              "text": "Hope does not disappoint",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 7.68
+                        }
+                      ],
+                      "rect": {
+                        "height": 349.18,
+                        "width": 633.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Top"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": false
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 126.0
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      },
+      "steps": [
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "FadeIn",
+            "node": 8
+          }
+        ],
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "FadeIn",
+            "node": 9
+          }
+        ],
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "FadeIn",
+            "node": 10
+          }
+        ]
+      ],
+      "transition": {
+        "duration_ms": 1000,
+        "kind": {
+          "Push": "Down"
+        }
+      }
+    },
+    {
+      "builds": 2,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Fly, wipe and spin",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 8,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 259.2,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 259.2,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 129.6,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 129.6,
+                            "y": 144.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 9,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "Fly in",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 136.8,
+                        "width": 244.8,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 144.0
+            },
+            "visible": false
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Group": [
+                {
+                  "id": 10,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 24.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 235.2,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 248.45,
+                              "y": -0.0
+                            },
+                            {
+                              "x": 259.2,
+                              "y": 10.75
+                            },
+                            {
+                              "x": 259.2,
+                              "y": 24.0
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 259.2,
+                            "y": 120.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 259.2,
+                              "y": 133.25
+                            },
+                            {
+                              "x": 248.45,
+                              "y": 144.0
+                            },
+                            {
+                              "x": 235.2,
+                              "y": 144.0
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 24.0,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 10.75,
+                              "y": 144.0
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 133.25
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 120.0
+                            }
+                          ]
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 24.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": -0.0,
+                              "y": 10.75
+                            },
+                            {
+                              "x": 10.75,
+                              "y": 0.0
+                            },
+                            {
+                              "x": 24.0,
+                              "y": -0.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 129.6,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 129.6,
+                            "y": 144.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 11,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "Wipe up",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 122.74,
+                        "width": 230.74,
+                        "x": 14.23,
+                        "y": 10.63
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 403.2,
+              "f": 144.0
+            },
+            "visible": false
+          }
+        ],
+        "width": 720.0
+      },
+      "steps": [
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "EaseInOut",
+            "effect": {
+              "FlyIn": "Left"
+            },
+            "node": 3
+          },
+          {
+            "delay_ms": 250,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": {
+              "WipeIn": "Down"
+            },
+            "node": 4
+          }
+        ],
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 1000,
+            "easing": "Linear",
+            "effect": {
+              "Spin": 90.0
+            },
+            "node": 3
+          },
+          {
+            "delay_ms": 1000,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "FadeOut",
+            "node": 4
+          }
+        ]
+      ],
+      "transition": {
+        "duration_ms": 500,
+        "kind": {
+          "Wipe": "Up"
+        }
+      }
+    },
+    {
+      "builds": 2,
+      "entry": [
+        {
+          "delay_ms": 0,
+          "duration_ms": 500,
+          "easing": "Linear",
+          "effect": "FadeIn",
+          "node": 3
+        }
+      ],
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 5,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Arrives by itself",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 8,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 259.2,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 259.2,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 129.6,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 129.6,
+                            "y": 144.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 9,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "By itself",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 136.8,
+                        "width": 244.8,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 144.0
+            },
+            "visible": false
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Group": [
+                {
+                  "id": 10,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 259.2,
+                            "y": 72.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 259.2,
+                              "y": 111.76
+                            },
+                            {
+                              "x": 201.18,
+                              "y": 144.0
+                            },
+                            {
+                              "x": 129.6,
+                              "y": 144.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 58.02,
+                              "y": 144.0
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 111.76
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 72.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 0.0,
+                              "y": 32.24
+                            },
+                            {
+                              "x": 58.02,
+                              "y": 0.0
+                            },
+                            {
+                              "x": 129.6,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 201.18,
+                              "y": -0.0
+                            },
+                            {
+                              "x": 259.2,
+                              "y": 32.24
+                            },
+                            {
+                              "x": 259.2,
+                              "y": 72.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 129.6,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 129.6,
+                            "y": 144.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 11,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 28.0,
+                              "strike": false,
+                              "text": "On the click",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 94.62,
+                        "width": 168.88,
+                        "x": 45.16,
+                        "y": 24.69
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 403.2,
+              "f": 144.0
+            },
+            "visible": false
+          }
+        ],
+        "width": 720.0
+      },
+      "steps": [
+        [
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": {
+              "GrowShrink": 1.5
+            },
+            "node": 3
+          },
+          {
+            "delay_ms": 0,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "ZoomIn",
+            "node": 4
+          },
+          {
+            "delay_ms": 500,
+            "duration_ms": 500,
+            "easing": "Linear",
+            "effect": "Pulse",
+            "node": 3
+          }
+        ],
+        []
+      ],
+      "transition": {
+        "duration_ms": 500,
+        "kind": {
+          "Cover": "Right"
+        }
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 3,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 720.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Split transition",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          }
+        ],
+        "width": 720.0
+      },
+      "transition": {
+        "duration_ms": 500,
+        "kind": "Fade"
+      }
+    }
+  ],
+  "width": 720.0
+}

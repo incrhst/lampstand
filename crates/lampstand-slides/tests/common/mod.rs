@@ -127,3 +127,35 @@ pub fn with_copies(name: &str, slides: &[(usize, usize)]) -> Vec<u8> {
         out
     })
 }
+
+/// Deck 07 with each of its pictures replaced by `<!X` and `zeros` zero
+/// bytes, deflated (T87's repro: the XML scan stops at once, and the
+/// entry compresses to almost nothing). Written in chunks, so the zeros
+/// are never held whole.
+pub fn with_zero_media(zeros: usize) -> Vec<u8> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(deck_bytes("07-pictures-media"))).unwrap();
+    let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .large_file(true);
+    let chunk = vec![0_u8; 1 << 20];
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i).unwrap();
+        let name = file.name().unwrap().to_string();
+        let mut data = Vec::new();
+        file.read_to_end(&mut data).unwrap();
+        out.start_file(name.as_str(), options).unwrap();
+        if name.starts_with("ppt/media/image") {
+            out.write_all(b"<!X").unwrap();
+            let mut left = zeros;
+            while left > 0 {
+                let n = left.min(chunk.len());
+                out.write_all(&chunk[..n]).unwrap();
+                left -= n;
+            }
+        } else {
+            out.write_all(&data).unwrap();
+        }
+    }
+    out.finish().unwrap().into_inner()
+}

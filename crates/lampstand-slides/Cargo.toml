@@ -7,6 +7,8 @@ rust-version.workspace = true
 
 [dependencies]
 lampstand-core.workspace = true
+# Groups a slide's animations into click steps (src/pptx/anim.rs).
+deckcraft-anim.workspace = true
 deckcraft-color.workspace = true
 deckcraft-geom.workspace = true
 deckcraft-model.workspace = true

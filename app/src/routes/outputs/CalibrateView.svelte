@@ -75,7 +75,7 @@
 <div class="calibrate">
   <section class="stage" aria-labelledby="calibrate-title">
     <div class="head">
-      <Button variant="ghost" icon="prev" onclick={oncancel}>All outputs</Button>
+      <Button variant="ghost" icon="prev" onclick={oncancel}>All screens</Button>
       <h1 id="calibrate-title">Calibrate {output.name}</h1>
       <Placeholder ticket="T26">Grid on the screen itself</Placeholder>
     </div>

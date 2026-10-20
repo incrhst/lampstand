@@ -10,6 +10,7 @@
 //!
 //! Scenes are in points (1/72 inch); a 16:9 deck is 960 × 540.
 
+mod anim;
 mod pptx;
 
 use std::collections::BTreeMap;
@@ -37,10 +38,14 @@ pub struct MediaPart {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeckSlide {
-    /// The slide before any click: nodes that an entrance build reveals
-    /// have `visible: false`.
+    /// The slide as it arrives, before `entry` plays: nodes that an
+    /// entrance build reveals have `visible: false`.
     pub scene: Scene,
-    /// One entry per click.
+    /// Animations that play by themselves as the slide arrives (PowerPoint
+    /// effects that start "with" or "after previous" before any click).
+    /// Empty for most slides.
+    pub entry: BuildStep,
+    /// One entry per click, after `entry`.
     pub builds: Vec<BuildStep>,
     /// How this slide arrives.
     pub transition: Transition,
@@ -49,17 +54,27 @@ pub struct DeckSlide {
     pub hidden: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BuildStep {
+    /// Each starts `delay_ms` after the click. A text paragraph that builds
+    /// on its own is its own node (a copy of its block showing only that
+    /// paragraph), so it can be targeted like a shape.
     pub animations: Vec<Animation>,
 }
 
 impl DeckSlide {
-    /// The slide as it looks after `step` clicks with every animation
-    /// finished: for jumping straight to a step and for crash recovery.
+    /// The slide as it looks after `entry` and `step` clicks with every
+    /// animation finished: for jumping straight to a step, for thumbnails
+    /// and recomposing, and for crash recovery. Steps past the last are
+    /// the last.
     pub fn scene_at_step(&self, step: usize) -> Scene {
-        let _ = step;
-        todo!("T30")
+        let clicks = self.builds.iter().take(step);
+        anim::after(
+            &self.scene,
+            std::iter::once(&self.entry)
+                .chain(clicks)
+                .map(|b| b.animations.as_slice()),
+        )
     }
 }
 
@@ -121,15 +136,16 @@ pub enum ImportError {
 /// Built on DeckCraft's reader (`docs/decisions/0001-pptx-reader.md`); see
 /// `pptx` for how its model maps onto scenes. Fonts the deck asks for
 /// that `fonts` lacks, shapes and objects drawn approximately or not at
-/// all, and linked media are in `ParsedDeck::report`. Builds and
-/// transitions are T30's: every slide comes back with no build steps and a
-/// cut.
+/// all, effects and transitions shown approximately or left out, and
+/// linked media are in `ParsedDeck::report`. Builds and transitions come
+/// from `p:timing` and `p:transition` (see `pptx::anim`).
 pub fn import_pptx(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
     pptx::import(bytes, fonts)
 }
 
-/// `import_pptx` with the parse budget's memory estimate limited to
-/// `memory` bytes instead of its 512 MB. For `tests/memory.rs`, which
+/// `import_pptx` with the import budget (the parse estimate plus every
+/// entry's inflated bytes twice) limited to `memory` bytes instead of its
+/// 1 GiB. For `tests/memory.rs`, which
 /// measures peak allocation against the budget at a size a debug build
 /// parses quickly; the peak scales with the budget.
 #[doc(hidden)]

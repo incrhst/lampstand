@@ -21,6 +21,7 @@ export * from "./LibraryRequest";
 export * from "./Licence";
 export * from "./LoadedItemView";
 export * from "./LoadedService";
+export * from "./MediaFile";
 export * from "./NearbyView";
 export * from "./Outline";
 export * from "./OutputConfig";

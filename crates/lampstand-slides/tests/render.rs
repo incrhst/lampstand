@@ -1,5 +1,5 @@
 //! T29 acceptance, visual half: every visible slide of the synthetic decks,
-//! drawn by the wgpu renderer (T24) at one pixel per point, against the
+//! fully built, drawn by the wgpu renderer (T24) at one pixel per point, against the
 //! reference render in `tests/decks/ref/`.
 //!
 //! The references are LibreOffice's, not PowerPoint's (see
@@ -38,7 +38,9 @@ const TILE: u32 = 64;
 /// fontScale` and refits text larger (03 slide 3, 10 slide 2), wraps the
 /// Cambria title on 02 slide 2 and a `wrap="none"` box on 03 slide 3,
 /// drops text shadows (10 slide 1) and does not bold table header text
-/// (08, 10 slide 3).
+/// (08, 10 slide 3). On 11 ours is fully built and LibreOffice's is not:
+/// slide 3's first box has spun 90° and its second faded out, and slide
+/// 4's first box has grown to 150%.
 // Measured scores; one happens to be close to 1/π.
 #[allow(clippy::approx_constant)]
 const BASELINE: &[(&str, usize, f64, f64)] = &[
@@ -69,6 +71,11 @@ const BASELINE: &[(&str, usize, f64, f64)] = &[
     ("10-church-service", 2, 0.284, 0.494),
     ("10-church-service", 3, 0.079, 0.324),
     ("10-church-service", 4, 0.144, 0.419),
+    ("11-builds-transitions", 1, 0.081, 0.331),
+    ("11-builds-transitions", 2, 0.145, 0.415),
+    ("11-builds-transitions", 3, 0.184, 0.409),
+    ("11-builds-transitions", 4, 0.153, 0.480),
+    ("11-builds-transitions", 5, 0.064, 0.258),
 ];
 
 struct Blobs {
@@ -162,7 +169,7 @@ fn decks_render_like_their_references() {
         .filter(|p| p.extension().is_some_and(|e| e == "pptx"))
         .collect();
     decks.sort();
-    assert_eq!(decks.len(), 10);
+    assert_eq!(decks.len(), 11);
     for path in decks {
         let name = path.file_stem().unwrap().to_string_lossy().to_string();
         let deck = import_pptx(&std::fs::read(&path).unwrap(), &fonts).unwrap();
@@ -176,7 +183,11 @@ fn decks_render_like_their_references() {
                 continue;
             }
             let (w, h) = (deck.width.round() as u32, deck.height.round() as u32);
-            let image = renderer.render_offscreen(&slide.scene, w, h).unwrap();
+            // Fully built, as LibreOffice draws a slide with builds. Each
+            // paragraph of a paragraph build is its own copy of the text
+            // block, so this also checks the copies line up as one.
+            let built = slide.scene_at_step(slide.builds.len());
+            let image = renderer.render_offscreen(&built, w, h).unwrap();
             let ours = flatten(image.width, image.height, &image.pixels);
             let theirs = image::open(&reference)
                 .unwrap_or_else(|e| panic!("{}: {e}", reference.display()))

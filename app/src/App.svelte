@@ -1,29 +1,50 @@
-<!-- The shell: a top bar with a tab per screen, the screen, and a status
-     bar. Each screen lives in src/routes/<name>/ so T47 to T55 can each
-     own one folder. -->
+<!-- The shell: a top bar with the two weekly jobs (Plan and Present) and
+     Setup apart on the right, the screen, and a status bar whose sync and
+     screens items open Setup. Each screen lives in src/routes/<name>/ so
+     T47 to T55 can each own one folder. -->
 <script lang="ts">
   import PlanView from "./routes/plan/PlanView.svelte";
   import OperateView from "./routes/operate/OperateView.svelte";
-  import OutputsView from "./routes/outputs/OutputsView.svelte";
+  import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
+  import { request } from "./lib/api";
   import { isCalibrated, live, refreshOutputs } from "./lib/state.svelte";
+  import { formatWhen } from "./lib/when";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
-  import DevicesView from "./routes/devices/DevicesView.svelte";
 
+  // The operator view keeps its T47 name in code; volunteers call it Present.
   const screens = [
     { id: "plan", label: "Plan" },
-    { id: "operate", label: "Operate" },
-    { id: "outputs", label: "Outputs" },
-    { id: "devices", label: "Devices" },
+    { id: "operate", label: "Present" },
   ] as const;
-  type Screen = (typeof screens)[number]["id"];
+  type Screen = (typeof screens)[number]["id"] | "setup";
 
   let screen: Screen = $state("plan");
+  let setupTab: SetupTab = $state("screens");
+
+  function openSetup(tab: SetupTab) {
+    setupTab = tab;
+    screen = "setup";
+  }
   let enabled = $derived(live.outputs.filter((o) => o.enabled).length);
   let uncalibrated = $derived(live.outputs.filter((o) => !isCalibrated(o)).map((o) => o.name));
+
+  // The live service's date, beside its title: most services are called
+  // "Sunday service". Fetched when a different service is opened.
+  let liveWhen: string | null = $state(null);
+  $effect(() => {
+    const id = live.loaded?.service;
+    liveWhen = null;
+    if (!id) return;
+    request({ area: "Service", request: { Get: id } }, "Service")
+      .then((s) => {
+        if (live.loaded?.service === id && s.starts_at != null) liveWhen = formatWhen(s.starts_at, s.time_zone);
+      })
+      .catch(() => {});
+  });
 
   refreshOutputs();
 </script>
@@ -38,27 +59,37 @@
         </button>
       {/each}
     </nav>
-    {#if live.loaded}
-      <p class="onair">Live service: <strong>{live.loaded.title}</strong></p>
-    {/if}
+    <div class="right">
+      {#if live.loaded}
+        <p class="onair">
+          <span class="label">Live service:</span>
+          <strong title={live.loaded.title}>{live.loaded.title}</strong>
+          {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
+        </p>
+      {/if}
+      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
+        <Icon name="setup" size={16} />
+        Setup
+      </button>
+    </div>
   </header>
 
   <main>
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView />
-    {:else if screen === "outputs"}
-      <OutputsView />
+      <OperateView onsetup={() => openSetup("screens")} onplan={() => (screen = "plan")} />
     {:else}
-      <DevicesView />
+      <SetupView tab={setupTab} onchange={(tab) => (setupTab = tab)} />
     {/if}
   </main>
 
   <StatusBar>
     {#snippet start()}
-      <Dot />
-      <span>This device only</span>
+      <button class="status-link" onclick={() => openSetup("devices")} title="Open Setup › Devices">
+        <Dot />
+        <span>This device only</span>
+      </button>
       <Placeholder ticket="T18">Sync</Placeholder>
     {/snippet}
     {#snippet middle()}
@@ -75,10 +106,10 @@
       {/if}
     {/snippet}
     {#snippet end()}
-      <button class="screens" onclick={() => (screen = "outputs")}>
+      <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
         <Icon name="monitor" size={14} />
         {live.outputs.length}
-        {live.outputs.length === 1 ? "output" : "outputs"}
+        {live.outputs.length === 1 ? "screen" : "screens"}
         {#if live.outputs.length > 0}<span>· {enabled} on</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
@@ -135,15 +166,52 @@
     color: var(--text);
     background: var(--raised);
   }
-  .onair {
+  .right {
     margin-left: auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .setup {
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+  .setup:hover {
+    color: var(--text);
+  }
+  .setup.active {
+    color: var(--text);
+    background: var(--raised);
+  }
+  /* A long title truncates; the label and the date keep their width. */
+  .onair {
+    min-width: 0;
+    display: flex;
+    gap: 0.3rem;
     font-size: 0.875rem;
     color: var(--muted);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+  .onair .label,
+  .onair .when {
+    flex-shrink: 0;
   }
   .onair strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--text);
     font-weight: 500;
   }
@@ -152,7 +220,7 @@
     min-height: 0;
     overflow: hidden;
   }
-  .screens {
+  .status-link {
     font: inherit;
     color: inherit;
     background: none;
@@ -167,7 +235,7 @@
   .warn {
     color: var(--warn);
   }
-  .screens:hover {
+  .status-link:hover {
     background: var(--raised);
     color: var(--text);
   }

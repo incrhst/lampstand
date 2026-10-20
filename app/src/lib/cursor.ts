@@ -1,7 +1,8 @@
 // The slide the operator sees in the Next pane: where `Next` goes from
 // the live cursor, slide by slide (build steps stay on their slide), as
 // `LiveEngine::step_forward` in lampstand-live moves. With nothing live,
-// the first slide of the service.
+// the first slide of the service. `nextClick` is what the next click
+// shows, build steps included, for the presenter view.
 
 import type { Cursor, LoadedService, SlideView } from "./api";
 
@@ -16,4 +17,19 @@ export function nextSlide(loaded: LoadedService, live: Cursor | null): Upcoming 
   const from = live && at < 0 ? 0 : at + 1;
   const item = loaded.items.slice(from).find((i) => i.slides.length > 0);
   return item ? { cursor: { item: item.id, slide: 0, step: 0 }, slide: item.slides[0], title: item.title } : null;
+}
+
+export type NextClick = Upcoming & {
+  /** The live slide's next build step rather than another slide. */
+  build: boolean;
+};
+
+export function nextClick(loaded: LoadedService, live: Cursor | null): NextClick | null {
+  const item = live ? loaded.items.find((i) => i.id === live.item) : undefined;
+  const slide = live ? item?.slides[live.slide] : undefined;
+  if (live && item && slide && live.step < slide.steps) {
+    return { cursor: { ...live, step: live.step + 1 }, slide, title: item.title, build: true };
+  }
+  const next = nextSlide(loaded, live);
+  return next ? { ...next, build: false } : null;
 }
