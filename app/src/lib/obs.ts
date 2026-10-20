@@ -29,7 +29,7 @@ export interface ObsNotice {
   steps: string[];
 }
 
-/** Where to download OBS, shown as text (there's no link opener). */
+/** Where "Get OBS" goes. The core opens it (`ObsRequest::Download`). */
 export const OBS_DOWNLOAD = "obsproject.com";
 
 export const SERVER_OFF_STEPS = [
@@ -83,7 +83,7 @@ export function notice(view: ObsView | null): ObsNotice | null {
       return { message: "OBS isn't running, so the stream gets no slides.", action: "open", steps: [] };
     case "NotInstalled":
       return {
-        message: `Lampstand can't find OBS on this computer. Get it free from ${OBS_DOWNLOAD}.`,
+        message: `Lampstand can't find OBS on this computer. It's free from ${OBS_DOWNLOAD}.`,
         action: "get",
         steps: [],
       };

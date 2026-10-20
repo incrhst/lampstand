@@ -262,6 +262,10 @@ pub enum ObsRequest {
     /// Starts OBS on this machine (the "Open OBS" button). Never changes
     /// OBS's own settings.
     Launch,
+    /// Opens OBS's download page in the default browser (the "Get OBS"
+    /// button). The address is fixed in the core, so the UI can't open
+    /// any other page.
+    Download,
     /// The operator picks a scene by hand (T91). It holds until the next
     /// item goes live: the live item's own scene isn't applied again.
     SetScene { scene: String },
