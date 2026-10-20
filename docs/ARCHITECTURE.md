@@ -105,6 +105,14 @@ On laptops with two GPUs, the integrated one is preferred: it has lower power dr
 
 Phase 1 runs in one process. The live cursor and overlay state are written to a small journal file on every change. On start, if the journal says a service was live less than 10 minutes ago, the app reopens it with the same slide on the same outputs. The target is under 5 seconds (NFR). Panics on the render thread are caught and the thread is restarted with the last scene. Each output's frame is caught on its own, so a scene that panics resets only its output. Its transition and build steps jump to their end, and its last scene is drawn again. If the same output panics twice within 10 seconds, it shows black instead of crashing in a loop. wgpu's default error handler, which panics, is replaced with one that logs.
 
+How T57 built the journal (`app/src-tauri/src/journal.rs`):
+
+- `App` records a `LiveRecord` after every live change, output window change and tick: the open service, live and preview cursors, overlay, whether text and background are showing, and the outputs with windows. A record is written only when it differs from the last one, as `journal.json` through a temporary file and a rename, so a process killed mid-write leaves the previous record whole. While a service is live the record is rewritten every minute even if nothing changed, so a sermon on one slide does not age it past the 10-minute limit.
+- The fsync is throttled to one per 100 ms: a burst of clicks writes every record and syncs the last one on the next tick. `kill -9` loses nothing that was written; the fsync is for power cuts.
+- `App::open` places the windows, then restores: it reopens the service and replays `Show`, the overlay toggle, `ClearText`/`ClearBackground` and `Preview`. Nothing is journalled until that is done, so a crash during a restore can restore again. The UI was not listening yet, so the shell has `App::announce` send `Loaded` and `Live` when the webview finishes loading (also after a reload).
+- A clean quit (`RunEvent::Exit`) removes the journal: the operator chose to stop. A journal that is unreadable, idle or older than 10 minutes is ignored.
+- `app/src-tauri/tests/journal.rs` is the acceptance test: the test binary runs itself as a child that goes live on a rehearsal window output, the parent kills it with `kill -9`, and a fresh `App` on the same data folder must show the same slide on that output in under 5 seconds.
+
 `OutputCommand` is serialisable on purpose. If field reports show whole-app crashes, outputs can move to a child process without changing any caller.
 
 ### Text: cosmic-text everywhere
