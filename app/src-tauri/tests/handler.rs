@@ -17,9 +17,11 @@ use lampstand_core::output::{
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Direction, Effect, Node, NodeKind, Scene, Transition, TransitionKind};
+use lampstand_core::scripture::Translation;
 use lampstand_core::service::{CountdownTarget, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
+use lampstand_library::bundled::BUNDLED;
 use lampstand_live::Command;
 use lampstand_render::output::DisplayInfo;
 use lampstand_render::{OutputCommand, OutputSink};
@@ -217,6 +219,51 @@ fn a_fresh_library_has_the_seed_hymns_once() {
 }
 
 #[test]
+fn a_fresh_library_has_the_bundled_bibles_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let translations = list_translations(&mut h);
+    let abbreviations: Vec<&str> = translations
+        .iter()
+        .map(|t| t.abbreviation.as_str())
+        .collect();
+    assert_eq!(abbreviations, ["KJV", "WEB"]);
+    for t in &translations {
+        let passage = h
+            .app
+            .handle(Request::Library(LibraryRequest::LookupPassage {
+                reference: "John 3:16".into(),
+                translation: t.id,
+            }));
+        assert!(
+            matches!(passage, Response::Passage { ref verses, .. }
+                if verses.len() == 1 && verses[0].2.starts_with("For God so loved the world")),
+            "{}: {passage:?}",
+            t.abbreviation
+        );
+    }
+
+    // One the operator deletes stays deleted.
+    h.app
+        .library()
+        .delete_translation(translations[0].id)
+        .unwrap();
+    drop(h);
+    let mut h = open(dir.path());
+    assert_eq!(list_translations(&mut h).len(), 1);
+}
+
+fn list_translations(h: &mut Harness) -> Vec<Translation> {
+    match ok(h
+        .app
+        .handle(Request::Library(LibraryRequest::ListTranslations)))
+    {
+        Response::Translations(t) => t,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn search_finds_a_seed_hymn_by_a_lyric_with_a_typo() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());
@@ -257,13 +304,18 @@ fn import_files_reads_songs_and_bibles_and_reports_the_rest() {
         Response::Translations(t) => t,
         other => panic!("{other:?}"),
     };
-    assert_eq!(translations.len(), 1);
+    // The bundled Bibles, then the imported one.
+    assert_eq!(translations.len(), BUNDLED.len() + 1);
+    let imported = translations
+        .iter()
+        .find(|t| BUNDLED.iter().all(|b| b.id != t.id))
+        .unwrap();
     // The Bible is usable straight away.
     let passage = h
         .app
         .handle(Request::Library(LibraryRequest::LookupPassage {
             reference: "Gen 1:1".into(),
-            translation: translations[0].id,
+            translation: imported.id,
         }));
     assert!(
         matches!(passage, Response::Passage { ref verses, .. } if verses.len() == 1),
