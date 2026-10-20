@@ -493,8 +493,9 @@ async fn relay_one(
                     vec![]
                 }
                 (Attack::Reorder, 3) => vec![m, held.take().unwrap()],
-                // Postcard for `Sync { kind: "song", id, data: "forged" }`,
-                // which version 1 would have applied.
+                // Postcard for `Sync { kind: "song", id, data: "forged" }`.
+                // Version 1 decoded it, logged the bad sync data and kept
+                // the connection open; now the connection closes.
                 (Attack::Inject, 2) => {
                     let forged = [&[3u8, 4][..], b"song", &[9; 16], &[6], b"forged"].concat();
                     vec![forged, m]
@@ -560,18 +561,13 @@ async fn changed_replayed_reordered_or_injected_frames_close_the_session() {
         Attack::Reorder,
         Attack::Inject,
     ] {
-        let (presenter, _office, relay) = paired_through(attack).await;
+        let (_presenter, _office, relay) = paired_through(attack).await;
         until(
             Duration::from_secs(5),
             &format!("the presenter to close the connection after {attack:?}"),
             || relay.first_closed.load(Ordering::SeqCst),
         )
         .await;
-        assert!(presenter
-            .repo()
-            .get::<Song>(uuid_of([9; 16]))
-            .unwrap()
-            .is_none());
     }
 
     // Untouched, the same connection stays up and syncs.
@@ -582,10 +578,6 @@ async fn changed_replayed_reordered_or_injected_frames_close_the_session() {
     .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(!relay.first_closed.load(Ordering::SeqCst));
-}
-
-fn uuid_of(bytes: [u8; 16]) -> uuid::Uuid {
-    uuid::Uuid::from_bytes(bytes)
 }
 
 #[tokio::test(flavor = "multi_thread")]

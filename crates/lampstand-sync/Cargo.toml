@@ -20,6 +20,7 @@ net = [
     "dep:tokio",
     "dep:tokio-tungstenite",
     "dep:x25519-dalek",
+    "dep:zeroize",
 ]
 
 [dependencies]
@@ -42,6 +43,7 @@ tokio-tungstenite = { workspace = true, optional = true }
 ts-rs = { workspace = true, optional = true }
 uuid.workspace = true
 x25519-dalek = { workspace = true, optional = true }
+zeroize = { workspace = true, optional = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 # Plain fsync(2): std's sync_all is F_FULLFSYNC on Apple platforms, which

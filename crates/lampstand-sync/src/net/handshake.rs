@@ -9,8 +9,8 @@
 //!   …every later frame sealed with the session keys ([`super::secure`])
 //! ```
 //!
-//! `T` is a hash of both device keys, both nonces, both SPAKE2 messages
-//! and both X25519 keys. Each side signs it with its device key, so
+//! `T` is a hash of both device keys, names and nonces, both SPAKE2
+//! messages and both X25519 keys. Each side signs it with its device key, so
 //! neither can claim a key it does not hold, a signature cannot be
 //! replayed into another connection, and nobody in the middle can swap
 //! the X25519 keys. The session keys come from the X25519 secret and `T`.
@@ -23,7 +23,8 @@
 //! Either side may send `Refused { reason }` instead of its next frame.
 
 use spake2::{Ed25519Group, Identity, Password, Spake2};
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey};
+use zeroize::Zeroizing;
 
 use super::secure::SessionKeys;
 use super::trust::Trust;
@@ -53,6 +54,10 @@ fn transcript(client: &Hello, server: &Hello) -> [u8; 32] {
     h.update(b"lampstand-sync-handshake-2");
     for hello in [client, server] {
         h.update(&hello.device);
+        // The name a pairing stores in `paired.json`: nobody in the middle
+        // may change it.
+        h.update(&(hello.name.len() as u64).to_le_bytes());
+        h.update(hello.name.as_bytes());
         h.update(&hello.nonce);
         let pair = hello.pair.as_deref().unwrap_or_default();
         h.update(&(pair.len() as u64).to_le_bytes());
@@ -71,28 +76,31 @@ fn confirm(key: &[u8], t: &[u8; 32], role: &[u8]) -> [u8; 32] {
     *blake3::keyed_hash(&key, &signed(t, role)).as_bytes()
 }
 
-/// A fresh X25519 key for one connection, zeroed when the handshake
-/// returns.
-fn ephemeral() -> StaticSecret {
-    StaticSecret::from(crate::repo::random_bytes::<32>())
+/// A fresh X25519 key for one connection, used once and zeroed.
+fn ephemeral() -> (EphemeralSecret, PublicKey) {
+    let secret = EphemeralSecret::random();
+    let public = PublicKey::from(&secret);
+    (secret, public)
 }
 
-fn hello(me: &Me, pair: Option<Vec<u8>>, ephemeral: &StaticSecret) -> Hello {
+fn hello(me: &Me, pair: Option<Vec<u8>>, ephemeral: PublicKey) -> Hello {
     Hello {
         protocol: PROTOCOL,
         device: me.key.public().0,
         name: me.name.to_string(),
         nonce: crate::repo::random_bytes::<32>(),
         pair,
-        ephemeral: PublicKey::from(ephemeral).to_bytes(),
+        ephemeral: ephemeral.to_bytes(),
     }
 }
 
 /// The X25519 secret with the peer's key, or `None` for a key that would
 /// make it predictable (a low-order point).
-fn agree(mine: &StaticSecret, theirs: &Hello) -> Option<[u8; 32]> {
+fn agree(mine: EphemeralSecret, theirs: &Hello) -> Option<Zeroizing<[u8; 32]>> {
     let shared = mine.diffie_hellman(&PublicKey::from(theirs.ephemeral));
-    shared.was_contributory().then(|| shared.to_bytes())
+    shared
+        .was_contributory()
+        .then(|| Zeroizing::new(shared.to_bytes()))
 }
 
 fn verify(device: DeviceKey, t: &[u8; 32], role: &[u8], signature: &[u8]) -> bool {
@@ -151,8 +159,8 @@ pub(crate) async fn client(
             &Identity::new(SPAKE_SERVER),
         )
     });
-    let secret = ephemeral();
-    let mine = hello(me, spake.as_ref().map(|(_, msg)| msg.clone()), &secret);
+    let (secret, public) = ephemeral();
+    let mine = hello(me, spake.as_ref().map(|(_, msg)| msg.clone()), public);
     link.send(&Frame::Hello(mine.clone())).await?;
     let Frame::Hello(theirs) = expect(link).await? else {
         return Err(refuse(link, "expected a hello").await);
@@ -164,7 +172,7 @@ pub(crate) async fn client(
     if device == me.key.public() {
         return Err(refuse(link, "that address is this device").await);
     }
-    let Some(shared) = agree(&secret, &theirs) else {
+    let Some(shared) = agree(secret, &theirs) else {
         return Err(refuse(link, "the other device's session key is not valid").await);
     };
     let t = transcript(&mine, &theirs);
@@ -231,9 +239,10 @@ pub(crate) async fn server(
     if device == me.key.public() {
         return Err(refuse(link, "that address is this device").await);
     }
-    let secret = ephemeral();
-    // Checked before a pairing guess is taken, and kept for after the hello.
-    let Some(shared) = agree(&secret, &theirs) else {
+    let (secret, public) = ephemeral();
+    // Checked before a pairing slot or guess is taken, so a bad key cannot
+    // use up the code's five guesses.
+    let Some(shared) = agree(secret, &theirs) else {
         return Err(refuse(link, "the other device's session key is not valid").await);
     };
     let mut _pairing_slot = None;
@@ -269,7 +278,7 @@ pub(crate) async fn server(
             None
         }
     };
-    let mine = hello(me, spake.as_ref().map(|(_, msg)| msg.clone()), &secret);
+    let mine = hello(me, spake.as_ref().map(|(_, msg)| msg.clone()), public);
     link.send(&Frame::Hello(mine.clone())).await?;
     let t = transcript(&theirs, &mine);
     let Frame::Proof {
@@ -472,51 +481,129 @@ mod tests {
         assert!(server.recv().await.unwrap().is_none());
     }
 
-    #[tokio::test]
-    async fn a_swapped_session_key_is_refused_by_the_signature() {
-        // A party in the middle replaces the server's X25519 key with its
-        // own. Its signature covers the original, so the client refuses.
+    /// Pairs Office PC with Sanctuary while a party in the middle changes
+    /// Sanctuary's hello with `change`. Returns the office's result and
+    /// whether it ended up trusting Sanctuary.
+    async fn pair_with_server_hello_changed(
+        change: fn(&mut Hello),
+    ) -> (Result<(Peer, SessionKeys), NetError>, bool) {
         let tap = Tap::default();
-        let (c_tx, mut mitm_rx) = unbounded_channel::<Vec<u8>>();
-        let (mitm_tx, s_rx) = unbounded_channel();
-        let (s_tx, mut mitm_rx2) = unbounded_channel::<Vec<u8>>();
-        let (mitm_tx2, c_rx) = unbounded_channel();
+        let (c_tx, s_rx) = unbounded_channel();
+        let (s_tx, mut mitm_rx) = unbounded_channel::<Vec<u8>>();
+        let (mitm_tx, c_rx) = unbounded_channel();
         let mut client_link = link(c_tx, c_rx, tap.clone());
-        let mut server_link = link(s_tx, s_rx, tap.clone());
+        let mut server_link = link(s_tx, s_rx, tap);
         tokio::spawn(async move {
             while let Some(m) = mitm_rx.recv().await {
-                let _ = mitm_tx.send(m);
-            }
-        });
-        tokio::spawn(async move {
-            while let Some(m) = mitm_rx2.recv().await {
                 let m = match Frame::decode(&m) {
                     Ok(Frame::Hello(mut h)) => {
-                        h.ephemeral = PublicKey::from(&ephemeral()).to_bytes();
+                        change(&mut h);
                         Frame::Hello(h).encode()
                     }
                     _ => m,
                 };
-                let _ = mitm_tx2.send(m);
+                let _ = mitm_tx.send(m);
             }
         });
         let office = device("Office PC");
         let sanctuary = device("Sanctuary");
-        lock(&office.trust)
-            .add(sanctuary.key.public(), "Sanctuary", None)
-            .unwrap();
-        lock(&sanctuary.trust)
-            .add(office.key.public(), "Office PC", None)
-            .unwrap();
+        let code = lock(&sanctuary.trust).start_pairing().code;
         let pairing = tokio::sync::Mutex::new(());
         let (c_me, s_me) = (office.me(), sanctuary.me());
         let (c, _) = tokio::join!(
-            client(&mut client_link, &c_me, &office.trust, None),
+            client(&mut client_link, &c_me, &office.trust, Some(&code)),
             server(&mut server_link, &s_me, &sanctuary.trust, &pairing),
         );
+        let trusted = lock(&office.trust).is_paired(sanctuary.key.public());
+        (c, trusted)
+    }
+
+    fn refused_by_signature(result: &Result<(Peer, SessionKeys), NetError>) -> bool {
+        matches!(result, Err(NetError::Refused(why)) if why.contains("did not check out"))
+    }
+
+    #[tokio::test]
+    async fn a_swapped_session_key_is_refused_by_the_signature() {
+        // A party in the middle replaces the server's X25519 key with its
+        // own. Its signature covers the original, so the client refuses.
+        let (c, trusted) =
+            pair_with_server_hello_changed(|h| h.ephemeral = ephemeral().1.to_bytes()).await;
+        assert!(refused_by_signature(&c), "{c:?}");
+        assert!(!trusted);
+    }
+
+    #[tokio::test]
+    async fn a_renamed_device_is_refused_by_the_signature() {
+        // The name is what pairing stores in `paired.json`.
+        let (c, trusted) =
+            pair_with_server_hello_changed(|h| h.name = "Pastor's laptop".into()).await;
+        assert!(refused_by_signature(&c), "{c:?}");
+        assert!(!trusted);
+    }
+
+    #[tokio::test]
+    async fn a_low_order_key_is_refused_before_a_pairing_guess_is_taken() {
+        let sanctuary = device("Sanctuary");
+        let code = lock(&sanctuary.trust).start_pairing().code;
+        let pairing = tokio::sync::Mutex::new(());
+        let attacker = DeviceKeypair::generate();
+        // More tries than the code has guesses, each with the right code's
+        // SPAKE2 message and an all-zero (low-order) X25519 key.
+        for _ in 0..10 {
+            let Wire {
+                client: mut c_link,
+                server: mut s_link,
+                ..
+            } = wire();
+            let (_, msg) = Spake2::<Ed25519Group>::start_a(
+                &Password::new(code.as_bytes()),
+                &Identity::new(SPAKE_CLIENT),
+                &Identity::new(SPAKE_SERVER),
+            );
+            let hello = Hello {
+                protocol: PROTOCOL,
+                device: attacker.public().0,
+                name: "Attacker".into(),
+                nonce: crate::repo::random_bytes::<32>(),
+                pair: Some(msg),
+                ephemeral: [0; 32],
+            };
+            c_link.send(&Frame::Hello(hello)).await.unwrap();
+            let s_me = sanctuary.me();
+            let refused = server(&mut s_link, &s_me, &sanctuary.trust, &pairing).await;
+            assert!(
+                matches!(refused, Err(NetError::Refused(ref why)) if why.contains("session key is not valid")),
+                "{refused:?}"
+            );
+            assert!(matches!(
+                c_link.recv().await.unwrap(),
+                Some(Frame::Refused { .. })
+            ));
+        }
+        // No guess was spent: the code is still shown and still pairs.
+        assert!(lock(&sanctuary.trust).pairing().is_some());
+        let office = device("Office PC");
+        let Wire {
+            client: mut c_link,
+            server: mut s_link,
+            ..
+        } = wire();
+        let (c_me, s_me) = (office.me(), sanctuary.me());
+        let (c, s) = tokio::join!(
+            client(&mut c_link, &c_me, &office.trust, Some(&code)),
+            server(&mut s_link, &s_me, &sanctuary.trust, &pairing),
+        );
+        assert!(c.unwrap().0.paired_now);
+        assert!(s.unwrap().0.paired_now);
+    }
+
+    #[tokio::test]
+    async fn a_low_order_key_from_the_server_is_refused() {
+        let (c, trusted) = pair_with_server_hello_changed(|h| h.ephemeral = [0; 32]).await;
         assert!(
-            matches!(c, Err(NetError::Refused(ref why)) if why.contains("did not check out")),
+            matches!(c, Err(NetError::Refused(ref why)) if why.contains("session key is not valid")),
             "{c:?}"
         );
+        assert!(!trusted);
     }
 }

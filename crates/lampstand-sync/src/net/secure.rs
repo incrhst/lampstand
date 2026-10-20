@@ -8,14 +8,16 @@
 //! that sender and receiver keep in step (one WebSocket delivers frames in
 //! order), so it is never sent. A frame that is changed, replayed,
 //! reordered, dropped or injected fails to open, and the session ends;
-//! nothing after a failure is opened. Why this and not Noise:
+//! nothing after a failure is opened. The secret, the derived keys and
+//! the cipher state are zeroed when dropped. Why this and not Noise:
 //! `docs/decisions/0004-sync-session-encryption.md`.
 
 use std::fmt;
 use std::io;
 
 use chacha20poly1305::aead::AeadInOut;
-use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit, Nonce};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce};
+use zeroize::Zeroizing;
 
 /// Bytes a sealed frame adds to the plain one: the Poly1305 tag.
 #[cfg(test)]
@@ -26,8 +28,8 @@ const SERVER_TO_CLIENT: &str = "lampstand-sync 2026-10 session key server to cli
 
 /// One connection's keys, from this side's point of view.
 pub(crate) struct SessionKeys {
-    send: [u8; 32],
-    recv: [u8; 32],
+    send: Zeroizing<[u8; 32]>,
+    recv: Zeroizing<[u8; 32]>,
 }
 
 impl fmt::Debug for SessionKeys {
@@ -40,9 +42,9 @@ impl SessionKeys {
     /// Keys from the X25519 secret and the transcript both sides signed.
     /// `client` is true on the side that dialled.
     pub(crate) fn derive(shared: &[u8; 32], transcript: &[u8; 32], client: bool) -> Self {
-        let material = [shared.as_slice(), transcript.as_slice()].concat();
-        let c2s = blake3::derive_key(CLIENT_TO_SERVER, &material);
-        let s2c = blake3::derive_key(SERVER_TO_CLIENT, &material);
+        let material = Zeroizing::new([shared.as_slice(), transcript.as_slice()].concat());
+        let c2s = Zeroizing::new(blake3::derive_key(CLIENT_TO_SERVER, &material));
+        let s2c = Zeroizing::new(blake3::derive_key(SERVER_TO_CLIENT, &material));
         let (send, recv) = if client { (c2s, s2c) } else { (s2c, c2s) };
         Self { send, recv }
     }
@@ -50,16 +52,21 @@ impl SessionKeys {
     pub(crate) fn split(self) -> (Sealer, Opener) {
         (
             Sealer {
-                aead: ChaCha20Poly1305::new(&Key::from(self.send)),
+                aead: cipher(&self.send),
                 counter: 0,
             },
             Opener {
-                aead: ChaCha20Poly1305::new(&Key::from(self.recv)),
+                aead: cipher(&self.recv),
                 counter: 0,
                 failed: false,
             },
         )
     }
+}
+
+/// A cipher keyed straight from `key`, with no unzeroed copy in between.
+fn cipher(key: &[u8; 32]) -> ChaCha20Poly1305 {
+    ChaCha20Poly1305::new_from_slice(key).expect("a 32-byte key")
 }
 
 fn nonce(counter: u64) -> Nonce {

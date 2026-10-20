@@ -46,17 +46,24 @@ with the device keys)?
 
 ## Decision
 
-Add an ephemeral X25519 key to each hello and fold both into `T`, then
+Add an ephemeral X25519 key to each hello and fold both into `T` (with
+both device names, which pairing stores and which `T` did not cover
+before), then
 derive per-direction keys from the X25519 secret and `T`. This is the
 SIGMA pattern (sign the transcript, including both Diffie-Hellman
 shares): only the two devices whose signatures check out can know the
 secret, and swapping a share in the middle breaks a signature.
 
 - **Key agreement.** `x25519-dalek` 2 (BSD-3-Clause; shares
-  `curve25519-dalek` 4 with `ed25519-dalek`). A fresh key per connection,
-  zeroed when the handshake returns: a stolen device key later does not
-  decrypt recorded sessions. A low-order share (non-contributory secret)
-  is refused.
+  `curve25519-dalek` 4 with `ed25519-dalek`). A fresh `EphemeralSecret`
+  per connection, consumed by the one agreement it makes: a stolen device
+  key later does not decrypt recorded sessions. A low-order share
+  (non-contributory secret) is refused, on the accepting side before a
+  pairing slot or guess is taken, so it cannot use up a code's guesses.
+- **Zeroing.** The X25519 secret, the shared secret, the key-derivation
+  input, both derived keys and the ciphers' key state (`chacha20poly1305`'s
+  `zeroize` feature) are zeroed when dropped. Copies the compiler makes on
+  the stack are out of reach, as in any Rust code.
 - **Key derivation.** BLAKE3 in key-derivation mode (`blake3::derive_key`,
   already a dependency) over `secret ‖ T`, with one context string per
   direction, so the two directions never share a key and a frame
@@ -78,9 +85,9 @@ secret, and swapping a share in the middle breaks a signature.
 
 ## What it does not do
 
-- **The handshake is in the clear.** Device keys, device names and the
-  SPAKE2 messages travel unencrypted, as they did (names are already in
-  mDNS). Hiding them needs an encrypted hello, which Noise XX would give
+- **The handshake is in the clear.** Device keys, device names (signed,
+  so nobody can change them, but readable) and the SPAKE2 messages travel
+  unencrypted, as they did (names are already in mDNS). Hiding them needs an encrypted hello, which Noise XX would give
   the responder only. Not worth the change on a LAN.
 - **Traffic analysis.** Frame sizes and timing show that a sync happened
   and roughly how much moved, not what.
