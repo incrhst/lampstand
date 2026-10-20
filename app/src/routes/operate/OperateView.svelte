@@ -1,11 +1,14 @@
 <!-- Operator panel: the running order on the left, what is on air and
      the slides of the item in view in the middle, Next and notes on the
-     right. T47 replaces this with the full operator view. -->
+     right. While a deck is on air the middle is its presenter view
+     (current slide at its build step, next click, speaker notes, timer).
+     T47 replaces this with the full operator view. -->
 <script lang="ts">
-  import { request, send, type Command, type Cursor, type Service } from "../../lib/api";
+  import { untrack } from "svelte";
+  import { request, send, type Command, type Cursor, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { nextSlide } from "../../lib/cursor";
+  import { nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -15,6 +18,33 @@
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import PresenterView from "./PresenterView.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
+  import { formatWhen } from "../../lib/when";
+
+  /** Opens Setup › Screens (the no-screen prompt) and Plan (the blank view). */
+  let { onsetup, onplan }: { onsetup?: () => void; onplan?: () => void } = $props();
+
+  // With no service open, offer the next few to open: the core lists
+  // upcoming ones first, then undated ones newest first.
+  const OFFERED = 5;
+  let services: ServiceSummary[] = $state([]);
+  $effect(() => {
+    if (live.loaded) return;
+    request({ area: "Service", request: "List" }, "Services")
+      .then((all) => (services = all.slice(0, OFFERED)))
+      .catch(report);
+  });
+
+  async function openService(id: string) {
+    try {
+      live.planning = id;
+      live.loaded = await request({ area: "Service", request: { Open: id } }, "Loaded");
+    } catch (e) {
+      report(e);
+    }
+  }
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
 
   async function command(c: Command) {
     try {
@@ -105,11 +135,70 @@
     if (item) viewing = item;
   });
 
+  const isDeckSlide = (slide: SlideView) => slide.lines.length === 0 && /^Slide \d+$/.test(slide.label ?? "");
+
   let items = $derived(live.loaded?.items ?? []);
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
+  // A deck on air gets the presenter view, whose Next is the next click.
+  let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
+  let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
+
+  // Deck slides have no lines to draw, so the core renders a picture of
+  // each at a build step, fetched once per loaded service as slides come
+  // into view. Slides in the strip show every build; the live slide and
+  // the next click show the step they are at.
+  const THUMB_WIDTH = 480;
+  const LARGE_WIDTH = 1280;
+  let thumbs: Record<string, string> = $state({});
+  const asked = new Set<string>();
+  const thumbKey = (item: string, slide: number, step: number, width: number) => `${item}/${slide}/${step}/${width}`;
+
+  async function fetchThumb(item: string, slide: number, step: number, width = THUMB_WIDTH) {
+    const key = thumbKey(item, slide, step, width);
+    if (asked.has(key)) return;
+    asked.add(key);
+    try {
+      thumbs[key] = await request(
+        { area: "Service", request: { SlideThumbnail: { item, slide, step, width } } },
+        "Thumbnail",
+      );
+    } catch {
+      // No picture (no GPU, or the deck reloaded): the slide shows its label.
+    }
+  }
+
+  const thumbFor = (item: string | undefined, slide: number, step: number, width = THUMB_WIDTH) =>
+    item ? thumbs[thumbKey(item, slide, step, width)] : undefined;
+  /** The strip shows a deck slide fully built. */
+  const builtThumb = (item: string, slide: number) => thumbFor(item, slide, items.find((i) => i.id === item)?.slides[slide]?.steps ?? 0);
+
+  // A reload can change a deck's slides, so pictures are fetched again.
+  $effect(() => {
+    void live.loaded;
+    untrack(() => {
+      thumbs = {};
+      asked.clear();
+    });
+  });
+
+  $effect(() => {
+    // Most urgent first: the slide on air and what the next click shows.
+    const want: [string, number, number, number][] = [];
+    if (liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)) {
+      want.push([liveItem.id, live.live.slide, live.live.step, presenting ? LARGE_WIDTH : THUMB_WIDTH]);
+    }
+    if (presenting && clickNext && isDeckSlide(clickNext.slide)) {
+      want.push([clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH]);
+    }
+    if (upcoming && isDeckSlide(upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide, upcoming.slide.steps, THUMB_WIDTH]);
+    if (viewed) viewed.slides.forEach((s, i) => isDeckSlide(s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
+    untrack(async () => {
+      for (const [item, slide, step, width] of want) await fetchThumb(item, slide, step, width);
+    });
+  });
   let output = $derived(mainOutput(live.outputs));
   let showGuide = $state(true);
 
@@ -126,23 +215,59 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet noScreen()}
+  <Banner tone="warn">
+    <span>No screen is on, so nothing reaches the projector.</span>
+    {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+  </Banner>
+{/snippet}
+
 {#if !live.loaded}
   <div class="none">
-    <Icon name="play" size={20} />
-    <p class="muted">No service is open. Open one from Plan to go live.</p>
+    {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+    <div class="pick">
+      <div class="pick-head">
+        <h1>No service is open</h1>
+        <p class="muted">Open one to go live, or plan a new one.</p>
+      </div>
+      {#if services.length > 0}
+        <ul class="plain pick-list" aria-label="Services to open">
+          {#each services as svc (svc.id)}
+            <ListRow title={svc.title} subtitle={formatWhen(svc.starts_at, svc.time_zone)} divided>
+              {#snippet trailing()}
+                <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  Open
+                </Button>
+              {/snippet}
+            </ListRow>
+          {/each}
+        </ul>
+      {/if}
+      {#if onplan}
+        <div class="pick-foot">
+          <Button icon="calendar" onclick={onplan}>{services.length > 0 ? "All services in Plan" : "Go to Plan"}</Button>
+        </div>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="operate">
     <div class="bar">
-      <p class="service"><strong>{live.loaded.title}</strong></p>
+      <p class="service">
+        <strong title={live.loaded.title}>{live.loaded.title}</strong>
+        <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
+        {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
+      </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
-      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Output" />
+      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
 
-    <div class="grid">
+    <!-- While a deck is on air the presenter view takes the right column
+         too; outputs stay in the status bar. -->
+    <div class="grid" class:presenting>
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head"><h2>Service order</h2></div>
         <ol class="plain pane-body">
@@ -167,18 +292,41 @@
         </ol>
       </nav>
 
-      <section class="pane centre" aria-label="Live output">
+      <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
-          <div class="live-head">
-            <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-            <span class="muted">{output?.name ?? "No output yet"}</span>
-            {#if liveItem && live.live}
-              <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
+          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+          {#if presenting && liveItem && live.live}
+            {#key liveItem.id}
+              <PresenterView
+                item={liveItem}
+                cursor={live.live}
+                upcoming={clickNext}
+                current={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)}
+                nextImage={clickNext ? thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH) : undefined}
+                overlay={live.overlay}
+                safeArea={output?.safe_area}
+                {showGuide}
+                plannerNotes={notes}
+                onprevious={() => command("Previous")}
+                onnext={() => command("Next")}
+                onblank={() => command("ToggleBlack")}
+              />
+            {/key}
+          {:else}
+            <div class="live-head">
+              <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+              <span class="muted">{output?.name ?? "No screen yet"}</span>
+              {#if liveItem && live.live}
+                <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
+            {/if}
+            {#if live.liveSlide?.label === "Video"}
+              <Placeholder ticket="T27">Video plays on screen</Placeholder>
             {/if}
           </div>
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
+              image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
               {showGuide}
@@ -192,6 +340,7 @@
             <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
             <Button variant="ghost" onclick={() => command("ClearAll")} title="Clear text, background and overlay">Clear all</Button>
           </div>
+          {/if}
 
           {#if viewed}
             <div class="slides-head">
@@ -210,11 +359,13 @@
                     onclick={() => show({ item: viewed.id, slide: i, step: 0 })}
                     aria-current={isLive(viewed.id, i) ? "true" : undefined}
                   >
-                    <SlidePreview lines={slide.lines} size="small" />
+                    <SlidePreview lines={slide.lines} image={builtThumb(viewed.id, i)} size="small" />
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
                       {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
+                      <!-- The core labels video slides "Video"; the output draws nothing for them yet. -->
+                      {#if slide.label === "Video"}<Placeholder ticket="T27">Not on screen yet</Placeholder>{/if}
                     </span>
                   </button>
                 </li>
@@ -224,45 +375,51 @@
         </div>
       </section>
 
-      <aside class="pane pane-side side" aria-label="Next and notes">
-        <section>
-          <div class="side-head">
-            <h2 class="title">Next</h2>
-            {#if upcoming}<span class="muted">{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}</span>{/if}
-          </div>
-          <div class="next">
-            {#if upcoming}
-              <SlidePreview lines={upcoming.slide.lines} safeArea={output?.safe_area} />
+      {#if !presenting}
+        <aside class="pane pane-side side" aria-label="Next and notes">
+          <section>
+            <div class="side-head">
+              <h2 class="title">Next</h2>
+              {#if upcoming}<span class="muted">{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}</span>{/if}
+            </div>
+            <div class="next">
+              {#if upcoming}
+                <SlidePreview
+                  lines={upcoming.slide.lines}
+                  image={builtThumb(upcoming.cursor.item, upcoming.cursor.slide)}
+                  safeArea={output?.safe_area}
+                />
+              {:else}
+                <SlidePreview empty="End of service" />
+              {/if}
+            </div>
+          </section>
+
+          <section>
+            <h2 class="title">Notes</h2>
+            {#if notes}
+              <p class="notes">{notes}</p>
             {:else}
-              <SlidePreview empty="End of service" />
+              <p class="faint small">No planner notes on this item.</p>
             {/if}
-          </div>
-        </section>
+          </section>
 
-        <section>
-          <h2 class="title">Notes</h2>
-          {#if notes}
-            <p class="notes">{notes}</p>
-          {:else}
-            <p class="faint small">No planner notes on this item.</p>
-          {/if}
-        </section>
-
-        <section>
-          <h2 class="title">Outputs</h2>
-          <ul class="plain outputs">
-            {#each live.outputs as o (o.id)}
-              <li>
-                <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
-                <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
-                <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
-              </li>
-            {:else}
-              <li class="faint small">No outputs. Add one in Outputs.</li>
-            {/each}
-          </ul>
-        </section>
-      </aside>
+          <section>
+            <h2 class="title">Screens</h2>
+            <ul class="plain outputs">
+              {#each live.outputs as o (o.id)}
+                <li>
+                  <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
+                  <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
+                  <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
+                </li>
+              {:else}
+                <li class="faint small">No screens. Add one in Setup › Screens.</li>
+              {/each}
+            </ul>
+          </section>
+        </aside>
+      {/if}
     </div>
   </div>
 {/if}
@@ -283,33 +440,61 @@
     display: flex;
     flex-direction: column;
   }
+  .bar > :global(*) {
+    flex-shrink: 0;
+  }
   .bar {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 0.5rem 1rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
   }
+  /* A long title truncates and the date keeps its width, so the controls
+     stay on one row in the same place whatever the service is called. */
   .service {
+    display: flex;
+    gap: 0.3rem;
+    min-width: 6rem;
+    max-width: 28rem;
     font-size: 0.9rem;
+    white-space: nowrap;
   }
   .service strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 500;
   }
+  .when {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  /* The hint gives way first: it takes the room left over and is cut
+     from the end with an ellipsis. */
   .keys {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .keys :global(.icon) {
+    vertical-align: -2px;
+    margin-right: 0.4rem;
   }
   .grid {
     flex: 1;
     min-height: 0;
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr) 320px;
+  }
+  .grid.presenting {
+    grid-template-columns: 250px minmax(0, 1fr);
   }
   .queue {
     border-right: 1px solid var(--line);
@@ -324,6 +509,44 @@
     color: var(--gold);
   }
 
+  .no-screen {
+    margin-bottom: 1rem;
+  }
+  .pick {
+    width: min(32rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .pick-head {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  .pick-head h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .pick-head p {
+    margin-top: 0.25rem;
+  }
+  .pick-list {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+  .pick-foot {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+  }
+  .none .no-screen {
+    width: min(36rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .no-screen :global(.body) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
   .centre-body {
     flex: 1;
     min-height: 0;

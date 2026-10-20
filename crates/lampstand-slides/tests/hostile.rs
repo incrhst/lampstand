@@ -77,14 +77,14 @@ fn heavy_slide() -> String {
         .unwrap()
         .read_to_string(&mut slide)
         .unwrap();
-    // 70,000 paragraphs: about 560 MB of model to DeckCraft, over the
-    // 512 MB budget, from 420 KB of XML.
+    // 140,000 paragraphs: about 1.1 GB of model to DeckCraft, over the
+    // 1 GiB budget, from 840 KB of XML.
     slide.replacen("</p:spTree>", &format!("{}</p:spTree>", heavy()), 1)
 }
 
 /// Content over the parse budget on its own.
 const HEAVY: &str = "<a:p/>";
-const HEAVY_COUNT: usize = 70_000;
+const HEAVY_COUNT: usize = 140_000;
 
 fn heavy() -> String {
     HEAVY.repeat(HEAVY_COUNT)

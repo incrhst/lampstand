@@ -25,7 +25,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use lampstand_api::{Event, LibraryRequest, Request, Response};
+use lampstand_api::{Event, LibraryRequest, Request, Response, ServiceRequest};
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -38,6 +38,7 @@ use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 
 use crate::config::device_key;
+use crate::decks;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
 use crate::sync::{Sync, SyncConfig};
@@ -60,6 +61,9 @@ struct Shared {
     downloads: PathBuf,
     /// `None` when the local server could not start.
     sync: Option<Arc<Sync>>,
+    /// Draws slide thumbnails, apart from the output render thread so a
+    /// thumbnail never holds up a frame. `None` if it could not start.
+    thumbnails: Option<Arc<Renderer>>,
 }
 
 fn lock(app: &Mutex<App>) -> MutexGuard<'_, App> {
@@ -90,6 +94,90 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
                 Response::Text(import_files(&library, &paths, &*emit))
             }))
             .await
+        }
+        Request::Service(ServiceRequest::SlideThumbnail {
+            item,
+            slide,
+            step,
+            width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "thumbnails are off: no GPU for them".into(),
+                });
+            };
+            let app = state.app.clone();
+            blocking(Box::new(move || {
+                let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
+                    return Response::Error {
+                        message: "no picture for this slide".into(),
+                    };
+                };
+                let (w, h) = decks::thumbnail_size(&scene, width);
+                renderer
+                    .render_offscreen(&scene, w, h)
+                    .map_err(|e| format!("{e:?}"))
+                    .and_then(|image| decks::png_data_url(&image))
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // Parsing a deck, copying a video and downloading a link all run
+        // off the `App` lock, like imports.
+        Request::Library(LibraryRequest::AddDeckFile { path }) => {
+            blocking(Box::new(move || {
+                decks::add_deck_file(&library, &path)
+                    .map(Response::Deck)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        Request::Library(LibraryRequest::AddMediaFile { path }) => {
+            blocking(Box::new(move || {
+                decks::add_media_file(&library, &path)
+                    .map(Response::Media)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        Request::Library(LibraryRequest::AddDeckFromLink { url }) => {
+            let link = match decks::classify(&url) {
+                Ok(link) => link,
+                Err(message) => return Ok(Response::Error { message }),
+            };
+            emit(Event::ImportProgress {
+                done: 0,
+                total: 1,
+                message: "Downloading the presentation".into(),
+            });
+            let done = |message: String| {
+                emit(Event::ImportProgress {
+                    done: 1,
+                    total: 1,
+                    message,
+                })
+            };
+            let fetched = match decks::fetch_link(&link).await {
+                Ok(fetched) => fetched,
+                Err(why) => {
+                    let message = format!("Could not add the deck: {why}");
+                    done(message.clone());
+                    return Ok(Response::Error { message });
+                }
+            };
+            let response = blocking(Box::new(move || {
+                decks::add_fetched(&library, &link, &url, fetched)
+                    .map(Response::Deck)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await;
+            done(match &response {
+                Ok(Response::Deck(deck)) => format!("Added {}", deck.title),
+                Ok(Response::Error { message }) => format!("Could not add the deck: {message}"),
+                _ => String::new(),
+            });
+            response
         }
         Request::Library(LibraryRequest::DownloadSongDatabase { code }) => {
             emit(Event::ImportProgress {
@@ -149,7 +237,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let (tx, rx) = mpsc::channel();
 
     let blobs = Arc::new(Blobs(data_dir.join("library/repo/blobs")));
-    let renderer = Renderer::new(blobs).map_err(|e| format!("{e:?}"))?;
+    let renderer = Renderer::new(blobs.clone()).map_err(|e| format!("{e:?}"))?;
     let info = renderer.adapter_info();
     eprintln!(
         "lampstand: rendering on {} ({}){}",
@@ -157,6 +245,13 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         info.backend,
         if info.software { ", software" } else { "" }
     );
+    let thumbnails = match Renderer::new(blobs) {
+        Ok(r) => Some(Arc::new(r)),
+        Err(e) => {
+            eprintln!("lampstand: no thumbnails: {e:?}");
+            None
+        }
+    };
     let render_tx = Mutex::new(tx.clone());
     let outputs = Arc::new(
         Outputs::spawn(renderer, OutputOptions::default(), move |event| {
@@ -232,6 +327,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
         downloads: data_dir.join("downloads"),
         sync,
+        thumbnails,
     })
 }
 

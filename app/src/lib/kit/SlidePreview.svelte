@@ -1,7 +1,7 @@
 <!-- A slide drawn in the operator view: 16:9, black, text centred inside
-     the output's safe area, with an optional dashed guide for it. The
-     real output is rendered by the core; this is the operator's text
-     picture until thumbnails arrive (T47). -->
+     the output's safe area, with an optional dashed guide for it. Deck
+     slides show the core's rendered picture (`image`); text slides are the
+     operator's text picture until thumbnails for them arrive (T47). -->
 <script lang="ts">
   import type { SafeArea } from "../api";
 
@@ -12,6 +12,7 @@
     showGuide = false,
     size = "normal",
     empty = "",
+    image = null,
   }: {
     lines?: readonly string[];
     overlay?: "None" | "Black" | "Logo";
@@ -21,6 +22,8 @@
     size?: "large" | "normal" | "small";
     /** Shown when there are no lines. */
     empty?: string;
+    /** A rendered picture of the slide (a `data:` URL), drawn instead of lines. */
+    image?: string | null;
   } = $props();
 
   let box = $derived.by(() => {
@@ -33,6 +36,8 @@
   {#if overlay === "Logo"}
     <!-- The ring the compositor draws until a church logo can be set. -->
     <div class="cover"><span class="logo" aria-label="Logo"></span></div>
+  {:else if overlay === "None" && image}
+    <img class="picture" src={image} alt="" />
   {:else if overlay === "None"}
     <div class="text" style={box}>
       {#each lines as line}<p>{line}</p>{:else}<span class="empty">{empty}</span>{/each}
@@ -95,6 +100,13 @@
     aspect-ratio: 1;
     border-radius: 50%;
     border: max(2px, 1cqw) solid #fff;
+  }
+  .picture {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .guide {
     position: absolute;

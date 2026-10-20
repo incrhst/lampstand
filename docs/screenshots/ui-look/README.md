@@ -16,17 +16,19 @@ good ideas, not its code. Taken from a debug `.app` bundle with a fresh
 
 - Palette (near-black blue-grey, gold primary with dark text, green ready,
   red live, amber warnings), type scale, 6 px radius, thin dividers.
-- Shell: gold wordmark, Plan / Operate / Outputs tabs, "Live service: …" on
-  the right, a status bar (connection left, background work middle, outputs
-  right, amber "not calibrated").
+- Shell: gold wordmark, Plan / Present tabs, "Live service: …" and Setup on
+  the right, a status bar (connection left, background work middle, screens
+  right, amber "not calibrated"). The connection and screens items open
+  Setup › Devices and Setup › Screens. (Present is the operator view,
+  `routes/operate/`.)
 - Plan: three columns (services, order, library); numbered order rows with a
   drag handle, a type icon, title and subtitle; library tabs, a search field
   with an icon, "In service" ticks, lyric snippets.
-- Operate: a header bar with Safe area toggle and Show / Logo / Blank; the
+- Present: a header bar with Safe area toggle and Show / Logo / Blank; the
   running order on the left with the live item in gold; a LIVE pane with a
   red ring and a dashed safe-area guide; slide cards with a LIVE badge;
-  Next, notes and outputs on the right.
-- Outputs: a page of screens, each with a safe-area preview, and a per-screen
+  Next, notes and screens on the right.
+- Setup › Screens (`routes/outputs/`): a page of screens, each with a safe-area preview, and a per-screen
   calibration view (numbered grid, edge numbers around a mini screen).
 - Kit pieces for the setup wizard (T55): step rail, progress bar, segmented
   decision rows.
@@ -38,12 +40,12 @@ with the reason as its tooltip:
 
 | Spot | Ticket |
 | --- | --- |
-| Readiness banner in Plan and the Readiness pill in Operate | T36 |
+| Readiness banner in Plan and the Readiness pill in Present | T36 |
 | Sync status in the status bar ("This device only") | T18 |
-| Slide thumbnails (slides are drawn as text) | T47 |
+| Slide thumbnails for text slides (they are drawn as text; deck slides show rendered pictures) | T47 |
 | The calibration grid on the projector itself (it shows in the app only) | T26 |
-| Library tabs Scripture and Media | T48 |
-| Library tab Decks, Add deck | T28 |
+| Library tab Scripture | T48 |
+| Video on the outputs: video items are added and listed, but draw nothing on screen ("Not on screen yet") | T27 |
 | Setup wizard screen (the kit has its step rail and progress bar) | T55 |
 
 Left out: service dates and times (`starts_at` cannot be set yet; rows say

@@ -11,6 +11,15 @@
 //! program changes, every enabled output with a window is composed at its
 //! own pixel size and sent `OutputCommand::Show` (or `Animate` on a build
 //! step); the UI gets `Event::Live`.
+//!
+//! Deck slides (T30, T84). The live engine only counts a deck slide's build
+//! steps; the scene in its `Content::DeckSlide` is replaced here with the
+//! slide at that step (`decks::Slide::scenes`) before composing, so any
+//! recompose (a theme edit, a resize, Black) keeps what has built. A click
+//! that plays the next build step sends `Animate` to each output showing
+//! the step before, never a `Show`, which would cut the animation short.
+//! A deck slide arrives with its own transition, not the theme's, and
+//! steps that jump (Previous through builds) cut.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -20,15 +29,18 @@ use lampstand_api::{
     Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest, Request, Response,
     ServiceRequest, ServiceSummary, SlideView, SongDatabase, SongHit,
 };
-use lampstand_core::id::Timestamp;
+use lampstand_core::deck::{Deck, DeckId};
+use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::program::{Content, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
-use lampstand_core::scene::Animation;
+use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::scripture::parse_reference;
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
-use lampstand_layout::{compose_at, paginate_passage, paginate_song, Fonts, OutputSize};
+use lampstand_layout::{
+    compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
+};
 use lampstand_library::{starter_theme, starter_theme_id, Library};
 use lampstand_live::{Cursor, LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
@@ -36,6 +48,7 @@ use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_sync::DocChanged;
 
 use crate::config::{device_key, OutputStore};
+use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
 use crate::seed;
 
@@ -90,10 +103,17 @@ fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
 struct Loaded {
     view: LoadedService,
     /// Build-step animations by (item, slide), each a list per step.
-    /// Empty until decks load (T29 to T31).
     builds: HashMap<(ItemId, usize), Vec<Vec<Animation>>>,
     /// The songs in the service, so edits to them reload it.
     songs: Vec<lampstand_core::song::SongId>,
+    /// The decks in the service, so an accepted update reloads it.
+    decks: Vec<DeckId>,
+    /// Each deck slide's scene after each build step by (item, slide),
+    /// for thumbnails.
+    scenes: HashMap<(ItemId, usize), Vec<Arc<Scene>>>,
+    /// The parsed decks the service shows, for stepped scenes, entry
+    /// animations and transitions.
+    slides: HashMap<DeckId, Arc<ParsedSlides>>,
 }
 
 pub struct App {
@@ -113,6 +133,9 @@ pub struct App {
     sent: HashMap<OutputId, Sent>,
     told_ui: Option<LiveState>,
     loaded: Option<Loaded>,
+    /// Parsed decks by the blob they were parsed from, for the decks in
+    /// the open service.
+    parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -150,6 +173,7 @@ impl App {
             sent: HashMap::new(),
             told_ui: None,
             loaded: None,
+            parsed: HashMap::new(),
         };
         app.place_windows();
         Ok(app)
@@ -261,9 +285,26 @@ impl App {
                 // downloads it and then imports as `ImportFiles` does.
                 return Err("song databases are downloaded by the app shell".into());
             }
-            LibraryRequest::AddDeckFromLink { .. } | LibraryRequest::AcceptDeckUpdate(_) => {
-                return Err("decks arrive with T29 to T41".into())
+            LibraryRequest::ListDecks => {
+                let mut decks = lib.decks().map_err(err)?;
+                decks.sort_by_key(|d| d.title.to_lowercase());
+                Response::Decks(decks)
             }
+            LibraryRequest::AddDeckFile { path } => {
+                Response::Deck(decks::add_deck_file(lib, &path)?)
+            }
+            LibraryRequest::AddDeckFromLink { .. } => {
+                // A download, like a song database: the shell fetches it
+                // and then adds it as `AddDeckFile` does.
+                return Err("deck links are downloaded by the app shell".into());
+            }
+            LibraryRequest::AcceptDeckUpdate(_) => {
+                return Err("linked deck updates arrive with T41".into())
+            }
+            LibraryRequest::AddMediaFile { path } => {
+                Response::Media(decks::add_media_file(lib, &path)?)
+            }
+            LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
     }
 
@@ -349,6 +390,10 @@ impl App {
                 Response::Service(s)
             }
             ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
+            ServiceRequest::SlideThumbnail { .. } => {
+                // It needs a GPU, so the shell draws it from `slide_scene`.
+                return Err("thumbnails are drawn by the app shell".into());
+            }
             ServiceRequest::Readiness(_) => {
                 return Err("the readiness check arrives with T36".into())
             }
@@ -430,8 +475,32 @@ impl App {
         let primary = self.primary_output();
         let mut items = Vec::new();
         let mut views = Vec::new();
+        let mut builds = HashMap::new();
+        let mut scenes = HashMap::new();
+        let mut decks = Vec::new();
+        let mut blobs = Vec::new();
+        let mut parsed_decks = HashMap::new();
         for (item_id, item) in service.ordered() {
             let loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            if let ItemKind::Deck { deck } = &item.kind {
+                decks.push(*deck);
+                let parsed = self
+                    .library
+                    .deck(*deck)
+                    .ok()
+                    .flatten()
+                    .and_then(|d| self.parsed.get(&d.current.blob).cloned().map(|p| (d, p)));
+                if let Some((d, parsed)) = parsed {
+                    blobs.push(d.current.blob);
+                    for (i, slide) in parsed.slides.iter().enumerate() {
+                        if !slide.builds.is_empty() {
+                            builds.insert((item_id, i), slide.builds.clone());
+                        }
+                        scenes.insert((item_id, i), slide.scenes.clone());
+                    }
+                    parsed_decks.insert(*deck, parsed);
+                }
+            }
             views.push(LoadedItemView {
                 id: item_id,
                 title: loaded.title.clone(),
@@ -447,10 +516,15 @@ impl App {
             title: service.title.clone(),
             items: views,
         };
+        // Parsed decks no service uses any more are let go.
+        self.parsed.retain(|blob, _| blobs.contains(blob));
         self.loaded = Some(Loaded {
             view: view.clone(),
-            builds: HashMap::new(),
+            builds,
             songs: items.iter().filter_map(|i| i.song).collect(),
+            decks,
+            scenes,
+            slides: parsed_decks,
         });
         let events = self.live.load(items);
         (self.emit)(Event::Loaded(view.clone()));
@@ -503,9 +577,14 @@ impl App {
                 let reference = format!("{passage} {abbreviation}").trim().to_string();
                 let slides = match self.library.bible_text(*translation).map_err(err)? {
                     Some(bible) => match bible.verses(passage) {
-                        Ok(verses) => {
-                            paginate_passage(&verses, &reference, theme, primary, &mut self.fonts)
-                        }
+                        Ok(verses) => paginate_passage(
+                            &verses,
+                            &reference,
+                            PassageSplit::default(),
+                            theme,
+                            primary,
+                            &mut self.fonts,
+                        ),
                         Err(_) => Vec::new(),
                     },
                     None => Vec::new(),
@@ -516,10 +595,29 @@ impl App {
                     .collect();
                 item(reference, slides)
             }
-            ItemKind::Deck { .. } => item(
-                "Presentation (decks arrive with T29 to T31)".into(),
-                Vec::new(),
-            ),
+            ItemKind::Deck { deck } => match self.library.deck(*deck).map_err(err)? {
+                Some(d) => match self.parsed_deck(&d) {
+                    Ok(parsed) => {
+                        let slides = parsed
+                            .slides
+                            .iter()
+                            .map(|slide| LoadedSlide {
+                                content: Content::DeckSlide {
+                                    deck: *deck,
+                                    index: slide.index,
+                                    step: 0,
+                                    scene: slide.scenes[0].clone(),
+                                    notes: slide.notes.clone(),
+                                },
+                                steps: slide.builds.len(),
+                            })
+                            .collect();
+                        item(d.title.clone(), slides)
+                    }
+                    Err(why) => item(format!("{} ({why})", d.title), Vec::new()),
+                },
+                None => item("Missing presentation".into(), Vec::new()),
+            },
             ItemKind::Media { blob, name, looped } => {
                 let video = [".mp4", ".mov", ".m4v", ".webm", ".mkv"]
                     .iter()
@@ -563,6 +661,16 @@ impl App {
         })
     }
 
+    /// A deck's slides, parsed once per version while its service is open.
+    fn parsed_deck(&mut self, deck: &Deck) -> Result<Arc<ParsedSlides>> {
+        if let Some(parsed) = self.parsed.get(&deck.current.blob) {
+            return Ok(parsed.clone());
+        }
+        let parsed = Arc::new(decks::parse(&self.library, deck, &self.fonts)?);
+        self.parsed.insert(deck.current.blob, parsed.clone());
+        Ok(parsed)
+    }
+
     /// Composes and sends the program to every output that changed, and
     /// tells the UI.
     fn after_live(&mut self, events: Vec<lampstand_live::Event>) {
@@ -574,6 +682,7 @@ impl App {
     fn after_live_at(&mut self, events: Vec<lampstand_live::Event>, now: Timestamp, ticked: bool) {
         let mut program_changed = false;
         let mut cursors_changed = false;
+        let mut build = None;
         for event in &events {
             match event {
                 lampstand_live::Event::ProgramChanged => {
@@ -583,6 +692,8 @@ impl App {
                 lampstand_live::Event::PreviewChanged | lampstand_live::Event::ItemLive { .. } => {
                     cursors_changed = true
                 }
+                // Comes with `ProgramChanged`: `present_with` sends it as
+                // `Animate` to the outputs showing the step before.
                 lampstand_live::Event::BuildStep { cursor } => {
                     cursors_changed = true;
                     let step = self
@@ -592,16 +703,14 @@ impl App {
                         .and_then(|steps| steps.get(cursor.step.checked_sub(1)?))
                         .cloned()
                         .unwrap_or_default();
-                    for id in self.sizes.keys() {
-                        self.sink.send(*id, OutputCommand::Animate(step.clone()));
-                    }
+                    build = Some((cursor.step, step));
                 }
                 // CCLI usage logging arrives with T38.
                 lampstand_live::Event::SongShown { .. } => {}
             }
         }
         if program_changed {
-            self.present_at(now);
+            self.present_with(now, build);
         }
         if cursors_changed {
             let state = (
@@ -628,7 +737,13 @@ impl App {
     }
 
     fn present_at(&mut self, now: Timestamp) {
-        let program = self.live.program().clone();
+        self.present_with(now, None);
+    }
+
+    /// `build` is the build step just clicked (the step it brings the live
+    /// slide to, and its animations).
+    fn present_with(&mut self, now: Timestamp, build: Option<(usize, Vec<Animation>)>) {
+        let program = self.stepped(self.live.program().clone());
         let service_theme = self.loaded_theme();
         let ids: Vec<OutputId> = self.sizes.keys().copied().collect();
         for id in ids {
@@ -647,11 +762,55 @@ impl App {
                     countdown_seconds(&program.next, now),
                 ),
             };
-            if self.sent.get(&id) == Some(&sent) {
+            let previous = self.sent.get(&id);
+            if previous == Some(&sent) {
                 continue;
             }
+            let change = deck_change(
+                previous.and_then(|p| p.program.content.as_ref()),
+                sent.program.content.as_ref(),
+            );
+            let same_frame = previous.is_some_and(|p| {
+                p.size == sent.size
+                    && p.theme == sent.theme
+                    && p.config == sent.config
+                    && p.program.overlay == sent.program.overlay
+                    && p.program.background == sent.program.background
+            });
+            // The next build step on an output showing the step before:
+            // animate what is there.
+            if let (DeckChange::NextStep(step), Some((built, animations)), true) =
+                (change, &build, same_frame)
+            {
+                if step == *built {
+                    self.sink
+                        .send(id, OutputCommand::Animate(animations.clone()));
+                    self.sent.insert(id, sent);
+                    continue;
+                }
+            }
+            let mut shown = sent.program.clone();
+            let mut entry = Vec::new();
+            let transition = match change {
+                DeckChange::Arrive => {
+                    let slide = self.deck_slide(shown.content.as_ref());
+                    match (&mut shown.content, slide) {
+                        (Some(Content::DeckSlide { step: 0, scene, .. }), Some(slide)) => {
+                            // Shown as it arrives; what plays by itself
+                            // follows the `Show`.
+                            *scene = slide.arrival.clone();
+                            entry = slide.entry.clone();
+                            slide.transition
+                        }
+                        (_, Some(slide)) => slide.transition,
+                        _ => Transition::CUT,
+                    }
+                }
+                DeckChange::NextStep(_) | DeckChange::OtherStep => Transition::CUT,
+                DeckChange::Other => sent.theme.transition,
+            };
             let composed = compose_at(
-                &sent.program,
+                &shown,
                 &sent.config,
                 OutputSize {
                     width: size.0 as f32,
@@ -666,11 +825,38 @@ impl App {
                 id,
                 OutputCommand::Show {
                     scene: Arc::new(composed.scene),
-                    transition: sent.theme.transition,
+                    transition,
                 },
             );
+            if !entry.is_empty() {
+                self.sink.send(id, OutputCommand::Animate(entry));
+            }
             self.sent.insert(id, sent);
         }
+    }
+
+    /// The program with each deck slide's scene at its build step.
+    fn stepped(&self, mut program: Program) -> Program {
+        for content in [&mut program.content, &mut program.next] {
+            let stepped = self.deck_slide(content.as_ref()).zip(match content {
+                Some(Content::DeckSlide { step, .. }) => Some(*step),
+                _ => None,
+            });
+            if let (Some((slide, step)), Some(Content::DeckSlide { scene, .. })) =
+                (stepped, content)
+            {
+                *scene = slide.scene_at(step);
+            }
+        }
+        program
+    }
+
+    /// The parsed deck slide a `Content::DeckSlide` shows.
+    fn deck_slide(&self, content: Option<&Content>) -> Option<&decks::Slide> {
+        let Some(Content::DeckSlide { deck, index, .. }) = content else {
+            return None;
+        };
+        self.loaded.as_ref()?.slides.get(deck)?.slide(*index)
     }
 
     fn loaded_theme(&self) -> Option<ThemeId> {
@@ -829,7 +1015,8 @@ impl App {
     }
 
     /// Documents changed here or on another device: tell the UI, and
-    /// reload the open service if it, one of its songs or a theme changed.
+    /// reload the open service if it, one of its songs or decks or a theme
+    /// changed.
     /// A large batch (an import) becomes one `Changed` per kind.
     pub fn library_changed(&mut self, changes: &[DocChanged]) {
         const MANY: usize = 20;
@@ -865,12 +1052,21 @@ impl App {
                     && loaded
                         .songs
                         .contains(&lampstand_core::song::SongId::from_uuid(c.id)))
+                || (c.kind == lampstand_sync::DocKind::Deck
+                    && loaded.decks.contains(&DeckId::from_uuid(c.id)))
         });
         if affects {
             if let Err(e) = self.load_service(service) {
                 eprintln!("lampstand: reloading the service failed: {e}");
             }
         }
+    }
+
+    /// The scene of a deck slide in the open service after `step` build
+    /// steps (past the last, the last), for a thumbnail.
+    pub fn slide_scene(&self, item: ItemId, slide: usize, step: usize) -> Option<Arc<Scene>> {
+        let scenes = self.loaded.as_ref()?.scenes.get(&(item, slide))?;
+        scenes.get(step.min(scenes.len().checked_sub(1)?)).cloned()
     }
 
     /// For the live view: what is on air, as text.
@@ -896,6 +1092,45 @@ pub fn song_databases() -> Vec<SongDatabase> {
         .collect()
 }
 
+/// How a deck slide on an output changes, which decides how it is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeckChange {
+    /// A deck slide arrives (from another slide, or from anything else).
+    Arrive,
+    /// The same slide, one build step on: to this step.
+    NextStep(usize),
+    /// The same slide at another step (back, or several on).
+    OtherStep,
+    /// Not a deck slide, or the same slide at the same step.
+    Other,
+}
+
+fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange {
+    let Some(Content::DeckSlide {
+        deck, index, step, ..
+    }) = after
+    else {
+        return DeckChange::Other;
+    };
+    match before {
+        Some(Content::DeckSlide {
+            deck: d,
+            index: i,
+            step: s,
+            ..
+        }) if d == deck && i == index => {
+            if *step == s + 1 {
+                DeckChange::NextStep(*step)
+            } else if step != s {
+                DeckChange::OtherStep
+            } else {
+                DeckChange::Other
+            }
+        }
+        _ => DeckChange::Arrive,
+    }
+}
+
 fn slide_view(slide: &LoadedSlide) -> SlideView {
     let (label, lines) = match &slide.content {
         Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => {
@@ -906,10 +1141,15 @@ fn slide_view(slide: &LoadedSlide) -> SlideView {
         Content::Video { .. } => (Some("Video".into()), Vec::new()),
         Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()]),
     };
+    let notes = match &slide.content {
+        Content::DeckSlide { notes, .. } => notes.clone(),
+        _ => String::new(),
+    };
     SlideView {
         label,
         lines,
         steps: slide.steps,
+        notes,
     }
 }
 

@@ -15,7 +15,7 @@ use lampstand_core::output::{
 };
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
-use lampstand_core::scene::{NodeKind, Scene};
+use lampstand_core::scene::{Direction, Effect, Node, NodeKind, Scene, Transition, TransitionKind};
 use lampstand_core::service::{CountdownTarget, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
@@ -784,4 +784,286 @@ fn a_countdown_recomposes_each_second_and_only_then() {
     assert!(scene_text(&shown_scenes(&h.sink)[0].1).contains("0:00"));
     h.app.tick_at(Timestamp(t0.0 + 11_000));
     assert!(h.sink.take().is_empty());
+}
+
+fn deck_path(name: &str) -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/lampstand-slides/tests/decks")
+        .join(format!("{name}.pptx"))
+        .display()
+        .to_string()
+}
+
+fn insert(h: &mut Harness, service: &Service, kind: ItemKind) -> Service {
+    match ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind,
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_deck_and_a_video_from_disk_play_in_a_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+
+    let deck = match ok(h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: deck_path("10-church-service"),
+    }))) {
+        Response::Deck(d) => d,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(deck.title, "10-church-service");
+    let listed = match ok(h.app.handle(Request::Library(LibraryRequest::ListDecks))) {
+        Response::Decks(d) => d,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(listed, vec![deck.clone()]);
+
+    let video = dir.path().join("Welcome loop.mp4");
+    std::fs::write(&video, b"not really a video").unwrap();
+    let media = match ok(h.app.handle(Request::Library(LibraryRequest::AddMediaFile {
+        path: video.display().to_string(),
+    }))) {
+        Response::Media(m) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(media.name, "Welcome loop.mp4");
+
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(&mut h, &service, ItemKind::Deck { deck: deck.id });
+    let service = insert(
+        &mut h,
+        &service,
+        ItemKind::Media {
+            blob: media.blob,
+            name: media.name.clone(),
+            looped: true,
+        },
+    );
+    let listed = match ok(h.app.handle(Request::Library(LibraryRequest::ListMedia))) {
+        Response::MediaFiles(m) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(listed, vec![media.clone()]);
+
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "10-church-service");
+    // The deck's hidden slide is left out.
+    let slides = &loaded.items[0].slides;
+    assert!(slides.len() >= 2, "{slides:?}");
+    assert_eq!(slides[0].label.as_deref(), Some("Slide 1"));
+    assert_eq!(loaded.items[1].title, "Welcome loop.mp4");
+    assert_eq!(loaded.items[1].slides[0].label.as_deref(), Some("Video"));
+    // Deck slides have a scene for the operator's thumbnails; video has none.
+    assert!(h.app.slide_scene(loaded.items[0].id, 0, 0).is_some());
+    assert!(h.app.slide_scene(loaded.items[1].id, 0, 0).is_none());
+    h.sink.take();
+
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let program = h.app.program().clone();
+    assert!(
+        matches!(&program.content, Some(Content::DeckSlide { deck: d, index: 0, .. }) if *d == deck.id),
+        "{program:?}"
+    );
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(scene_text(&shown[0].1).contains("Amazing grace, how sweet the sound"));
+
+    for _ in 0..slides.len() {
+        ok(h.app.handle(Request::Live(Command::Next)));
+    }
+    let program = h.app.program().clone();
+    assert!(
+        matches!(&program.content, Some(Content::Video { blob, looped: true }) if *blob == media.blob),
+        "{program:?}"
+    );
+}
+
+#[test]
+fn a_file_that_is_not_a_deck_is_refused_and_a_missing_deck_still_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let path = dir.path().join("hymns.pptx");
+    std::fs::write(&path, b"plain text").unwrap();
+    let response = h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: path.display().to_string(),
+    }));
+    assert!(
+        matches!(&response, Response::Error { message } if message.contains("not a PowerPoint")),
+        "{response:?}"
+    );
+
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(
+        &mut h,
+        &service,
+        ItemKind::Deck {
+            deck: lampstand_core::deck::DeckId::generate(),
+        },
+    );
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "Missing presentation");
+    assert!(loaded.items[0].slides.is_empty());
+}
+
+/// Whether the node with this ID is drawn: it and every group around it
+/// visible. `None` when the scene has no such node.
+fn drawn(nodes: &[Node], id: u32) -> Option<bool> {
+    nodes.iter().find_map(|n| {
+        if n.id == id {
+            return Some(n.visible);
+        }
+        match &n.kind {
+            NodeKind::Group(kids) => drawn(kids, id).map(|v| v && n.visible),
+            _ => None,
+        }
+    })
+}
+
+#[test]
+fn deck_builds_animate_on_the_output_and_survive_a_recompose() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let deck = match ok(h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: deck_path("11-builds-transitions"),
+    }))) {
+        Response::Deck(d) => d,
+        other => panic!("{other:?}"),
+    };
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(&mut h, &service, ItemKind::Deck { deck: deck.id });
+    let loaded = open_service(&mut h, &service);
+    let item = loaded.items[0].id;
+    let slides = &loaded.items[0].slides;
+    let steps: Vec<usize> = slides.iter().map(|s| s.steps).collect();
+    assert_eq!(steps, [0, 3, 2, 2, 0]);
+    assert_eq!(
+        slides[1].notes,
+        "Reveal one point at a time.\nPause after the second."
+    );
+    assert_eq!(slides[0].notes, "");
+    h.sink.take();
+
+    // Each slide arrives with its own transition, not the theme's.
+    let shows = |h: &Harness| -> Vec<(Arc<Scene>, Transition)> {
+        h.sink
+            .take()
+            .into_iter()
+            .filter_map(|(_, c)| match c {
+                OutputCommand::Show { scene, transition } => Some((scene, transition)),
+                _ => None,
+            })
+            .collect()
+    };
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let shown = shows(&h);
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].1.kind, TransitionKind::Fade);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let shown = shows(&h);
+    assert_eq!(shown[0].1.kind, TransitionKind::Push(Direction::Down));
+    // The three paragraphs' nodes, in build order.
+    let paragraphs: Vec<u32> = (0..3)
+        .map(|step| {
+            let before = h.app.slide_scene(item, 1, step).unwrap();
+            let after = h.app.slide_scene(item, 1, step + 1).unwrap();
+            find_revealed(&before.nodes, &after.nodes).unwrap_or_else(|| panic!("step {step}"))
+        })
+        .collect();
+    assert!(paragraphs
+        .iter()
+        .all(|id| drawn(&shown[0].0.nodes, *id) == Some(false)));
+
+    // A click plays the build: `Animate`, never a `Show` that would cut
+    // the animation short.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let sent = h.sink.take();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    let OutputCommand::Animate(animations) = &sent[0].1 else {
+        panic!("{sent:?}")
+    };
+    assert_eq!(animations.len(), 1);
+    assert_eq!(animations[0].effect, Effect::FadeIn);
+    assert_eq!(animations[0].node, paragraphs[0]);
+
+    // A recompose (Black on and off) keeps what has built.
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    h.sink.take();
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    let shown = shows(&h);
+    let visible: Vec<Option<bool>> = paragraphs
+        .iter()
+        .map(|id| drawn(&shown[0].0.nodes, *id))
+        .collect();
+    assert_eq!(visible, [Some(true), Some(false), Some(false)]);
+
+    // Back through a build cuts to the step before.
+    ok(h.app.handle(Request::Live(Command::Previous)));
+    let shown = shows(&h);
+    assert_eq!(shown[0].1, Transition::CUT);
+    assert_eq!(drawn(&shown[0].0.nodes, paragraphs[0]), Some(false));
+
+    // Thumbnails show a slide at any step.
+    let thumb = h.app.slide_scene(item, 1, 2).unwrap();
+    let visible: Vec<Option<bool>> = paragraphs
+        .iter()
+        .map(|id| drawn(&thumb.nodes, *id))
+        .collect();
+    assert_eq!(visible, [Some(true), Some(true), Some(false)]);
+
+    // A slide whose first effect plays by itself arrives without it and
+    // then animates it.
+    ok(h.app
+        .handle(Request::Live(Command::Show(lampstand_live::Cursor {
+            item,
+            slide: 3,
+            step: 0,
+        }))));
+    let sent = h.sink.take();
+    let kinds: Vec<&str> = sent
+        .iter()
+        .map(|(_, c)| match c {
+            OutputCommand::Show { .. } => "show",
+            OutputCommand::Animate(_) => "animate",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["show", "animate"]);
+    let (OutputCommand::Show { scene, transition }, OutputCommand::Animate(entry)) =
+        (&sent[0].1, &sent[1].1)
+    else {
+        unreachable!()
+    };
+    assert_eq!(transition.kind, TransitionKind::Cover(Direction::Right));
+    assert_eq!(entry.len(), 1);
+    assert_eq!(drawn(&scene.nodes, entry[0].node), Some(false));
+    // Composed again, it stays shown.
+    let thumb = h.app.slide_scene(item, 3, 0).unwrap();
+    assert_eq!(drawn(&thumb.nodes, entry[0].node), Some(true));
+}
+
+/// The node hidden in `before` and drawn in `after`.
+fn find_revealed(before: &[Node], after: &[Node]) -> Option<u32> {
+    fn ids(nodes: &[Node], out: &mut Vec<u32>) {
+        for n in nodes {
+            out.push(n.id);
+            if let NodeKind::Group(kids) = &n.kind {
+                ids(kids, out);
+            }
+        }
+    }
+    let mut all = Vec::new();
+    ids(before, &mut all);
+    all.into_iter()
+        .find(|id| drawn(before, *id) == Some(false) && drawn(after, *id) == Some(true))
 }

@@ -7,6 +7,7 @@
 //! local server and peer sync, and answers `Team` requests.
 
 pub mod config;
+pub mod decks;
 pub mod handler;
 pub mod import;
 pub mod seed;

@@ -1227,3 +1227,42 @@ mod calibration {
         check("safe_area_overlay", &image);
     }
 }
+
+#[test]
+fn transparent_text_draws_nothing_not_even_its_outline_or_shadow() {
+    // A deck paragraph that has not built yet: laid out in its block, but
+    // transparent (`lampstand-slides` paragraph builds).
+    let f = fixture_or_skip!();
+    let hidden = Color {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 0,
+    };
+    let mut block = text(
+        rect(0.0, 0.0, 480.0, 270.0),
+        VAlign::Middle,
+        vec![para(HAlign::Center, vec![run("Not yet", 56.0, hidden)])],
+    );
+    block.outline = Some(Outline {
+        color: Color::BLACK,
+        width: 3.0,
+    });
+    block.shadow = Some(Shadow {
+        color: Color::BLACK,
+        offset: p(4.0, 6.0),
+        blur: 4.0,
+    });
+    let backdrop = || {
+        fill(
+            rect_path(rect(0.0, 0.0, 480.0, 270.0)),
+            Paint::Solid(Color::rgb(90, 140, 200)),
+        )
+    };
+    let with = scene(480.0, 270.0, vec![backdrop(), node(NodeKind::Text(block))]);
+    let without = scene(480.0, 270.0, vec![backdrop()]);
+    assert_eq!(
+        render(f, &with, 240, 135).pixels,
+        render(f, &without, 240, 135).pixels
+    );
+}

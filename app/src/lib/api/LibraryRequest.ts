@@ -2,4 +2,4 @@
 import type { Song } from "./Song";
 import type { Theme } from "./Theme";
 
-export type LibraryRequest = { "SearchSongs": { query: string, limit: number, } } | { "GetSong": string } | { "PutSong": Song } | "ListThemes" | { "PutTheme": Theme } | "ListTranslations" | { "LookupPassage": { reference: string, translation: string, } } | { "ImportFiles": { paths: Array<string>, } } | "ListSongDatabases" | { "DownloadSongDatabase": { code: string, } } | { "AddDeckFromLink": { url: string, } } | { "AcceptDeckUpdate": string };
+export type LibraryRequest = { "SearchSongs": { query: string, limit: number, } } | { "GetSong": string } | { "PutSong": Song } | "ListThemes" | { "PutTheme": Theme } | "ListTranslations" | { "LookupPassage": { reference: string, translation: string, } } | { "ImportFiles": { paths: Array<string>, } } | "ListSongDatabases" | { "DownloadSongDatabase": { code: string, } } | "ListDecks" | { "AddDeckFile": { path: string, } } | { "AddDeckFromLink": { url: string, } } | { "AcceptDeckUpdate": string } | { "AddMediaFile": { path: string, } } | "ListMedia";
