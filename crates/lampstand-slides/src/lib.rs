@@ -10,6 +10,8 @@
 //!
 //! Scenes are in points (1/72 inch); a 16:9 deck is 960 × 540.
 
+mod pptx;
+
 use std::collections::BTreeMap;
 
 use lampstand_core::id::BlobHash;
@@ -103,10 +105,38 @@ pub enum ImportError {
     /// Password-protected PPTX (an encrypted OLE container).
     Encrypted,
     Corrupt(String),
+    /// The deck would cost too much memory to parse: `found` of `what`
+    /// ("unpacked bytes", "XML elements in ppt/slides/slide3.xml"...) where
+    /// at most `limit` are allowed. Real decks stay far below the limits;
+    /// embedded video this large should be linked or added as a media item.
+    TooLarge {
+        what: String,
+        found: u64,
+        limit: u64,
+    },
 }
 
-/// Parses a PPTX file.
+/// Parses a PPTX file (PowerPoint, Keynote or Google Slides export).
+///
+/// Built on DeckCraft's reader (`docs/decisions/0001-pptx-reader.md`); see
+/// `pptx` for how its model maps onto scenes. Fonts the deck asks for
+/// that `fonts` lacks, shapes and objects drawn approximately or not at
+/// all, and linked media are in `ParsedDeck::report`. Builds and
+/// transitions are T30's: every slide comes back with no build steps and a
+/// cut.
 pub fn import_pptx(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
-    let _ = (bytes, fonts);
-    todo!("T29")
+    pptx::import(bytes, fonts)
+}
+
+/// `import_pptx` with the parse budget's memory estimate limited to
+/// `memory` bytes instead of its 512 MB. For `tests/memory.rs`, which
+/// measures peak allocation against the budget at a size a debug build
+/// parses quickly; the peak scales with the budget.
+#[doc(hidden)]
+pub fn import_pptx_with_budget(
+    bytes: &[u8],
+    fonts: &dyn FontLookup,
+    memory: u64,
+) -> Result<ParsedDeck, ImportError> {
+    pptx::import_with(bytes, fonts, memory)
 }

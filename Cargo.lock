@@ -118,6 +118,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1179,6 +1188,50 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
+name = "deckcraft-color"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "deckcraft-geom"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "kurbo",
+ "serde",
+]
+
+[[package]]
+name = "deckcraft-model"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-color",
+ "deckcraft-geom",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "deckcraft-pptx"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-color",
+ "deckcraft-geom",
+ "deckcraft-model",
+ "log",
+ "quick-xml 0.41.0",
+ "thiserror 2.0.21",
+ "zip 3.0.0",
+]
+
+[[package]]
 name = "defmt"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1279,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -2953,6 +3017,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
+name = "kurbo"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b60dfc32f652b926df6192e55525b16d186c69d47876c3ead4da5cc9f8450e2"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "polycool",
+ "serde",
+ "smallvec",
+]
+
+[[package]]
 name = "lampstand-api"
 version = "0.1.0"
 dependencies = [
@@ -3032,7 +3109,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "zip",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -3123,7 +3200,19 @@ dependencies = [
 name = "lampstand-slides"
 version = "0.1.0"
 dependencies = [
+ "deckcraft-color",
+ "deckcraft-geom",
+ "deckcraft-model",
+ "deckcraft-pptx",
+ "image",
+ "insta",
  "lampstand-core",
+ "lampstand-layout",
+ "lampstand-render",
+ "quick-xml 0.41.0",
+ "serde_json",
+ "tempfile",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -4412,6 +4501,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "polycool"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5694,6 +5792,9 @@ name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "smithay-client-toolkit"
@@ -8256,6 +8357,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "zip"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12598812502ed0105f607f941c386f43d441e00148fce9dec3ca5ffb0bde9308"
+dependencies = [
+ "arbitrary",
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.2",
+ "memchr",
+ "zopfli",
 ]
 
 [[package]]

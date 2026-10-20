@@ -1,0 +1,2886 @@
+---
+source: crates/lampstand-slides/tests/decks.rs
+expression: value
+---
+{
+  "height": 540.0,
+  "issues": [
+    "Issue { slide: Some(0), kind: MissingFont { requested: \"Calibri\", substitute: Some(\"Carlito\") } }"
+  ],
+  "media": [],
+  "slides": [
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 13,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 14,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Groups",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 4,
+                  "kind": {
+                    "Group": [
+                      {
+                        "id": 16,
+                        "kind": {
+                          "Path": {
+                            "commands": [
+                              {
+                                "MoveTo": {
+                                  "x": 10.8,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 118.8,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 124.76,
+                                    "y": -0.0
+                                  },
+                                  {
+                                    "x": 129.6,
+                                    "y": 4.84
+                                  },
+                                  {
+                                    "x": 129.6,
+                                    "y": 10.8
+                                  }
+                                ]
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 129.6,
+                                  "y": 54.0
+                                }
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 129.6,
+                                    "y": 59.96
+                                  },
+                                  {
+                                    "x": 124.76,
+                                    "y": 64.8
+                                  },
+                                  {
+                                    "x": 118.8,
+                                    "y": 64.8
+                                  }
+                                ]
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 10.8,
+                                  "y": 64.8
+                                }
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 4.84,
+                                    "y": 64.8
+                                  },
+                                  {
+                                    "x": 0.0,
+                                    "y": 59.96
+                                  },
+                                  {
+                                    "x": 0.0,
+                                    "y": 54.0
+                                  }
+                                ]
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 0.0,
+                                  "y": 10.8
+                                }
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": -0.0,
+                                    "y": 4.84
+                                  },
+                                  {
+                                    "x": 4.84,
+                                    "y": 0.0
+                                  },
+                                  {
+                                    "x": 10.8,
+                                    "y": -0.0
+                                  }
+                                ]
+                              },
+                              "Close"
+                            ],
+                            "fill": {
+                              "Linear": {
+                                "end": {
+                                  "x": 64.8,
+                                  "y": 0.0
+                                },
+                                "start": {
+                                  "x": 64.8,
+                                  "y": 64.8
+                                },
+                                "stops": [
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 206,
+                                      "g": 127,
+                                      "r": 63
+                                    },
+                                    "offset": 0.0
+                                  },
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 255,
+                                      "g": 196,
+                                      "r": 164
+                                    },
+                                    "offset": 1.0
+                                  }
+                                ]
+                              }
+                            },
+                            "shadow": {
+                              "blur": 2.1,
+                              "color": {
+                                "a": 89,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "offset": {
+                                "x": -0.0,
+                                "y": 1.81
+                              }
+                            },
+                            "stroke": {
+                              "dash": null,
+                              "paint": {
+                                "Solid": {
+                                  "a": 255,
+                                  "b": 188,
+                                  "g": 126,
+                                  "r": 74
+                                }
+                              },
+                              "width": 0.75
+                            }
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 0.0,
+                          "f": 0.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "id": 17,
+                        "kind": {
+                          "Text": {
+                            "outline": null,
+                            "paragraphs": [
+                              {
+                                "align": "Left",
+                                "bullet": null,
+                                "indent": 0.0,
+                                "line_spacing": 1.2,
+                                "runs": [
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 255,
+                                      "g": 255,
+                                      "r": 255
+                                    },
+                                    "font_family": "Calibri",
+                                    "italic": false,
+                                    "size": 18.0,
+                                    "strike": false,
+                                    "text": "Outer group",
+                                    "underline": false,
+                                    "weight": 400
+                                  }
+                                ],
+                                "space_after": 0.0,
+                                "space_before": 0.0
+                              }
+                            ],
+                            "rect": {
+                              "height": 51.27,
+                              "width": 108.87,
+                              "x": 10.36,
+                              "y": 6.76
+                            },
+                            "shadow": null,
+                            "valign": "Middle"
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 0.0,
+                          "f": 0.0
+                        },
+                        "visible": true
+                      }
+                    ]
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 72.0,
+                    "f": 144.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 5,
+                  "kind": {
+                    "Group": [
+                      {
+                        "id": 6,
+                        "kind": {
+                          "Path": {
+                            "commands": [
+                              {
+                                "MoveTo": {
+                                  "x": 64.8,
+                                  "y": 32.4
+                                }
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 64.8,
+                                    "y": 50.29
+                                  },
+                                  {
+                                    "x": 50.29,
+                                    "y": 64.8
+                                  },
+                                  {
+                                    "x": 32.4,
+                                    "y": 64.8
+                                  }
+                                ]
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 14.51,
+                                    "y": 64.8
+                                  },
+                                  {
+                                    "x": 0.0,
+                                    "y": 50.29
+                                  },
+                                  {
+                                    "x": 0.0,
+                                    "y": 32.4
+                                  }
+                                ]
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 0.0,
+                                    "y": 14.51
+                                  },
+                                  {
+                                    "x": 14.51,
+                                    "y": 0.0
+                                  },
+                                  {
+                                    "x": 32.4,
+                                    "y": 0.0
+                                  }
+                                ]
+                              },
+                              {
+                                "CubicTo": [
+                                  {
+                                    "x": 50.29,
+                                    "y": -0.0
+                                  },
+                                  {
+                                    "x": 64.8,
+                                    "y": 14.51
+                                  },
+                                  {
+                                    "x": 64.8,
+                                    "y": 32.4
+                                  }
+                                ]
+                              },
+                              "Close"
+                            ],
+                            "fill": {
+                              "Solid": {
+                                "a": 255,
+                                "b": 61,
+                                "g": 85,
+                                "r": 200
+                              }
+                            },
+                            "shadow": {
+                              "blur": 2.1,
+                              "color": {
+                                "a": 89,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "offset": {
+                                "x": -0.0,
+                                "y": 1.81
+                              }
+                            },
+                            "stroke": {
+                              "dash": null,
+                              "paint": {
+                                "Solid": {
+                                  "a": 255,
+                                  "b": 188,
+                                  "g": 126,
+                                  "r": 74
+                                }
+                              },
+                              "width": 0.75
+                            }
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 93.6,
+                          "f": 230.4
+                        },
+                        "visible": true
+                      },
+                      {
+                        "id": 7,
+                        "kind": {
+                          "Path": {
+                            "commands": [
+                              {
+                                "MoveTo": {
+                                  "x": 0.0,
+                                  "y": 64.8
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 32.4,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 64.8,
+                                  "y": 64.8
+                                }
+                              },
+                              "Close"
+                            ],
+                            "fill": {
+                              "Solid": {
+                                "a": 255,
+                                "b": 91,
+                                "g": 139,
+                                "r": 88
+                              }
+                            },
+                            "shadow": {
+                              "blur": 2.1,
+                              "color": {
+                                "a": 89,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "offset": {
+                                "x": -0.0,
+                                "y": 1.81
+                              }
+                            },
+                            "stroke": {
+                              "dash": null,
+                              "paint": {
+                                "Solid": {
+                                  "a": 255,
+                                  "b": 188,
+                                  "g": 126,
+                                  "r": 74
+                                }
+                              },
+                              "width": 0.75
+                            }
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 167.04,
+                          "f": 230.4
+                        },
+                        "visible": true
+                      }
+                    ]
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 8,
+            "kind": {
+              "Group": [
+                {
+                  "id": 9,
+                  "kind": {
+                    "Group": [
+                      {
+                        "id": 20,
+                        "kind": {
+                          "Path": {
+                            "commands": [
+                              {
+                                "MoveTo": {
+                                  "x": 0.0,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 180.0,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 180.0,
+                                  "y": 72.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 0.0,
+                                  "y": 72.0
+                                }
+                              },
+                              {
+                                "LineTo": {
+                                  "x": 0.0,
+                                  "y": 0.0
+                                }
+                              },
+                              "Close"
+                            ],
+                            "fill": {
+                              "Linear": {
+                                "end": {
+                                  "x": 90.0,
+                                  "y": 0.0
+                                },
+                                "start": {
+                                  "x": 90.0,
+                                  "y": 72.0
+                                },
+                                "stops": [
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 206,
+                                      "g": 127,
+                                      "r": 63
+                                    },
+                                    "offset": 0.0
+                                  },
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 255,
+                                      "g": 196,
+                                      "r": 164
+                                    },
+                                    "offset": 1.0
+                                  }
+                                ]
+                              }
+                            },
+                            "shadow": {
+                              "blur": 2.1,
+                              "color": {
+                                "a": 89,
+                                "b": 0,
+                                "g": 0,
+                                "r": 0
+                              },
+                              "offset": {
+                                "x": 0.91,
+                                "y": 1.57
+                              }
+                            },
+                            "stroke": {
+                              "dash": null,
+                              "paint": {
+                                "Solid": {
+                                  "a": 255,
+                                  "b": 188,
+                                  "g": 126,
+                                  "r": 74
+                                }
+                              },
+                              "width": 0.75
+                            }
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 0.0,
+                          "f": 0.0
+                        },
+                        "visible": true
+                      },
+                      {
+                        "id": 21,
+                        "kind": {
+                          "Text": {
+                            "outline": null,
+                            "paragraphs": [
+                              {
+                                "align": "Left",
+                                "bullet": null,
+                                "indent": 0.0,
+                                "line_spacing": 1.2,
+                                "runs": [
+                                  {
+                                    "color": {
+                                      "a": 255,
+                                      "b": 255,
+                                      "g": 255,
+                                      "r": 255
+                                    },
+                                    "font_family": "Calibri",
+                                    "italic": false,
+                                    "size": 18.0,
+                                    "strike": false,
+                                    "text": "Rotated group",
+                                    "underline": false,
+                                    "weight": 400
+                                  }
+                                ],
+                                "space_after": 0.0,
+                                "space_before": 0.0
+                              }
+                            ],
+                            "rect": {
+                              "height": 64.8,
+                              "width": 165.6,
+                              "x": 7.2,
+                              "y": 3.6
+                            },
+                            "shadow": null,
+                            "valign": "Middle"
+                          }
+                        },
+                        "opacity": 1.0,
+                        "transform": {
+                          "a": 1.0,
+                          "b": 0.0,
+                          "c": 0.0,
+                          "d": 1.0,
+                          "e": 0.0,
+                          "f": 0.0
+                        },
+                        "visible": true
+                      }
+                    ]
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 0.87,
+                    "b": 0.5,
+                    "c": -0.5,
+                    "d": 0.87,
+                    "e": 483.66,
+                    "f": 109.61
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 10,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 18.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 18.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 180.0,
+                            "y": 36.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 72.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 144.0,
+                            "y": 54.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 54.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 65,
+                          "g": 165,
+                          "r": 242
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": 0.91,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 0.87,
+                    "b": 0.5,
+                    "c": -0.5,
+                    "d": 0.87,
+                    "e": 440.46,
+                    "f": 184.44
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 11,
+            "kind": {
+              "Group": [
+                {
+                  "id": 23,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 162.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 216.0,
+                            "y": 54.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 162.0,
+                            "y": 108.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 108.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 108.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 108.0,
+                            "y": 108.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": 0.0,
+                          "y": 1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 24,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 16.0,
+                              "strike": false,
+                              "text": "Flipped arrow, text unflipped",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 100.8,
+                        "width": 174.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": -1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 189.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": -1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 900.0,
+              "f": 144.0
+            },
+            "visible": true
+          },
+          {
+            "id": 12,
+            "kind": {
+              "Group": [
+                {
+                  "id": 25,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 162.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 216.0,
+                            "y": 54.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 162.0,
+                            "y": 108.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 0.0,
+                            "y": 108.0
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Linear": {
+                          "end": {
+                            "x": 108.0,
+                            "y": 0.0
+                          },
+                          "start": {
+                            "x": 108.0,
+                            "y": 108.0
+                          },
+                          "stops": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 206,
+                                "g": 127,
+                                "r": 63
+                              },
+                              "offset": 0.0
+                            },
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 196,
+                                "r": 164
+                              },
+                              "offset": 1.0
+                            }
+                          ]
+                        }
+                      },
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 89,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": -1.81
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 188,
+                            "g": 126,
+                            "r": 74
+                          }
+                        },
+                        "width": 0.75
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 26,
+                  "kind": {
+                    "Text": {
+                      "outline": null,
+                      "paragraphs": [
+                        {
+                          "align": "Left",
+                          "bullet": null,
+                          "indent": 0.0,
+                          "line_spacing": 1.2,
+                          "runs": [
+                            {
+                              "color": {
+                                "a": 255,
+                                "b": 255,
+                                "g": 255,
+                                "r": 255
+                              },
+                              "font_family": "Calibri",
+                              "italic": false,
+                              "size": 16.0,
+                              "strike": false,
+                              "text": "Flipped vertically",
+                              "underline": false,
+                              "weight": 400
+                            }
+                          ],
+                          "space_after": 0.0,
+                          "space_before": 0.0
+                        }
+                      ],
+                      "rect": {
+                        "height": 100.8,
+                        "width": 174.6,
+                        "x": 7.2,
+                        "y": 3.6
+                      },
+                      "shadow": null,
+                      "valign": "Middle"
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": -1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 189.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": -1.0,
+              "e": 684.0,
+              "f": 410.4
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    },
+    {
+      "builds": 0,
+      "hidden": false,
+      "notes": "",
+      "scene": {
+        "height": 540.0,
+        "nodes": [
+          {
+            "id": 13,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 14,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 960.0,
+                      "y": 540.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 0.0,
+                      "y": 540.0
+                    }
+                  },
+                  "Close"
+                ],
+                "fill": {
+                  "Solid": {
+                    "a": 255,
+                    "b": 255,
+                    "g": 255,
+                    "r": 255
+                  }
+                },
+                "shadow": null,
+                "stroke": null
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 0.0,
+              "f": 0.0
+            },
+            "visible": true
+          },
+          {
+            "id": 2,
+            "kind": {
+              "Text": {
+                "outline": null,
+                "paragraphs": [
+                  {
+                    "align": "Center",
+                    "bullet": null,
+                    "indent": 0.0,
+                    "line_spacing": 1.2,
+                    "runs": [
+                      {
+                        "color": {
+                          "a": 255,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "font_family": "Calibri",
+                        "italic": false,
+                        "size": 44.0,
+                        "strike": false,
+                        "text": "Connectors and line ends",
+                        "underline": false,
+                        "weight": 400
+                      }
+                    ],
+                    "space_after": 0.0,
+                    "space_before": 0.0
+                  }
+                ],
+                "rect": {
+                  "height": 82.8,
+                  "width": 633.6,
+                  "x": 7.2,
+                  "y": 3.6
+                },
+                "shadow": null,
+                "valign": "Middle"
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 36.0,
+              "f": 21.63
+            },
+            "visible": true
+          },
+          {
+            "id": 3,
+            "kind": {
+              "Group": [
+                {
+                  "id": 16,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 333.4,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 2.5
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 17,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 338.4,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 333.4,
+                            "y": 2.5
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 333.4,
+                            "y": -2.5
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 129.6
+            },
+            "visible": true
+          },
+          {
+            "id": 4,
+            "kind": {
+              "Group": [
+                {
+                  "id": 18,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 5.5,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 332.9,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 2.5
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 19,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 7.5,
+                            "y": -3.75
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 4.5,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 7.5,
+                            "y": 3.75
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 20,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 338.4,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": 3.75
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 333.9,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": -3.75
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 194.4
+            },
+            "visible": true
+          },
+          {
+            "id": 5,
+            "kind": {
+              "Group": [
+                {
+                  "id": 21,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 338.4,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 2.5
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 22,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 344.65,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 338.4,
+                            "y": 6.25
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 332.15,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 338.4,
+                            "y": -6.25
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 259.2
+            },
+            "visible": true
+          },
+          {
+            "id": 6,
+            "kind": {
+              "Group": [
+                {
+                  "id": 23,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 338.4,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 2.5
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 24,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": -2.5,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": -2.5,
+                              "y": -1.38
+                            },
+                            {
+                              "x": -1.38,
+                              "y": -2.5
+                            },
+                            {
+                              "x": 0.0,
+                              "y": -2.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 1.38,
+                              "y": -2.5
+                            },
+                            {
+                              "x": 2.5,
+                              "y": -1.38
+                            },
+                            {
+                              "x": 2.5,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 2.5,
+                              "y": 1.38
+                            },
+                            {
+                              "x": 1.38,
+                              "y": 2.5
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 2.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": -1.38,
+                              "y": 2.5
+                            },
+                            {
+                              "x": -2.5,
+                              "y": 1.38
+                            },
+                            {
+                              "x": -2.5,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 25,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 340.9,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 340.9,
+                              "y": 1.38
+                            },
+                            {
+                              "x": 339.78,
+                              "y": 2.5
+                            },
+                            {
+                              "x": 338.4,
+                              "y": 2.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 337.02,
+                              "y": 2.5
+                            },
+                            {
+                              "x": 335.9,
+                              "y": 1.38
+                            },
+                            {
+                              "x": 335.9,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 335.9,
+                              "y": -1.38
+                            },
+                            {
+                              "x": 337.02,
+                              "y": -2.5
+                            },
+                            {
+                              "x": 338.4,
+                              "y": -2.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 339.78,
+                              "y": -2.5
+                            },
+                            {
+                              "x": 340.9,
+                              "y": -1.38
+                            },
+                            {
+                              "x": 340.9,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 324.0
+            },
+            "visible": true
+          },
+          {
+            "id": 7,
+            "kind": {
+              "Group": [
+                {
+                  "id": 26,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 335.6,
+                            "y": 0.0
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 68,
+                            "g": 42,
+                            "r": 31
+                          }
+                        },
+                        "width": 2.5
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 27,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 338.4,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": 3.75
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": 1.25
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 335.9,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": -1.25
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 330.9,
+                            "y": -3.75
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 68,
+                          "g": 42,
+                          "r": 31
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 57.6,
+              "f": 388.8
+            },
+            "visible": true
+          },
+          {
+            "id": 8,
+            "kind": {
+              "Group": [
+                {
+                  "id": 28,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 108.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 108.0,
+                            "y": 158.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 207.0,
+                            "y": 158.4
+                          }
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 61,
+                            "g": 85,
+                            "r": 200
+                          }
+                        },
+                        "width": 3.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 29,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 216.0,
+                            "y": 158.4
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 207.0,
+                            "y": 162.9
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 207.0,
+                            "y": 153.9
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 61,
+                          "g": 85,
+                          "r": 200
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 468.0,
+              "f": 129.6
+            },
+            "visible": true
+          },
+          {
+            "id": 9,
+            "kind": {
+              "Group": [
+                {
+                  "id": 30,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 0.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 99.0,
+                              "y": 0.0
+                            },
+                            {
+                              "x": 198.0,
+                              "y": 36.0
+                            },
+                            {
+                              "x": 198.0,
+                              "y": 72.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 198.0,
+                              "y": 108.0
+                            },
+                            {
+                              "x": 297.0,
+                              "y": 144.0
+                            },
+                            {
+                              "x": 389.4,
+                              "y": 144.0
+                            }
+                          ]
+                        }
+                      ],
+                      "fill": null,
+                      "shadow": {
+                        "blur": 2.1,
+                        "color": {
+                          "a": 97,
+                          "b": 0,
+                          "g": 0,
+                          "r": 0
+                        },
+                        "offset": {
+                          "x": -0.0,
+                          "y": 1.57
+                        }
+                      },
+                      "stroke": {
+                        "dash": null,
+                        "paint": {
+                          "Solid": {
+                            "a": 255,
+                            "b": 156,
+                            "g": 169,
+                            "r": 59
+                          }
+                        },
+                        "width": 3.0
+                      }
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 31,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": -4.5,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": -4.5,
+                              "y": -2.49
+                            },
+                            {
+                              "x": -2.49,
+                              "y": -4.5
+                            },
+                            {
+                              "x": 0.0,
+                              "y": -4.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 2.49,
+                              "y": -4.5
+                            },
+                            {
+                              "x": 4.5,
+                              "y": -2.49
+                            },
+                            {
+                              "x": 4.5,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": 4.5,
+                              "y": 2.49
+                            },
+                            {
+                              "x": 2.49,
+                              "y": 4.5
+                            },
+                            {
+                              "x": 0.0,
+                              "y": 4.5
+                            }
+                          ]
+                        },
+                        {
+                          "CubicTo": [
+                            {
+                              "x": -2.49,
+                              "y": 4.5
+                            },
+                            {
+                              "x": -4.5,
+                              "y": 2.49
+                            },
+                            {
+                              "x": -4.5,
+                              "y": 0.0
+                            }
+                          ]
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 156,
+                          "g": 169,
+                          "r": 59
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                },
+                {
+                  "id": 32,
+                  "kind": {
+                    "Path": {
+                      "commands": [
+                        {
+                          "MoveTo": {
+                            "x": 396.0,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 387.0,
+                            "y": 148.5
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 390.6,
+                            "y": 144.0
+                          }
+                        },
+                        {
+                          "LineTo": {
+                            "x": 387.0,
+                            "y": 139.5
+                          }
+                        },
+                        "Close"
+                      ],
+                      "fill": {
+                        "Solid": {
+                          "a": 255,
+                          "b": 156,
+                          "g": 169,
+                          "r": 59
+                        }
+                      },
+                      "shadow": null,
+                      "stroke": null
+                    }
+                  },
+                  "opacity": 1.0,
+                  "transform": {
+                    "a": 1.0,
+                    "b": 0.0,
+                    "c": 0.0,
+                    "d": 1.0,
+                    "e": 0.0,
+                    "f": 0.0
+                  },
+                  "visible": true
+                }
+              ]
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 468.0,
+              "f": 324.0
+            },
+            "visible": true
+          },
+          {
+            "id": 10,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 187.2,
+                      "y": 0.0
+                    }
+                  }
+                ],
+                "fill": null,
+                "shadow": {
+                  "blur": 2.1,
+                  "color": {
+                    "a": 97,
+                    "b": 0,
+                    "g": 0,
+                    "r": 0
+                  },
+                  "offset": {
+                    "x": -0.0,
+                    "y": 1.57
+                  }
+                },
+                "stroke": {
+                  "dash": [
+                    12.0,
+                    9.0
+                  ],
+                  "paint": {
+                    "Solid": {
+                      "a": 255,
+                      "b": 91,
+                      "g": 139,
+                      "r": 88
+                    }
+                  },
+                  "width": 3.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 720.0,
+              "f": 129.6
+            },
+            "visible": true
+          },
+          {
+            "id": 11,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 187.2,
+                      "y": 0.0
+                    }
+                  }
+                ],
+                "fill": null,
+                "shadow": {
+                  "blur": 2.1,
+                  "color": {
+                    "a": 97,
+                    "b": 0,
+                    "g": 0,
+                    "r": 0
+                  },
+                  "offset": {
+                    "x": -0.0,
+                    "y": 1.57
+                  }
+                },
+                "stroke": {
+                  "dash": [
+                    3.0,
+                    3.0
+                  ],
+                  "paint": {
+                    "Solid": {
+                      "a": 255,
+                      "b": 91,
+                      "g": 139,
+                      "r": 88
+                    }
+                  },
+                  "width": 3.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 720.0,
+              "f": 180.0
+            },
+            "visible": true
+          },
+          {
+            "id": 12,
+            "kind": {
+              "Path": {
+                "commands": [
+                  {
+                    "MoveTo": {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  },
+                  {
+                    "LineTo": {
+                      "x": 187.2,
+                      "y": 0.0
+                    }
+                  }
+                ],
+                "fill": null,
+                "shadow": {
+                  "blur": 2.1,
+                  "color": {
+                    "a": 97,
+                    "b": 0,
+                    "g": 0,
+                    "r": 0
+                  },
+                  "offset": {
+                    "x": -0.0,
+                    "y": 1.57
+                  }
+                },
+                "stroke": {
+                  "dash": [
+                    24.0,
+                    9.0,
+                    3.0,
+                    9.0
+                  ],
+                  "paint": {
+                    "Solid": {
+                      "a": 255,
+                      "b": 91,
+                      "g": 139,
+                      "r": 88
+                    }
+                  },
+                  "width": 3.0
+                }
+              }
+            },
+            "opacity": 1.0,
+            "transform": {
+              "a": 1.0,
+              "b": 0.0,
+              "c": 0.0,
+              "d": 1.0,
+              "e": 720.0,
+              "f": 230.4
+            },
+            "visible": true
+          }
+        ],
+        "width": 960.0
+      }
+    }
+  ],
+  "width": 960.0
+}
