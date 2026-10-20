@@ -53,12 +53,12 @@
     }
   }
 
-  function add(name: string, target: OutputConfig["target"]) {
+  function add(name: string, target: OutputConfig["target"], stream = false) {
     const primary = !live.outputs.some((o) => typeof o.role === "object" && o.role.Audience.primary);
     put({
       id: crypto.randomUUID(),
       name,
-      role: { Audience: { primary } },
+      role: stream ? "Stream" : { Audience: { primary } },
       target,
       safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
       background: "Bleed",
@@ -87,6 +87,48 @@
     return `Margins ${all.map((m) => `${Math.round(m * 1000) / 10}%`).join(" ")}${fit}`;
   }
 
+  /** The OBS URL of each browser-source output, by output ID. */
+  let urls: Record<string, string> = $state({});
+  let copied: string | null = $state(null);
+
+  function isBrowserSource(o: OutputConfig): boolean {
+    return "BrowserSource" in o.target;
+  }
+
+  async function loadUrl(id: string) {
+    try {
+      urls[id] = await request({ area: "Outputs", request: { BrowserSourceUrl: id } }, "Text");
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  $effect(() => {
+    for (const o of live.outputs) if (isBrowserSource(o) && !(o.id in urls)) loadUrl(o.id);
+  });
+
+  async function copy(id: string) {
+    try {
+      await navigator.clipboard.writeText(urls[id]);
+      copied = id;
+      setTimeout(() => {
+        if (copied === id) copied = null;
+      }, 2000);
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** A new key, so a leaked URL stops working. OBS needs the new URL. */
+  async function newKey(id: string) {
+    try {
+      urls[id] = await request({ area: "Outputs", request: { RotateBrowserSourceKey: id } }, "Text");
+      copied = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+
   refresh();
 </script>
 
@@ -104,12 +146,18 @@
         <h1>Screens</h1>
         <p class="muted intro">
           The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
-          screen on to open its window; fullscreen screens go on a display below.
+          screen on to open its window; fullscreen screens go on a display below. An OBS browser source sends the stream's
+          lower thirds to OBS over the network.
         </p>
       </div>
-      <Button variant="primary" icon="plus" onclick={() => add("Rehearsal window", { Window: { width: 960, height: 540 } })}>
-        Add window
-      </Button>
+      <div class="add">
+        <Button icon="plus" onclick={() => add("OBS stream", { BrowserSource: { width: 1920, height: 1080 } }, true)}>
+          Add OBS browser source
+        </Button>
+        <Button variant="primary" icon="plus" onclick={() => add("Rehearsal window", { Window: { width: 960, height: 540 } })}>
+          Add window
+        </Button>
+      </div>
     </div>
 
     {#if savedOutput}
@@ -135,6 +183,18 @@
               <p class="calibration ok"><Icon name="checkCircle" size={14} />Safe area set</p>
             {:else}
               <p class="calibration warn"><Icon name="alert" size={14} />Not calibrated: text may be cut off at the edges</p>
+            {/if}
+            {#if isBrowserSource(o) && urls[o.id]}
+              <div class="obs">
+                <p class="muted">
+                  In OBS, add a Browser source with this URL{o.enabled ? "" : " (turn the screen on first)"}:
+                </p>
+                <div class="url">
+                  <input type="text" readonly value={urls[o.id]} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
+                  <Button size="small" onclick={() => copy(o.id)}>{copied === o.id ? "Copied" : "Copy"}</Button>
+                  <Button variant="ghost" size="small" title="Stops the old URL working" onclick={() => newKey(o.id)}>New key</Button>
+                </div>
+              </div>
             {/if}
           </div>
           <div class="controls">
@@ -170,7 +230,6 @@
         <li class="faint">No displays found.</li>
       {/each}
     </ul>
-    <p class="faint note">OBS browser sources arrive with the local server (T42, T43).</p>
   </div>
 </div>
 {/if}
@@ -195,6 +254,32 @@
     font-size: 1.3rem;
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+  .add {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .obs {
+    margin-top: 0.75rem;
+  }
+  .url {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+  }
+  .url input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.5rem;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
   }
   .intro {
     margin-top: 0.3rem;
@@ -289,9 +374,5 @@
   }
   .displays li :global(button) {
     margin-left: auto;
-  }
-  .note {
-    margin-top: 1rem;
-    font-size: 0.8rem;
   }
 </style>

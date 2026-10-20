@@ -232,7 +232,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
 | T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
-| T88 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
+| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -257,7 +257,7 @@ Done when, from a fresh install, the operator can open a service with one song a
 
 **T59. Early-adopter packaging.** The early-adopter release ships on macOS and Linux first (PRD, Phasing). Build a signed and notarised DMG for macOS, an AppImage and a .deb, and an unsigned NSIS installer for Windows, named and released as a preview, with release notes that say SmartScreen will warn. Add the Tauri updater with its own update-signing key, and gate it on `is_idle()` with no service starting within an hour. Done when CI produces all four artefacts on tags, using signing secrets as repository secrets, with steps documented, and the DMG opens on a clean Mac without a Gatekeeper warning.
 
-**T88. Launch packaging.** For Phase 1: sign the Windows installer (MSI or NSIS) so SmartScreen accepts it, and publish a Flatpak on Flathub. Done when CI signs the Windows installer on tags, it installs on a clean Windows 10 machine without a SmartScreen block, and the Flathub manifest builds and is accepted.
+**T95. Launch packaging.** For Phase 1: sign the Windows installer (MSI or NSIS) so SmartScreen accepts it, and publish a Flatpak on Flathub. Done when CI signs the Windows installer on tags, it installs on a clean Windows 10 machine without a SmartScreen block, and the Flathub manifest builds and is accepted.
 
 **T60. Accessibility.** Run axe on each screen, check contrast, add focus rings, labels and shortcuts for every live action. Done when there are zero axe violations at AA and a keyboard-only mock service runs end to end.
 
@@ -412,6 +412,42 @@ Done when a test shows a large image doesn't delay a text slide on another outpu
 
 Done when the review's media repro is refused, the counting-allocator test bounds a media-heavy deck under the 1 GB total, and the existing deck snapshots are unchanged. T41 and T53 wait on this, so no deck reaches the parser from the app or from a linked source before it lands. Importing in a child process with its own memory limit is the longer-term answer (ARCHITECTURE already allows for one); propose it as a separate ticket if the numbers here are still uncomfortable.
 
+### Managing OBS
+
+[Decision 0005](decisions/0005-manage-obs-not-replace.md): OBS stays the streaming engine, and Lampstand drives it so a volunteer never opens OBS during a service.
+
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | In review ([#33](https://github.com/incrhst/lampstand/pull/33)) |
+| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Not started |
+| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
+| T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
+| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view | Not started |
+| T94 | Stream destination and virtual camera | S | T89 | OB-9 | `app/src-tauri/src/`, `app/src/routes/` | Not started |
+
+**T88. OBS WebSocket client.** A client for obs-websocket protocol v5 (OBS 28 and later): `Hello`, `Identify` with the SHA-256 challenge, `Request` by id, and event subscriptions (scene, stream, record, virtual camera, input mute, `ExitStarted`). Reconnect with backoff, and expose a status stream (disconnected, connecting, connected, auth failed) plus typed calls for what T89 to T93 need. Behind a `obs` feature like `net`. Done when tests against a mock server cover auth, a wrong password, a dropped connection that reconnects, and an event arriving while a request is in flight.
+
+**T89. Connection and status.** Setup gets an OBS section: host (default `localhost`), port (default 4455), password and a "Test connection" button. The password lives in device-local config with T79's permissions, never in a synced document. Present shows a status pill for connected, streaming and recording, with timecodes and dropped frames, and a clear warning when OBS disconnects. Projection never waits on OBS.
+
+Tell people why OBS isn't connected. A refused connection on `localhost` means OBS isn't running, or its WebSocket server is off (it is off by default in OBS 28 and later, under Tools › WebSocket Server Settings). So check whether OBS is installed (macOS `/Applications/OBS.app`; Windows Program Files or the registry; Linux `obs` on `PATH` or the flatpak `com.obsproject.Studio`) and whether it is running (a process check). Then Present and readiness (T36) say one of:
+
+- "OBS isn't running", with an **Open OBS** button that launches it with `--minimize-to-tray` (and `--collection Lampstand` once T93 has made that collection);
+- "OBS isn't installed", with a **Get OBS** link to obsproject.com;
+- "OBS is running but its WebSocket server is off", with step-by-step instructions to turn it on and copy the password.
+
+Only say this when the service has a stream output or items with an OBS scene, so churches that don't stream never see it. Don't edit OBS's own config files (to switch the server on, say) without asking the user first. Done when a test drives the status through every state with the mock server, tests cover each detection outcome, and a manual OBS 30 check is noted in the PR.
+
+**T90. Scene per service item (Opus).** Add an optional OBS scene name to a service item (a contract change to `core`; record it in ARCHITECTURE.md). When the item goes live, call `SetCurrentProgramScene`. If OBS isn't connected, or the scene no longer exists, show a warning in Present and carry on. Readiness (T36) flags items whose scene OBS doesn't have, when OBS is connected. Decide whether Previous also switches the scene back, and what happens while the operator holds a manual scene from T91. Done when tests cover go-live, a missing scene, a disconnected OBS and a manual hold.
+
+**T91. Run OBS from Present.** Show OBS's scenes as buttons, with the program scene marked and following OBS's own events. Clicking a button switches the scene. Show a mute toggle for each audio input that follows `InputMuteStateChanged`. No volume faders: mixing stays in OBS or on the desk. Done when the UI follows changes made in OBS itself as well as in Lampstand.
+
+**T92. Stream and record from the service order.** A service item (typically the pre-service countdown) can start streaming and/or recording when it goes live. Stopping is never automatic: Present has a stop button that asks for confirmation. Done when tests cover starting when already streaming, OBS refusing (no stream key), and a disconnected OBS.
+
+**T93. One-click setup.** A "Set up OBS" button creates a scene collection named "Lampstand" (if it doesn't exist), with starter scenes ("Slides", "Worship", "Pastor and slides"). Each gets a browser source named "Lampstand stream" set to the T86 URL at the output's size, with "shutdown source when not visible" off. Running it again updates only the URL and size of sources it created, found by name, and never edits or removes anything else. Rotating the key (T86) updates the URL in OBS when connected. Done when tests against the mock server show a fresh setup, a re-run that changes nothing, and a re-run after a key rotation.
+
+**T94. Stream destination and virtual camera.** T88 has the calls: `stream_destination` and `set_stream_destination` (OBS's listed services such as "YouTube - RTMPS" or "Facebook Live", or a custom RTMP or RTMPS server), and starting, stopping and reading the virtual camera, with its `VirtualCamStateChanged` event. Setup's OBS section gets the destination: a service picker plus stream key, or a custom server and key. Present gets a virtual camera toggle that follows OBS's own events, for churches that send the program into Zoom or Teams. The stream key is a secret: keep it device-local with T79's permissions, never synced, and never logged. OBS refuses to change the destination while it is streaming, so the UI says so instead of failing silently. OBS sends to one destination; streaming to several at once needs a plugin (such as obs-multi-rtmp) or a restream service, and the UI says that too rather than offering a list. Done when tests against the mock server cover reading and setting each kind of destination, a refusal while streaming, and the virtual camera toggling from either side.
+
 ## Not code: start now
 
 These sit on the critical path, but no session can do them:
@@ -420,7 +456,7 @@ These sit on the critical path, but no session can do them:
 - Start Google OAuth app verification for the `drive.file` scope and the Picker.
 - Assemble the 200-deck fidelity corpus with permission from the churches who supply them, plus PowerPoint PNG exports of each.
 - Set up an Apple Developer ID now: the early-adopter release (T59) needs it.
-- Get a Windows code-signing certificate and a Flathub account before launch (T88).
+- Get a Windows code-signing certificate and a Flathub account before launch (T95).
 - Decide the open PRD questions: the public relay (CD-4) and the product name.
 
 ## Parallelism at a glance

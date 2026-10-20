@@ -12,7 +12,7 @@ use lampstand_api::{
 };
 use lampstand_app::config::device_key;
 use lampstand_app::handler::{App, Placement, WindowHost};
-use lampstand_app::sync::{Sync, SyncConfig};
+use lampstand_app::sync::{Obs, Sync, SyncConfig};
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::service::{ItemKind, Service};
@@ -71,6 +71,10 @@ async fn device(name: &str) -> Device {
             name: name.into(),
             port: 0,
             mdns: false,
+        },
+        Obs {
+            hub: app.scene_hub().clone(),
+            renderer: None,
         },
         emit,
     )

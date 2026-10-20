@@ -1,10 +1,12 @@
 //! Connectors to outside services: Google Drive and Slides, OneDrive share
-//! links, and (Phase 2) Planning Center and OBS WebSocket.
+//! links, the OBS WebSocket (`obs` feature), and (Phase 2) Planning Center.
 //!
 //! PRD: PS-1, PS-2, PS-5, CD-9.
 
 pub mod google;
 pub mod links;
+#[cfg(feature = "obs")]
+pub mod obs;
 pub mod song_databases;
 
 /// A file fetched from a source, with the source's own version marker so

@@ -5,15 +5,12 @@
   import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
-    ApiError,
     request,
     type Deck,
     type ItemKind,
     type MediaFile,
     type Service,
-    type Response,
     type ServiceSummary,
-    type SongDatabase,
     type SongHit,
     type Translation,
   } from "../../lib/api";
@@ -23,11 +20,9 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Placeholder from "../../lib/kit/Placeholder.svelte";
-  import Segmented from "../../lib/kit/Segmented.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
-  import DeckLibrary from "./DeckLibrary.svelte";
-  import MediaLibrary from "./MediaLibrary.svelte";
+  import Library from "./Library.svelte";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
@@ -46,35 +41,17 @@
   /** The header's date, time and zone while the planner changes them. */
   let editWhen: When | null = $state(null);
   const at = (w: When) => fromInputs(w.date, w.time, w.zone);
-  let query = $state("");
-  let hits: SongHit[] = $state([]);
   /** Title and author of every song we have looked up, by song ID. */
   let songInfo: Record<string, { title: string; author: string | null }> = $state({});
-  let databases: SongDatabase[] = $state([]);
-  let database = $state("en");
   let busy = $state(false);
-  let getSongsOpen = $state(false);
   /** Songs already looked up with GetSong, so each is fetched once. */
   const lookedUp = new Set<string>();
 
-  const libraryTabs = [
-    { id: "songs", label: "Songs" },
-    { id: "scripture", label: "Scripture" },
-    { id: "media", label: "Media" },
-    { id: "decks", label: "Decks" },
-  ] as const;
-  let libraryTab: (typeof libraryTabs)[number]["id"] = $state("songs");
   let decks: Deck[] = $state([]);
-  let media: MediaFile[] = $state([]);
   let deckById = $derived(Object.fromEntries(decks.map((d) => [d.id, d])) as Record<string, Deck>);
 
   let translations: Translation[] = $state([]);
   let translation = $state("");
-  let reference = $state("");
-  type Looked = Extract<Response, { type: "Passage" }>["data"];
-  /** The passage last looked up, and the translation it was read from. */
-  let found: (Looked & { translation: string }) | null = $state(null);
-  let lookupError = $state("");
   let abbreviation = $derived(
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
@@ -178,16 +155,8 @@
     }
   }
 
-  async function search() {
-    try {
-      hits = await request(
-        { area: "Library", request: { SearchSongs: { query, limit: 20 } } },
-        "Songs",
-      );
-      for (const h of hits) songInfo[h.song] ??= { title: h.title, author: null };
-    } catch (e) {
-      report(e);
-    }
+  function songsFound(hits: SongHit[]) {
+    for (const h of hits) songInfo[h.song] ??= { title: h.title, author: null };
   }
 
   // Look up songs in the order that a search has not brought in, and
@@ -208,9 +177,9 @@
     }
   }
 
-  /** Adds an item at the end of the selected service. */
-  async function addItem(kind: ItemKind) {
-    if (!selected) return;
+  /** Inserts an item at `index`, or at the end of the selected service. */
+  async function addItem(kind: ItemKind, index?: number): Promise<boolean> {
+    if (!selected) return false;
     try {
       selected = await request(
         {
@@ -218,19 +187,19 @@
           request: {
             InsertItem: {
               service: selected.id,
-              index: Object.keys(selected.items).length,
+              index: index ?? Object.keys(selected.items).length,
               kind,
             },
           },
         },
         "Service",
       );
+      return true;
     } catch (e) {
       report(e);
+      return false;
     }
   }
-
-  const addSong = (song: string) => addItem({ Song: { song, arrangement: null } });
 
   async function loadDecks() {
     try {
@@ -245,14 +214,6 @@
       translations = await request({ area: "Library", request: "ListTranslations" }, "Translations");
       translations.sort((a, b) => a.name.localeCompare(b.name));
       if (!translations.some((t) => t.id === translation)) translation = translations[0]?.id ?? "";
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  async function loadMedia() {
-    try {
-      media = await request({ area: "Library", request: "ListMedia" }, "MediaFiles");
     } catch (e) {
       report(e);
     }
@@ -326,46 +287,6 @@
 
   async function addMedia(file: MediaFile) {
     await addItem({ Media: { blob: file.blob, name: file.name, looped: false } });
-    await loadMedia();
-  }
-
-  async function lookUp() {
-    found = null;
-    lookupError = "";
-    if (!reference.trim() || !translation) return;
-    try {
-      const looked = await request(
-        { area: "Library", request: { LookupPassage: { reference, translation } } },
-        "Passage",
-      );
-      found = { ...looked, translation };
-    } catch (e) {
-      // The core answers a bad reference with its parser's error name.
-      lookupError = e instanceof ApiError && !/not (on|in) this/.test(e.message)
-        ? `“${reference.trim()}” is not a reference I can read. Try “John 3:16-18” or “Ps 23”.`
-        : String(e instanceof Error ? e.message : e);
-    }
-  }
-
-  async function addScripture() {
-    if (!selected || !found) return;
-    try {
-      selected = await request(
-        {
-          area: "Service",
-          request: {
-            InsertItem: {
-              service: selected.id,
-              index: Object.keys(selected.items).length,
-              kind: { Scripture: { passage: found.passage, translation: found.translation } },
-            },
-          },
-        },
-        "Service",
-      );
-    } catch (e) {
-      report(e);
-    }
   }
 
   async function remove(item: string) {
@@ -399,53 +320,6 @@
       onopened();
     } catch (e) {
       report(e);
-    }
-  }
-
-  async function importPaths(paths: string[]) {
-    busy = true;
-    try {
-      live.status = await request({ area: "Library", request: { ImportFiles: { paths } } }, "Text");
-      await search();
-      await loadTranslations();
-    } catch (e) {
-      report(e);
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function importFiles() {
-    try {
-      const picked = await pickFiles({ multiple: true, title: "Import songs or Bibles" });
-      if (picked) await importPaths(Array.isArray(picked) ? picked : [picked]);
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  // Bring your own OpenSong library: its data folder or its Songs folder.
-  async function importFolder() {
-    try {
-      const picked = await pickFiles({ directory: true, title: "Import an OpenSong library or song folder" });
-      if (picked) await importPaths(Array.isArray(picked) ? picked : [picked]);
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  async function downloadDatabase() {
-    busy = true;
-    try {
-      live.status = await request(
-        { area: "Library", request: { DownloadSongDatabase: { code: database } } },
-        "Text",
-      );
-      await search();
-    } catch (e) {
-      report(e);
-    } finally {
-      busy = false;
     }
   }
 
@@ -490,33 +364,42 @@
   }
 
   let items = $derived(selected ? ordered(selected) : []);
-  let inService = $derived(
-    new Set(items.flatMap(([, item]) => ("Song" in item.kind ? [item.kind.Song.song] : []))),
-  );
-  let decksInService = $derived(
-    new Set(items.flatMap(([, item]) => ("Deck" in item.kind ? [item.kind.Deck.deck] : []))),
-  );
-  let mediaInService = $derived(
-    new Set(items.flatMap(([, item]) => ("Media" in item.kind ? [item.kind.Media.blob] : []))),
-  );
 
   // Reordering: drag a row by its handle, or focus the handle and press
   // the up and down arrows. Pointer events rather than HTML drag and drop,
-  // which the webview's own file-drop handling can swallow.
+  // which the webview's own file-drop handling can swallow. Library rows
+  // are carried in the same way (see Library.svelte) and land at the line.
   let list: HTMLOListElement | undefined = $state();
+  let orderBody: HTMLElement | undefined = $state();
   let dragging: { id: string; from: number } | null = $state(null);
   let dropAt: number | null = $state(null);
+  /** Where a library row carried over the order would go, by index. */
+  let carryAt: number | null = $state(null);
 
-  function slotFor(y: number): number {
-    if (!list || !dragging) return 0;
+  /** The slot at `y` among the rows, skipping row `skip` (the one dragged). */
+  function slotFor(y: number, skip = -1): number {
+    if (!list) return 0;
     const rows = [...list.querySelectorAll<HTMLElement>("[data-row]")];
     let slot = 0;
     rows.forEach((row, i) => {
-      if (i === dragging!.from) return;
+      if (i === skip) return;
       const r = row.getBoundingClientRect();
       if (y > r.top + r.height / 2) slot++;
     });
     return slot;
+  }
+
+  function carryOver(x: number, y: number): boolean {
+    const r = orderBody?.getBoundingClientRect();
+    const over = !!selected && !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    carryAt = over ? slotFor(y) : null;
+    return over;
+  }
+
+  async function carryEnd(kind: ItemKind | null): Promise<boolean> {
+    const at = carryAt;
+    carryAt = null;
+    return kind != null && at != null ? addItem(kind, at) : false;
   }
 
   function startDrag(e: PointerEvent, id: string, from: number) {
@@ -527,7 +410,7 @@
   }
 
   function dragMove(e: PointerEvent) {
-    if (dragging) dropAt = slotFor(e.clientY);
+    if (dragging) dropAt = slotFor(e.clientY, dragging.from);
   }
 
   function endDrag() {
@@ -548,24 +431,16 @@
 
   /** Where the drop line shows: above row `i`, or after the last row. */
   function lineBefore(i: number): boolean {
+    if (carryAt !== null) return carryAt === i;
     if (!dragging || dropAt === null || dropAt === dragging.from) return false;
     // `dropAt` counts rows other than the dragged one.
     const visual = dropAt >= dragging.from ? dropAt + 1 : dropAt;
     return visual === i;
   }
 
-  async function loadDatabases() {
-    try {
-      databases = await request({ area: "Library", request: "ListSongDatabases" }, "SongDatabases");
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  // Refetch songs and Bibles after an import finishes elsewhere.
+  // Refetch Bibles after an import finishes.
   $effect(() => {
     void live.songsVersion;
-    search();
     loadTranslations();
   });
 
@@ -580,12 +455,7 @@
     loadDecks();
   });
 
-  $effect(() => {
-    if (libraryTab === "media") untrack(loadMedia);
-  });
-
   refresh();
-  loadDatabases();
   if (live.planning) select(live.planning);
 </script>
 
@@ -679,9 +549,9 @@
         </div>
       {/if}
 
-      <div class="order-body">
+      <div class="order-body" bind:this={orderBody}>
         {#if items.length === 0}
-          <div class="empty-order">
+          <div class="empty-order" class:target={carryAt !== null}>
             <p><strong>This service is empty</strong></p>
             <p class="muted">Add songs, scripture, decks and media from the library on the right.</p>
           </div>
@@ -724,147 +594,18 @@
     {/if}
   </section>
 
-  <aside class="pane pane-side library" aria-label="Library">
-    <div class="library-head">
-      <h2 class="title">Library</h2>
-      <Segmented options={libraryTabs} value={libraryTab} onchange={(id) => (libraryTab = id)} label="Library type" stretch />
-      {#if libraryTab === "songs"}
-      <form
-        class="search"
-        onsubmit={(e) => {
-          e.preventDefault();
-          search();
-        }}
-      >
-        <span class="search-icon"><Icon name="search" /></span>
-        <input type="search" aria-label="Search songs" placeholder="Search titles and lyrics" bind:value={query} oninput={search} />
-      </form>
-      {:else if libraryTab === "scripture" && translations.length > 0}
-        <form
-          class="scripture"
-          onsubmit={(e) => {
-            e.preventDefault();
-            lookUp();
-          }}
-        >
-          <div class="search">
-            <span class="search-icon"><Icon name="search" /></span>
-            <input
-              type="search"
-              aria-label="Bible reference"
-              placeholder="John 3:16-18, Ps 23, Rom 8"
-              bind:value={reference}
-              oninput={() => {
-                found = null;
-                lookupError = "";
-              }}
-            />
-          </div>
-          <div class="row">
-            <select aria-label="Translation" bind:value={translation} onchange={() => (found = null)}>
-              {#each translations as t (t.id)}
-                <option value={t.id}>{t.abbreviation ? `${t.abbreviation} · ${t.name}` : t.name}</option>
-              {/each}
-            </select>
-            <Button size="small" onclick={lookUp} disabled={!reference.trim()}>Look up</Button>
-          </div>
-        </form>
-      {/if}
-    </div>
-
-    {#if libraryTab === "scripture"}
-      <div class="pane-body passage">
-        {#if translations.length === 0}
-          <div class="empty muted">
-            <p>No Bibles on this device yet.</p>
-            <p>Import one (OSIS, USFM, Zefania, OpenSong or OpenLP) to add readings.</p>
-          </div>
-        {:else if lookupError}
-          <p class="empty muted" role="alert">{lookupError}</p>
-        {:else if found}
-          <div class="passage-head">
-            <span class="passage-title">{found.display} · {abbreviation[found.translation]}</span>
-            <Button size="small" icon="plus" onclick={addScripture} disabled={!selected} label="Add {found.display} to service">
-              Add
-            </Button>
-          </div>
-          <div class="verses">
-            {#each found.verses as [chapter, verse, text] (`${chapter}:${verse}`)}
-              <p><sup class="num">{verse}</sup>{text}</p>
-            {/each}
-          </div>
-        {:else}
-          <p class="empty muted">Type a reference and press Enter.</p>
-        {/if}
-      </div>
-      <div class="get-songs">
-        <div class="row">
-          <Button size="small" icon="file" onclick={importFiles} disabled={busy}>Import Bible…</Button>
-        </div>
-      </div>
-    {:else if libraryTab === "decks"}
-      <DeckLibrary
-        {decks}
-        inService={decksInService}
-        canAdd={!!selected}
-        {busy}
-        onadd={(deck) => addItem({ Deck: { deck } })}
-        onpick={pickDeck}
-        onlink={addDeckLink}
-      />
-    {:else if libraryTab === "media"}
-      <MediaLibrary {media} inService={mediaInService} canAdd={!!selected} {busy} onadd={addMedia} onpick={pickMedia} />
-    {:else}
-    <ul class="plain pane-body">
-      {#each hits as hit (hit.song)}
-        <ListRow title={hit.title}>
-          {#snippet details()}
-            {#if hit.line}<span class="snippet">“{hit.line}”</span>{/if}
-          {/snippet}
-          {#snippet trailing()}
-            {#if inService.has(hit.song)}
-              <span class="in-service"><Icon name="check" size={14} />In service</span>
-            {:else}
-              <Button size="small" icon="plus" onclick={() => addSong(hit.song)} disabled={!selected} label="Add {hit.title} to service">
-                Add
-              </Button>
-            {/if}
-          {/snippet}
-        </ListRow>
-      {:else}
-        <li class="empty muted">{query ? `Nothing matches “${query}”.` : "No songs yet. Get some below."}</li>
-      {/each}
-    </ul>
-
-    <div class="get-songs">
-      <button class="get-toggle" aria-expanded={getSongsOpen || hits.length <= 2} onclick={() => (getSongsOpen = !getSongsOpen)}>
-        <Icon name="download" size={14} />
-        Get songs
-      </button>
-      {#if getSongsOpen || hits.length <= 2}
-        <p class="muted">
-          Download a free song database from worshipleaderapp.com (OpenSong format, updated daily).
-          Many songs are under copyright: your church's licence (CCLI or similar) covers projecting them.
-          Songs you already have are not added twice.
-        </p>
-        <div class="row">
-          <select aria-label="Song database language" bind:value={database}>
-            {#each databases as d (d.code)}
-              <option value={d.code}>{d.name}</option>
-            {/each}
-          </select>
-          <Button variant="primary" size="small" onclick={downloadDatabase} disabled={busy}>
-            {busy ? "Working…" : "Download and import"}
-          </Button>
-        </div>
-      {/if}
-      <div class="row">
-        <Button size="small" icon="file" onclick={importFiles} disabled={busy}>Import files…</Button>
-        <Button size="small" icon="folder" onclick={importFolder} disabled={busy}>Import folder…</Button>
-      </div>
-    </div>
-    {/if}
-  </aside>
+  <Library
+    service={selected}
+    {items}
+    {decks}
+    {translations}
+    onadd={(kind) => addItem(kind)}
+    ondragover={carryOver}
+    ondragend={carryEnd}
+    onsongs={songsFound}
+    ondecks={loadDecks}
+    ontranslations={loadTranslations}
+  />
 </div>
 
 <style>
@@ -875,9 +616,6 @@
   }
   .services {
     border-right: 1px solid var(--line);
-  }
-  .library {
-    border-left: 1px solid var(--line);
   }
   .create {
     display: flex;
@@ -1076,6 +814,9 @@
     text-align: center;
     font-size: 0.875rem;
   }
+  .empty-order.target {
+    border-color: var(--gold);
+  }
   .empty-order p + p {
     margin-top: 0.25rem;
   }
@@ -1088,125 +829,5 @@
     gap: 0.75rem;
     color: var(--faint);
     font-size: 0.875rem;
-  }
-
-  /* Library */
-  .library-head {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1.25rem 1rem 0.75rem;
-  }
-  .search {
-    position: relative;
-  }
-  .search-icon {
-    position: absolute;
-    left: 0.7rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--faint);
-    pointer-events: none;
-  }
-  .search input {
-    width: 100%;
-    box-sizing: border-box;
-    padding-left: 2.2rem;
-  }
-  .scripture {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .passage .empty p + p {
-    margin-top: 0.25rem;
-  }
-  .passage-head {
-    position: sticky;
-    top: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line);
-  }
-  .passage-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .verses {
-    padding: 0.75rem 1rem 1rem;
-    font-size: 0.85rem;
-    line-height: 1.55;
-  }
-  .verses p + p {
-    margin-top: 0.4rem;
-  }
-  .verses sup {
-    margin-right: 0.3rem;
-    font-size: 0.65rem;
-    color: var(--faint);
-  }
-  .snippet {
-    margin-top: 0.2rem;
-    font-size: 0.75rem;
-    font-style: italic;
-    color: var(--faint);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .in-service {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    height: 1.75rem;
-    padding: 0 0.4rem;
-  }
-  .in-service :global(.icon) {
-    color: var(--ready-text);
-  }
-  .get-songs {
-    border-top: 1px solid var(--line);
-    padding: 0.75rem 1rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  .get-toggle {
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text);
-    background: none;
-    border: none;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    cursor: pointer;
-    align-self: flex-start;
-  }
-  .get-songs p {
-    font-size: 0.78rem;
-    line-height: 1.5;
-  }
-  .row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  .row select {
-    flex: 1;
-    min-width: 0;
-    padding: 0.3rem 0.5rem;
   }
 </style>

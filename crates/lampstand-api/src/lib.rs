@@ -29,6 +29,7 @@ pub enum Request {
     Live(Command),
     Outputs(OutputRequest),
     Team(TeamRequest),
+    Obs(ObsRequest),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -167,8 +168,13 @@ pub enum OutputRequest {
         output: OutputId,
         safe_area: SafeArea,
     },
-    /// The URL to paste into OBS for a browser-source output.
+    /// The URL to paste into OBS for a browser-source output, as
+    /// `Response::Text`: `http://<host>:<port>/obs/<output>?k=<key>`.
     BrowserSourceUrl(OutputId),
+    /// Gives a browser-source output a new key, so a leaked URL stops
+    /// working; answers the new URL as `Response::Text`. Pages already
+    /// open keep going until they reload.
+    RotateBrowserSourceKey(OutputId),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -204,6 +210,99 @@ pub enum TeamRequest {
     Unpair {
         device: String,
     },
+}
+
+/// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
+/// `Response::Obs`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ObsRequest {
+    /// The settings (never the password), the connection and, when OBS
+    /// isn't connected, why.
+    Status,
+    /// Saves where OBS is and reconnects, then answers once the attempt has
+    /// an outcome (connected, refused, or no answer within a few seconds):
+    /// the "Save and test" button. `password: None` keeps the saved one;
+    /// an empty string clears it.
+    Configure {
+        host: String,
+        port: u16,
+        password: Option<String>,
+    },
+    /// Starts OBS on this machine (the "Open OBS" button). Never changes
+    /// OBS's own settings.
+    Launch,
+}
+
+/// OBS as the operator and Setup see it. Also pushed as `Event::Obs`
+/// whenever it changes.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObsView {
+    pub host: String,
+    pub port: u16,
+    /// A password is saved. The password itself never leaves the core.
+    pub has_password: bool,
+    pub connection: ObsConnection,
+    /// Why OBS isn't connected, when the core can tell; `None` while
+    /// connected or connecting.
+    pub problem: Option<ObsProblem>,
+    /// Whether the operator view should mention OBS at all: true when an
+    /// enabled output streams (a browser source) or OBS settings were
+    /// saved. Churches that don't stream never see OBS warnings.
+    pub relevant: bool,
+    /// `None` until connected.
+    pub stream: Option<ObsOutputView>,
+    pub record: Option<ObsOutputView>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ObsConnection {
+    Connecting,
+    Connected {
+        obs_version: String,
+        websocket_version: String,
+    },
+    /// Retrying; `reason` is for people.
+    Disconnected {
+        reason: String,
+    },
+    PasswordRequired,
+    WrongPassword,
+}
+
+/// What to tell people when OBS isn't connected.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ObsProblem {
+    /// Installed (or can't tell) and not running: offer "Open OBS".
+    NotRunning,
+    /// Offer "Get OBS" (obsproject.com).
+    NotInstalled,
+    /// OBS is running but nothing answers on the port: its WebSocket server
+    /// is off (Tools › WebSocket Server Settings) or on another port.
+    ServerOff,
+    PasswordRequired,
+    WrongPassword,
+    /// OBS is on another machine and doesn't answer.
+    Unreachable,
+}
+
+/// Streaming or recording, for the status pill.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObsOutputView {
+    pub active: bool,
+    /// The stream dropped and OBS is reconnecting it (streaming only).
+    pub reconnecting: bool,
+    /// "HH:MM:SS", empty when inactive.
+    pub timecode: String,
+    /// Frames OBS skipped or dropped (streaming only), and out of how many.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub skipped_frames: u64,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub total_frames: u64,
 }
 
 /// This device on the network, for the devices screen.
@@ -287,6 +386,7 @@ pub enum Response {
     Team(TeamStatus),
     /// A PNG as a `data:` URL, for an `<img>`.
     Thumbnail(String),
+    Obs(ObsView),
 }
 
 /// An image or video in the blob store, as a `Media` item names it.
@@ -402,4 +502,6 @@ pub enum Event {
         total: usize,
         message: String,
     },
+    /// OBS's connection, streaming or recording changed.
+    Obs(ObsView),
 }

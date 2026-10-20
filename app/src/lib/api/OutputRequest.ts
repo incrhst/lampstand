@@ -2,4 +2,4 @@
 import type { OutputConfig } from "./OutputConfig";
 import type { SafeArea } from "./SafeArea";
 
-export type OutputRequest = "ListDisplays" | "List" | { "Put": OutputConfig } | { "Remove": string } | { "Calibrate": { output: string, active: boolean, } } | { "SetSafeArea": { output: string, safe_area: SafeArea, } } | { "BrowserSourceUrl": string };
+export type OutputRequest = "ListDisplays" | "List" | { "Put": OutputConfig } | { "Remove": string } | { "Calibrate": { output: string, active: boolean, } } | { "SetSafeArea": { output: string, safe_area: SafeArea, } } | { "BrowserSourceUrl": string } | { "RotateBrowserSourceKey": string };

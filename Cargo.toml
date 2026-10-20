@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "app/src-tauri"]
+members = ["crates/*", "app/src-tauri", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -61,6 +61,7 @@ roxmltree = "0.21"
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+sha2 = "0.10"
 spake2 = "0.4"
 tauri = { version = "2.12", features = ["unstable"] }
 tauri-build = { version = "2.7", features = [] }

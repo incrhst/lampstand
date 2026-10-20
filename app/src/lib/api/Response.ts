@@ -3,6 +3,7 @@ import type { Deck } from "./Deck";
 import type { DisplayMatch } from "./DisplayMatch";
 import type { LoadedService } from "./LoadedService";
 import type { MediaFile } from "./MediaFile";
+import type { ObsView } from "./ObsView";
 import type { OutputConfig } from "./OutputConfig";
 import type { Passage } from "./Passage";
 import type { Service } from "./Service";
@@ -14,4 +15,4 @@ import type { TeamStatus } from "./TeamStatus";
 import type { Theme } from "./Theme";
 import type { Translation } from "./Translation";
 
-export type Response = { "type": "Ok" } | { "type": "Error", "data": { message: string, } } | { "type": "Song", "data": Song } | { "type": "Songs", "data": Array<SongHit> } | { "type": "Themes", "data": Array<Theme> } | { "type": "Translations", "data": Array<Translation> } | { "type": "Passage", "data": { passage: Passage, display: string, verses: Array<[number, number, string]>, } } | { "type": "Service", "data": Service } | { "type": "Services", "data": Array<ServiceSummary> } | { "type": "Deck", "data": Deck } | { "type": "Decks", "data": Array<Deck> } | { "type": "Media", "data": MediaFile } | { "type": "MediaFiles", "data": Array<MediaFile> } | { "type": "Outputs", "data": Array<OutputConfig> } | { "type": "Displays", "data": Array<DisplayMatch> } | { "type": "Loaded", "data": LoadedService } | { "type": "SongDatabases", "data": Array<SongDatabase> } | { "type": "Text", "data": string } | { "type": "Team", "data": TeamStatus } | { "type": "Thumbnail", "data": string };
+export type Response = { "type": "Ok" } | { "type": "Error", "data": { message: string, } } | { "type": "Song", "data": Song } | { "type": "Songs", "data": Array<SongHit> } | { "type": "Themes", "data": Array<Theme> } | { "type": "Translations", "data": Array<Translation> } | { "type": "Passage", "data": { passage: Passage, display: string, verses: Array<[number, number, string]>, } } | { "type": "Service", "data": Service } | { "type": "Services", "data": Array<ServiceSummary> } | { "type": "Deck", "data": Deck } | { "type": "Decks", "data": Array<Deck> } | { "type": "Media", "data": MediaFile } | { "type": "MediaFiles", "data": Array<MediaFile> } | { "type": "Outputs", "data": Array<OutputConfig> } | { "type": "Displays", "data": Array<DisplayMatch> } | { "type": "Loaded", "data": LoadedService } | { "type": "SongDatabases", "data": Array<SongDatabase> } | { "type": "Text", "data": string } | { "type": "Team", "data": TeamStatus } | { "type": "Thumbnail", "data": string } | { "type": "Obs", "data": ObsView };
