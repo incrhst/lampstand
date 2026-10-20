@@ -1,0 +1,416 @@
+/* Lampstand landing page: the church bulletin, laid open on the table. */
+
+@font-face { font-family: "Old Standard TT"; src: url("fonts/old-standard-tt-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Old Standard TT"; src: url("fonts/old-standard-tt-400-italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Old Standard TT"; src: url("fonts/old-standard-tt-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Courier Prime"; src: url("fonts/courier-prime-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Courier Prime"; src: url("fonts/courier-prime-400-italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Courier Prime"; src: url("fonts/courier-prime-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+:root {
+  /* Goldenrod copy paper, photocopier toner, one rubber-stamp violet. */
+  --paper: #f2c452;
+  --crease: #d9a93a;
+  --ink: #1d1a15;
+  --ink-soft: #4a3d22;
+  --stamp: #4c2a85;
+  --stamp-deep: #36195f;
+  --table: #2b211a;
+  --table-edge: #1c1510;
+  /* The projector screen: the product's own output. */
+  --screen: #0b0e16;
+  --screen-ink: #f5f1e8;
+  --screen-gold: #e9b949;
+
+  --serif: "Old Standard TT", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --typed: "Courier Prime", "Courier New", Courier, monospace;
+
+  --gutter: clamp(22px, 4.2vw, 64px);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--table);
+  color: var(--ink);
+  scrollbar-color: var(--crease) var(--table-edge);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: clamp(0px, 3.2vw, 48px) clamp(0px, 3.2vw, 48px) clamp(24px, 5vw, 72px);
+  background: var(--table);
+  font-family: var(--serif);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  caret-color: var(--stamp);
+}
+
+::selection { background: var(--stamp); color: var(--paper); }
+
+:focus-visible { outline: 3px solid var(--stamp); outline-offset: 3px; }
+
+a { color: var(--ink); text-decoration-color: var(--stamp); text-decoration-thickness: 2px; text-underline-offset: 0.22em; }
+a:hover { color: var(--stamp-deep); }
+
+.defs { position: absolute; }
+
+.skip {
+  position: absolute; left: 12px; top: -60px; z-index: 10;
+  background: var(--paper); color: var(--ink); padding: 0.6em 1em; font-family: var(--typed); font-weight: 700;
+}
+.skip:focus { top: 12px; }
+
+.icon { width: 1.1em; height: 1.1em; flex: none; }
+
+/* The sheet: one bi-fold bulletin, opened flat, with its crease down the middle. */
+.sheet {
+  max-width: 1200px;
+  margin: 0 auto;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 26px), rgba(150, 100, 10, 0.16) calc(50% - 1px), rgba(255, 240, 200, 0.22) calc(50% + 1px), transparent calc(50% + 26px)),
+    var(--paper);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 24px 60px -12px rgba(0, 0, 0, 0.55);
+}
+
+.spread { display: grid; grid-template-columns: 1fr 1fr; }
+.panel { padding: var(--gutter); min-width: 0; container-type: inline-size; }
+.spread + .spread, .card + .spread { border-top: 1px solid rgba(29, 26, 21, 0.28); }
+
+.typed { font-family: var(--typed); }
+
+/* Masthead */
+.masthead {
+  margin: 0;
+  font-weight: 700;
+  font-size: min(5.75rem, 13.4cqi);
+  line-height: 0.92;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin: 0.7rem 0 0;
+  font-style: italic;
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.rule { border: 0; margin: 1.6rem 0; }
+.rule--double { border-top: 4px double var(--ink); }
+
+.offer {
+  margin: 0 0 1.3rem;
+  font-size: clamp(1.15rem, 1.5vw, 1.3rem);
+  line-height: 1.5;
+  max-width: 34em;
+  text-wrap: pretty;
+}
+
+.status { margin: 0 0 1.8rem; font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); max-width: 46ch; }
+
+.nowrap { white-space: nowrap; }
+
+/* Violet stamp ink. Actions carry the double rule; the status label carries a single one. */
+.stamp {
+  display: block;
+  width: fit-content;
+  margin: 0 0 0.75em;
+  padding: 0.15em 0.55em;
+  border: 1.5px solid var(--stamp);
+  color: var(--stamp);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.6rem; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  font-family: var(--typed);
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease);
+}
+.btn--stamp {
+  padding: 0.8em 1.2em;
+  border: 4px double var(--stamp);
+  background: transparent;
+  color: var(--stamp);
+  font-size: 0.95rem;
+}
+.btn--stamp:hover { background: var(--stamp); color: var(--paper); border-color: var(--paper); box-shadow: 0 0 0 2px var(--stamp); }
+.btn--stamp:active { transform: translateY(1px); }
+.btn--small { padding: 0.65em 1em; font-size: 0.9rem; text-transform: none; letter-spacing: 0.01em; }
+
+.link { font-family: var(--typed); font-weight: 700; font-size: 0.95rem; }
+
+/* Item lines with dotted leaders, as typed by the church office. */
+.item-line { display: flex; align-items: baseline; gap: 0.55em; }
+.item-name { font-weight: 700; font-size: 1.15rem; }
+.leader { flex: 1 1 1.5em; min-width: 1.5em; border-bottom: 2px dotted var(--ink-soft); transform: translateY(-0.28em); }
+.item-what { font-style: italic; white-space: nowrap; }
+
+/* Prelude: the film, in the projector's black frame */
+.panel--right > .item-line:first-child { margin: 0.35rem 0 1rem; }
+.film { margin: 0; }
+.projector { background: var(--screen); padding: clamp(6px, 0.8vw, 10px); }
+.projector video { display: block; width: 100%; height: auto; background: var(--screen); }
+
+.film figcaption { margin-top: 0.9rem; }
+details summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  list-style: none;
+}
+details summary::-webkit-details-marker { display: none; }
+details summary { display: inline-flex; align-items: center; gap: 0.4em; }
+.chevron { width: 1em; height: 1em; color: var(--stamp); transition: transform 200ms var(--ease); }
+details[open] .chevron { transform: rotate(90deg); }
+details summary:hover { color: var(--ink); }
+.summary { padding-top: 0.6rem; font-size: 1rem; }
+.summary p { margin: 0.4rem 0; }
+.summary ol { margin: 0.4rem 0; padding-left: 1.3rem; }
+.summary li { margin: 0.3rem 0; }
+
+/* Section headings: centred small caps between rules, bulletin style */
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.3rem, 2vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.heading::before, .heading::after { content: ""; flex: 1; border-top: 1px solid var(--ink); }
+
+.note { margin: 0 0 1.4rem; font-size: 0.9rem; line-height: 1.6; color: var(--ink-soft); }
+kbd {
+  font-family: var(--typed);
+  font-size: 0.85em;
+  padding: 0 0.35em;
+  border: 1px solid var(--ink-soft);
+  border-bottom-width: 2px;
+  color: var(--ink);
+}
+
+/* The Order of Worship */
+.liturgy { list-style: none; margin: 0; padding: 0; }
+.liturgy li + li { border-top: 1px dotted rgba(29, 26, 21, 0.35); }
+
+.service-item {
+  display: grid;
+  gap: 0.4rem;
+  width: 100%;
+  margin: 0;
+  padding: 1.05rem 0.85rem 1.1rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 220ms var(--ease);
+}
+.service-item:hover { background: rgba(29, 26, 21, 0.06); }
+
+.service-item .time {
+  flex: none;
+  min-width: 4.4ch;
+  padding: 0.05em 0.3em;
+  font-size: 0.92rem;
+  font-weight: 700;
+  transition: background-color 220ms var(--ease), color 220ms var(--ease);
+}
+.service-item[aria-current="true"] { background: rgba(76, 42, 133, 0.09); }
+.service-item[aria-current="true"] .time { background: var(--stamp); color: var(--paper); }
+.service-item[aria-current="true"] .item-name { color: var(--stamp-deep); }
+
+.rubric { display: block; max-width: 58ch; font-size: 1rem; line-height: 1.55; text-wrap: pretty; }
+.refs { font-size: 0.78rem; letter-spacing: 0.05em; color: var(--ink-soft); }
+
+/* The booth: a sticky projector screen that follows the live item */
+.booth { position: sticky; top: clamp(16px, 3vw, 32px); }
+.monitor { margin: 0; }
+
+.screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--screen);
+  color: var(--screen-ink);
+  box-shadow: 0 0 0 clamp(6px, 0.8vw, 10px) var(--screen);
+}
+
+.safe {
+  position: absolute;
+  inset: 7% 6% 13% 6%;
+  border: 1px dashed rgba(233, 185, 73, 0.6);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.slide {
+  position: absolute;
+  inset: 7% 6% 13% 6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
+}
+.slide.is-live { opacity: 1; visibility: visible; transition: opacity 200ms var(--ease), visibility 0s; }
+.slide p { margin: 0; }
+
+.s-small { font-family: var(--typed); font-size: max(11px, 2.1cqi); letter-spacing: 0.18em; text-transform: uppercase; color: var(--screen-gold); }
+.s-title { margin: 0 0 0.4em !important; font-size: 6.4cqi; font-weight: 700; line-height: 1.1; }
+.s-count { font-weight: 700; color: var(--screen-ink); }
+.s-lyric { font-size: 4.25cqi; line-height: 1.38; }
+.s-verse { font-size: 3.9cqi; line-height: 1.4; max-width: 30ch; text-wrap: balance; }
+.s-foot { position: absolute; bottom: 0; left: 0; right: 0; font-family: var(--typed); font-size: max(10px, 1.75cqi); color: var(--screen-gold); letter-spacing: 0.04em; }
+
+.slide--deck {
+  inset: 7% 6% 13% 6%;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 5cqi 6cqi;
+  background: #f7f4ec;
+  color: #1b2340;
+}
+.s-deck-title { font-size: 5.4cqi; font-weight: 700; line-height: 1.05; padding-bottom: 0.35em; border-bottom: 0.5cqi solid #c8922d; margin-bottom: 0.6em !important; }
+.s-bullets { margin: 0; padding-left: 1.1em; font-size: 3.2cqi; line-height: 1.5; }
+.s-bullets li { transition: opacity 260ms var(--ease), transform 260ms var(--ease); }
+.s-bullets .s-pending { opacity: 0; transform: translateY(0.4em); }
+.s-bullets .s-pending.is-built { opacity: 1; transform: none; }
+.s-chip { position: absolute; right: 2.5cqi; bottom: 2cqi; font-family: var(--typed); font-size: max(10px, 1.6cqi); color: #5a6380; }
+
+.slide--stream {
+  inset: 0;
+  align-items: stretch;
+  justify-content: space-between;
+  text-align: left;
+  background: #262e3c;
+}
+.s-camera { padding: 3cqi 4cqi; font-family: var(--typed); font-size: max(10px, 1.7cqi); letter-spacing: 0.12em; text-transform: uppercase; color: rgba(245, 241, 232, 0.7); }
+.s-lower {
+  margin: 0 0 9% 6%;
+  width: 62%;
+  padding: 2cqi 3cqi 2.2cqi;
+  background: rgba(11, 14, 22, 0.88);
+  box-shadow: inset 0 -0.6cqi 0 var(--screen-gold);
+}
+.s-lower-title { font-size: 3.2cqi; font-weight: 700; line-height: 1.15; }
+.s-lower-sub { margin-top: 0.3em !important; font-family: var(--typed); font-size: max(10px, 1.9cqi); color: var(--screen-gold); }
+
+.booth-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: clamp(16px, 1.6vw, 22px); }
+.live-label { display: inline-flex; align-items: center; gap: 0.55em; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.live-name { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.live-dot { width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--stamp); }
+
+.booth-keys { display: inline-flex; gap: 0.5rem; }
+.key {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 180ms var(--ease), color 180ms var(--ease);
+}
+.key:hover { background: var(--ink); color: var(--paper); }
+.key:active { transform: translateY(1px); }
+.note--booth { margin-top: 0.9rem; }
+
+/* Tear-off connection card, below the perforation */
+.card { position: relative; padding: calc(var(--gutter) * 0.9) var(--gutter) var(--gutter); }
+.perforation { position: absolute; left: 0; right: 0; top: 0; border-top: 2px dashed var(--ink); }
+.scissors {
+  position: absolute;
+  left: var(--gutter);
+  top: -0.85rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.2rem;
+  background: var(--paper);
+  color: var(--ink);
+  transform: rotate(-90deg);
+}
+.heading--card { max-width: 46rem; margin-left: auto; margin-right: auto; }
+.card > .note { text-align: center; }
+.connect { list-style: none; max-width: 46rem; margin: 0 auto; padding: 0; }
+.connect li { display: flex; align-items: center; gap: 0.8rem; padding: 0.85rem 0; }
+.connect li + li { border-top: 1px dotted rgba(29, 26, 21, 0.35); }
+.connect-who { font-size: 1.12rem; font-style: italic; }
+.connect .leader { transform: none; align-self: center; }
+
+/* Notices */
+.subhead { margin: 1.6rem 0 0.6rem; font-size: 1.05rem; font-weight: 700; font-style: italic; }
+.subhead--first { margin-top: 0; }
+.spread--notices { padding-top: var(--gutter); }
+.spread--notices > .heading { grid-column: 1 / -1; width: min(46rem, 100% - 2 * var(--gutter)); margin: 0 auto 1.6rem; }
+.spread--notices .panel { padding-top: 0; }
+.spread--notices .panel--left > .subhead:first-child { margin-top: 0; }
+.ledger { list-style: none; margin: 0; padding: 0; }
+.ledger li { position: relative; padding: 0.3rem 0 0.3rem 1.4rem; max-width: 52ch; }
+.ledger li::before { content: "\2014"; position: absolute; left: 0; color: var(--ink-soft); }
+.plain { margin: 0; max-width: 52ch; }
+
+.colophon { border-top: 4px double var(--ink); margin: 0 var(--gutter); padding: 1.1rem 0 1.6rem; font-size: 0.8rem; color: var(--ink-soft); text-align: center; }
+.colophon p { margin: 0; }
+
+/* One column: the bulletin folded back on itself, read panel by panel. */
+@media (max-width: 880px) {
+  body { padding: 0; }
+  .sheet { background: var(--paper); box-shadow: none; }
+  .spread { grid-template-columns: 1fr; }
+  .spread--top .panel--right { padding-top: 0; }
+  .subhead--first { margin-top: 0.6rem; }
+
+  /* Order of Worship: the screen sticks above the list as you scroll. */
+  .spread + .spread, .card + .spread { border-top: 0; box-shadow: inset 0 1px 0 rgba(150, 100, 10, 0.35), inset 0 3px 0 rgba(255, 240, 200, 0.4); }
+  .spread--order { display: flex; flex-direction: column; padding: var(--gutter); }
+  .spread--order .panel { display: contents; }
+  .spread--order .heading { order: 1; }
+  .spread--order .panel--left > .note { order: 2; }
+  .spread--order .booth { order: 3; position: sticky; top: 0; z-index: 3; margin: 0 calc(var(--gutter) * -1); padding: 12px var(--gutter) 10px; background: var(--paper); box-shadow: 0 8px 12px -10px rgba(29, 26, 21, 0.5); }
+  .spread--order .liturgy { order: 4; margin-top: 0.5rem; }
+  .note--booth { display: none; }
+  .booth-bar { margin-top: 12px; }
+  .service-item { padding-left: 0.4rem; padding-right: 0.4rem; scroll-margin-top: var(--booth-h, 0px); }
+
+  .connect li { flex-wrap: wrap; gap: 0.4rem 0.8rem; }
+  .connect .leader { display: none; }
+  .connect-who { flex-basis: 100%; }
+}
+
+@media (max-width: 480px) {
+  /* The name takes the first line; the leader runs to the item's job on the second. */
+  .service-item .item-line { flex-wrap: wrap; row-gap: 0.1rem; }
+  .service-item .item-name { flex: 1 1 calc(100% - 7ch); }
+  .service-item .leader { margin-left: calc(4.4ch + 0.6em); }
+  .service-item .item-what { font-size: 0.95rem; }
+  .actions .btn { width: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
+}

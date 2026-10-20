@@ -2,3 +2,6 @@
 .DS_Store
 node_modules/
 /docs/eval/tools/probe/target
+
+# Impeccable review captures (regenerated per review)
+.impeccable/review/
