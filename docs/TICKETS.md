@@ -406,6 +406,31 @@ Done when a test shows a large image doesn't delay a text slide on another outpu
 
 Done when the review's media repro is refused, the counting-allocator test bounds a media-heavy deck under the 1 GB total, and the existing deck snapshots are unchanged. T41 and T53 wait on this, so no deck reaches the parser from the app or from a linked source before it lands. Importing in a child process with its own memory limit is the longer-term answer (ARCHITECTURE already allows for one); propose it as a separate ticket if the numbers here are still uncomfortable.
 
+### Managing OBS
+
+[Decision 0005](decisions/0005-manage-obs-not-replace.md): OBS stays the streaming engine, and Lampstand drives it so a volunteer never opens OBS during a service.
+
+| ID | Title | Model | Needs | PRD | Files |
+| --- | --- | --- | --- | --- | --- |
+| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` |
+| T89 | OBS connection settings and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` |
+| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md |
+| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` |
+| T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` |
+| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view |
+
+**T88. OBS WebSocket client.** A client for obs-websocket protocol v5 (OBS 28 and later): `Hello`, `Identify` with the SHA-256 challenge, `Request` and `RequestBatch` by id, and event subscriptions (scene, stream, record, input mute, `ExitStarted`). Reconnect with backoff, and expose a status stream (disconnected, connecting, connected, auth failed) plus typed calls for what T89 to T93 need. Behind a `obs` feature like `net`. Done when tests against a mock server cover auth, a wrong password, a dropped connection that reconnects, and an event arriving while a request is in flight.
+
+**T89. Connection and status.** Setup gets an OBS section: host (default `localhost`), port (default 4455), password and a "Test connection" button. The password lives in device-local config with T79's permissions, never in a synced document. Present shows a status pill for connected, streaming and recording, with timecodes and dropped frames, and a clear warning when OBS disconnects. Projection never waits on OBS. Done when a test drives the status through every state with the mock server, and a manual OBS 30 check is noted in the PR.
+
+**T90. Scene per service item (Opus).** Add an optional OBS scene name to a service item (a contract change to `core`; record it in ARCHITECTURE.md). When the item goes live, call `SetCurrentProgramScene`. If OBS isn't connected, or the scene no longer exists, show a warning in Present and carry on. Readiness (T36) flags items whose scene OBS doesn't have, when OBS is connected. Decide whether Previous also switches the scene back, and what happens while the operator holds a manual scene from T91. Done when tests cover go-live, a missing scene, a disconnected OBS and a manual hold.
+
+**T91. Run OBS from Present.** Show OBS's scenes as buttons, with the program scene marked and following OBS's own events. Clicking a button switches the scene. Show a mute toggle for each audio input that follows `InputMuteStateChanged`. No volume faders: mixing stays in OBS or on the desk. Done when the UI follows changes made in OBS itself as well as in Lampstand.
+
+**T92. Stream and record from the service order.** A service item (typically the pre-service countdown) can start streaming and/or recording when it goes live. Stopping is never automatic: Present has a stop button that asks for confirmation. Done when tests cover starting when already streaming, OBS refusing (no stream key), and a disconnected OBS.
+
+**T93. One-click setup.** A "Set up OBS" button creates a scene collection named "Lampstand" (if it doesn't exist), with starter scenes ("Slides", "Worship", "Pastor and slides"). Each gets a browser source named "Lampstand stream" set to the T86 URL at the output's size, with "shutdown source when not visible" off. Running it again updates only the URL and size of sources it created, found by name, and never edits or removes anything else. Rotating the key (T86) updates the URL in OBS when connected. Done when tests against the mock server show a fresh setup, a re-run that changes nothing, and a re-run after a key rotation.
+
 ## Not code: start now
 
 These sit on the critical path, but no session can do them:
