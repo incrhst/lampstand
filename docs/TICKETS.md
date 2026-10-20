@@ -150,7 +150,7 @@ Done when 10 synthetic decks in `slides/tests/decks/` produce snapshot scenes, a
 | T25 | Output windows, display mapping, transitions, animations | **O** | T24 | LV-3, NFR | `render/src/output/` | Done |
 | T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` | Done |
 | T27 | GStreamer backend and video nodes | S | T24 | LV-4, PS-3 | `media/`, `render/src/video.rs` | Not started |
-| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | In review ([#22](https://github.com/incrhst/lampstand/pull/22)) |
+| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | Done |
 | T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` | Not started |
 | T35 | Library facade over the repo | S | T16 | SL-1, BI-2 | `library/src/lib.rs` | Done |
 
@@ -223,8 +223,8 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T49 | Service planner, live collaborative | S | T46, T02 | PL-1, PS-8 | `app/src/routes/plan/` | Partial (T46 slice) |
 | T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` | Partial (T46 slice) |
 | T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` | Not started |
-| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` | In review ([#19](https://github.com/incrhst/lampstand/pull/19)) |
-| T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` | Partial, in review ([#20](https://github.com/incrhst/lampstand/pull/20)) |
+| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` | Partial (planner scripture tab, #19) |
+| T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` | Partial (add decks from file or link, #20; no fidelity report or updates) |
 | T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` | Not started |
 | T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` | Not started |
 | T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Not started |
@@ -354,10 +354,10 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Not started |
 | T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` | Not started |
 | T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
-| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Not started |
+| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30) |
 | T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Not started |
 | T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Not started |
-| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | In review ([#20](https://github.com/incrhst/lampstand/pull/20)) |
+| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | Done |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
 
