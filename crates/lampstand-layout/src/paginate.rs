@@ -104,10 +104,22 @@ fn copyright_line(song: &Song) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" | "))
 }
 
+/// How a passage is shared out between slides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PassageSplit {
+    /// Each verse on a slide of its own: the congregation reads along one
+    /// verse at a time.
+    #[default]
+    Verse,
+    /// As many whole verses as fit on each slide.
+    Fill,
+}
+
 /// Splits a passage into slides that fit the primary output at no less
-/// than the theme's preferred size where possible, breaking between
-/// verses first and inside a verse only when one verse alone does not
-/// fit. Verse numbers are kept as superscript-style prefixes ("16 For God
+/// than the theme's preferred size where possible. [`PassageSplit::Verse`]
+/// starts every verse on a new slide; [`PassageSplit::Fill`] breaks between
+/// verses only when the next one does not fit. Either way a verse that does
+/// not fit alone is split inside, at word boundaries. Verse numbers are kept as superscript-style prefixes ("16 For God
 /// so loved...").
 ///
 /// Each verse is one entry in `lines` ("16 For God..."), wrapped by the
@@ -117,6 +129,7 @@ fn copyright_line(song: &Song) -> Option<String> {
 pub fn paginate_passage(
     verses: &[(ChapterVerse, &str)],
     reference: &str,
+    split: PassageSplit,
     theme: &Theme,
     primary: &OutputConfig,
     fonts: &mut Fonts,
@@ -129,6 +142,9 @@ pub fn paginate_passage(
         let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
         let numbered = format!("{} {}", cv.verse, text);
 
+        if split == PassageSplit::Verse && !current.is_empty() {
+            slides.push(std::mem::take(&mut current));
+        }
         current.push(numbered.clone());
         if measure.fits(&current, fonts) {
             continue;
@@ -160,7 +176,8 @@ pub fn paginate_passage(
             rest = &rest[n..];
             first = false;
             if rest.is_empty() {
-                // The tail may share a slide with the verses that follow.
+                // When filling, the tail may share a slide with the verses
+                // that follow.
                 current.push(piece);
             } else {
                 slides.push(vec![piece]);
@@ -528,13 +545,46 @@ mod tests {
     }
 
     fn passage(texts: &[&str], out: &OutputConfig) -> Vec<SlideText> {
+        passage_split(texts, PassageSplit::Fill, out)
+    }
+
+    fn passage_split(texts: &[&str], split: PassageSplit, out: &OutputConfig) -> Vec<SlideText> {
         let verses: Vec<(ChapterVerse, &str)> = texts
             .iter()
             .enumerate()
             .map(|(i, t)| (verse(i as u16 + 1), *t))
             .collect();
         let mut fonts = Fonts::bundled_only();
-        paginate_passage(&verses, "John 3", &theme(4, false), out, &mut fonts)
+        paginate_passage(&verses, "John 3", split, &theme(4, false), out, &mut fonts)
+    }
+
+    #[test]
+    fn passages_default_to_one_verse_per_slide() {
+        assert_eq!(PassageSplit::default(), PassageSplit::Verse);
+        let slides = passage_split(
+            &["In the beginning", "Was the Word", "And the Word"],
+            PassageSplit::Verse,
+            &output(1920, 1080),
+        );
+        assert_eq!(sizes(&slides), [1, 1, 1]);
+        assert_eq!(slides[1].lines, ["2 Was the Word"]);
+        assert_eq!(slides[2].footer.as_deref(), Some("John 3"));
+    }
+
+    #[test]
+    fn verse_split_still_breaks_an_over_long_verse() {
+        let long = vec!["grace"; 120].join(" ");
+        let slides = passage_split(
+            &["Short", &long, "Last"],
+            PassageSplit::Verse,
+            &output(1920, 1080),
+        );
+        assert!(slides.len() > 3, "{} slides", slides.len());
+        assert_eq!(slides[0].lines, ["1 Short"]);
+        assert!(slides[1].lines[0].starts_with("2 grace"));
+        // The long verse's tail does not share a slide with verse 3.
+        assert_eq!(slides.last().unwrap().lines, ["3 Last"]);
+        assert!(slides.iter().all(|s| s.lines.len() == 1));
     }
 
     #[test]
