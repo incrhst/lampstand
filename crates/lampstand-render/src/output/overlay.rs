@@ -9,7 +9,7 @@ use lampstand_core::geom::{Color, Point, Rect, Transform};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Node, NodeKind, Paint, PathCommand, PathNode, Scene, Stroke};
 
-use crate::CalibrationPattern;
+use crate::{calibrate, CalibrationPattern};
 
 /// Node IDs for overlay scenes, clear of content and compositor IDs.
 const OVERLAY_NODE_BASE: u32 = u32::MAX - 1024;
@@ -58,37 +58,10 @@ pub fn safe_area_scene(area: &SafeArea, width: f32, height: f32) -> Scene {
     }
 }
 
-/// The calibration pattern for an output of `width` × `height` pixels.
-///
-/// This is the hook T26 fills in with numbered edges at 1% steps and
-/// corner markers. Until then it draws enough to calibrate by eye: a black
-/// screen with the current margins as a bright outline.
+/// The calibration pattern for an output of `width` × `height` pixels
+/// (TS-1): see `calibrate`.
 pub fn calibration_scene(pattern: &CalibrationPattern, width: f32, height: f32) -> Scene {
-    let line = (height / 360.0).max(1.0);
-    let outline = Stroke {
-        paint: Paint::Solid(Color::WHITE),
-        width: line,
-        dash: None,
-    };
-    let full = Rect {
-        x: 0.0,
-        y: 0.0,
-        width,
-        height,
-    };
-    Scene {
-        width,
-        height,
-        nodes: vec![
-            rect_node(OVERLAY_NODE_BASE + 1, full, Some(Color::BLACK), None),
-            rect_node(
-                OVERLAY_NODE_BASE + 2,
-                pattern.current.rect(width, height),
-                None,
-                Some(outline),
-            ),
-        ],
-    }
+    calibrate::scene(pattern, width, height)
 }
 
 #[cfg(test)]
@@ -113,19 +86,5 @@ mod tests {
         );
         assert!(p.fill.is_none());
         assert_eq!(p.stroke.as_ref().unwrap().width, 2.0);
-    }
-
-    #[test]
-    fn calibration_covers_the_screen() {
-        let pattern = CalibrationPattern {
-            current: SafeArea::default(),
-            max_percent: 10,
-        };
-        let scene = calibration_scene(&pattern, 1280.0, 720.0);
-        assert_eq!((scene.width, scene.height), (1280.0, 720.0));
-        let NodeKind::Path(p) = &scene.nodes[0].kind else {
-            panic!("expected a path");
-        };
-        assert_eq!(p.fill, Some(Paint::Solid(Color::BLACK)));
     }
 }
