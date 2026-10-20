@@ -229,9 +229,10 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` | Not started |
 | T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Not started |
 | T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Not started |
-| T59 | Packaging, signing, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
+| T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
 | T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
+| T88 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -254,7 +255,9 @@ Done when, from a fresh install, the operator can open a service with one song a
 
 **T57. Crash recovery.** Journal the live cursor, overlay and output state on every change, with an fsync no more than every 100 ms. On start, restore when the journal is less than 10 minutes old. Done when killing the process with `kill -9` mid-service restores the live slide in under 5 seconds in a CI test with a window output.
 
-**T59. Packaging.** Build a signed MSI or NSIS installer for Windows, a signed and notarised DMG for macOS, an AppImage and a .deb, and a Flathub manifest. Gate the updater on `is_idle()` with no service starting within an hour. Done when CI produces artefacts on tags, using signing secrets as repository secrets, with steps documented.
+**T59. Early-adopter packaging.** The early-adopter release ships on macOS and Linux first (PRD, Phasing). Build a signed and notarised DMG for macOS, an AppImage and a .deb, and an unsigned NSIS installer for Windows, named and released as a preview, with release notes that say SmartScreen will warn. Add the Tauri updater with its own update-signing key, and gate it on `is_idle()` with no service starting within an hour. Done when CI produces all four artefacts on tags, using signing secrets as repository secrets, with steps documented, and the DMG opens on a clean Mac without a Gatekeeper warning.
+
+**T88. Launch packaging.** For Phase 1: sign the Windows installer (MSI or NSIS) so SmartScreen accepts it, and publish a Flatpak on Flathub. Done when CI signs the Windows installer on tags, it installs on a clean Windows 10 machine without a SmartScreen block, and the Flathub manifest builds and is accepted.
 
 **T60. Accessibility.** Run axe on each screen, check contrast, add focus rings, labels and shortcuts for every live action. Done when there are zero axe violations at AA and a keyboard-only mock service runs end to end.
 
@@ -416,7 +419,8 @@ These sit on the critical path, but no session can do them:
 - Apply for CCLI SongSelect API access and Bible publisher licences (PRD risk table).
 - Start Google OAuth app verification for the `drive.file` scope and the Picker.
 - Assemble the 200-deck fidelity corpus with permission from the churches who supply them, plus PowerPoint PNG exports of each.
-- Set up Apple Developer ID, a Windows code-signing certificate and a Flathub account.
+- Set up an Apple Developer ID now: the early-adopter release (T59) needs it.
+- Get a Windows code-signing certificate and a Flathub account before launch (T88).
 - Decide the open PRD questions: the public relay (CD-4) and the product name.
 
 ## Parallelism at a glance
