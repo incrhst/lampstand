@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T95 to T97)
+- Status: accepted (T95 to T98)
 - Date: 2026-10-20
 
 ## Question
@@ -41,9 +41,9 @@ and leave room to add HTTPS later through a domain Lampstand runs (below).
    `Command`: next, previous, show a slide, black, logo, clear) and pushes
    `Event::Live` and `Event::Loaded` out. A musician's stage view and a
    congregation follow-along view (the rest of LV-5) come later as further
-   pages, and only ever get less than this, never more. It can't edit or delete anything in the
-   library, read team or device settings, or change outputs. Pairing a
-   remote never makes the tablet a sync peer.
+   pages, and only ever get less than this, never more. A session can't
+   edit or delete anything in the library, read team or device settings,
+   or change outputs. Pairing a remote never makes the tablet a sync peer.
 5. **Keep the screen awake without the Wake Lock API.** Play a muted,
    looping inline video while the remote is open (the NoSleep technique),
    and tell users they can change the tablet's sleep setting instead.
@@ -62,12 +62,55 @@ and leave room to add HTTPS later through a domain Lampstand runs (below).
 
 Someone on the same Wi-Fi can capture the PIN or a session cookie. The
 most they can then do is advance, blank or clear slides until an operator
-revokes that tablet. Today the same person could walk up to the laptop. On a separate AV network
-(item 7), "the same Wi-Fi" means the AV team, not everyone in the
-building. Lampstand can recommend that network but can't require it, so
-the narrow scope has to hold either way. This
-holds only while sessions stay this narrow. Anything with more power
+revokes that tablet. Today the same person could walk up to the laptop.
+On a separate AV network (item 7), "the same Wi-Fi" means the AV team,
+not everyone in the building. Lampstand can recommend that network but
+can't require it, so the narrow scope has to hold either way.
+
+This holds only while sessions stay this narrow. Anything with more power
 (editing songs, planning, team admin) must not use this pairing over HTTP.
+For a remote with more power, use another Lampstand machine (below).
+
+## Remote control from another Lampstand machine
+
+The other way to run a service remotely is a second machine running
+Lampstand, paired as a sync peer: a second operator in the booth, or a
+backup laptop. Its link is already encrypted and authenticated (T75), and
+paired with SPAKE2 so the code is never sent, so none of the plain-HTTP
+limits above apply. It needs an install, so it doesn't replace the tablet
+remote. The two suit different people.
+
+Today that link carries documents, not control. Edits reach the presenting
+machine in about 50 ms, but live state stays inside each machine's live
+engine, so a second machine can change the service but not run it. To
+close that gap:
+
+1. **One presenting machine.** Exactly one machine owns the live engine and
+   the outputs. Another machine controls it, and never runs a second live
+   engine against the same screens.
+2. **Two new sync frames.** One carries a live `Command` from the
+   controlling machine to the presenting one. The other carries the live
+   state (the same content as `Event::Live`) back to every connected peer
+   on each change. Old peers can't read the new frames, so this is sync
+   protocol 3.
+3. **Present follows the presenting machine.** On the controlling machine,
+   Present shows the presenting machine's live state instead of its own
+   engine, and sends its commands there. It draws slides from the synced
+   service, songs and decks, so no images cross the link.
+4. **One gate for every remote.** On the presenting machine, a command
+   from a browser session (T95) and one from a sync peer go through the
+   same check before reaching the live engine. Until T18, being paired is
+   enough for a peer. After T18, only an operator or admin may send live
+   commands. Then the tablet and the second machine can't drift apart in
+   what they may do. A peer can do more than a tablet (it can edit
+   documents it may write), but no more over this gate.
+5. **Losing the link never stops the service.** If the controlling machine
+   disconnects, the presenting machine carries on where it is, and its own
+   operator can take over at once.
+
+A backup machine already has every song and deck synced, so handing the
+outputs over to it if the presenting laptop fails is a natural next step.
+It's not part of this decision.
 
 ## Why not HTTPS now
 
