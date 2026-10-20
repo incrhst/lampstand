@@ -11,6 +11,9 @@ Phase 1 is every P0 requirement in [PRD.md](PRD.md). Each ticket is sized for on
 - `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` are clean.
 - No `todo!("Tnn")` for this ticket remains.
 - Any contract change is reflected in ARCHITECTURE.md in the same pull request.
+- The ticket's **Status** below says Done, in the same pull request.
+
+**Status** is one of: **Not started**; **Partial** (some of it is on `main`, and the cell says what); **In review** (with a link to the open pull request); **Done** (merged to `main` and meeting the list above); **Skipped** (with the reason). A pull request that starts or finishes a ticket updates its status.
 
 **Brief for a session.** The ticket text plus: "Read docs/ARCHITECTURE.md and the doc comments of the crate you're working in. Touch only the files this ticket names, unless the contract has to change, and then say why."
 
@@ -18,20 +21,20 @@ Phase 1 is every P0 requirement in [PRD.md](PRD.md). Each ticket is sized for on
 
 Where tickets in one crate each add a module, each also adds one `mod` line to that crate's `lib.rs`. Those one-line conflicts are expected; resolve them by keeping both lines.
 
-| ID | Title | Model | PRD | Files |
-| --- | --- | --- | --- | --- |
-| T01 | Scripture references, display and verse lookup | S | BI-1 | `core/src/scripture.rs` |
-| T02 | Fractional positions and service ordering | S | PL-1 | `core/src/service.rs` |
-| T03 | Section kinds and ChordPro helpers | S | SL-1 | `core/src/song.rs` |
-| T15 | Song search index with typo tolerance | S | SL-3 | `library/src/search.rs` |
-| T20 | Font set: bundled fonts, substitutions, `FontLookup` | S | PS-4, LV-4 | `layout/src/fonts.rs`, `assets/fonts/` |
-| T28 | DeckCraft evaluation spike | S | PS-1 | `docs/decisions/0001-pptx-reader.md` |
-| T33 | Live engine state machine | S | LV-1, LV-2, PS-8 | `live/src/lib.rs` |
-| T39 | Share-link classification and download | S | PS-1, CD-9 | `connectors/src/links.rs` |
-| T58 | CI on Windows, macOS and Linux | S | NFR Platforms | `.github/workflows/` |
-| T16 | Sync repo: documents, storage, blob store | **O** | CD-1 | `sync/src/lib.rs`, `sync/src/repo/`, `core` (feature only) |
-| T45 | API types to TypeScript | S | — | `api/`, `app/src/lib/api/` |
-| T04–T13 | Importers (see below) | S | SL-4, BI-2 | one file each in `import/src/` |
+| ID | Title | Model | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- |
+| T01 | Scripture references, display and verse lookup | S | BI-1 | `core/src/scripture.rs` | Done |
+| T02 | Fractional positions and service ordering | S | PL-1 | `core/src/service.rs` | Done |
+| T03 | Section kinds and ChordPro helpers | S | SL-1 | `core/src/song.rs` | Done |
+| T15 | Song search index with typo tolerance | S | SL-3 | `library/src/search.rs` | Done |
+| T20 | Font set: bundled fonts, substitutions, `FontLookup` | S | PS-4, LV-4 | `layout/src/fonts.rs`, `assets/fonts/` | Done |
+| T28 | DeckCraft evaluation spike | S | PS-1 | `docs/decisions/0001-pptx-reader.md` | Done |
+| T33 | Live engine state machine | S | LV-1, LV-2, PS-8 | `live/src/lib.rs` | Done |
+| T39 | Share-link classification and download | S | PS-1, CD-9 | `connectors/src/links.rs` | Done |
+| T58 | CI on Windows, macOS and Linux | S | NFR Platforms | `.github/workflows/` | Done |
+| T16 | Sync repo: documents, storage, blob store | **O** | CD-1 | `sync/src/lib.rs`, `sync/src/repo/`, `core` (feature only) | Done |
+| T45 | API types to TypeScript | S | — | `api/`, `app/src/lib/api/` | Done |
+| T04–T13 | Importers (see below) | S | SL-4, BI-2 | one file each in `import/src/` | Done (T06 skipped) |
 
 **T01. Scripture references, display and verse lookup.** Implement `parse_reference`, `Display for Passage` and `BibleText::verses`. The book table should hold full names, SBL abbreviations, common short forms ("Jn", "Ps", "Phil", "Phm", "Song of Songs") and roman or ordinal prefixes ("I", "II", "First"). Done when the four `T01` tests pass. Also add round-trip tests: parse, display, parse again gives the same passage.
 
@@ -80,29 +83,29 @@ Each importer is one file in `crates/lampstand-import/src/`, with fixtures in `c
 - Chords are preserved as ChordPro, where the format has them.
 - Malformed entries go to `skipped` with a reason and never fail the whole import.
 
-| ID | Format | Notes |
-| --- | --- | --- |
-| T04 | OpenLyrics XML | Do first: T06 reuses it. Handles `<verse name="v1">`, `<lines>` with `<br/>` and `<chord name=""/>`, and `verseOrder`. |
-| T05 | OpenSong | Chord lines (`.`) above lyric lines become inline ChordPro. Handles `[V1]`, `presentation` order and multi-verse lines (`1`, `2` prefixes). |
-| T06 | OpenLP (skipped for now: the importer returns an error suggesting an OpenLyrics export) | Reads `songs.sqlite` with `rusqlite` (bundled feature). Lyrics are OpenLyrics: call T04's parser. Also reads authors, CCLI number and copyright. |
-| T07 | SongSelect `.usr` and `.txt` | Converts `.usr` `Words=` with `/t` section separators and `Fields=` labels. Recognises `.txt` section headings. |
-| T08 | FreeShow `.show` | JSON: `slides`, `layouts` (arrangement), `meta` (CCLI, author, copyright). |
-| T09 | EasyWorship 6 and 7 | EW7 is SQLite with RTF lyrics; write a minimal RTF-to-text helper. EW6 is Paradox `.DB`: port only the reading logic from OpenLP's `easyworship.py`. GPL-2.0-or-later code is compatible with ours. |
-| T10 | ProPresenter 6 and 7 | Pro6 is XML with base64 RTF. Pro7 is protobuf: first check the licence of the community `.proto` definitions and note it in the PR, then generate with `prost`. |
-| T11 | OSIS and Zefania Bibles | Streaming `quick-xml`, because a full Bible is 4 to 6 MB. Must handle milestone `<verse sID/eID>` as well as container verses. |
-| T12 | USFM Bibles | `\id`, `\c`, `\v`, and dropping footnotes `\f…\f*` and cross-references `\x…\x*`. Fixture: WEB from eBible.org (public domain). |
-| T13 | OpenSong and OpenLP Bibles | OpenSong: `<b n><c n><v n>` XML. OpenLP: `.sqlite` `book` and `verse` tables. |
+| ID | Format | Notes | Status |
+| --- | --- | --- | --- |
+| T04 | OpenLyrics XML | Do first: T06 reuses it. Handles `<verse name="v1">`, `<lines>` with `<br/>` and `<chord name=""/>`, and `verseOrder`. | Done |
+| T05 | OpenSong | Chord lines (`.`) above lyric lines become inline ChordPro. Handles `[V1]`, `presentation` order and multi-verse lines (`1`, `2` prefixes). | Done |
+| T06 | OpenLP (skipped for now: the importer returns an error suggesting an OpenLyrics export) | Reads `songs.sqlite` with `rusqlite` (bundled feature). Lyrics are OpenLyrics: call T04's parser. Also reads authors, CCLI number and copyright. | Skipped |
+| T07 | SongSelect `.usr` and `.txt` | Converts `.usr` `Words=` with `/t` section separators and `Fields=` labels. Recognises `.txt` section headings. | Done |
+| T08 | FreeShow `.show` | JSON: `slides`, `layouts` (arrangement), `meta` (CCLI, author, copyright). | Done |
+| T09 | EasyWorship 6 and 7 | EW7 is SQLite with RTF lyrics; write a minimal RTF-to-text helper. EW6 is Paradox `.DB`: port only the reading logic from OpenLP's `easyworship.py`. GPL-2.0-or-later code is compatible with ours. | Done |
+| T10 | ProPresenter 6 and 7 | Pro6 is XML with base64 RTF. Pro7 is protobuf: first check the licence of the community `.proto` definitions and note it in the PR, then generate with `prost`. | Done |
+| T11 | OSIS and Zefania Bibles | Streaming `quick-xml`, because a full Bible is 4 to 6 MB. Must handle milestone `<verse sID/eID>` as well as container verses. | Done |
+| T12 | USFM Bibles | `\id`, `\c`, `\v`, and dropping footnotes `\f…\f*` and cross-references `\x…\x*`. Fixture: WEB from eBible.org (public domain). | Done |
+| T13 | OpenSong and OpenLP Bibles | OpenSong: `<b n><c n><v n>` XML. OpenLP: `.sqlite` `book` and `verse` tables. | Done |
 
 ## Wave 1: needs wave 0
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T21 | Song and scripture pagination | S | T03, T20 | BI-1, SL-1 | `layout/src/paginate.rs` |
-| T22 | Fit text with shrink-to-minimum | S | T20 | TS-7 | `layout/src/fit.rs` |
-| T24 | wgpu renderer core and offscreen rendering | **O** | T20 | LV-3, NFR | `render/src/` |
-| T29 | PPTX parser: structure, text, shapes, images, notes | **O** | T20, T28 | PS-1, PS-3 | `slides/src/` |
-| T14 | Bundled public-domain Bibles (KJV, WEB) | S | T11, T12 | BI-2 | `xtask/`, `assets/bibles/` |
-| T34 | Countdown timers and announcement loop | S | T33 | LV-2 | `live/src/lib.rs` (`tick`) |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T21 | Song and scripture pagination | S | T03, T20 | BI-1, SL-1 | `layout/src/paginate.rs` | Done |
+| T22 | Fit text with shrink-to-minimum | S | T20 | TS-7 | `layout/src/fit.rs` | Done |
+| T24 | wgpu renderer core and offscreen rendering | **O** | T20 | LV-3, NFR | `render/src/` | Done |
+| T29 | PPTX parser: structure, text, shapes, images, notes | **O** | T20, T28 | PS-1, PS-3 | `slides/src/` | Done |
+| T14 | Bundled public-domain Bibles (KJV, WEB) | S | T11, T12 | BI-2 | `xtask/`, `assets/bibles/` | Not started |
+| T34 | Countdown timers and announcement loop | S | T33 | LV-2 | `live/src/lib.rs` (`tick`) | Done |
 
 **T21. Pagination.** Implement `paginate_song` and `paginate_passage` to their doc comments. Done when there are tests for the even-split rule, arrangements with repeats, blank-line breaks, the copyright footer on the first slide only, and passages that break between verses and inside an over-long verse.
 
@@ -139,17 +142,17 @@ Done when 10 synthetic decks in `slides/tests/decks/` produce snapshot scenes, a
 
 ## Wave 2: engines
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T17 | LAN discovery, WebSocket sync protocol, handshake | **O** | T16 | CD-2 | `sync/src/net/` |
-| T18 | Teams, device keys, signed membership, invites | **O** | T16 | CD-6 | `sync/src/team.rs` |
-| T23 | Compositor: audience, stage and stream layouts | S | T21, T22 | LV-3, TS-2–4, TS-9, OB-1, PS-7 | `layout/src/compose.rs` |
-| T25 | Output windows, display mapping, transitions, animations | **O** | T24 | LV-3, NFR | `render/src/output/` |
-| T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` |
-| T27 | GStreamer backend and video nodes | S | T24 | LV-4, PS-3 | `media/`, `render/src/video.rs` |
-| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` |
-| T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` |
-| T35 | Library facade over the repo | S | T16 | SL-1, BI-2 | `library/src/lib.rs` |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T17 | LAN discovery, WebSocket sync protocol, handshake | **O** | T16 | CD-2 | `sync/src/net/` | Done |
+| T18 | Teams, device keys, signed membership, invites | **O** | T16 | CD-6 | `sync/src/team.rs` | Not started |
+| T23 | Compositor: audience, stage and stream layouts | S | T21, T22 | LV-3, TS-2–4, TS-9, OB-1, PS-7 | `layout/src/compose.rs` | Done |
+| T25 | Output windows, display mapping, transitions, animations | **O** | T24 | LV-3, NFR | `render/src/output/` | Done |
+| T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` | Done |
+| T27 | GStreamer backend and video nodes | S | T24 | LV-4, PS-3 | `media/`, `render/src/video.rs` | Not started |
+| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | In review ([#22](https://github.com/incrhst/lampstand/pull/22)) |
+| T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` | Not started |
+| T35 | Library facade over the repo | S | T16 | SL-1, BI-2 | `library/src/lib.rs` | Done |
 
 **T17. Network sync (Opus).** WebSocket transport (tokio-tungstenite), mDNS with `mdns-sd`, blob transfer by hash, reconnection with backoff, and the device-key challenge handshake. Done when two processes on one machine find each other and converge, a third joins through a relay-mode server, and a peer that is cut off and reconnected catches up.
 
@@ -177,18 +180,18 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 
 ## Wave 3: features
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T19 | Relay binary and Docker image | S | T17, T18 | CD-3 | `relay/` |
-| T32 | Fidelity corpus harness (SSIM, private corpus job) | S | T24, T29 | NFR fidelity | `slides/tests/corpus.rs`, CI |
-| T36 | Readiness check and pre-service caching | S | T35, T23 | CD-10, PS-6 | `library/src/readiness.rs` |
-| T37 | Service packages | S | T35 | CD-8 | `library/src/package.rs` |
-| T38 | CCLI usage log and report | S | T35 | RP-1 | `library/src/usage.rs` |
-| T40 | Google sign-in, picker, Drive download and export | S | T39, T42 | PS-2 | `connectors/src/google.rs` |
-| T41 | Linked deck updates: poll, pending, accept | S | T39, T40, T35, T87 | PS-5 | `library/src/decks.rs` |
-| T42 | Local server skeleton | S | T16 | CD-2 | `server/` |
-| T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` |
-| T44 | Guest upload links on the relay | S | T19 | CD-9 | `relay/src/upload.rs` |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T19 | Relay binary and Docker image | S | T17, T18 | CD-3 | `relay/` | Not started |
+| T32 | Fidelity corpus harness (SSIM, private corpus job) | S | T24, T29 | NFR fidelity | `slides/tests/corpus.rs`, CI | Not started |
+| T36 | Readiness check and pre-service caching | S | T35, T23 | CD-10, PS-6 | `library/src/readiness.rs` | Not started |
+| T37 | Service packages | S | T35 | CD-8 | `library/src/package.rs` | Not started |
+| T38 | CCLI usage log and report | S | T35 | RP-1 | `library/src/usage.rs` | Not started |
+| T40 | Google sign-in, picker, Drive download and export | S | T39, T42 | PS-2 | `connectors/src/google.rs` | Not started |
+| T41 | Linked deck updates: poll, pending, accept | S | T39, T40, T35, T87 | PS-5 | `library/src/decks.rs` | Not started |
+| T42 | Local server skeleton | S | T16 | CD-2 | `server/` | Done (with T17, T43) |
+| T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` | Done |
+| T44 | Guest upload links on the relay | S | T19 | CD-9 | `relay/src/upload.rs` | Not started |
 
 **T19. Relay.** One binary built on axum: the sync endpoint from T17 with role checks from T18, a blob store with a size quota, and TOML configuration. Ship a Dockerfile and builds for arm64 and x86-64. Done when it runs on a Raspberry Pi 4 image in CI (QEMU) and uses under 50 MB of memory idle with 10 teams. Do T64 (Docker image, TLS guidance and relay tests ported from PR #4) in the same session. T75 (encrypted sessions) must land before the relay is used beyond a test network.
 
@@ -212,23 +215,23 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 
 ## Wave 4: the app
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T46 | Tauri 2 scaffold, API bridge, app state wiring | **O** | T25, T33, T35, T45 | — | `app/` |
-| T47 | Operator view | S | T46 | LV-1, LV-2, TS-8, PS-7 | `app/src/routes/operate/` |
-| T48 | Library and song editor | S | T46, T15 | SL-1, SL-3 | `app/src/routes/library/` |
-| T49 | Service planner, live collaborative | S | T46, T02 | PL-1, PS-8 | `app/src/routes/plan/` |
-| T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` |
-| T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` |
-| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` |
-| T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` |
-| T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` |
-| T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` |
-| T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` |
-| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` |
-| T59 | Packaging, signing, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI |
-| T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` |
-| T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T46 | Tauri 2 scaffold, API bridge, app state wiring | **O** | T25, T33, T35, T45 | — | `app/` | Done |
+| T47 | Operator view | S | T46 | LV-1, LV-2, TS-8, PS-7 | `app/src/routes/operate/` | Partial (T46 slice) |
+| T48 | Library and song editor | S | T46, T15 | SL-1, SL-3 | `app/src/routes/library/` | Not started |
+| T49 | Service planner, live collaborative | S | T46, T02 | PL-1, PS-8 | `app/src/routes/plan/` | Partial (T46 slice) |
+| T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` | Partial (T46 slice) |
+| T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` | Not started |
+| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` | In review ([#19](https://github.com/incrhst/lampstand/pull/19)) |
+| T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` | Partial, in review ([#20](https://github.com/incrhst/lampstand/pull/20)) |
+| T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` | Not started |
+| T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` | Not started |
+| T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Not started |
+| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Not started |
+| T59 | Packaging, signing, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
+| T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
+| T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -265,21 +268,21 @@ Code from a closed pull request is still on GitHub. Fetch every pull request hea
 
 ### Ported from closed PRs
 
-| ID | Title | Model | Needs | Source | Files |
-| --- | --- | --- | --- | --- | --- |
-| T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` |
-| T63 | Ultra-wide text column and authored-line fitting | **O** | — | #5 | `layout/src/fit.rs`, `layout/src/compose.rs`, `core/src/theme.rs` |
-| T64 | Relay Docker image, TLS guidance and relay tests | S | T19 | #4 | `relay/` |
-| T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` |
-| T66 | Song search by author and CCLI number; finished words | S | — | #1 | `library/src/search.rs` |
-| T67 | OpenLyrics 0.9 chords | S | — | #1 | `import/src/songs/openlyrics.rs` |
-| T68 | ChordPro file importer | S | — | #1 | `import/src/songs/chordpro.rs` |
-| T69 | Contract decision: alternate titles and several authors | **O** | — | #1 | `core/src/song.rs`, ARCHITECTURE.md |
-| T70 | Scripture slides: chapter labels and clause breaks | S | — | #3 | `layout/src/paginate.rs` |
-| T71 | Chapter counts and "did you mean" for book names | S | — | #3 | `core/src/scripture.rs` |
-| T72 | USFM Psalm superscription fixture | S | — | #3 | `import/tests/` |
-| T73 | Every Bible format imports the same text (optional) | S | — | #3 | `import/tests/` |
-| T74 | Contract decision: verse lists | **O** | — | #3 | `core/src/scripture.rs`, ARCHITECTURE.md |
+| ID | Title | Model | Needs | Source | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` | Done |
+| T63 | Ultra-wide text column and authored-line fitting | **O** | — | #5 | `layout/src/fit.rs`, `layout/src/compose.rs`, `core/src/theme.rs` | Not started |
+| T64 | Relay Docker image, TLS guidance and relay tests | S | T19 | #4 | `relay/` | Not started |
+| T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` | Not started |
+| T66 | Song search by author and CCLI number; finished words | S | — | #1 | `library/src/search.rs` | Not started |
+| T67 | OpenLyrics 0.9 chords | S | — | #1 | `import/src/songs/openlyrics.rs` | Not started |
+| T68 | ChordPro file importer | S | — | #1 | `import/src/songs/chordpro.rs` | Not started |
+| T69 | Contract decision: alternate titles and several authors | **O** | — | #1 | `core/src/song.rs`, ARCHITECTURE.md | Not started |
+| T70 | Scripture slides: chapter labels and clause breaks | S | — | #3 | `layout/src/paginate.rs` | Not started |
+| T71 | Chapter counts and "did you mean" for book names | S | — | #3 | `core/src/scripture.rs` | Not started |
+| T72 | USFM Psalm superscription fixture | S | — | #3 | `import/tests/` | Not started |
+| T73 | Every Bible format imports the same text (optional) | S | — | #3 | `import/tests/` | Not started |
+| T74 | Contract decision: verse lists | **O** | — | #3 | `core/src/scripture.rs`, ARCHITECTURE.md | Not started |
 
 **T62. Full TS-1 calibration design.** Port the pattern from `git show pr/5:crates/lampstand-render/src/calibration.rs`, drawn as `Scene` nodes rather than #5's direct drawing:
 
@@ -340,21 +343,21 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 
 ### Security and robustness
 
-| ID | Title | Model | Needs | PRD | Files |
-| --- | --- | --- | --- | --- | --- |
-| T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` |
-| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` |
-| T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` |
-| T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` |
-| T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` |
-| T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` |
-| T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` |
-| T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` |
-| T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` |
-| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md |
-| T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` |
-| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view |
-| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md |
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done |
+| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | Not started |
+| T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
+| T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
+| T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` | Not started |
+| T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` | Not started |
+| T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Not started |
+| T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` | Not started |
+| T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
+| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Not started |
+| T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Not started |
+| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Not started |
+| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | In review ([#20](https://github.com/incrhst/lampstand/pull/20)) |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
 
