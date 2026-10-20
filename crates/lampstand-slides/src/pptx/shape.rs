@@ -373,7 +373,8 @@ impl SlideCx<'_, '_> {
                     tt = about(c, rot).then(tt);
                 }
                 let id = self.fresh_id();
-                kids.push(node(id, tt, NodeKind::Text(placed.block)));
+                let kind = self.text_node(s.id.0, placed.block);
+                kids.push(node(id, tt, kind));
             }
         }
         self.push_shape(s, local.transform, kids);

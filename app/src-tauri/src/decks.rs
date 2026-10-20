@@ -21,7 +21,7 @@ use lampstand_connectors::links::{self, Link};
 use lampstand_connectors::{FetchError, Fetched};
 use lampstand_core::deck::{Deck, DeckId, DeckSource, Version};
 use lampstand_core::id::{BlobHash, Timestamp};
-use lampstand_core::scene::{Animation, Scene};
+use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::service::ItemKind;
 use lampstand_core::{FontLookup, FontMatch};
 use lampstand_library::Library;
@@ -38,10 +38,34 @@ pub struct ParsedSlides {
 pub struct Slide {
     /// 0-based, in the source deck (hidden slides count), for "Slide 3".
     pub index: usize,
-    pub scene: Arc<Scene>,
+    /// The slide after each build step, `scenes[0]` as it stands once
+    /// anything that plays as it arrives has played: what outputs are
+    /// composed from, and thumbnails. One more than `builds`.
+    pub scenes: Vec<Arc<Scene>>,
+    /// The slide as it arrives, before `entry` plays (`scenes[0]` when
+    /// nothing plays by itself).
+    pub arrival: Arc<Scene>,
+    /// Animations that play by themselves as the slide arrives.
+    pub entry: Vec<Animation>,
     /// One list of animations per click.
     pub builds: Vec<Vec<Animation>>,
+    /// How the slide arrives on the outputs.
+    pub transition: Transition,
     pub notes: String,
+}
+
+impl ParsedSlides {
+    /// The slide with this index in the source deck.
+    pub fn slide(&self, index: usize) -> Option<&Slide> {
+        self.slides.iter().find(|s| s.index == index)
+    }
+}
+
+impl Slide {
+    /// The slide after `step` build steps; past the last, the last.
+    pub fn scene_at(&self, step: usize) -> Arc<Scene> {
+        self.scenes[step.min(self.scenes.len() - 1)].clone()
+    }
 }
 
 /// Checks that a deck parses: every font counts as present, so the check
@@ -257,11 +281,24 @@ pub fn parse(
         .into_iter()
         .enumerate()
         .filter(|(_, s)| !s.hidden)
-        .map(|(index, s)| Slide {
-            index,
-            scene: Arc::new(s.scene),
-            builds: s.builds.into_iter().map(|b| b.animations).collect(),
-            notes: s.notes,
+        .map(|(index, s)| {
+            let scenes: Vec<Arc<Scene>> = (0..=s.builds.len())
+                .map(|step| Arc::new(s.scene_at_step(step)))
+                .collect();
+            let arrival = if s.entry.animations.is_empty() {
+                scenes[0].clone()
+            } else {
+                Arc::new(s.scene)
+            };
+            Slide {
+                index,
+                scenes,
+                arrival,
+                entry: s.entry.animations,
+                builds: s.builds.into_iter().map(|b| b.animations).collect(),
+                transition: s.transition,
+                notes: s.notes,
+            }
         })
         .collect();
     Ok(ParsedSlides { slides })

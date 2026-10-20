@@ -1066,7 +1066,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1186,6 +1186,16 @@ name = "deadpool-runtime"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
+
+[[package]]
+name = "deckcraft-anim"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-geom",
+ "deckcraft-model",
+ "serde",
+]
 
 [[package]]
 name = "deckcraft-color"
@@ -3203,6 +3213,7 @@ dependencies = [
 name = "lampstand-slides"
 version = "0.1.0"
 dependencies = [
+ "deckcraft-anim",
  "deckcraft-color",
  "deckcraft-geom",
  "deckcraft-model",
