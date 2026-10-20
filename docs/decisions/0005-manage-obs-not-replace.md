@@ -13,14 +13,16 @@ encoder, or keep OBS and drive it?
 
 Keep OBS as the streaming engine, and manage it from Lampstand so a
 volunteer never has to open OBS during a service. This keeps the PRD
-non-goal ("Replacing OBS") and turns OB-4 to OB-6, plus the new OB-7 and
-OB-8, into one piece of work:
+non-goal ("Replacing OBS") and turns OB-4 to OB-6, plus the new OB-7 to
+OB-9, into one piece of work:
 
 1. **Graphics in:** the browser source (OB-1, OB-2; T43 built it, T86 wires it in).
 2. **Control out:** a client for the OBS WebSocket (v5, OBS 28 and later) in
    `lampstand-connectors` (T88).
 3. **Status in Present:** connected, streaming, recording, dropped frames, and a
-   warning when OBS goes away (OB-5, T89).
+   warning when OBS goes away. When OBS isn't connected, Lampstand says why
+   (not running, not installed, or its WebSocket server is off) and offers to
+   open it (OB-5, T89).
 4. **Scenes from the service order and by hand:** a service item can name an OBS
    scene to switch to when it goes live (OB-4, T90), and Present shows OBS's
    scenes as buttons with mute toggles for its audio inputs (OB-8, T91).
@@ -28,6 +30,10 @@ OB-8, into one piece of work:
 6. **One-click setup:** Lampstand creates a "Lampstand" scene collection in OBS,
    with starter scenes and the browser source already pointing at the stream
    output (OB-7, T93).
+7. **Stream destination and virtual camera:** set where OBS streams (a listed
+   service or a custom server, with its key) and turn the virtual camera on and
+   off (OB-9, T94). OBS sends to one destination; several at once needs a
+   plugin or a restream service.
 
 ## Why not our own compositor
 

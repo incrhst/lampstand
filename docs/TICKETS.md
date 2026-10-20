@@ -413,15 +413,24 @@ Done when the review's media repro is refused, the counting-allocator test bound
 | ID | Title | Model | Needs | PRD | Files |
 | --- | --- | --- | --- | --- | --- |
 | T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` |
-| T89 | OBS connection settings and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` |
 | T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md |
 | T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` |
 | T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view |
+| T94 | Stream destination and virtual camera | S | T89 | OB-9 | `app/src-tauri/src/`, `app/src/routes/` |
 
-**T88. OBS WebSocket client.** A client for obs-websocket protocol v5 (OBS 28 and later): `Hello`, `Identify` with the SHA-256 challenge, `Request` and `RequestBatch` by id, and event subscriptions (scene, stream, record, input mute, `ExitStarted`). Reconnect with backoff, and expose a status stream (disconnected, connecting, connected, auth failed) plus typed calls for what T89 to T93 need. Behind a `obs` feature like `net`. Done when tests against a mock server cover auth, a wrong password, a dropped connection that reconnects, and an event arriving while a request is in flight.
+**T88. OBS WebSocket client.** A client for obs-websocket protocol v5 (OBS 28 and later): `Hello`, `Identify` with the SHA-256 challenge, `Request` by id, and event subscriptions (scene, stream, record, virtual camera, input mute, `ExitStarted`). Reconnect with backoff, and expose a status stream (disconnected, connecting, connected, auth failed) plus typed calls for what T89 to T93 need. Behind a `obs` feature like `net`. Done when tests against a mock server cover auth, a wrong password, a dropped connection that reconnects, and an event arriving while a request is in flight.
 
-**T89. Connection and status.** Setup gets an OBS section: host (default `localhost`), port (default 4455), password and a "Test connection" button. The password lives in device-local config with T79's permissions, never in a synced document. Present shows a status pill for connected, streaming and recording, with timecodes and dropped frames, and a clear warning when OBS disconnects. Projection never waits on OBS. Done when a test drives the status through every state with the mock server, and a manual OBS 30 check is noted in the PR.
+**T89. Connection and status.** Setup gets an OBS section: host (default `localhost`), port (default 4455), password and a "Test connection" button. The password lives in device-local config with T79's permissions, never in a synced document. Present shows a status pill for connected, streaming and recording, with timecodes and dropped frames, and a clear warning when OBS disconnects. Projection never waits on OBS.
+
+Tell people why OBS isn't connected. A refused connection on `localhost` means OBS isn't running, or its WebSocket server is off (it is off by default in OBS 28 and later, under Tools › WebSocket Server Settings). So check whether OBS is installed (macOS `/Applications/OBS.app`; Windows Program Files or the registry; Linux `obs` on `PATH` or the flatpak `com.obsproject.Studio`) and whether it is running (a process check). Then Present and readiness (T36) say one of:
+
+- "OBS isn't running", with an **Open OBS** button that launches it with `--minimize-to-tray` (and `--collection Lampstand` once T93 has made that collection);
+- "OBS isn't installed", with a **Get OBS** link to obsproject.com;
+- "OBS is running but its WebSocket server is off", with step-by-step instructions to turn it on and copy the password.
+
+Only say this when the service has a stream output or items with an OBS scene, so churches that don't stream never see it. Don't edit OBS's own config files (to switch the server on, say) without asking the user first. Done when a test drives the status through every state with the mock server, tests cover each detection outcome, and a manual OBS 30 check is noted in the PR.
 
 **T90. Scene per service item (Opus).** Add an optional OBS scene name to a service item (a contract change to `core`; record it in ARCHITECTURE.md). When the item goes live, call `SetCurrentProgramScene`. If OBS isn't connected, or the scene no longer exists, show a warning in Present and carry on. Readiness (T36) flags items whose scene OBS doesn't have, when OBS is connected. Decide whether Previous also switches the scene back, and what happens while the operator holds a manual scene from T91. Done when tests cover go-live, a missing scene, a disconnected OBS and a manual hold.
 
@@ -430,6 +439,8 @@ Done when the review's media repro is refused, the counting-allocator test bound
 **T92. Stream and record from the service order.** A service item (typically the pre-service countdown) can start streaming and/or recording when it goes live. Stopping is never automatic: Present has a stop button that asks for confirmation. Done when tests cover starting when already streaming, OBS refusing (no stream key), and a disconnected OBS.
 
 **T93. One-click setup.** A "Set up OBS" button creates a scene collection named "Lampstand" (if it doesn't exist), with starter scenes ("Slides", "Worship", "Pastor and slides"). Each gets a browser source named "Lampstand stream" set to the T86 URL at the output's size, with "shutdown source when not visible" off. Running it again updates only the URL and size of sources it created, found by name, and never edits or removes anything else. Rotating the key (T86) updates the URL in OBS when connected. Done when tests against the mock server show a fresh setup, a re-run that changes nothing, and a re-run after a key rotation.
+
+**T94. Stream destination and virtual camera.** T88 has the calls: `stream_destination` and `set_stream_destination` (OBS's listed services such as "YouTube - RTMPS" or "Facebook Live", or a custom RTMP or RTMPS server), and starting, stopping and reading the virtual camera, with its `VirtualCamStateChanged` event. Setup's OBS section gets the destination: a service picker plus stream key, or a custom server and key. Present gets a virtual camera toggle that follows OBS's own events, for churches that send the program into Zoom or Teams. The stream key is a secret: keep it device-local with T79's permissions, never synced, and never logged. OBS refuses to change the destination while it is streaming, so the UI says so instead of failing silently. OBS sends to one destination; streaming to several at once needs a plugin (such as obs-multi-rtmp) or a restream service, and the UI says that too rather than offering a list. Done when tests against the mock server cover reading and setting each kind of destination, a refusal while streaming, and the virtual camera toggling from either side.
 
 ## Not code: start now
 
