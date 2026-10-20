@@ -3209,6 +3209,7 @@ dependencies = [
  "lampstand-core",
  "lampstand-layout",
  "lampstand-render",
+ "quick-xml 0.41.0",
  "serde_json",
  "tempfile",
  "zip 9.0.5",

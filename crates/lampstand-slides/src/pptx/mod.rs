@@ -50,13 +50,26 @@ mod tests;
 
 /// Parses a PPTX file. See `crate::import_pptx`.
 pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
+    import_with(bytes, fonts, budget::LIMITS.memory)
+}
+
+/// `import` with the parse budget's memory estimate limited to `memory`.
+pub(crate) fn import_with(
+    bytes: &[u8],
+    fonts: &dyn FontLookup,
+    memory: u64,
+) -> Result<ParsedDeck, ImportError> {
     if deckcraft_pptx::is_encrypted(bytes) {
         return Err(ImportError::Encrypted);
     }
     if !deckcraft_pptx::sniff(bytes) {
         return Err(ImportError::NotAPresentation);
     }
-    budget::check(bytes)?;
+    let limits = budget::Limits {
+        memory,
+        ..budget::LIMITS
+    };
+    budget::check_with(bytes, &limits)?;
     let (pres, skipped) = deckcraft_pptx::import_checked(bytes).map_err(|e| match e {
         deckcraft_pptx::PptxError::NotPptx(_) => ImportError::NotAPresentation,
         other => ImportError::Corrupt(other.to_string()),
@@ -202,7 +215,7 @@ impl<'a> Deck<'a> {
                         ),
                     });
                 }
-                sc.deck.nodes += sc.issued.len();
+                sc.deck.nodes += sc.issued.len() + sc.text_parts;
                 if sc.exhausted {
                     sc.issue(IssueKind::UnsupportedContent {
                         what: "a slide with more shapes than node IDs; left blank".into(),
@@ -349,6 +362,9 @@ pub(crate) struct SlideCx<'d, 'a> {
     exhausted: bool,
     /// The slide reached `MAX_NODES`; later shapes were left out.
     truncated: bool,
+    /// Text paragraphs and runs mapped, which count against the node
+    /// budgets like nodes (a master's text block is drawn on every slide).
+    pub(crate) text_parts: usize,
     /// IDs handed out so far.
     issued: BTreeSet<NodeId>,
     /// The slide's background, for shapes filled with it (`useBgFill`).
@@ -379,6 +395,7 @@ impl<'d, 'a> SlideCx<'d, 'a> {
             wrapped: false,
             exhausted: false,
             truncated: false,
+            text_parts: 0,
             issued: BTreeSet::new(),
             background: None,
             taken,
@@ -414,7 +431,7 @@ impl<'d, 'a> SlideCx<'d, 'a> {
     /// mapping stops adding shapes (and table cells) and the slide is
     /// reported.
     pub(crate) fn full(&mut self) -> bool {
-        let here = self.issued.len();
+        let here = self.issued.len() + self.text_parts;
         if here >= MAX_NODES || self.deck.nodes + here >= self.deck.node_limit {
             self.truncated = true;
         }

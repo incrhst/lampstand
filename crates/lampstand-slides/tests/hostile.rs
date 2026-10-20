@@ -2,6 +2,8 @@
 //! value pushed far outside its DrawingML range. Each must parse into a
 //! sane scene (or be refused with an error), never abort or exhaust memory.
 
+mod common;
+
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
@@ -75,12 +77,17 @@ fn heavy_slide() -> String {
         .unwrap()
         .read_to_string(&mut slide)
         .unwrap();
-    let cells = format!("<a:tr h=\"1\">{}</a:tr>", "<a:tc/>".repeat(600_000));
-    slide.replacen(
-        r#"<a:tr h="609600">"#,
-        &format!(r#"{cells}<a:tr h="609600">"#),
-        1,
-    )
+    // 70,000 paragraphs: about 560 MB of model to DeckCraft, over the
+    // 512 MB budget, from 420 KB of XML.
+    slide.replacen("</p:spTree>", &format!("{}</p:spTree>", heavy()), 1)
+}
+
+/// Content over the parse budget on its own.
+const HEAVY: &str = "<a:p/>";
+const HEAVY_COUNT: usize = 70_000;
+
+fn heavy() -> String {
+    HEAVY.repeat(HEAVY_COUNT)
 }
 
 /// The limit a refused deck hit.
@@ -236,24 +243,23 @@ fn a_deck_that_unpacks_past_the_limit_is_refused() {
 /// elements (a 1000 × 400 table is 2.8 million) would take DeckCraft's DOM
 /// to gigabytes. It is refused from a streaming count, before parsing.
 #[test]
-fn a_slide_of_too_many_elements_is_refused() {
-    let cells = format!("<a:tr h=\"1\">{}</a:tr>", "<a:tc/>".repeat(600_000));
+fn a_slide_over_the_budget_is_refused() {
     let bytes = patched(
         "08-tables",
         "ppt/slides/slide1.xml",
-        r#"<a:tr h="609600">"#,
-        &format!(r#"{cells}<a:tr h="609600">"#),
+        "</p:spTree>",
+        &format!("{}</p:spTree>", heavy()),
     );
-    let (what, found, _) = refused(&bytes);
-    assert_eq!(what, "XML elements in ppt/slides/slide1.xml");
-    assert!(found >= 600_000);
+    let (what, found, limit) = refused(&bytes);
+    assert_eq!(what, "estimated bytes to parse (at ppt/slides/slide1.xml)");
+    assert!(found > limit);
 }
 
 #[test]
-fn a_deck_of_too_many_elements_is_refused() {
-    // 400,000 elements on each of four slides: each part is allowed, the
-    // deck is not.
-    let filler = format!("<p:spTree>{}", "<a:x/>".repeat(400_000));
+fn a_deck_over_the_budget_is_refused() {
+    // A third of the heavy content on each of four slides: each part is
+    // allowed, the deck is not.
+    let filler = format!("<p:spTree>{}", HEAVY.repeat(HEAVY_COUNT / 3));
     let parts: Vec<String> = [1, 2, 3, 5]
         .iter()
         .map(|n| format!("ppt/slides/slide{n}.xml"))
@@ -263,7 +269,9 @@ fn a_deck_of_too_many_elements_is_refused() {
         .map(|part| (part.as_str(), "<p:spTree>", filler.as_str()))
         .collect();
     let bytes = patched_many("01-masters-placeholders", &edits);
-    assert_eq!(refused(&bytes).0, "XML elements");
+    assert!(refused(&bytes)
+        .0
+        .starts_with("estimated bytes to parse (at ppt/slides/slide"));
 }
 
 /// A table under the parse limits that would still give the renderer
@@ -334,7 +342,7 @@ fn a_heavy_slide_under_an_upper_case_name_is_refused() {
         _ => vec![(n.to_string(), d)],
     });
     let (what, _, _) = refused(&bytes);
-    assert_eq!(what, "XML elements in ppt/slides/slide1.XML");
+    assert_eq!(what, "estimated bytes to parse (at ppt/slides/slide1.XML)");
 }
 
 /// The third review: the heavy slide as `slide1.dat`, with its relationship
@@ -371,7 +379,7 @@ fn a_heavy_slide_under_another_extension_is_refused() {
         }
     });
     let (what, _, _) = refused(&bytes);
-    assert_eq!(what, "XML elements in ppt/slides/slide1.dat");
+    assert_eq!(what, "estimated bytes to parse (at ppt/slides/slide1.dat)");
 }
 
 /// Parts nobody special-cased: a slide in UTF-16 (DeckCraft decodes it) and
@@ -388,10 +396,13 @@ fn parts_of_any_kind_draw_from_the_budget() {
         "ppt/slides/slide1.xml" => vec![(n.to_string(), utf16.clone())],
         _ => vec![(n.to_string(), d)],
     });
-    assert_eq!(refused(&bytes).0, "XML elements in ppt/slides/slide1.xml");
+    assert_eq!(
+        refused(&bytes).0,
+        "estimated bytes to parse (at ppt/slides/slide1.xml)"
+    );
 
     let mut blob = b"\x89PNG\r\n\x1a\n".to_vec();
-    blob.extend("<a:tc/>".repeat(600_000).bytes());
+    blob.extend(heavy().bytes());
     let bytes = rebuild("08-tables", |n, d| {
         let mut out = vec![(n.to_string(), d)];
         if n == "[Content_Types].xml" {
@@ -399,7 +410,10 @@ fn parts_of_any_kind_draw_from_the_budget() {
         }
         out
     });
-    assert_eq!(refused(&bytes).0, "XML elements in ppt/embeddings/blob.bin");
+    assert_eq!(
+        refused(&bytes).0,
+        "estimated bytes to parse (at ppt/embeddings/blob.bin)"
+    );
 }
 
 /// The third review's second repro: a master with many shapes, shown on
@@ -523,4 +537,23 @@ fn corpus_is_not_refused() {
         }
     }
     eprintln!("{ok} parsed, {failed} failed");
+}
+
+/// A realistic large service: 100 lyric slides on a photo and 100 psalm
+/// slides with autofit (deck 10's first two slides, copied). The budgets
+/// must leave it whole.
+#[test]
+fn a_200_slide_service_deck_parses_whole() {
+    let bytes = common::with_copies("10-church-service", &[(1, 100), (2, 100)]);
+    let deck = parse(&bytes);
+    assert_eq!(deck.slides.len(), 205);
+    assert!(deck.slides.iter().all(|s| !s.scene.nodes.is_empty()));
+    assert!(
+        !deck.report.issues.iter().any(|i| matches!(
+            &i.kind,
+            lampstand_slides::IssueKind::UnsupportedContent { .. }
+        )),
+        "{:?}",
+        deck.report.issues
+    );
 }

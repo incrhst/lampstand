@@ -11,6 +11,8 @@ deckcraft-color.workspace = true
 deckcraft-geom.workspace = true
 deckcraft-model.workspace = true
 deckcraft-pptx.workspace = true
+# Counts each XML part exactly as DeckCraft reads it (src/pptx/budget.rs).
+deckcraft-quick-xml.workspace = true
 # Reads the zip directory to check a deck's unpacked size before parsing.
 zip.workspace = true
 

@@ -26,6 +26,9 @@ deckcraft-color = { git = "https://github.com/storytold/deckcraft", rev = "cb784
 deckcraft-geom = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-model = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-pptx = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
+# The quick-xml DeckCraft parses with, so `slides` can count a deck's XML
+# with the same reader before DeckCraft builds its DOM.
+deckcraft-quick-xml = { package = "quick-xml", version = "=0.41.0" }
 ed25519-dalek = "2.2"
 encoding_rs = "0.8"
 flate2 = "1.1"

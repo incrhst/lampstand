@@ -127,3 +127,16 @@ pub enum ImportError {
 pub fn import_pptx(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, ImportError> {
     pptx::import(bytes, fonts)
 }
+
+/// `import_pptx` with the parse budget's memory estimate limited to
+/// `memory` bytes instead of its 512 MB. For `tests/memory.rs`, which
+/// measures peak allocation against the budget at a size a debug build
+/// parses quickly; the peak scales with the budget.
+#[doc(hidden)]
+pub fn import_pptx_with_budget(
+    bytes: &[u8],
+    fonts: &dyn FontLookup,
+    memory: u64,
+) -> Result<ParsedDeck, ImportError> {
+    pptx::import_with(bytes, fonts, memory)
+}

@@ -206,7 +206,11 @@ pub(crate) fn block(
             // the first line's is kept, since most paragraphs are one line.
             paragraph.indent = (margin + hang).max(0.0);
         }
+        sc.text_parts += 1 + paragraph.runs.len();
         paragraphs.push(paragraph);
+        if sc.full() {
+            break;
+        }
     }
 
     // `wrap="none"`: the text runs on past the box, anchored by alignment.
