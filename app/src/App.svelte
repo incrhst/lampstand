@@ -6,7 +6,9 @@
   import PlanView from "./routes/plan/PlanView.svelte";
   import OperateView from "./routes/operate/OperateView.svelte";
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
+  import { request } from "./lib/api";
   import { isCalibrated, live, refreshOutputs } from "./lib/state.svelte";
+  import { formatWhen } from "./lib/when";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
@@ -30,6 +32,20 @@
   let enabled = $derived(live.outputs.filter((o) => o.enabled).length);
   let uncalibrated = $derived(live.outputs.filter((o) => !isCalibrated(o)).map((o) => o.name));
 
+  // The live service's date, beside its title: most services are called
+  // "Sunday service". Fetched when a different service is opened.
+  let liveWhen: string | null = $state(null);
+  $effect(() => {
+    const id = live.loaded?.service;
+    liveWhen = null;
+    if (!id) return;
+    request({ area: "Service", request: { Get: id } }, "Service")
+      .then((s) => {
+        if (live.loaded?.service === id && s.starts_at != null) liveWhen = formatWhen(s.starts_at, s.time_zone);
+      })
+      .catch(() => {});
+  });
+
   refreshOutputs();
 </script>
 
@@ -45,7 +61,7 @@
     </nav>
     <div class="right">
       {#if live.loaded}
-        <p class="onair">Live service: <strong>{live.loaded.title}</strong></p>
+        <p class="onair">Live service: <strong>{live.loaded.title}</strong>{#if liveWhen}{` · ${liveWhen}`}{/if}</p>
       {/if}
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />

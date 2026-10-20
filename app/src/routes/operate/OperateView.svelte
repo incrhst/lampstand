@@ -190,7 +190,11 @@
 {:else}
   <div class="operate">
     <div class="bar">
-      <p class="service"><strong>{live.loaded.title}</strong></p>
+      <p class="service">
+        <strong>{live.loaded.title}</strong>
+        <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
+        {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
+      </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
@@ -354,6 +358,9 @@
   }
   .service strong {
     font-weight: 500;
+  }
+  .when {
+    color: var(--muted);
   }
   .keys {
     margin-left: auto;
