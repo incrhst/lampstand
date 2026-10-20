@@ -15,5 +15,5 @@ mod paginate;
 
 pub use compose::{compose, compose_at, Composed, FitWarning, OutputSize};
 pub use fit::{fit_text, Fitted};
-pub use fonts::Fonts;
+pub use fonts::{bundled_font_files, Fonts};
 pub use paginate::{paginate_passage, paginate_song};

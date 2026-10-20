@@ -3106,9 +3106,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures-util",
+ "image",
  "lampstand-core",
+ "lampstand-layout",
  "lampstand-render",
  "lampstand-sync",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-tungstenite",

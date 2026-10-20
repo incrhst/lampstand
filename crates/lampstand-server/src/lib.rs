@@ -10,18 +10,23 @@
 //! | --- | --- |
 //! | `GET /obs/<output>?k=<key>` | OBS browser source page: transparent, draws the stream output's scene in the DOM |
 //! | `WS /obs/<output>/ws?k=<key>` | that output's scenes as JSON, pushed on every change |
-//! | `GET /blobs/<hash>?k=<key>` | images and fonts for the browser source |
+//! | `GET /obs/assets/*` | the page's script and the bundled fonts it draws text with (public) |
+//! | `GET /blobs/<hash>?o=<output>&k=<key>` | images and videos a scene names |
 //! | `GET /frames/<output>/<n>.webp?k=<key>` | deck slides rasterised by the renderer, for the browser source |
 //! | `WS /sync` | peer sync (device-key handshake, see `lampstand-sync`) |
 //! | `GET /google/picker` | the Google Drive picker page, localhost only |
 //!
 //! `k` is a per-output random key shown in the app with the URL to paste
 //! into OBS, so other machines on the network cannot read the stream.
-//! Text in the browser source uses the same bundled fonts, served as
-//! blobs, so lower thirds match the projector.
+//! Text in the browser source uses the same bundled fonts, served from the
+//! binary, so lower thirds match the projector. See [`obs`] for the page and
+//! its feed, and [`SceneHub`] for what the app calls to feed it.
+//!
+//! T42 built `Server::start` and `WS /sync`, T43 the OBS routes. The picker
+//! page (T40) answers 404 until then.
 
-//! T42 builds only what peer sync needs: `Server::start` and `WS /sync`.
-//! The OBS routes (T43) and the picker page (T40) answer 404 until then.
+mod obs;
+pub use obs::SceneHub;
 
 use std::io;
 use std::net::SocketAddr;
@@ -46,10 +51,17 @@ pub const DEFAULT_PORT: u16 = lampstand_sync::net::DEFAULT_PORT;
 pub trait Backend: Send + Sync + 'static {
     /// Checks a browser-source key.
     fn output_key_valid(&self, output: OutputId, key: &str) -> bool;
-    /// The current scene for a browser-source output, and a way to wait for
-    /// the next one.
+    /// The scenes of a browser-source output: the current one first (if
+    /// there is one), then each change. `None` if the output has no
+    /// browser-source URL. [`SceneHub::watch`] does this.
     fn watch_scene(&self, output: OutputId) -> Option<std::sync::mpsc::Receiver<Arc<Scene>>>;
     fn blob_path(&self, hash: &BlobHash) -> Option<std::path::PathBuf>;
+    /// The renderer that rasterises deck slides for browser sources
+    /// (`GET /frames`). Without one, decks are drawn in the DOM from the
+    /// scene instead.
+    fn renderer(&self) -> Option<Arc<lampstand_render::Renderer>> {
+        None
+    }
     /// The sync node that takes `WS /sync` connections; `None` answers 404.
     fn sync(&self) -> Option<Arc<SyncNode>> {
         None
@@ -71,6 +83,7 @@ impl Server {
         let addr = listener.local_addr()?;
         let app = Router::new()
             .route("/sync", get(sync))
+            .merge(obs::router(backend.clone()))
             .fallback(|| async { StatusCode::NOT_FOUND })
             .with_state(backend);
         let (stop, stopped) = oneshot::channel::<()>();

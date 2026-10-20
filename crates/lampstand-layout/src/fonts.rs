@@ -23,16 +23,25 @@ const SUBSTITUTES: &[(&str, &str)] = &[
 macro_rules! bundled {
     ($($family:literal),* $(,)?) => {
         &[$(
-            include_bytes!(concat!("../../../assets/fonts/", $family, "/", $family, "-Regular.ttf")),
-            include_bytes!(concat!("../../../assets/fonts/", $family, "/", $family, "-Bold.ttf")),
-            include_bytes!(concat!("../../../assets/fonts/", $family, "/", $family, "-Italic.ttf")),
-            include_bytes!(concat!("../../../assets/fonts/", $family, "/", $family, "-BoldItalic.ttf")),
+            bundled!(@file $family, "Regular"),
+            bundled!(@file $family, "Bold"),
+            bundled!(@file $family, "Italic"),
+            bundled!(@file $family, "BoldItalic"),
         )*]
+    };
+    (@file $family:literal, $style:literal) => {
+        (
+            concat!($family, "-", $style, ".ttf"),
+            include_bytes!(concat!(
+                "../../../assets/fonts/", $family, "/", $family, "-", $style, ".ttf"
+            )) as &[u8],
+        )
     };
 }
 
-/// Regular, bold, italic and bold italic of each bundled family.
-static BUNDLED: &[&[u8]] = bundled!(
+/// Regular, bold, italic and bold italic of each bundled family, as
+/// (file name, bytes).
+static BUNDLED: &[(&str, &[u8])] = bundled!(
     "NotoSans",
     "NotoSerif",
     "Carlito",
@@ -41,6 +50,12 @@ static BUNDLED: &[&[u8]] = bundled!(
     "Tinos",
     "Cousine"
 );
+
+/// The bundled font files as (file name such as `NotoSans-BoldItalic.ttf`,
+/// bytes), so the OBS browser source can serve the very same fonts.
+pub fn bundled_font_files() -> &'static [(&'static str, &'static [u8])] {
+    BUNDLED
+}
 
 /// Bundled fonts (Noto Sans and Serif, plus the metric-compatible
 /// substitutes Carlito, Caladea, Arimo, Tinos and Cousine for Calibri,
@@ -62,7 +77,7 @@ impl Fonts {
 
     fn build(system_fonts: bool) -> Self {
         let mut db = Database::new();
-        for data in BUNDLED {
+        for (_, data) in BUNDLED {
             db.load_font_data(data.to_vec());
         }
         if system_fonts {
