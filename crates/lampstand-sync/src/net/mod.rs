@@ -10,6 +10,10 @@
 //! - **Handshake.** A device-key challenge, and refusal of devices that are
 //!   not paired; see [`handshake`](self) and [`trust`](self). Until T18
 //!   trust is a device-local paired list set up with a pairing code.
+//! - **Encryption (T75).** The handshake also agrees an X25519 secret, and
+//!   every frame after it is sealed with ChaCha20-Poly1305 under a key per
+//!   direction and a counter; a frame that fails to open ends the session
+//!   ([`secure`](self)). The WebSocket itself stays plain `ws://`.
 //! - **Push, then sweep.** On connect, each side offers every document
 //!   ([`Repo::documents`]). After that, a change here (`DocChanged`) is
 //!   sent to every connected peer the moment it happens, so a lyric fix on
@@ -28,6 +32,7 @@
 
 mod discovery;
 mod handshake;
+mod secure;
 mod session;
 mod trust;
 mod wire;
@@ -418,13 +423,13 @@ impl SyncNode {
             key: &self.key,
             name: &self.name,
         };
-        let peer = match tokio::time::timeout(
+        let (peer, keys) = match tokio::time::timeout(
             HANDSHAKE_TIMEOUT,
             handshake::server(&mut link, &me, &self.trust, &self.pairing),
         )
         .await
         {
-            Ok(Ok(peer)) => peer,
+            Ok(Ok(done)) => done,
             Ok(Err(e)) => {
                 eprintln!("lampstand: sync connection refused: {e}");
                 return;
@@ -436,6 +441,7 @@ impl SyncNode {
             self.ensure_dialler(peer.device);
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
+        let link = link.encrypt(keys);
         if let Some(session) = self.begin(link, &peer, peer.device, None).await {
             let _ = session.await;
         }
@@ -492,12 +498,13 @@ impl SyncNode {
             key: &self.key,
             name: &self.name,
         };
-        let peer = tokio::time::timeout(
+        let (peer, keys) = tokio::time::timeout(
             HANDSHAKE_TIMEOUT,
             handshake::client(&mut link, &me, &self.trust, code),
         )
         .await
         .map_err(|_| NetError::Timeout)??;
+        let link = link.encrypt(keys);
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, Some(address.to_string()));
         if peer.paired_now {
             self.bump();
