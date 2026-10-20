@@ -53,7 +53,7 @@ pub(crate) fn import(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck,
     import_with(bytes, fonts, budget::LIMITS.memory)
 }
 
-/// `import` with the parse budget's memory estimate limited to `memory`.
+/// `import` with the import budget limited to `memory` bytes.
 pub(crate) fn import_with(
     bytes: &[u8],
     fonts: &dyn FontLookup,
@@ -65,10 +65,7 @@ pub(crate) fn import_with(
     if !deckcraft_pptx::sniff(bytes) {
         return Err(ImportError::NotAPresentation);
     }
-    let limits = budget::Limits {
-        memory,
-        ..budget::LIMITS
-    };
+    let limits = budget::Limits { memory };
     budget::check_with(bytes, &limits)?;
     let (pres, skipped) = deckcraft_pptx::import_checked(bytes).map_err(|e| match e {
         deckcraft_pptx::PptxError::NotPptx(_) => ImportError::NotAPresentation,

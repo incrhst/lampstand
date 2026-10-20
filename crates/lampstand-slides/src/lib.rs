@@ -128,8 +128,9 @@ pub fn import_pptx(bytes: &[u8], fonts: &dyn FontLookup) -> Result<ParsedDeck, I
     pptx::import(bytes, fonts)
 }
 
-/// `import_pptx` with the parse budget's memory estimate limited to
-/// `memory` bytes instead of its 512 MB. For `tests/memory.rs`, which
+/// `import_pptx` with the import budget (the parse estimate plus every
+/// entry's inflated bytes twice) limited to `memory` bytes instead of its
+/// 1 GiB. For `tests/memory.rs`, which
 /// measures peak allocation against the budget at a size a debug build
 /// parses quickly; the peak scales with the budget.
 #[doc(hidden)]

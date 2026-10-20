@@ -42,10 +42,10 @@ with the reason as its tooltip:
 | --- | --- |
 | Readiness banner in Plan and the Readiness pill in Present | T36 |
 | Sync status in the status bar ("This device only") | T18 |
-| Slide thumbnails (slides are drawn as text) | T47 |
+| Slide thumbnails for text slides (they are drawn as text; deck slides show rendered pictures) | T47 |
 | The calibration grid on the projector itself (it shows in the app only) | T26 |
-| Library tabs Scripture and Media | T48 |
-| Library tab Decks, Add deck | T28 |
+| Library tab Scripture | T48 |
+| Video on the outputs: video items are added and listed, but draw nothing on screen ("Not on screen yet") | T27 |
 | Setup wizard screen (the kit has its step rail and progress bar) | T55 |
 
 Left out: service dates and times (`starts_at` cannot be set yet; rows say

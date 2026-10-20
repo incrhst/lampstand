@@ -11,14 +11,17 @@
 //! expands (paragraphs, runs, shapes, cells), plus random nested content
 //! drawn from the whole DrawingML vocabulary (`tests/vocabulary.txt`, every
 //! element name in the Apache POI corpus and the synthetic decks), to
-//! catch an expansion the budget does not price. Whatever the next way
-//! around the budget is, it has to stay under `CEILING` here.
+//! catch an expansion the budget does not price, and media that the XML
+//! scan stops on at once but that DeckCraft holds twice (T87). Whatever
+//! the next way around the budget is, it has to stay under `CEILING`
+//! here.
 //!
 //! The accepted decks are parsed under a 48 MB budget (`BUDGET`), so a
 //! debug build gets through them in seconds; what they allocate scales
 //! with the budget, and the ceiling is a multiple of it. The refused decks
-//! run under the real 512 MB budget. Cases run one after another in one
-//! test, so each peak is its own.
+//! from earlier reviews run under `REFUSED_BUDGET`, the half of the real
+//! 1 GiB total they were sized for; the media repro runs under the real
+//! one. Cases run one after another in one test, so each peak is its own.
 
 mod common;
 
@@ -80,11 +83,16 @@ static ALLOCATOR: Counting = Counting;
 /// The parse budget the accepted decks are held to.
 const BUDGET: u64 = 48 << 20;
 
+/// The budget the earlier reviews' refused decks were sized for: the
+/// parse estimate's share of the real 1 GiB total.
+const REFUSED_BUDGET: u64 = 512 << 20;
+
 /// The most parsing any deck here may allocate at once, over what was
 /// allocated before it started (the deck's own bytes): twice the budget,
 /// plus what any parse allocates whatever the deck (the scene of a few
-/// slides, DeckCraft's defaults). At the real budget of 512 MB that is
-/// about 1 GiB; the largest real deck measured (Apache POI's
+/// slides, DeckCraft's defaults). Media is charged at what it costs, so a
+/// media-heavy deck peaks at about the budget; parse-heavy content at up
+/// to twice the estimate. The largest real deck measured (Apache POI's
 /// HowWeRefactor) peaks at 123 MB.
 const CEILING: usize = 2 * BUDGET as usize + (32 << 20);
 
@@ -386,6 +394,11 @@ fn peak_memory_stays_bounded() {
             Box::new(|n| listed_again(n, 2_000)),
         ),
         (
+            "pictures as <!X and n x 64 KiB of zeros",
+            256,
+            Box::new(|n| common::with_zero_media(n << 16)),
+        ),
+        (
             "random DrawingML vocabulary",
             1_000,
             Box::new(move |n| {
@@ -435,10 +448,20 @@ fn peak_memory_stays_bounded() {
         ),
     ];
     for (what, bytes) in &refused {
-        let (peak, result) = measure(bytes, None);
+        let (peak, result) = measure(bytes, Some(REFUSED_BUDGET));
         assert!(too_large(&result), "{what}: {result:?}");
         record(&format!("{what} (refused)"), 0, bytes.len(), peak);
     }
+
+    // T87's repro under the real budget: a 1 MB deck whose pictures are
+    // `<!X` and 250 MiB of zeros each. It used to be accepted and peak at
+    // over 2 GB.
+    let media = common::with_zero_media(250 << 20);
+    assert!(media.len() < 4 << 20, "{} bytes", media.len());
+    let (peak, result) = measure(&media, None);
+    assert!(too_large(&result), "{result:?}");
+    record("pictures of 250 MiB zeros (refused)", 0, media.len(), peak);
+    drop(media);
 
     // A realistic 200-slide service under the real budget: parsed whole.
     let service = common::with_copies("10-church-service", &[(1, 100), (2, 100)]);
