@@ -244,6 +244,13 @@ pub(crate) fn encode(
                     view_of(*i),
                     &pipelines.linear_sampler,
                 ),
+                Source::Video(i) => bind(
+                    &pipelines.quad_layout,
+                    &quads,
+                    quad_size,
+                    &frame.videos[*i],
+                    &pipelines.linear_sampler,
+                ),
             };
             quad_groups.insert(*uniform as usize, group);
         }

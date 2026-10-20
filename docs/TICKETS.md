@@ -149,7 +149,7 @@ Done when 10 synthetic decks in `slides/tests/decks/` produce snapshot scenes, a
 | T23 | Compositor: audience, stage and stream layouts | S | T21, T22 | LV-3, TS-2–4, TS-9, OB-1, PS-7 | `layout/src/compose.rs` | Done |
 | T25 | Output windows, display mapping, transitions, animations | **O** | T24 | LV-3, NFR | `render/src/output/` | Done |
 | T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` | Done |
-| T27 | GStreamer backend and video nodes | S | T24 | LV-4, PS-3 | `media/`, `render/src/video.rs` | Not started |
+| T27 | Video playback (DeckCraft decoders) | S | T24 | LV-4, PS-3 | `media/`, `render/src/output/video.rs` | Done |
 | T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | Done |
 | T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` | Not started |
 | T35 | Library facade over the repo | S | T16 | SL-1, BI-2 | `library/src/lib.rs` | Done |
@@ -170,7 +170,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 
 **T26. Calibration.** Draw `CalibrationPattern` as a scene: numbered edges at 1% steps, corner markers and a bright outline of the current margins. Add a safe-area overlay for previews. Done when golden tests pass. Do T62 (the full TS-1 design ported from PR #5) in the same session.
 
-**T27. Video.** `GstBackend` behind the `gstreamer` feature: `playbin3` → `appsink` (RGBA), looping, muting, seeking. Video nodes in the renderer upload frames to a texture. Report the install size the GStreamer runtime adds on Windows and macOS. Done when a test plays a bundled 2-second clip to the end and counts frames, and the install-size numbers are in the PR.
+**T27. Video.** Done, with DeckCraft's pure-Rust decoders (`deckcraft-media`) instead of GStreamer. That choice and its numbers are in ARCHITECTURE.md ("Media"). Covered: looping, seeking (by clock), Play build steps, and outputs that show the same file staying in step. Video nodes upload frames to a texture, and thumbnails show the first frame. `media/tests/play.rs` plays a bundled 2-second clip to the end and counts its frames. Left for a follow-up: audio (muting means nothing until then).
 
 **T30. Builds and transitions.** Map `p:timing` (click, with and after previous; delays) and `p:transition` to `BuildStep`s and `Transition`s, covering the effect set in `scene::Effect` and approximating the rest. Implement `DeckSlide::scene_at_step`. Done when synthetic decks with each effect produce the expected steps.
 
@@ -228,7 +228,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` | Not started |
 | T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` | Not started |
 | T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Not started |
-| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Not started |
+| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Done |
 | T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Not started |
 | T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
@@ -359,7 +359,7 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
 | T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30) |
 | T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Not started |
-| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Not started |
+| T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Done ([#26](https://github.com/incrhst/lampstand/pull/26)) |
 | T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | Done |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
@@ -398,7 +398,7 @@ Done when a test shows a large image doesn't delay a text slide on another outpu
 
 **T84. Deck builds on recompose (Opus).** Decide before T30. `compose.rs` ignores `Content::DeckSlide.step`, and `layout` can't call `slides::scene_at_step` (it doesn't depend on `slides`). So any recompose (a theme edit, an output resize, a synced change) shows the slide as authored and built-up content vanishes. Options: carry the stepped scene in `Content`, move `scene_at_step` to `core`, or let the app compose deck slides itself. Record the choice in ARCHITECTURE.md.
 
-**T85. Remaining stubs.** Two stubs are not marked with a ticket: video nodes draw nothing (`render/src/frame.rs`, around line 265, belongs to T27), and the logo overlay is a placeholder ring (`layout/src/compose.rs`) until the contract has a logo asset. Mark each with `todo`-style comments naming its ticket, add a logo asset to the theme or output contract, and make the operator view say when an overlay is a placeholder.
+**T85. Remaining stubs.** One stub is not marked with a ticket (the other, video nodes drawing nothing, was T27's and is done): the logo overlay is a placeholder ring (`layout/src/compose.rs`) until the contract has a logo asset. Mark it with a `todo`-style comment naming its ticket, add a logo asset to the theme or output contract, and make the operator view say when an overlay is a placeholder.
 
 **T86. Wire the OBS browser source into the app.** T43 built the server half (`SceneHub`, the routes and the page) but nothing in the app uses it, so OB-1 and OB-2 are not met for users until this lands. Build one `SceneHub` and give it to `AppBackend`, which delegates `output_key_valid` and `watch_scene` to it. Run a compose loop for each enabled stream output that calls `hub.publish` whenever the program, theme or output config changes. Make `Backend::renderer()` return the app's thumbnail `Renderer`, so deck slides go out as frames. Keep each stream output's browser-source key in device-local config next to the output config (not in a synced document), and restore it with `SceneHub::add_output_with_key` at start so the URL pasted into OBS survives restarts. Show and copy the URL (`http://<host>:<port>/obs/<output>?k=<key>`) and a "new key" button (`rotate_key`) in the Outputs view. Done when a test publishes a program change and a WebSocket client receives the stream scene, the key survives a restart, and a manual OBS 30 check (outlined lyrics in particular) is noted in the PR.
 
@@ -419,7 +419,7 @@ Done when the review's media repro is refused, the counting-allocator test bound
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
-| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | Done |
+| T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | Done ([#33](https://github.com/incrhst/lampstand/pull/33)) |
 | T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | In review ([#35](https://github.com/incrhst/lampstand/pull/35)) |
 | T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Not started |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |

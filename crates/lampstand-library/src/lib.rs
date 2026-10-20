@@ -4,6 +4,7 @@
 //!
 //! PRD: SL-1, SL-3, BI-2, CD-8, CD-10, PS-6, RP-1.
 
+pub mod bundled;
 pub mod package;
 pub mod readiness;
 pub mod search;

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "app/src-tauri"]
+members = ["crates/*", "app/src-tauri", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -27,6 +27,9 @@ deckcraft-color = { git = "https://github.com/storytold/deckcraft", rev = "cb784
 deckcraft-geom = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-model = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-pptx = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
+# Video decoding (T27): pure-Rust H.264, HEVC, VP9 and AV1 in MP4/MOV/WebM.
+# Only `lampstand-media` uses it.
+deckcraft-media = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 # The quick-xml DeckCraft parses with, so `slides` can count a deck's XML
 # with the same reader before DeckCraft builds its DOM.
 deckcraft-quick-xml = { package = "quick-xml", version = "=0.41.0" }
@@ -92,3 +95,15 @@ lampstand-import = { path = "crates/lampstand-import" }
 lampstand-connectors = { path = "crates/lampstand-connectors" }
 lampstand-server = { path = "crates/lampstand-server" }
 lampstand-api = { path = "crates/lampstand-api" }
+
+# The video decoders are pure Rust and far too slow unoptimised to play
+# video in a debug build (`npm run tauri dev`), so they are always built
+# with optimisations.
+[profile.dev.package]
+deckcraft-media.opt-level = 3
+deckcraft-h264.opt-level = 3
+deckcraft-hevc.opt-level = 3
+deckcraft-vp9.opt-level = 3
+deckcraft-av1.opt-level = 3
+deckcraft-isobmff.opt-level = 3
+deckcraft-matroska.opt-level = 3
