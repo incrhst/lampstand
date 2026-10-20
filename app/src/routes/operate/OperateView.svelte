@@ -5,7 +5,7 @@
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
-  import { request, send, type Command, type Cursor, type Service, type SlideView } from "../../lib/api";
+  import { request, send, type Command, type Cursor, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { nextClick, nextSlide } from "../../lib/cursor";
@@ -19,6 +19,32 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
+  import { formatWhen } from "../../lib/when";
+
+  /** Opens Setup › Screens (the no-screen prompt) and Plan (the blank view). */
+  let { onsetup, onplan }: { onsetup?: () => void; onplan?: () => void } = $props();
+
+  // With no service open, offer the next few to open: the core lists
+  // upcoming ones first, then undated ones newest first.
+  const OFFERED = 5;
+  let services: ServiceSummary[] = $state([]);
+  $effect(() => {
+    if (live.loaded) return;
+    request({ area: "Service", request: "List" }, "Services")
+      .then((all) => (services = all.slice(0, OFFERED)))
+      .catch(report);
+  });
+
+  async function openService(id: string) {
+    try {
+      live.planning = id;
+      live.loaded = await request({ area: "Service", request: { Open: id } }, "Loaded");
+    } catch (e) {
+      report(e);
+    }
+  }
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
 
   async function command(c: Command) {
     try {
@@ -189,19 +215,53 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet noScreen()}
+  <Banner tone="warn">
+    <span>No screen is on, so nothing reaches the projector.</span>
+    {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+  </Banner>
+{/snippet}
+
 {#if !live.loaded}
   <div class="none">
-    <Icon name="play" size={20} />
-    <p class="muted">No service is open. Open one from Plan to go live.</p>
+    {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+    <div class="pick">
+      <div class="pick-head">
+        <h1>No service is open</h1>
+        <p class="muted">Open one to go live, or plan a new one.</p>
+      </div>
+      {#if services.length > 0}
+        <ul class="plain pick-list" aria-label="Services to open">
+          {#each services as svc (svc.id)}
+            <ListRow title={svc.title} subtitle={formatWhen(svc.starts_at, svc.time_zone)} divided>
+              {#snippet trailing()}
+                <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  Open
+                </Button>
+              {/snippet}
+            </ListRow>
+          {/each}
+        </ul>
+      {/if}
+      {#if onplan}
+        <div class="pick-foot">
+          <Button icon="calendar" onclick={onplan}>{services.length > 0 ? "All services in Plan" : "Go to Plan"}</Button>
+        </div>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="operate">
     <div class="bar">
-      <p class="service"><strong>{live.loaded.title}</strong></p>
+      <p class="service">
+        <strong title={live.loaded.title}>{live.loaded.title}</strong>
+        <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
+        {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
+      </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
-      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Output" />
+      <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
 
@@ -232,8 +292,9 @@
         </ol>
       </nav>
 
-      <section class="pane centre" aria-label="Live output">
+      <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
+          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
           {#if presenting && liveItem && live.live}
             {#key liveItem.id}
               <PresenterView
@@ -254,7 +315,7 @@
           {:else}
             <div class="live-head">
               <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-              <span class="muted">{output?.name ?? "No output yet"}</span>
+              <span class="muted">{output?.name ?? "No screen yet"}</span>
               {#if liveItem && live.live}
                 <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
             {/if}
@@ -344,7 +405,7 @@
           </section>
 
           <section>
-            <h2 class="title">Outputs</h2>
+            <h2 class="title">Screens</h2>
             <ul class="plain outputs">
               {#each live.outputs as o (o.id)}
                 <li>
@@ -353,7 +414,7 @@
                   <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
                 </li>
               {:else}
-                <li class="faint small">No outputs. Add one in Outputs.</li>
+                <li class="faint small">No screens. Add one in Setup › Screens.</li>
               {/each}
             </ul>
           </section>
@@ -379,27 +440,52 @@
     display: flex;
     flex-direction: column;
   }
+  .bar > :global(*) {
+    flex-shrink: 0;
+  }
   .bar {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 0.5rem 1rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
   }
+  /* A long title truncates and the date keeps its width, so the controls
+     stay on one row in the same place whatever the service is called. */
   .service {
+    display: flex;
+    gap: 0.3rem;
+    min-width: 6rem;
+    max-width: 28rem;
     font-size: 0.9rem;
+    white-space: nowrap;
   }
   .service strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 500;
   }
+  .when {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  /* The hint gives way first: it takes the room left over and is cut
+     from the end with an ellipsis. */
   .keys {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .keys :global(.icon) {
+    vertical-align: -2px;
+    margin-right: 0.4rem;
   }
   .grid {
     flex: 1;
@@ -423,6 +509,44 @@
     color: var(--gold);
   }
 
+  .no-screen {
+    margin-bottom: 1rem;
+  }
+  .pick {
+    width: min(32rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .pick-head {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  .pick-head h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .pick-head p {
+    margin-top: 0.25rem;
+  }
+  .pick-list {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+  }
+  .pick-foot {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+  }
+  .none .no-screen {
+    width: min(36rem, calc(100% - 2rem));
+    color: var(--text);
+  }
+  .no-screen :global(.body) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
   .centre-body {
     flex: 1;
     min-height: 0;

@@ -38,7 +38,9 @@ use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::scripture::parse_reference;
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
-use lampstand_layout::{compose_at, paginate_passage, paginate_song, Fonts, OutputSize};
+use lampstand_layout::{
+    compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
+};
 use lampstand_library::{starter_theme, starter_theme_id, Library};
 use lampstand_live::{Cursor, LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
@@ -575,9 +577,14 @@ impl App {
                 let reference = format!("{passage} {abbreviation}").trim().to_string();
                 let slides = match self.library.bible_text(*translation).map_err(err)? {
                     Some(bible) => match bible.verses(passage) {
-                        Ok(verses) => {
-                            paginate_passage(&verses, &reference, theme, primary, &mut self.fonts)
-                        }
+                        Ok(verses) => paginate_passage(
+                            &verses,
+                            &reference,
+                            PassageSplit::default(),
+                            theme,
+                            primary,
+                            &mut self.fonts,
+                        ),
                         Err(_) => Vec::new(),
                     },
                     None => Vec::new(),
