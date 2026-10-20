@@ -6,7 +6,7 @@
 <script lang="ts">
   import type { Cursor, LoadedItemView, SafeArea } from "../../lib/api";
   import type { NextClick } from "../../lib/cursor";
-  import { buildCounter, formatElapsed, slideCounter } from "../../lib/presenter";
+  import { stepCounter, formatElapsed, slideCounter } from "../../lib/presenter";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
@@ -84,7 +84,7 @@
     !upcoming
       ? "End of service"
       : upcoming.build
-        ? `Next: build ${upcoming.cursor.step} of ${upcoming.slide.steps}`
+        ? `Next: step ${upcoming.cursor.step} of ${upcoming.slide.steps}`
         : upcoming.cursor.item === item.id
           ? `Next: ${slideCounter(upcoming.cursor.slide, item.slides.length).toLowerCase()}`
           : `Next: ${upcoming.title}`,
@@ -96,8 +96,8 @@
     <span class="state"><Dot tone={overlay === "None" ? "live" : "neutral"} size={8} />{overlay === "None" ? "LIVE" : overlay === "Black" ? "BLANK" : "LOGO"}</span>
     <strong class="title">{item.title}</strong>
     <span class="counter">{slideCounter(cursor.slide, item.slides.length)}</span>
-    {#if slide && buildCounter(cursor.step, slide.steps)}
-      <span class="build">{buildCounter(cursor.step, slide.steps)}</span>
+    {#if slide && stepCounter(cursor.step, slide.steps)}
+      <span class="build">{stepCounter(cursor.step, slide.steps)}</span>
     {/if}
     <span class="clock" class:paused={pausedAt !== null} aria-label="Time on this deck" role="timer">{formatElapsed(elapsed)}</span>
     <Button size="small" variant="ghost" onclick={pause} title={pausedAt === null ? "Pause the timer" : "Resume the timer"}>
@@ -113,7 +113,7 @@
       </div>
       <div class="transport">
         <Button icon="prev" onclick={onprevious} shortcut="←">Previous</Button>
-        <Button variant="primary" onclick={onnext} shortcut="Space">{upcoming?.build ? "Next build" : "Next"}</Button>
+        <Button variant="primary" onclick={onnext} shortcut="Space">Next</Button>
         <Button variant="danger" onclick={onblank} pressed={overlay === "Black"} shortcut=".">Blank</Button>
       </div>
     </section>
