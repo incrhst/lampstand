@@ -23,7 +23,7 @@ Each layer uses only the layers below it, except the arrows within a layer: `ren
 | `layout` | Fonts, splitting text into slides, fitting text, composing each output's scene | core |
 | `slides` | PPTX → scenes, builds, transitions, notes, fidelity report | core |
 | `render` | wgpu: output windows, offscreen rendering, transitions, animations, calibration pattern | core, layout (fonts only), media |
-| `media` | Video and audio decoding (GStreamer behind a feature) | — |
+| `media` | Video decoding (DeckCraft's pure-Rust decoders) | — |
 | `sync` | Automerge documents, blob store, sync protocol, LAN discovery, teams and roles | core |
 | `library` | Typed access to documents, song search, service packages, readiness check, CCLI usage | core, sync |
 | `import` | Song and Bible importers, finding other apps' data | core |
@@ -205,11 +205,13 @@ Importing the 3,100-song English database took about 110 s on an M1 (release bui
 
 A pasted list of songs and readings ("Come Thou Fount, 10000 reasons, Ps 23, sermon John 10:1-18") becomes a draft service that the person checks and creates ([decision 0003](decisions/0003-service-from-list.md), not built yet). A small Gemma model, run by a local runtime where the machine has one, only splits the text into song, scripture and heading entries; without one, a line parser does. Library search and `parse_reference` do the matching, so the model never picks a song, never touches the live engine, and nothing leaves the machine.
 
-### Media: GStreamer, behind a feature
+### Media: DeckCraft's decoders, in process
 
-Video backgrounds, media items and video embedded in decks decode through GStreamer (`playbin3` into an `appsink` of RGBA frames, uploaded to wgpu textures). The same pipeline gives NDI, Spout and Syphon in Phase 2.
+Video backgrounds, media items and video embedded in decks decode with `deckcraft-media` (T27), the same DeckCraft revision `slides` uses: pure-Rust H.264, HEVC, VP9 and AV1 in MP4/MOV and WebM/Matroska, to RGBA frames. `lampstand-media::Video` wraps it: the file is read and opened off the render thread, a worker thread per video decodes a few frames ahead, and the render thread asks for the frame due at its own clock (looping and seeking are a function of that time). The frames go into a wgpu texture per video and are drawn as quads like images (`render/src/output/video.rs`).
 
-GStreamer is behind a `gstreamer` feature so contributors and CI can build without it. It is also the main threat to the "tens of MB" install size: a trimmed Windows and macOS runtime is roughly 60 to 100 MB. T27 measures it; the fallback is platform decoders (Media Foundation, AVFoundation) behind the same `MediaBackend` trait.
+GStreamer was the plan. We chose DeckCraft instead because it needs nothing installed. The decoders add about 2.7 MB to a release binary, where a GStreamer runtime adds about 180 MB on macOS and something similar on Windows, has to be bundled and signed, and its macOS cask now fails Gatekeeper. It also builds the same for contributors and CI. The cost is CPU decoding with no hardware acceleration. On an M1 one core decodes 1080p H.264 at 53 to 66 fps and 1080p HEVC at 74 fps (colour conversion included), about twice real time for 30 fps. 1080p60 is at the limit, and 4K is not real time. The decoders are always built optimised, even in debug builds (`[profile.dev.package]` in the workspace `Cargo.toml`), or `tauri dev` could not play video. If T61 finds older laptops dropping frames, platform decoders (VideoToolbox, Media Foundation) can sit behind `Video`. NDI, Spout and Syphon (Phase 2) will need their own SDKs either way.
+
+Not yet: audio. Videos play silently, so `VideoNode::muted` has no effect. A video's audio must play once per video, not once per output; DeckCraft's `player::Player` mixes and clocks audio over an `AudioOut` the host provides (cpal), and is the way in. A whole video file is held in memory while it plays.
 
 ### Local server
 

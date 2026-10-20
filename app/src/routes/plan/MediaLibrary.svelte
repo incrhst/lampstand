@@ -7,7 +7,6 @@
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
 
   let {
     media,
@@ -33,9 +32,6 @@
   {#each media as file (file.blob)}
     <ListRow title={file.name} subtitle={subtitle(file)} dim={!file.on_device}>
       {#snippet leading()}<Icon name={isVideo(file.name) ? "media" : "announcements"} />{/snippet}
-      {#snippet details()}
-        {#if isVideo(file.name)}<span class="later"><Placeholder ticket="T27">Plays on screen</Placeholder></span>{/if}
-      {/snippet}
       {#snippet trailing()}
         {#if inService.has(file.blob)}
           <span class="in-service"><Icon name="check" size={14} />In service</span>
@@ -50,7 +46,6 @@
     <li class="empty muted">
       <p>No media yet.</p>
       <p>Add a video or an image. Ones used in any service show here to add again.</p>
-      <p>Images show on screen now; video plays once playback lands (T27).</p>
     </li>
   {/each}
 </ul>
@@ -78,9 +73,6 @@
   }
   .in-service :global(.icon) {
     color: var(--ready-text);
-  }
-  .later {
-    margin-top: 0.3rem;
   }
   .foot {
     border-top: 1px solid var(--line);

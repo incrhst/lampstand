@@ -219,9 +219,6 @@
             {#if liveItem && live.live}
               <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
             {/if}
-            {#if live.liveSlide?.label === "Video"}
-              <Placeholder ticket="T27">Video plays on screen</Placeholder>
-            {/if}
           </div>
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
@@ -263,8 +260,6 @@
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
                       {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
-                      <!-- The core labels video slides "Video"; the output draws nothing for them yet. -->
-                      {#if slide.label === "Video"}<Placeholder ticket="T27">Not on screen yet</Placeholder>{/if}
                     </span>
                   </button>
                 </li>
