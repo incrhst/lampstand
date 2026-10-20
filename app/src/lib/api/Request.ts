@@ -3,6 +3,7 @@ import type { Command } from "./Command";
 import type { LibraryRequest } from "./LibraryRequest";
 import type { OutputRequest } from "./OutputRequest";
 import type { ServiceRequest } from "./ServiceRequest";
+import type { SettingsRequest } from "./SettingsRequest";
 import type { TeamRequest } from "./TeamRequest";
 
-export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest };
+export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest } | { "area": "Settings", "request": SettingsRequest };

@@ -1,12 +1,14 @@
-//! Device-local settings: output configuration, browser-source keys and
-//! the device key. They belong to this machine's screens and identity, so
-//! they live as plain files in the app-data folder and never sync
-//! (ARCHITECTURE.md, "What syncs and what stays on the device").
+//! Device-local settings: output configuration, browser-source keys, the
+//! device key and the other settings (`settings.json`, clicker mode). They
+//! belong to this machine's screens and identity, so they live as plain
+//! files in the app-data folder and never sync (ARCHITECTURE.md, "What
+//! syncs and what stays on the device").
 
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use lampstand_api::DeviceSettings;
 use lampstand_core::output::{OutputConfig, OutputId};
 use lampstand_sync::team::DeviceKeypair;
 
@@ -123,6 +125,39 @@ impl KeyStore {
     }
 }
 
+/// `settings.json`: this machine's settings that are not about a screen.
+pub struct SettingsStore {
+    path: PathBuf,
+    settings: DeviceSettings,
+}
+
+impl SettingsStore {
+    /// Reads `path`, or the defaults if it does not exist or does not
+    /// parse (it holds nothing that cannot be set again).
+    pub fn load(path: PathBuf) -> io::Result<Self> {
+        let settings = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                eprintln!("lampstand: {} is unreadable ({e})", path.display());
+                DeviceSettings::default()
+            }),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => DeviceSettings::default(),
+            Err(e) => return Err(e),
+        };
+        Ok(Self { path, settings })
+    }
+
+    pub fn get(&self) -> &DeviceSettings {
+        &self.settings
+    }
+
+    pub fn put(&mut self, settings: DeviceSettings) -> io::Result<()> {
+        let json = serde_json::to_vec_pretty(&settings).map_err(io::Error::other)?;
+        write_atomically(&self.path, &json)?;
+        self.settings = settings;
+        Ok(())
+    }
+}
+
 /// The device's signing key, created on first run (`device.key`, 32 bytes).
 pub fn device_key(dir: &Path) -> io::Result<DeviceKeypair> {
     let path = dir.join("device.key");
@@ -208,6 +243,16 @@ mod tests {
         assert_eq!(again.get(b), None);
         std::fs::write(&path, b"[").unwrap();
         assert_eq!(KeyStore::load(path).unwrap().get(a), None);
+    }
+
+    #[test]
+    fn settings_survive_a_reload_and_default_to_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut store = SettingsStore::load(path.clone()).unwrap();
+        assert!(!store.get().clicker_mode);
+        store.put(DeviceSettings { clicker_mode: true }).unwrap();
+        assert!(SettingsStore::load(path).unwrap().get().clicker_mode);
     }
 
     #[test]

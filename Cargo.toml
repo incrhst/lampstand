@@ -63,6 +63,7 @@ spake2 = "0.4"
 tauri = { version = "2.12", features = ["unstable"] }
 tauri-build = { version = "2.7", features = [] }
 tauri-plugin-dialog = "2.8"
+tauri-plugin-global-shortcut = "2.3"
 tempfile = "3"
 tokio = { version = "1.53", features = ["macros", "rt"] }
 # 0.29 to match the tungstenite inside axum's `ws`.

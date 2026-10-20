@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use lampstand_api::{
     Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest, Request, Response,
-    ServiceRequest, ServiceSummary, SlideView, SongDatabase, SongHit,
+    ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -55,9 +55,10 @@ use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
-use crate::config::{device_key, KeyStore, OutputStore};
+use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
+use crate::keys::KeyState;
 use crate::seed;
 
 /// Where an output window goes.
@@ -129,6 +130,7 @@ pub struct App {
     live: LiveEngine,
     fonts: Fonts,
     outputs: OutputStore,
+    settings: SettingsStore,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -179,11 +181,13 @@ impl App {
         seed::seed_if_new(&library, data_dir).map_err(err)?;
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
+        let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
         let mut app = Self {
             library,
             live: LiveEngine::new(),
             fonts,
             outputs,
+            settings,
             sink,
             windows,
             emit,
@@ -210,6 +214,16 @@ impl App {
     /// Where pushed events go.
     pub fn emitter(&self) -> EventSink {
         self.emit.clone()
+    }
+
+    /// Which keys to take from the system (T56): clicker mode, and
+    /// whether a service is open for live. The shell adds window focus.
+    pub fn key_state(&self) -> KeyState {
+        KeyState {
+            clicker_mode: self.settings.get().clicker_mode,
+            live: self.loaded.is_some(),
+            output_focused: false,
+        }
     }
 
     pub fn program(&self) -> &Program {
@@ -240,6 +254,14 @@ impl App {
             Request::Outputs(r) => self.output_request(r),
             // The shell answers these from `crate::sync`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
+            Request::Settings(SettingsRequest::Get) => {
+                Ok(Response::Settings(self.settings.get().clone()))
+            }
+            Request::Settings(SettingsRequest::Put(settings)) => self
+                .settings
+                .put(settings)
+                .map(|()| Response::Settings(self.settings.get().clone()))
+                .map_err(err),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
