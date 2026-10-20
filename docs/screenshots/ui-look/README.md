@@ -22,8 +22,9 @@ good ideas, not its code. Taken from a debug `.app` bundle with a fresh
   Setup › Devices and Setup › Screens. (Present is the operator view,
   `routes/operate/`.)
 - Plan: three columns (services, order, library); numbered order rows with a
-  drag handle, a type icon, title and subtitle; library tabs, a search field
-  with an icon, "In service" ticks, lyric snippets.
+  drag handle, a type icon, title and subtitle; a library with one search
+  across songs, scripture, decks and media and filter chips (the simplified
+  library prototype), "In service" ticks, lyric snippets.
 - Present: a header bar with Safe area toggle and Show / Logo / Blank; the
   running order on the left with the live item in gold; a LIVE pane with a
   red ring and a dashed safe-area guide; slide cards with a LIVE badge;
