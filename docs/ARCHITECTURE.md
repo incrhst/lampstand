@@ -228,12 +228,13 @@ How T43 built the browser source (`crates/lampstand-server/src/obs/`, page in `w
 
 ### Supporting devices: bring your own
 
-There is usually one main machine for projection, typically the church's own desktop or laptop. The supporting devices around it tend to be whatever people bring (PRD, "Decisions"), so the design assumes nothing about them:
+There is usually one main machine for projection: often the church's own desktop or laptop, and in smaller congregations just as often a volunteer's own laptop. The supporting devices around it tend to be whatever people bring (PRD, "Decisions"). So the design assumes nothing about them, and little about the main machine:
 
 - **They reach Lampstand through a browser.** The remote, the stage display and the congregation lyric view are pages on the local server, and the browser planner is served by the relay (CD-5). They speak the same `lampstand-api` messages as the desktop UI, so a supporting job never needs the app installed. Pages must work in current Safari on iOS and Chrome on Android at phone width.
 - **Trust comes from the team, not the device.** Devices join with an invite and a role, or pair with a code, and peers refuse anything without a role. Removing a member's device is how access ends ("Teams and roles" above). There is no device management.
 - **Device-only data stays on the device.** Output settings, browser-source keys, the OBS password and the device key never sync ("What syncs and what stays on the device"), so a personal device never holds the main machine's secrets.
-- **They are never on the critical path.** Outputs are driven by the main machine alone. A remote or stage display dropping off Wi-Fi changes nothing on the screens, and reconnects when it is back.
+- **The main machine is not dedicated.** Lampstand keeps to its app-data folder and changes no system settings, so it can live on someone's own laptop. Output settings and calibration are device-local, which is right when next week's main machine is a different laptop: it calibrates its own screens.
+- **Supporting devices are never on the critical path.** Outputs are driven by the main machine alone. A remote or stage display dropping off Wi-Fi changes nothing on the screens, and reconnects when it is back.
 
 ### OBS: drive it over its WebSocket
 
