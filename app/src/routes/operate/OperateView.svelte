@@ -2,6 +2,8 @@
      the slides of the item in view in the middle, Next and notes on the
      right. While a deck is on air the middle is its presenter view
      (current slide at its build step, next click, speaker notes, timer).
+     Where OBS matters, the bar has one quiet OBS strip (the pill, the
+     scene on air, the next item's scene) that opens the OBS drawer (T91).
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
@@ -19,8 +21,9 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import ObsDrawer from "./ObsDrawer.svelte";
   import ObsNotice from "./ObsNotice.svelte";
-  import { obsPill } from "../../lib/obs";
+  import { isConnected, obsPill, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
 
@@ -29,6 +32,18 @@
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
+
+  // The OBS drawer (T91), from the strip or with O. Closing it gives focus
+  // back to the strip, so the keyboard carries on where it was.
+  let obsOpen = $state(false);
+  let obsToggle: HTMLButtonElement | undefined = $state();
+  function setObsOpen(open: boolean) {
+    obsOpen = open;
+    if (!open) obsToggle?.focus({ preventScroll: true });
+  }
+  $effect(() => {
+    if (!pill) obsOpen = false;
+  });
 
   // With no service open, offer the next few to open: the core lists
   // upcoming ones first, then undated ones newest first.
@@ -97,6 +112,16 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (pill && live.loaded && (e.key === "o" || e.key === "O")) {
+      e.preventDefault();
+      setObsOpen(!obsOpen);
+      return;
+    }
+    if (obsOpen && e.key === "Escape") {
+      e.preventDefault();
+      setObsOpen(false);
+      return;
+    }
     const keys: Record<string, Command> = {
       " ": "Next",
       ArrowRight: "Next",
@@ -214,6 +239,15 @@
 
   let notes = $derived(liveItem ? (service?.items[liveItem.id]?.notes ?? "") : "");
 
+  let obsOn = $derived(isConnected(live.obs));
+  let nextObsScene = $derived(
+    upcomingScene(
+      items.map((i) => service?.items[i.id]?.obs_scene),
+      liveIndex,
+      live.obs?.program_scene ?? null,
+    ),
+  );
+
   const stateLabel = { None: "LIVE", Black: "BLANK", Logo: "LOGO" } as const;
   const outputState = { None: "Showing", Black: "Blank", Logo: "Logo" } as const;
 </script>
@@ -266,11 +300,30 @@
       </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       {#if pill}
-        <button class="obs-pill" onclick={onobs} title={pill.title} aria-label="OBS: {pill.text}. Open Setup › OBS">
-          <StatusPill tone={pill.tone} icon={pill.tone === "live" ? undefined : "play"}>{pill.text}</StatusPill>
-        </button>
+        <div class="obs-strip">
+          <button class="obs-pill" onclick={onobs} title={pill.title} aria-label="OBS: {pill.text}. Open Setup › OBS">
+            <StatusPill tone={pill.tone} icon={pill.tone === "live" ? undefined : "play"}>{pill.text}</StatusPill>
+          </button>
+          <button
+            bind:this={obsToggle}
+            class="obs-scenes"
+            class:open={obsOpen}
+            onclick={() => setObsOpen(!obsOpen)}
+            aria-expanded={obsOpen}
+            aria-controls="obs-drawer"
+            title="OBS scenes, preview and mutes (O)"
+          >
+            {#if obsOn && live.obs?.program_scene}
+              <span class="on-air"><span class="sr">On air in OBS: </span>{live.obs.program_scene}</span>
+              {#if nextObsScene}<span class="faint">· Next: {nextObsScene}</span>{/if}
+            {:else}
+              <span class="on-air">Scenes</span>
+            {/if}
+            <kbd>O</kbd>
+          </button>
+        </div>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
+      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
@@ -279,6 +332,9 @@
     <!-- While a deck is on air the presenter view takes the right column
          too; outputs stay in the status bar. -->
     <div class="grid" class:presenting>
+      {#if obsOpen}
+        <ObsDrawer view={live.obs} onclose={() => setObsOpen(false)} onsetup={onobs} />
+      {/if}
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head"><h2>Service order</h2></div>
         <ol class="plain pane-body">
@@ -437,6 +493,61 @@
     flex-direction: column;
     gap: 0.5rem;
   }
+  .obs-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .obs-scenes {
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 6.5rem;
+    max-width: 22rem;
+    height: 1.9rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .obs-scenes:hover,
+  .obs-scenes.open {
+    border-color: var(--line-strong);
+    background: var(--raised);
+  }
+  /* When the bar is short of room, "Next: …" gives way first, then the
+     scene's name; the button never shrinks past a usable size. */
+  .obs-scenes > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 100 auto;
+  }
+  .obs-scenes > .on-air {
+    min-width: 3.5rem;
+    flex: 0 1 auto;
+    font-weight: 500;
+  }
+  .obs-scenes kbd {
+    font: inherit;
+    font-size: 0.7rem;
+    color: var(--faint);
+    padding: 0 0.3rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
   .obs-pill {
     display: inline-flex;
     padding: 0;
@@ -471,6 +582,16 @@
     gap: 0.5rem 1rem;
     padding: 0.6rem 1.25rem;
     border-bottom: 1px solid var(--line);
+  }
+  /* At tablet width the controls don't fit on one row: they wrap rather
+     than squeeze the OBS strip or the screen buttons to nothing. */
+  @media (max-width: 900px) {
+    .bar {
+      flex-wrap: wrap;
+    }
+    .keys {
+      display: none;
+    }
   }
   /* A long title truncates and the date keeps its width, so the controls
      stay on one row in the same place whatever the service is called. */
@@ -508,6 +629,7 @@
     margin-right: 0.4rem;
   }
   .grid {
+    position: relative;
     flex: 1;
     min-height: 0;
     display: grid;

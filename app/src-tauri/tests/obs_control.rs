@@ -1,6 +1,7 @@
 //! OBS control (T89) against a mock obs-websocket server: the view goes
 //! through every connection state, says why OBS isn't connected, follows
-//! streaming, and keeps the password to itself.
+//! streaming, and keeps the password to itself. Then scenes per item
+//! (T90), and Present's OBS drawer (T91): screenshots and audio mutes.
 
 use std::ffi::OsString;
 use std::io;
@@ -11,8 +12,8 @@ use std::time::Duration;
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use lampstand_api::{
-    Event, ObsConnection, ObsProblem, ObsRequest, ObsSceneFailure, ObsSceneProblem, ObsView,
-    Response,
+    Event, ObsAudioInput, ObsConnection, ObsProblem, ObsRequest, ObsSceneFailure, ObsSceneProblem,
+    ObsView, Response,
 };
 use lampstand_app::obs_control::{ObsControl, Os, Probe, SceneCue};
 use lampstand_connectors::obs::auth_response;
@@ -42,6 +43,10 @@ struct MockObs {
 struct Scenes {
     program: String,
     switched: Vec<String>,
+    /// Its inputs: name, kind, and muted if it has audio.
+    inputs: Vec<(String, &'static str, Option<bool>)>,
+    /// Every `GetSourceScreenshot`: the source and width.
+    screenshots: Vec<(String, u64)>,
 }
 
 const MOCK_SCENES: [&str; 3] = ["Worship", "Sermon", "Wide"];
@@ -56,7 +61,14 @@ impl MockObs {
         let port = listener.local_addr().unwrap().port();
         let scenes = Arc::new(Mutex::new(Scenes {
             program: "Worship".into(),
-            switched: Vec::new(),
+            inputs: vec![
+                ("Pulpit mic".into(), "coreaudio_input_capture", Some(false)),
+                // Has sound, but isn't a mixer channel anyone mutes.
+                ("Camera".into(), "av_capture_input_v2", Some(false)),
+                ("Lampstand stream".into(), "browser_source", Some(false)),
+                ("Band".into(), "wasapi_input_capture", Some(true)),
+            ],
+            ..Scenes::default()
         }));
         let streaming = Arc::new(AtomicBool::new(false));
         let (events, events_rx) = mpsc::unbounded_channel::<Value>();
@@ -96,6 +108,40 @@ impl MockObs {
 
     fn switched(&self) -> Vec<String> {
         self.scenes.lock().unwrap().switched.clone()
+    }
+
+    fn screenshots(&self) -> Vec<(String, u64)> {
+        self.scenes.lock().unwrap().screenshots.clone()
+    }
+
+    /// Someone mutes or unmutes an input in OBS itself.
+    fn mute_in_obs(&self, input: &str, muted: bool) {
+        for (name, _, m) in &mut self.scenes.lock().unwrap().inputs {
+            if name == input {
+                *m = Some(muted);
+            }
+        }
+        self.events
+            .send(json!({
+                "eventType": "InputMuteStateChanged", "eventIntent": 8,
+                "eventData": { "inputName": input, "inputMuted": muted },
+            }))
+            .unwrap();
+    }
+
+    /// Someone adds an audio input in OBS itself.
+    fn add_input_in_obs(&self, input: &str) {
+        self.scenes
+            .lock()
+            .unwrap()
+            .inputs
+            .push((input.into(), "pulse_input_capture", Some(false)));
+        self.events
+            .send(json!({
+                "eventType": "InputCreated", "eventIntent": 8,
+                "eventData": { "inputName": input, "inputKind": "coreaudio_input_capture" },
+            }))
+            .unwrap();
     }
 
     /// Someone switches scene in OBS itself.
@@ -176,6 +222,43 @@ async fn serve(
                             status = json!({ "result": false, "code": 600, "comment": format!("No source was found by the name of `{name}`.") });
                         }
                         Value::Null
+                    }
+                    "GetSourceScreenshot" => {
+                        let req = &d["requestData"];
+                        let name = req["sourceName"].as_str().unwrap_or_default().to_string();
+                        let width = req["imageWidth"].as_u64().unwrap_or_default();
+                        scenes.lock().unwrap().screenshots.push((name.clone(), width));
+                        if MOCK_SCENES.contains(&name.as_str()) {
+                            json!({ "imageData": format!("data:image/jpg;base64,{name}") })
+                        } else {
+                            status = json!({ "result": false, "code": 600, "comment": "No source was found." });
+                            Value::Null
+                        }
+                    }
+                    "GetInputList" => {
+                        let inputs: Vec<Value> = scenes.lock().unwrap().inputs.iter()
+                            .map(|(name, kind, _)| json!({ "inputName": name, "inputKind": kind, "unversionedInputKind": kind }))
+                            .collect();
+                        json!({ "inputs": inputs })
+                    }
+                    "GetInputMute" | "SetInputMute" => {
+                        let req = &d["requestData"];
+                        let name = req["inputName"].as_str().unwrap_or_default().to_string();
+                        let set = req["inputMuted"].as_bool();
+                        let mut sc = scenes.lock().unwrap();
+                        match sc.inputs.iter_mut().find(|(n, _, _)| *n == name) {
+                            Some((_, _, Some(muted))) => {
+                                if let Some(set) = set {
+                                    *muted = set;
+                                }
+                                json!({ "inputMuted": *muted })
+                            }
+                            // OBS: "The specified input does not support audio."
+                            _ => {
+                                status = json!({ "result": false, "code": 604, "comment": "The specified input does not support audio." });
+                                Value::Null
+                            }
+                        }
                     }
                     "GetVersion" => json!({ "obsVersion": "30.2.3" }),
                     "GetStreamStatus" => json!({
@@ -284,7 +367,7 @@ async fn start(dir: tempfile::TempDir, path: PathBuf) -> Harness {
         Os::Linux,
         Arc::new(move |event| {
             if let Event::Obs(view) = event {
-                sink.lock().unwrap().push(view);
+                sink.lock().unwrap().push(*view);
             }
         }),
     );
@@ -558,6 +641,61 @@ async fn real_obs_on_this_machine() {
     println!("after: {:?} problem={:?}", after.connection, after.problem);
 }
 
+/// The drawer (T91) against the real OBS, with the settings Lampstand
+/// saved in `LAMPSTAND_OBS_DIR` (the app-data folder holding `obs.json`).
+/// Read-only: lists the scenes and mutes and saves a few program pictures
+/// to `LAMPSTAND_OBS_OUT`, without switching or muting anything.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "talks to the real OBS on this machine"]
+async fn real_obs_drawer() {
+    let dir = PathBuf::from(std::env::var("LAMPSTAND_OBS_DIR").expect("LAMPSTAND_OBS_DIR"));
+    let out = PathBuf::from(std::env::var("LAMPSTAND_OBS_OUT").expect("LAMPSTAND_OBS_OUT"));
+    let control = ObsControl::start(
+        &dir,
+        Arc::new(AtomicBool::new(true)),
+        Arc::new(lampstand_app::obs_control::System),
+        Os::current(),
+        Arc::new(|_| {}),
+    );
+    let mut view = None;
+    for _ in 0..50 {
+        if let Response::Obs(v) = control.handle(ObsRequest::Status).await {
+            if connected(&v) && v.program_scene.is_some() {
+                view = Some(v);
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let view = view.expect("OBS never connected");
+    println!("scenes: {:?}", view.scenes);
+    println!("program: {:?}", view.program_scene);
+    println!("audio: {:?}", view.audio);
+    let started = std::time::Instant::now();
+    for i in 0..8 {
+        let scene = if i == 0 {
+            view.scenes.last().cloned()
+        } else {
+            None
+        };
+        let response = control
+            .handle(ObsRequest::Screenshot { scene, width: 640 })
+            .await;
+        let Response::Thumbnail(url) = response else {
+            panic!("{response:?}")
+        };
+        let (head, data) = url.split_once(',').unwrap();
+        assert_eq!(head, "data:image/jpeg;base64");
+        use base64::Engine as _;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .unwrap();
+        assert_eq!(&bytes[..2], [0xff, 0xd8], "a JPEG");
+        std::fs::write(out.join(format!("obs-{i}.jpg")), bytes).unwrap();
+    }
+    println!("8 pictures in {:?}", started.elapsed());
+}
+
 fn cue(item: lampstand_core::service::ItemId, scene: Option<&str>) -> SceneCue {
     SceneCue {
         item,
@@ -663,4 +801,151 @@ async fn a_switch_while_obs_is_away_happens_when_it_connects() {
         .await;
     assert_eq!(view.scene_problem, None);
     assert_eq!(mock.switched(), ["Sermon"]);
+}
+
+fn audio(list: &[(&str, bool)]) -> Vec<ObsAudioInput> {
+    list.iter()
+        .map(|(name, muted)| ObsAudioInput {
+            name: name.to_string(),
+            muted: *muted,
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_drawer_previews_scenes_live() {
+    let mock = MockObs::start(None).await;
+    let h = harness(mock.port, None).await;
+    h.wait_for(|v| v.program_scene.is_some()).await;
+
+    // The program scene, again and again while the drawer is open.
+    for _ in 0..3 {
+        let response = h
+            .control
+            .handle(ObsRequest::Screenshot {
+                scene: None,
+                width: 480,
+            })
+            .await;
+        assert_eq!(
+            response,
+            Response::Thumbnail("data:image/jpeg;base64,Worship".into())
+        );
+    }
+    // A scene before switching to it; nothing switches.
+    let response = h
+        .control
+        .handle(ObsRequest::Screenshot {
+            scene: Some("Sermon".into()),
+            width: 320,
+        })
+        .await;
+    assert_eq!(
+        response,
+        Response::Thumbnail("data:image/jpeg;base64,Sermon".into())
+    );
+    assert!(mock.switched().is_empty());
+
+    // After a switch in OBS, the preview follows the new program scene.
+    mock.switch_in_obs("Wide");
+    h.wait_for(|v| v.program_scene.as_deref() == Some("Wide"))
+        .await;
+    let response = h
+        .control
+        .handle(ObsRequest::Screenshot {
+            scene: None,
+            width: 480,
+        })
+        .await;
+    assert_eq!(
+        response,
+        Response::Thumbnail("data:image/jpeg;base64,Wide".into())
+    );
+    assert_eq!(
+        mock.screenshots(),
+        [
+            ("Worship".into(), 480),
+            ("Worship".into(), 480),
+            ("Worship".into(), 480),
+            ("Sermon".into(), 320),
+            ("Wide".into(), 480),
+        ]
+    );
+
+    // A scene OBS doesn't have is an error, not a picture.
+    assert!(matches!(
+        h.control
+            .handle(ObsRequest::Screenshot {
+                scene: Some("Gone".into()),
+                width: 480,
+            })
+            .await,
+        Response::Error { .. }
+    ));
+
+    // No OBS: an error at once, so the drawer can say so.
+    mock.stop();
+    h.wait_for(|v| !connected(v)).await;
+    assert!(matches!(
+        h.control
+            .handle(ObsRequest::Screenshot {
+                scene: None,
+                width: 480,
+            })
+            .await,
+        Response::Error { .. }
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mutes_follow_obs_and_present() {
+    let mock = MockObs::start(None).await;
+    let h = harness(mock.port, None).await;
+    // Only audio devices: the camera and browser source have sound too.
+    let view = h.wait_for(|v| !v.audio.is_empty()).await;
+    assert_eq!(view.audio, audio(&[("Pulpit mic", false), ("Band", true)]));
+
+    // Muted in Present: the answer already has it.
+    let Response::Obs(view) = h
+        .control
+        .handle(ObsRequest::SetMute {
+            input: "Pulpit mic".into(),
+            muted: true,
+        })
+        .await
+    else {
+        panic!("mute failed")
+    };
+    assert_eq!(view.audio, audio(&[("Pulpit mic", true), ("Band", true)]));
+
+    // Unmuted in OBS itself: the event updates the view, and it's pushed.
+    mock.mute_in_obs("Band", false);
+    h.wait_for(|v| v.audio == audio(&[("Pulpit mic", true), ("Band", false)]))
+        .await;
+    assert!(h
+        .pushed
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|v| v.audio == audio(&[("Pulpit mic", true), ("Band", false)])));
+
+    // A new input in OBS appears.
+    mock.add_input_in_obs("Choir mics");
+    h.wait_for(|v| v.audio.len() == 3).await;
+
+    // An input OBS can't mute is an error.
+    assert!(matches!(
+        h.control
+            .handle(ObsRequest::SetMute {
+                input: "Nowhere".into(),
+                muted: true,
+            })
+            .await,
+        Response::Error { .. }
+    ));
+
+    // Disconnected: no toggles to show.
+    mock.stop();
+    let view = h.wait_for(|v| !connected(v)).await;
+    assert!(view.audio.is_empty());
 }

@@ -158,3 +158,58 @@ export function sceneNotice(view: ObsView | null): SceneNotice | null {
   }
   return null;
 }
+
+// Present's OBS drawer (T91): scene buttons, a live preview and mutes,
+// opened from one quiet strip in the bar.
+
+export function isConnected(view: ObsView | null): boolean {
+  return !!view && typeof view.connection === "object" && "Connected" in view.connection;
+}
+
+/**
+ * The scene the next item switches OBS to, for the strip ("Next: Sermon"):
+ * the item after the live one (or the first, before the service starts),
+ * if it names a scene other than the one on air. Null otherwise: OBS
+ * stays where it is.
+ */
+export function upcomingScene(
+  scenes: (string | null | undefined)[],
+  liveIndex: number,
+  program: string | null,
+): string | null {
+  const next = scenes[liveIndex + 1]?.trim();
+  return next && next !== program ? next : null;
+}
+
+/** How often the drawer's live preview asks OBS for a new picture. */
+export const PREVIEW_EVERY_MS = 250;
+
+/**
+ * Takes pictures one after another, `every` ms apart, until stopped:
+ * the next is asked for only once the last has arrived, so a slow OBS
+ * is never asked twice at once. A failed picture is reported and the
+ * loop carries on. Returns the function that stops it.
+ */
+export function pollImages(
+  take: () => Promise<string>,
+  show: (image: string) => void,
+  every: number = PREVIEW_EVERY_MS,
+  failed: (error: unknown) => void = () => {},
+): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const tick = async () => {
+    try {
+      const image = await take();
+      if (!stopped) show(image);
+    } catch (e) {
+      if (!stopped) failed(e);
+    }
+    if (!stopped) timer = setTimeout(tick, every);
+  };
+  void tick();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+}

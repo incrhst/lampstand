@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { droppedPercent, notice, obsPill, sceneNotice } from "./obs.ts";
+import { droppedPercent, isConnected, notice, obsPill, pollImages, sceneNotice, upcomingScene } from "./obs.ts";
 import type { ObsOutputView, ObsView } from "./api";
 
 const connected = { Connected: { obs_version: "30.2.3", websocket_version: "5.5.2" } } as const;
@@ -19,6 +19,7 @@ function view(over: Partial<ObsView> = {}): ObsView {
     program_scene: null,
     held: false,
     scene_problem: null,
+    audio: [],
     ...over,
   };
 }
@@ -122,4 +123,68 @@ test("a hand pick offers Resume", () => {
   assert.match(n!.message, /“Wide”, picked by hand/);
   assert.equal(sceneNotice(view()), null);
   assert.equal(sceneNotice(view({ relevant: false, held: true, program_scene: "Wide" })), null);
+});
+
+test("the strip names the next item's scene, unless OBS is on it already", () => {
+  const order = ["Countdown", null, "Sermon", " Worship "];
+  assert.equal(upcomingScene(order, -1, "Wide"), "Countdown", "before the service, the first item");
+  assert.equal(upcomingScene(order, 0, "Countdown"), null, "the next item names no scene");
+  assert.equal(upcomingScene(order, 1, "Worship"), "Sermon");
+  assert.equal(upcomingScene(order, 2, "Worship"), null, "already on air");
+  assert.equal(upcomingScene(order, 3, "Sermon"), null, "the end of the service");
+});
+
+test("connected means connected", () => {
+  assert.equal(isConnected(view()), true);
+  assert.equal(isConnected(view({ connection: "Connecting" })), false);
+  assert.equal(isConnected(null), false);
+});
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("the live preview asks again only after each picture arrives, until stopped", async () => {
+  let asked = 0;
+  let inFlight = 0;
+  let most = 0;
+  const shown: string[] = [];
+  const stop = pollImages(
+    async () => {
+      asked++;
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await sleep(15);
+      inFlight--;
+      return `frame ${asked}`;
+    },
+    (image) => shown.push(image),
+    5,
+  );
+  await sleep(120);
+  stop();
+  const after = asked;
+  await sleep(60);
+  assert.ok(after >= 3, `asked ${after} times`);
+  assert.equal(most, 1, "never two at once");
+  assert.ok(asked <= after + 1, "stops asking once stopped");
+  assert.deepEqual(shown.slice(0, 2), ["frame 1", "frame 2"]);
+});
+
+test("a failed picture is reported and the preview keeps trying", async () => {
+  let asked = 0;
+  const errors: unknown[] = [];
+  const shown: string[] = [];
+  const stop = pollImages(
+    async () => {
+      asked++;
+      if (asked === 1) throw new Error("OBS isn't connected");
+      return "frame";
+    },
+    (image) => shown.push(image),
+    5,
+    (e) => errors.push(e),
+  );
+  await sleep(40);
+  stop();
+  assert.equal(errors.length, 1);
+  assert.ok(shown.length >= 1);
 });
