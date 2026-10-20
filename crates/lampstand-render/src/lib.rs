@@ -161,9 +161,20 @@
 //! refresh, so click-to-photon is at most send→present plus one refresh.
 //! `tests/windows.rs` measures this on three real windows.
 //!
-//! **Video** (T27). `output::video::VideoClock` already tracks which video
-//! nodes keep playing across scenes (same node ID and blob); T27's players
-//! hang off it.
+//! **Video** (T27, `output::video`). `VideoClock` tracks which video nodes
+//! keep playing across scenes (same node ID and blob). The engine keeps a
+//! `Players` beside it: one `lampstand_media::Video` per playing video,
+//! opened off the render thread, shared by every output that started the
+//! same file at the same time (an output that starts a video another
+//! output is already playing joins it, so the projector and the stage
+//! display stay in step). Each pass the engine asks every player for the
+//! frame due now, uploads new frames into the player's texture and redraws
+//! the scenes that show it; a frame is a `Source::Video` quad, drawn like
+//! an image. While an output shows a video that has not finished it needs
+//! a frame every refresh, so FIFO paces the loop; a finished video, like a
+//! static slide, costs nothing. A video draws nothing until its first frame
+//! decodes (tens of milliseconds), so the slide's other content goes out at
+//! once. Offscreen rendering draws each autoplay video's first frame instead.
 
 pub mod calibrate;
 mod encode;
@@ -235,6 +246,18 @@ pub struct Image {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+}
+
+/// What video nodes show while a scene is drawn.
+#[derive(Clone, Copy)]
+pub(crate) enum VideoFrames<'a> {
+    /// The output frame loop: each playing video's current frame. A video
+    /// not in the map (still opening, or unplayable) draws nothing.
+    Live(&'a HashMap<output::video::VideoKey, output::video::FrameView>),
+    /// Offscreen (thumbnails): the slide as it first appears, so each
+    /// autoplay video's first frame; a video that waits for a build step
+    /// draws nothing, leaving a deck's poster picture under it.
+    Posters,
 }
 
 /// Looks up blob bytes (images, video files) for the renderer.
@@ -358,6 +381,7 @@ impl Renderer {
             &target.view,
             &mut encoder,
             &HashMap::new(),
+            VideoFrames::Posters,
         );
         let image = drawn.and_then(|()| self.read_back(&target, encoder));
         if let Some(error) = pollster::block_on(scope.pop()) {
@@ -431,8 +455,9 @@ impl Renderer {
 
     /// Records `scene`, stretched to `width` × `height`, into `target`
     /// (an `Rgba8Unorm` view of that size), with build-animation state
-    /// `anims` applied. The output frame loop calls this for each scene on
-    /// screen.
+    /// `anims` applied and video nodes showing `videos`. The output frame
+    /// loop calls this for each scene on screen.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &self,
         scene: &Scene,
@@ -441,6 +466,7 @@ impl Renderer {
         target: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         anims: &HashMap<lampstand_core::scene::NodeId, output::timeline::NodeAnim>,
+        videos: VideoFrames<'_>,
     ) -> Result<(), RenderError> {
         // A panic while drawing leaves nothing half-updated that matters:
         // caches only ever gain complete entries.
@@ -460,6 +486,7 @@ impl Renderer {
             fonts,
             swash: &mut glyphs.swash,
             anims,
+            videos,
         };
         let root = builder.push_layer(width, height, None);
         let fit = if scene.width > 0.0 && scene.height > 0.0 {

@@ -16,7 +16,7 @@
 //! time. Presenting is FIFO; with several outputs, acquiring each surface's
 //! next texture paces the loop to the displays.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::Arc;
@@ -25,15 +25,15 @@ use std::time::{Duration, Instant};
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
 use lampstand_core::safe_area::SafeArea;
-use lampstand_core::scene::{Scene, Transition, TransitionKind};
+use lampstand_core::scene::{Effect, Scene, Transition, TransitionKind};
 
 use super::composite::Compositor;
 use super::overlay;
 use super::timeline::{progress, transition_layers, AnimationTimeline, CompositeLayer, Which};
-use super::video::VideoClock;
+use super::video::{FrameView, PlayerKey, Players, VideoClock, VideoKey};
 use super::{Background, FrameTiming, OutputEvent, OutputOptions};
 use crate::gpu::{Texture, FORMAT};
-use crate::{CalibrationPattern, Image, OutputCommand, RenderError, Renderer};
+use crate::{CalibrationPattern, Image, OutputCommand, RenderError, Renderer, VideoFrames};
 
 /// How long the loop sleeps when nothing is changing. Commands wake it at
 /// once; this only bounds housekeeping.
@@ -96,6 +96,9 @@ struct Logical {
     pending: Option<Instant>,
     dirty: bool,
     videos: VideoClock,
+    /// A video on this output has a new frame, so the scene needs drawing
+    /// again.
+    video_frame: bool,
     panics: Vec<Instant>,
 }
 
@@ -145,6 +148,7 @@ pub(crate) struct Engine {
     pub clock: Instant,
     logical: HashMap<OutputId, Logical>,
     attached: HashMap<OutputId, Attached>,
+    players: Players,
     thread_panics: Vec<Instant>,
 }
 
@@ -187,6 +191,7 @@ impl Engine {
             clock: Instant::now(),
             logical: HashMap::new(),
             attached: HashMap::new(),
+            players: Players::default(),
             thread_panics: Vec::new(),
         }
     }
@@ -231,8 +236,12 @@ impl Engine {
         l.dirty
             || !a.shown
             || a.work.incoming_live
+            || l.video_frame
             || l.transition.is_some()
             || l.timeline.running(now_ms)
+            || l.videos
+                .players()
+                .any(|(_, key)| self.players.running(&key))
     }
 
     /// How long the loop may block before some output needs a frame.
@@ -369,6 +378,16 @@ impl Engine {
             self.draw_pending(output, now_ms);
         }
         let is_show = matches!(command, OutputCommand::Show { .. });
+        // Files other outputs are playing, so a video another output
+        // already shows joins it instead of starting over.
+        let mut playing = HashMap::new();
+        for (id, other) in &self.logical {
+            if *id != output {
+                for ((_, blob), &start) in &other.videos.started {
+                    playing.insert(*blob, start);
+                }
+            }
+        }
         let l = self.logical.entry(output).or_default();
         let attached = self.attached.get_mut(&output);
         match command {
@@ -381,7 +400,7 @@ impl Engine {
                     && l.scene.is_some()
                     && transition.kind != TransitionKind::Cut
                     && transition.duration_ms > 0;
-                l.videos.show(&scene, now_ms);
+                l.videos.show_joining(&scene, now_ms, &playing);
                 l.scene = Some(scene);
                 l.timeline = AnimationTimeline::default();
                 l.rev += 1;
@@ -401,6 +420,13 @@ impl Engine {
                 }
             }
             OutputCommand::Animate(animations) => {
+                if let Some(scene) = &l.scene {
+                    for a in &animations {
+                        if a.effect == Effect::Play {
+                            l.videos.play(scene, a.node, now_ms);
+                        }
+                    }
+                }
                 l.timeline.push(now_ms, animations);
                 l.rev += 1;
             }
@@ -476,8 +502,29 @@ impl Engine {
         })
     }
 
+    /// Opens and drops players to match what the outputs show, and moves
+    /// each to `now_ms`; outputs whose video has a new frame are marked.
+    fn advance_videos(&mut self, now_ms: f64) {
+        let wanted: HashSet<PlayerKey> = self
+            .logical
+            .values()
+            .flat_map(|l| l.videos.players().map(|(_, key)| key))
+            .collect();
+        self.players.sync(&wanted, &self.renderer.blobs);
+        let changed = self.players.advance(now_ms, &self.renderer.gpu);
+        if changed.is_empty() {
+            return;
+        }
+        for l in self.logical.values_mut() {
+            if l.videos.players().any(|(_, key)| changed.contains(&key)) {
+                l.video_frame = true;
+            }
+        }
+    }
+
     fn render_all(&mut self) {
         let now_ms = self.now_ms();
+        self.advance_videos(now_ms);
         let now = Instant::now();
         let ids: Vec<OutputId> = self
             .attached
@@ -519,11 +566,19 @@ impl Engine {
             renderer,
             logical,
             attached,
+            players,
             ..
         } = self;
         let (Some(a), Some(l)) = (attached.get_mut(&id), logical.get_mut(&id)) else {
             return;
         };
+        let live: HashMap<VideoKey, FrameView> = l
+            .videos
+            .players()
+            .filter_map(|(node, key)| Some((node, players.frame(&key)?.clone())))
+            .collect();
+        let none = HashMap::new();
+        let no_videos = VideoFrames::Live(&none);
         let (w, h) = a.size;
         let device = &renderer.gpu.device;
         let take = |slot: Option<Texture>, spare: &mut Option<Texture>| {
@@ -547,27 +602,39 @@ impl Engine {
             {
                 let texture = take(a.work.calibration.take().map(|c| c.1), &mut None);
                 let scene = overlay::calibration_scene(&pattern, w as f32, h as f32);
-                log_error(renderer.draw(&scene, w, h, &texture.view, encoder, &HashMap::new()));
+                log_error(renderer.draw(
+                    &scene,
+                    w,
+                    h,
+                    &texture.view,
+                    encoder,
+                    &HashMap::new(),
+                    no_videos,
+                ));
                 a.work.calibration = Some((pattern, texture));
             }
+            l.video_frame = false;
             return;
         }
         a.work.calibration = None;
 
         match &l.scene {
             Some(scene) => {
-                let live = l.timeline.running(now_ms);
+                let running = l.timeline.running(now_ms);
                 let stale = a.work.incoming.is_none()
                     || a.work.incoming_rev != l.rev
                     || a.work.incoming_live
-                    || live;
+                    || l.video_frame
+                    || running;
+                l.video_frame = false;
                 if stale {
                     let texture = take(a.work.incoming.take(), &mut a.work.spare);
                     let anims = l.timeline.state(now_ms);
-                    log_error(renderer.draw(scene, w, h, &texture.view, encoder, &anims));
+                    let videos = VideoFrames::Live(&live);
+                    log_error(renderer.draw(scene, w, h, &texture.view, encoder, &anims, videos));
                     a.work.incoming = Some(texture);
                     a.work.incoming_rev = l.rev;
-                    a.work.incoming_live = live;
+                    a.work.incoming_live = running;
                 }
             }
             None => {
@@ -583,7 +650,15 @@ impl Engine {
                 if a.work.overlay.as_ref().is_none_or(|(o, _)| *o != area) {
                     let texture = take(a.work.overlay.take().map(|o| o.1), &mut None);
                     let scene = overlay::safe_area_scene(&area, w as f32, h as f32);
-                    log_error(renderer.draw(&scene, w, h, &texture.view, encoder, &HashMap::new()));
+                    log_error(renderer.draw(
+                        &scene,
+                        w,
+                        h,
+                        &texture.view,
+                        encoder,
+                        &HashMap::new(),
+                        no_videos,
+                    ));
                     a.work.overlay = Some((area, texture));
                 }
             }
@@ -864,6 +939,7 @@ impl Engine {
                 }
                 if repeated || l.panics.len() >= 2 {
                     l.scene = None;
+                    l.videos = VideoClock::default();
                     l.timeline = AnimationTimeline::default();
                     l.calibrate = None;
                     blanked = true;
