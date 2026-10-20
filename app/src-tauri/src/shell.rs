@@ -41,7 +41,7 @@ use crate::config::device_key;
 use crate::decks;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
-use crate::sync::{Sync, SyncConfig};
+use crate::sync::{Obs, Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -285,6 +285,10 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let wake = app.library().subscribe();
     let library = app.library().clone();
     let emit = app.emitter();
+    let obs = Obs {
+        hub: app.scene_hub().clone(),
+        renderer: thumbnails.clone(),
+    };
     let app = Arc::new(Mutex::new(app));
 
     let sync = match device_key(data_dir) {
@@ -293,12 +297,16 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             key,
             data_dir,
             SyncConfig::from_env(),
+            obs,
             emit.clone(),
         )),
         Err(e) => Err(e.to_string()),
     };
     let sync = match sync {
-        Ok(sync) => Some(Arc::new(sync)),
+        Ok(sync) => {
+            lock(&app).set_server_address(sync.public_address());
+            Some(Arc::new(sync))
+        }
         Err(e) => {
             eprintln!("lampstand: sync is off: {e}");
             None

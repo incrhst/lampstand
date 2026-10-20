@@ -642,13 +642,7 @@ fn deleting_every_theme_mid_service_falls_back_to_the_starter_theme() {
 fn unbuilt_areas_answer_with_an_error_not_a_panic() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());
-    let mut obs = window_output();
-    obs.target = OutputTarget::BrowserSource {
-        width: 1920,
-        height: 1080,
-    };
     for request in [
-        Request::Outputs(OutputRequest::Put(obs)),
         Request::Outputs(OutputRequest::BrowserSourceUrl(OutputId::generate())),
         Request::Team(lampstand_api::TeamRequest::Status),
         Request::Service(ServiceRequest::Open(
