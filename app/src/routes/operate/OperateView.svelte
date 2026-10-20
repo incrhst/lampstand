@@ -205,7 +205,9 @@
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
 
-    <div class="grid">
+    <!-- While a deck is on air the presenter view takes the right column
+         too; outputs stay in the status bar. -->
+    <div class="grid" class:presenting>
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head"><h2>Service order</h2></div>
         <ol class="plain pane-body">
@@ -243,6 +245,7 @@
                 overlay={live.overlay}
                 safeArea={output?.safe_area}
                 {showGuide}
+                plannerNotes={notes}
                 onprevious={() => command("Previous")}
                 onnext={() => command("Next")}
                 onblank={() => command("ToggleBlack")}
@@ -311,8 +314,8 @@
         </div>
       </section>
 
-      <aside class="pane pane-side side" aria-label="Next and notes">
-        {#if !presenting}
+      {#if !presenting}
+        <aside class="pane pane-side side" aria-label="Next and notes">
           <section>
             <div class="side-head">
               <h2 class="title">Next</h2>
@@ -327,35 +330,35 @@
                 />
               {:else}
                 <SlidePreview empty="End of service" />
-            {/if}
-          </div>
-        </section>
-        {/if}
+              {/if}
+            </div>
+          </section>
 
-        <section>
-          <h2 class="title">{presenting ? "Planner notes" : "Notes"}</h2>
-          {#if notes}
-            <p class="notes">{notes}</p>
-          {:else}
-            <p class="faint small">No planner notes on this item.</p>
-          {/if}
-        </section>
-
-        <section>
-          <h2 class="title">Outputs</h2>
-          <ul class="plain outputs">
-            {#each live.outputs as o (o.id)}
-              <li>
-                <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
-                <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
-                <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
-              </li>
+          <section>
+            <h2 class="title">Notes</h2>
+            {#if notes}
+              <p class="notes">{notes}</p>
             {:else}
-              <li class="faint small">No outputs. Add one in Outputs.</li>
-            {/each}
-          </ul>
-        </section>
-      </aside>
+              <p class="faint small">No planner notes on this item.</p>
+            {/if}
+          </section>
+
+          <section>
+            <h2 class="title">Outputs</h2>
+            <ul class="plain outputs">
+              {#each live.outputs as o (o.id)}
+                <li>
+                  <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
+                  <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
+                  <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
+                </li>
+              {:else}
+                <li class="faint small">No outputs. Add one in Outputs.</li>
+              {/each}
+            </ul>
+          </section>
+        </aside>
+      {/if}
     </div>
   </div>
 {/if}
@@ -403,6 +406,9 @@
     min-height: 0;
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr) 320px;
+  }
+  .grid.presenting {
+    grid-template-columns: 250px minmax(0, 1fr);
   }
   .queue {
     border-right: 1px solid var(--line);

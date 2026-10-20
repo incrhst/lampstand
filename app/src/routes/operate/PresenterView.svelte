@@ -20,6 +20,7 @@
     overlay,
     safeArea,
     showGuide,
+    plannerNotes = "",
     onprevious,
     onnext,
     onblank,
@@ -34,6 +35,8 @@
     overlay: "None" | "Black" | "Logo";
     safeArea?: SafeArea | null;
     showGuide: boolean;
+    /** The planner's notes on the item, under the speaker notes. */
+    plannerNotes?: string;
     onprevious: () => void;
     onnext: () => void;
     onblank: () => void;
@@ -139,12 +142,20 @@
           <p class="faint small">No speaker notes on this slide.</p>
         {/if}
       </section>
+
+      {#if plannerNotes}
+        <section aria-label="Planner notes">
+          <h2 class="title label">Planner notes</h2>
+          <p class="planner">{plannerNotes}</p>
+        </section>
+      {/if}
     </aside>
   </div>
 </div>
 
 <style>
   .presenter {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -234,11 +245,18 @@
     max-height: 40vh;
     overflow-y: auto;
   }
+  .planner {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: var(--muted);
+  }
   .small {
     font-size: 0.8rem;
     margin-top: 0.5rem;
   }
-  @media (max-width: 1100px) {
+  @container (max-width: 640px) {
     .main {
       grid-template-columns: minmax(0, 1fr);
     }
