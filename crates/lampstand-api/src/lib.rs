@@ -30,6 +30,29 @@ pub enum Request {
     Outputs(OutputRequest),
     Team(TeamRequest),
     Obs(ObsRequest),
+    Settings(SettingsRequest),
+}
+
+/// This machine's settings that are not about one screen. They stay on the
+/// device, like the outputs.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SettingsRequest {
+    /// Answers `Response::Settings`.
+    Get,
+    /// Saves them and answers `Response::Settings`.
+    Put(DeviceSettings),
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceSettings {
+    /// Clicker mode (T56, PS-9): while a service is open for live, a
+    /// presenter clicker's Page Up, Page Down, B and full stop work
+    /// whichever window has focus, and B means Black, not Bridge. Off by
+    /// default, because while it is on those keys never reach other apps.
+    #[serde(default)]
+    pub clicker_mode: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -447,6 +470,7 @@ pub enum Response {
     /// A PNG as a `data:` URL, for an `<img>`.
     Thumbnail(String),
     Obs(ObsView),
+    Settings(DeviceSettings),
 }
 
 /// An image or video in the blob store, as a `Media` item names it.

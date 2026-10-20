@@ -251,3 +251,90 @@ async fn turning_a_stream_output_off_takes_its_url_away_until_it_is_back() {
         Response::Error { .. }
     ));
 }
+
+/// Puts a service with one song live: the program then shows its first
+/// verse.
+fn go_live_with_a_song(app: &mut App) {
+    let service = match ok(app.handle(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let song = match ok(app.handle(Request::Library(LibraryRequest::SearchSongs {
+        query: "amazing grace".into(),
+        limit: 1,
+    }))) {
+        Response::Songs(hits) => hits[0].song,
+        other => panic!("{other:?}"),
+    };
+    ok(app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: 0,
+        kind: ItemKind::Song {
+            song,
+            arrangement: None,
+        },
+    })));
+    ok(app.handle(Request::Service(ServiceRequest::Open(service.id))));
+    ok(app.handle(Request::Live(Command::Next)));
+}
+
+/// The next scene that shows the first verse, as JSON.
+async fn next_verse_scene(ws: &mut Ws) -> serde_json::Value {
+    let mut seen = Vec::new();
+    while let Some(text) = next_message(ws, Duration::from_secs(10)).await {
+        if text.contains("Amazing grace! How sweet the sound") {
+            let message: serde_json::Value = serde_json::from_str(&text).unwrap();
+            return message["scene"].clone();
+        }
+        seen.push(text);
+    }
+    panic!("no scene with the first verse; got {seen:?}");
+}
+
+/// Whether a scene is the stream's lower third: text only, all of it in
+/// the bottom 30% of the frame.
+fn is_lower_third(scene: &serde_json::Value) -> bool {
+    let height = scene["height"].as_f64().unwrap();
+    let nodes = scene["nodes"].as_array().unwrap();
+    !nodes.is_empty()
+        && nodes.iter().all(|n| {
+            n["kind"]["Text"]["rect"]["y"]
+                .as_f64()
+                .is_some_and(|y| y >= height * 0.69)
+        })
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_browser_source_switches_between_lower_thirds_and_full_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = open(dir.path());
+    let _sync = serve(&mut app, dir.path()).await;
+    let mut output = stream_output();
+    ok(app.handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let obs_url = url(&mut app, output.id);
+    let mut ws = follow(&obs_url).await;
+    go_live_with_a_song(&mut app);
+    let lower = next_verse_scene(&mut ws).await;
+    assert!(is_lower_third(&lower), "{lower}");
+
+    // The same source, now full screen: the page OBS already has redraws.
+    output.role = OutputRole::Audience { primary: false };
+    ok(app.handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let full = next_verse_scene(&mut ws).await;
+    assert!(!is_lower_third(&full), "{full}");
+    assert_eq!(full["width"], 1280.0);
+    assert_eq!(
+        url(&mut app, output.id),
+        obs_url,
+        "the URL in OBS still works"
+    );
+
+    // And back.
+    output.role = OutputRole::Stream;
+    ok(app.handle(Request::Outputs(OutputRequest::Put(output))));
+    assert!(is_lower_third(&next_verse_scene(&mut ws).await));
+}
