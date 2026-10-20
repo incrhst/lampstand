@@ -2,8 +2,9 @@
      the slides of the item in view in the middle, Next and notes on the
      right. While a deck is on air the middle is its presenter view
      (current slide at its build step, next click, speaker notes, timer).
-     Where OBS matters, the bar has one quiet OBS strip (the pill, the
-     scene on air, the next item's scene) that opens the OBS drawer (T91).
+     Where OBS matters, the bar has one OBS control (the scene on air and
+     the next item's scene) that opens the OBS drawer (T91); OBS's
+     connection status is in the footer.
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
@@ -300,28 +301,27 @@
       </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
       {#if pill}
-        <div class="obs-strip">
-          <button class="obs-pill" onclick={onobs} title={pill.title} aria-label="OBS: {pill.text}. Open Setup › OBS">
-            <StatusPill tone={pill.tone} icon={pill.tone === "live" ? undefined : "play"}>{pill.text}</StatusPill>
-          </button>
-          <button
-            bind:this={obsToggle}
-            class="obs-scenes"
-            class:open={obsOpen}
-            onclick={() => setObsOpen(!obsOpen)}
-            aria-expanded={obsOpen}
-            aria-controls="obs-drawer"
-            title="OBS scenes, preview and mutes (O)"
-          >
-            {#if obsOn && live.obs?.program_scene}
-              <span class="on-air"><span class="sr">On air in OBS: </span>{live.obs.program_scene}</span>
-              {#if nextObsScene}<span class="faint">· Next: {nextObsScene}</span>{/if}
-            {:else}
-              <span class="on-air">Scenes</span>
-            {/if}
-            <kbd>O</kbd>
-          </button>
-        </div>
+        <!-- The OBS controller: what OBS has on air and what the next item
+             switches to. Opens the drawer of scenes, preview and mutes. The
+             connection's status sits quietly in the footer. -->
+        <button
+          bind:this={obsToggle}
+          class="obs-control"
+          class:open={obsOpen}
+          onclick={() => setObsOpen(!obsOpen)}
+          aria-expanded={obsOpen}
+          aria-controls="obs-drawer"
+          title="OBS: switch scenes, preview them, mute audio (O)"
+        >
+          <span class="obs-tag"><Icon name="broadcast" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
+          {#if obsOn && live.obs?.program_scene}
+            <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
+            {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
+          {:else}
+            <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
+          {/if}
+          <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
+        </button>
       {/if}
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
@@ -493,53 +493,58 @@
     flex-direction: column;
     gap: 0.5rem;
   }
-  .obs-strip {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .obs-scenes {
+  /* A clear control, not a status label: framed, with an OBS tag, the
+     scene on air and a chevron. "Next: …" gives way first when the bar is
+     short of room, then the scene's name. */
+  .obs-control {
     font: inherit;
     font-size: 0.8125rem;
     color: var(--text);
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    min-width: 6.5rem;
-    max-width: 22rem;
-    height: 1.9rem;
-    padding: 0 0.6rem;
-    border: 1px solid var(--line);
+    gap: 0.5rem;
+    min-width: 9rem;
+    max-width: 24rem;
+    height: 2.1rem;
+    padding: 0 0.6rem 0 0.25rem;
+    border: 1px solid var(--line-strong);
     border-radius: var(--radius);
-    background: none;
+    background: var(--raised);
     cursor: pointer;
     white-space: nowrap;
   }
-  .obs-scenes:hover,
-  .obs-scenes.open {
-    border-color: var(--line-strong);
-    background: var(--raised);
+  .obs-control:hover {
+    border-color: var(--muted);
   }
-  /* When the bar is short of room, "Next: …" gives way first, then the
-     scene's name; the button never shrinks past a usable size. */
-  .obs-scenes > span {
+  .obs-control.open {
+    border-color: var(--gold);
+  }
+  .obs-tag {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.55rem;
+    padding: 0 0.45rem;
+    border-radius: 4px;
+    background: var(--panel);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  .obs-control > span:not(.obs-tag):not(.chevron) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex: 0 100 auto;
   }
-  .obs-scenes > .on-air {
+  .obs-control > .on-air {
     min-width: 3.5rem;
     flex: 0 1 auto;
     font-weight: 500;
   }
-  .obs-scenes kbd {
-    font: inherit;
-    font-size: 0.7rem;
-    color: var(--faint);
-    padding: 0 0.3rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
+  .obs-control > .next {
+    flex: 0 100 auto;
+    color: var(--muted);
   }
   .sr {
     position: absolute;
@@ -548,13 +553,14 @@
     overflow: hidden;
     clip-path: inset(50%);
   }
-  .obs-pill {
+  .chevron {
+    flex-shrink: 0;
     display: inline-flex;
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: pointer;
-    border-radius: 999px;
+    color: var(--muted);
+    transition: transform 120ms var(--ease);
+  }
+  .obs-control.open .chevron {
+    transform: rotate(90deg);
   }
   .none {
     height: 100%;

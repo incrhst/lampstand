@@ -9,6 +9,7 @@
   import { request } from "./lib/api";
   import { isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
+  import { obsPill } from "./lib/obs";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
@@ -29,6 +30,7 @@
     setupTab = tab;
     screen = "setup";
   }
+  let obsStatus = $derived(obsPill(live.obs));
   let enabled = $derived(live.outputs.filter((o) => o.enabled).length);
   let uncalibrated = $derived(live.outputs.filter((o) => !isCalibrated(o)).map((o) => o.name));
 
@@ -107,6 +109,14 @@
       {/if}
     {/snippet}
     {#snippet end()}
+      {#if obsStatus}
+        <!-- OBS's connection, streaming and recording, kept quiet here;
+             Present has the OBS control itself. -->
+        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Setup › OBS">
+          <Dot tone={obsStatus.tone} />
+          <span class:warn={obsStatus.tone === "warn"}>{obsStatus.text}</span>
+        </button>
+      {/if}
       <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
         <Icon name="monitor" size={14} />
         {live.outputs.length}
