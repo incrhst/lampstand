@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lampstand · free, open-source church projection</title>
+  <meta name="description" content="Lampstand is a free, open-source church projection app being built in the open: songs, scripture, PowerPoint and Google Slides, stage displays and OBS, run from one laptop, offline on Sunday.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Lampstand · free, open-source church projection">
+  <meta property="og:description" content="One laptop runs the whole service, offline on Sunday. Free and open source, in development.">
+  <meta property="og:image" content="https://incrhst.github.io/lampstand/media/og.jpg">
+  <meta property="og:url" content="https://incrhst.github.io/lampstand/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="fonts/old-standard-tt-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/courier-prime-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <svg width="0" height="0" class="defs" aria-hidden="true" focusable="false">
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.9 5.9 6.5.95-4.7 4.6 1.1 6.45L12 17.65 6.2 20.7l1.1-6.45-4.7-4.6 6.5-.95z" fill="currentColor"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></g></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
+  </svg>
+
+  <a class="skip" href="#order">Skip to the order of worship</a>
+
+  <main class="sheet">
+    <!-- Outside spread: masthead and prelude -->
+    <section class="spread spread--top" aria-labelledby="title">
+      <div class="panel panel--left">
+        <h1 id="title" class="masthead">Lampstand</h1>
+        <p class="subtitle">Order of Worship for every Sunday, on every screen</p>
+        <hr class="rule rule--double">
+        <p class="offer">Lampstand is a free church projection app, built so one laptop can run the whole service: songs, scripture, sermon slides and the live stream. Offline on Sunday morning, fitted to every screen in the room, and simple enough for a volunteer after ten minutes of training.</p>
+        <p class="typed status"><span class="stamp" aria-hidden="true">In development</span>Free and open source (<span class="nowrap">GPL-3.0</span>), planned for Windows, macOS and Linux. Nothing to download yet: we&rsquo;re building it in the open.</p>
+        <div class="actions">
+          <a class="btn btn--stamp" href="https://github.com/incrhst/lampstand">
+            <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
+            Star Lampstand on GitHub
+          </a>
+          <a class="link" href="https://github.com/incrhst/lampstand/blob/main/docs/PRD.md">Read the plan</a>
+        </div>
+      </div>
+
+      <div class="panel panel--right">
+        <p class="item-line"><span class="item-name">Prelude</span><span class="leader" aria-hidden="true"></span><span class="typed">0:45</span></p>
+        <figure class="film">
+          <div class="projector">
+            <video controls preload="metadata" playsinline width="1920" height="1080" poster="media/poster.webp" aria-describedby="film-summary">
+              <source src="media/lampstand-promo.mp4" type="video/mp4">
+              <a href="media/lampstand-promo.mp4">Download the 45-second film (MP4, 5 MB)</a>
+            </video>
+          </div>
+          <figcaption>
+            <details>
+              <summary class="typed"><svg class="icon chevron" aria-hidden="true"><use href="#i-next"/></svg>What the 45-second film shows (music, no narration)</summary>
+              <div id="film-summary" class="summary">
+                <p>Sunday, 9:58 a.m. The worship leader has shared the songs. Is the screen ready?</p>
+                <ol>
+                  <li><b>Plan together.</b> The team builds the service from home during the week; the projection laptop already has it on Sunday, with no internet needed.</li>
+                  <li><b>Fits every screen.</b> A cropped TV, then the calibration grid, then lyrics sitting inside the safe area.</li>
+                  <li><b>Slides that just play.</b> PowerPoint and Google Slides with their builds, video and speaker notes.</li>
+                  <li><b>Switch in an hour.</b> Songs, sets, themes and media come across from OpenLP, EasyWorship, ProPresenter and FreeShow in one pass.</li>
+                </ol>
+                <p>It ends on the Lampstand name: free and open source church projection for Windows, macOS and Linux.</p>
+              </div>
+            </details>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Inside spread: the order of worship, live -->
+    <section id="order" class="spread spread--order" aria-labelledby="order-title" tabindex="-1">
+      <div class="panel panel--left">
+        <h2 id="order-title" class="heading">Order of Worship</h2>
+        <p class="typed note">A sample service, showing what Lampstand is being built to do. Scroll, click an item, or press &larr; &rarr; here to put it live.</p>
+        <ol class="liturgy" role="list">
+          <li>
+            <button class="service-item" type="button" data-slide="welcome" aria-controls="screen">
+              <span class="item-line"><span class="typed time">9:58</span><span class="item-name">Call to Worship</span><span class="leader" aria-hidden="true"></span><span class="item-what">Plan together</span></span>
+              <span class="rubric">The worship leader will share the songs on Tuesday and the pastor will add the sermon deck on Saturday night. The projection laptop will have all of it, offline, before the doors open.</span>
+              <span class="typed refs">PL-1 &middot; CD-1 &middot; CD-2</span>
+            </button>
+          </li>
+          <li>
+            <button class="service-item" type="button" data-slide="hymn" aria-controls="screen">
+              <span class="item-line"><span class="typed time">10:00</span><span class="item-name">Hymn: Amazing Grace</span><span class="leader" aria-hidden="true"></span><span class="item-what">Fits every screen</span></span>
+              <span class="rubric">Each screen is built to get its own safe area, set by someone standing in the room in under two minutes. Lyrics will shrink to fit, so nothing falls off a cropped TV or hides behind the band.</span>
+              <span class="typed refs">TS-1 &middot; TS-2 &middot; TS-7</span>
+            </button>
+          </li>
+          <li>
+            <button class="service-item" type="button" data-slide="scripture" aria-controls="screen">
+              <span class="item-line"><span class="typed time">10:12</span><span class="item-name">Scripture: John 3:16</span><span class="leader" aria-hidden="true"></span><span class="item-what">Type it, go live</span></span>
+              <span class="rubric">Type &ldquo;Jn 3:16&rdquo; and it will be on screen, with long passages split across slides. Bring the translations your church is licensed for; public-domain KJV and WEB are planned to come with it.</span>
+              <span class="typed refs">BI-1 &middot; BI-2</span>
+            </button>
+          </li>
+          <li>
+            <button class="service-item" type="button" data-slide="sermon" aria-controls="screen">
+              <span class="item-line"><span class="typed time">10:15</span><span class="item-name">Sermon: Hope Remains</span><span class="leader" aria-hidden="true"></span><span class="item-what">Slides that just play</span></span>
+              <span class="rubric">PowerPoint and Google Slides are built to play with their builds, video and speaker notes, without PowerPoint on the laptop. The pastor&rsquo;s notes will go to the confidence monitor.</span>
+              <span class="typed refs">PS-1 &middot; PS-3 &middot; PS-7</span>
+            </button>
+          </li>
+          <li>
+            <button class="service-item" type="button" data-slide="stream" aria-controls="screen">
+              <span class="item-line"><span class="typed time">10:45</span><span class="item-name">Announcements</span><span class="leader" aria-hidden="true"></span><span class="item-what">To the stream</span></span>
+              <span class="rubric">Lyrics and lower thirds will go to OBS as a browser source with a transparent background. No plugin, no extra hardware.</span>
+              <span class="typed refs">OB-1 &middot; OB-2</span>
+            </button>
+          </li>
+          <li>
+            <button class="service-item" type="button" data-slide="benediction" aria-controls="screen">
+              <span class="item-line"><span class="typed time">10:55</span><span class="item-name">Benediction</span><span class="leader" aria-hidden="true"></span><span class="item-what">Switch in an hour</span></span>
+              <span class="rubric">Songs, sets and themes are meant to come across from OpenSong, OpenLP, EasyWorship, ProPresenter and FreeShow in one pass, with a report of anything that didn&rsquo;t make it.</span>
+              <span class="typed refs">SL-4</span>
+            </button>
+          </li>
+        </ol>
+      </div>
+
+      <div class="panel panel--right">
+        <div class="booth">
+          <figure class="monitor">
+            <div class="screen" id="screen" role="region" aria-label="Projector screen (sample)">
+              <div class="safe" aria-hidden="true"></div>
+              <div class="slide" data-for="welcome">
+                <p class="s-title">Good morning, church</p>
+                <p class="s-small">Service begins in <span class="s-count">02:00</span></p>
+              </div>
+              <div class="slide" data-for="hymn">
+                <p class="s-lyric">Amazing grace! How sweet the sound<br>That saved a wretch like me!<br>I once was lost, but now am found;<br>Was blind, but now I see.</p>
+                <p class="s-foot">Amazing Grace &middot; John Newton &middot; Public domain</p>
+              </div>
+              <div class="slide" data-for="scripture">
+                <p class="s-verse">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</p>
+                <p class="s-foot">John 3:16 &middot; KJV</p>
+              </div>
+              <div class="slide slide--deck" data-for="sermon">
+                <p class="s-deck-title">Hope Remains</p>
+                <ul class="s-bullets">
+                  <li>Hope is a person, not a feeling</li>
+                  <li>Hope holds in the storm</li>
+                  <li class="s-pending">Hope sends us out</li>
+                </ul>
+                <p class="s-chip">Build 2 of 3</p>
+              </div>
+              <div class="slide slide--stream" data-for="stream">
+                <p class="s-camera">Camera 2 &middot; Stream output</p>
+                <div class="s-lower">
+                  <p class="s-lower-title">Youth camp sign-ups close Sunday</p>
+                  <p class="s-lower-sub">Ask at the welcome desk</p>
+                </div>
+              </div>
+              <div class="slide" data-for="benediction">
+                <p class="s-verse">The LORD bless thee, and keep thee: the LORD make his face shine upon thee.</p>
+                <p class="s-foot">Numbers 6:24&ndash;25 &middot; KJV</p>
+              </div>
+            </div>
+            <figcaption class="booth-bar">
+              <span class="typed live-label" aria-live="polite"><span class="live-dot" aria-hidden="true"></span><span>Live</span> <span class="live-name" id="live-name">Call to Worship</span></span>
+              <span class="booth-keys">
+                <button class="key" type="button" data-step="-1" aria-label="Previous item"><svg class="icon" aria-hidden="true"><use href="#i-prev"/></svg></button>
+                <button class="key" type="button" data-step="1" aria-label="Next item"><svg class="icon" aria-hidden="true"><use href="#i-next"/></svg></button>
+              </span>
+            </figcaption>
+          </figure>
+          <p class="typed note note--booth">The dashed box is this screen&rsquo;s safe area. Slides are a sample, drawn here in the page; the real output runs in the desktop app.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tear-off connection card -->
+    <section class="card" aria-labelledby="card-title">
+      <div class="perforation" aria-hidden="true"><svg class="icon scissors"><use href="#i-scissors"/></svg></div>
+      <h2 id="card-title" class="heading heading--card">Connection Card</h2>
+      <p class="typed note">Tear off and drop it in the plate, or just click.</p>
+      <ul class="connect" role="list">
+        <li>
+          <span class="connect-who">I run the screens at my church</span><span class="leader" aria-hidden="true"></span>
+          <a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star it, and watch for the first release</a>
+        </li>
+        <li>
+          <span class="connect-who">I write Rust or TypeScript</span><span class="leader" aria-hidden="true"></span>
+          <a class="link" href="https://github.com/incrhst/lampstand/blob/main/docs/TICKETS.md">Pick up a ticket</a>
+        </li>
+        <li>
+          <span class="connect-who">I want to know how it works</span><span class="leader" aria-hidden="true"></span>
+          <a class="link" href="https://github.com/incrhst/lampstand/blob/main/docs/ARCHITECTURE.md">Read the architecture</a>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Back page: notices -->
+    <section class="spread spread--notices" aria-labelledby="notices-title">
+      <h2 id="notices-title" class="heading">Notices</h2>
+      <div class="panel panel--left">
+        <h3 class="subhead">In the workshop: built so far</h3>
+        <ul class="ledger" role="list">
+          <li>The data model, and the live engine that moves through a service</li>
+          <li>Layout and a GPU renderer with output windows and per-screen calibration</li>
+          <li>Encrypted sync between the church&rsquo;s own devices on the local network</li>
+          <li>Song and Bible importers for the common formats</li>
+          <li>A PowerPoint reader, built on the open-source DeckCraft crates</li>
+          <li>The OBS browser source, and the desktop app&rsquo;s first screens</li>
+        </ul>
+      </div>
+      <div class="panel panel--right">
+        <h3 class="subhead subhead--first">Still to come</h3>
+        <ul class="ledger" role="list">
+          <li>The operator view, deck import and the planner</li>
+          <li>Team invites and the self-hosted sync relay</li>
+          <li>Signed installers for Windows, macOS and Linux</li>
+        </ul>
+        <h3 class="subhead">Free, for good</h3>
+        <p class="plain">GPL-3.0, with no paid tier and no company cloud your Sunday depends on. Your songs and services stay on your own machines, in open formats you can take anywhere.</p>
+      </div>
+    </section>
+
+    <footer class="colophon typed">
+      <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; Set in Old Standard TT and Courier Prime.</p>
+    </footer>
+  </main>
+</body>
+</html>
