@@ -185,7 +185,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T37 | Service packages | S | T35 | CD-8 | `library/src/package.rs` |
 | T38 | CCLI usage log and report | S | T35 | RP-1 | `library/src/usage.rs` |
 | T40 | Google sign-in, picker, Drive download and export | S | T39, T42 | PS-2 | `connectors/src/google.rs` |
-| T41 | Linked deck updates: poll, pending, accept | S | T39, T40, T35 | PS-5 | `library/src/decks.rs` |
+| T41 | Linked deck updates: poll, pending, accept | S | T39, T40, T35, T87 | PS-5 | `library/src/decks.rs` |
 | T42 | Local server skeleton | S | T16 | CD-2 | `server/` |
 | T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` |
 | T44 | Guest upload links on the relay | S | T19 | CD-9 | `relay/src/upload.rs` |
@@ -221,7 +221,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` |
 | T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` |
 | T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` |
-| T53 | Deck import, fidelity report, updates | S | T46, T31, T41 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` |
+| T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` |
 | T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` |
 | T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` |
 | T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` |
@@ -354,6 +354,7 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md |
 | T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` |
 | T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view |
+| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
 
@@ -394,6 +395,16 @@ Done when a test shows a large image doesn't delay a text slide on another outpu
 **T85. Remaining stubs.** Two stubs are not marked with a ticket: video nodes draw nothing (`render/src/frame.rs`, around line 265, belongs to T27), and the logo overlay is a placeholder ring (`layout/src/compose.rs`) until the contract has a logo asset. Mark each with `todo`-style comments naming its ticket, add a logo asset to the theme or output contract, and make the operator view say when an overlay is a placeholder.
 
 **T86. Wire the OBS browser source into the app.** T43 built the server half (`SceneHub`, the routes and the page) but nothing in the app uses it, so OB-1 and OB-2 are not met for users until this lands. Build one `SceneHub` and give it to `AppBackend`, which delegates `output_key_valid` and `watch_scene` to it. Run a compose loop for each enabled stream output that calls `hub.publish` whenever the program, theme or output config changes. Make `Backend::renderer()` return the app's thumbnail `Renderer`, so deck slides go out as frames. Keep each stream output's browser-source key in device-local config next to the output config (not in a synced document), and restore it with `SceneHub::add_output_with_key` at start so the URL pasted into OBS survives restarts. Show and copy the URL (`http://<host>:<port>/obs/<output>?k=<key>`) and a "new key" button (`rotate_key`) in the Outputs view. Done when a test publishes a program change and a WebSocket client receives the stream scene, the key survives a restart, and a manual OBS 30 check (outlined lyrics in particular) is noted in the PR.
+
+**T87. Deck budget covers media (Opus).** The T29 parser refuses decks whose parse would allocate too much, but the estimate doesn't count the bytes DeckCraft holds for entries that aren't XML. Its `Package` keeps every entry inflated, and `media_for` copies each referenced media part. So an entry that stops the XML scan at once and then compresses well costs nothing in the estimate and about twice its size in memory. In [the fifth review of #15](https://github.com/incrhst/lampstand/pull/15#pullrequestreview-5579843423), a 1.06 MB deck (two images replaced by `<!X` plus 500 MiB of zeros) was accepted and peaked at 2.1 to 2.4 GB. That's enough to push the NFR laptop (8 GB, three outputs live) into swap during a service.
+
+- Make the budget one number that bounds the whole import peak. Charge every entry's inflated bytes at 2× (the package plus DeckCraft's copy) on top of the parse estimate, whatever the parse does.
+- Set the default total to about 1 GB. Past it, refuse with `TooLarge`; T31 can then suggest linking a video instead of embedding it.
+- Add a media case to `slides/tests/memory.rs` (the `<!X` deck, scaled to the budget), and include media in the peak-ceiling assertion.
+- Correct ARCHITECTURE.md ("Hostile decks"): it says a deck's peak is "about its unpacked size plus the parse estimate" and quotes 512 MB and 1 GiB unpacked as separate limits. Replace them with the one total this ticket enforces.
+- Real decks must still pass: a 200-slide sermon deck with 100 photos peaked at 148 MB in the review, and a deck with one 350 MB embedded video should fit.
+
+Done when the review's media repro is refused, the counting-allocator test bounds a media-heavy deck under the 1 GB total, and the existing deck snapshots are unchanged. T41 and T53 wait on this, so no deck reaches the parser from the app or from a linked source before it lands. Importing in a child process with its own memory limit is the longer-term answer (ARCHITECTURE already allows for one); propose it as a separate ticket if the numbers here are still uncomfortable.
 
 ## Not code: start now
 
