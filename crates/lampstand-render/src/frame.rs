@@ -30,7 +30,7 @@ use cosmic_text::{Buffer, SwashCache};
 use lampstand_core::geom::{Point, Rect, Transform};
 use lampstand_core::id::BlobHash;
 use lampstand_core::scene::{
-    Direction, Node, NodeId, NodeKind, Paint, PathCommand, PathNode, Shadow, TextBlock,
+    Direction, Fit, Node, NodeId, NodeKind, Paint, PathCommand, PathNode, Shadow, TextBlock,
 };
 use lampstand_layout::Fonts;
 use lyon::tessellation::LineJoin;
@@ -40,7 +40,7 @@ use crate::images::{self, ImageCache};
 use crate::output::timeline::NodeAnim;
 use crate::paint::{premultiplied, Ramps};
 use crate::text::{self, LaidOut};
-use crate::{tess, BlobSource};
+use crate::{tess, BlobSource, VideoFrames};
 
 pub(crate) struct Layer {
     pub width: u32,
@@ -67,6 +67,8 @@ pub(crate) enum Item {
 pub(crate) enum Source {
     Image(BlobHash),
     Layer(usize),
+    /// Index into `Frame::videos`.
+    Video(usize),
 }
 
 /// Text areas glyphon draws in one call.
@@ -93,6 +95,8 @@ pub(crate) struct Frame {
     pub ramps: Ramps,
     pub buffers: Vec<Buffer>,
     pub texts: Vec<TextJob>,
+    /// The video frames this frame's quads sample.
+    pub videos: Vec<wgpu::TextureView>,
 }
 
 /// Everything the builder borrows from the renderer.
@@ -106,6 +110,7 @@ pub(crate) struct Builder<'a> {
     pub swash: &'a mut SwashCache,
     /// Build-animation state by node; empty outside a build step.
     pub anims: &'a HashMap<NodeId, NodeAnim>,
+    pub videos: VideoFrames<'a>,
 }
 
 /// How much a transform scales lengths, on average.
@@ -227,43 +232,84 @@ impl Builder<'_> {
             }
             NodeKind::Text(block) => self.text(layer, block, t),
             NodeKind::Image(image) => {
-                let Some((w, h)) =
+                let Some(size) =
                     self.images
                         .load(self.gpu, self.pipelines, self.blobs, &image.blob)
                 else {
                     return;
                 };
-                let Some((dest, uv)) = images::place(image.rect, image.fit, image.crop, w, h)
-                else {
-                    return;
-                };
-                let corners = [
-                    (dest.x, dest.y),
-                    (dest.x + dest.width, dest.y),
-                    (dest.x, dest.y + dest.height),
-                    (dest.x + dest.width, dest.y + dest.height),
-                ]
-                .map(|(x, y)| t.apply(Point { x, y }));
-                let uvs = [
-                    [uv.x, uv.y],
-                    [uv.x + uv.width, uv.y],
-                    [uv.x, uv.y + uv.height],
-                    [uv.x + uv.width, uv.y + uv.height],
-                ];
-                self.quad(
-                    layer,
-                    Source::Image(image.blob),
-                    corners,
-                    uvs,
-                    QuadUniform {
-                        opacity,
-                        ..Default::default()
-                    },
+                let source = Source::Image(image.blob);
+                self.media(
+                    layer, source, size, image.rect, image.fit, image.crop, t, opacity,
                 );
             }
-            // T27.
-            NodeKind::Video(_) => {}
+            NodeKind::Video(video) => match self.videos {
+                VideoFrames::Live(live) => {
+                    // Still opening, or unplayable: nothing yet.
+                    let Some(frame) = live.get(&(node.id, video.blob)) else {
+                        return;
+                    };
+                    self.frame.videos.push(frame.view.clone());
+                    let source = Source::Video(self.frame.videos.len() - 1);
+                    let size = (frame.width, frame.height);
+                    self.media(layer, source, size, video.rect, video.fit, None, t, opacity);
+                }
+                // A video waiting for a build step shows what is under it
+                // (a deck's own poster picture) until it plays.
+                VideoFrames::Posters if !video.autoplay => {}
+                VideoFrames::Posters => {
+                    let Some(size) =
+                        self.images
+                            .load_poster(self.gpu, self.pipelines, self.blobs, &video.blob)
+                    else {
+                        return;
+                    };
+                    let source = Source::Image(video.blob);
+                    self.media(layer, source, size, video.rect, video.fit, None, t, opacity);
+                }
+            },
         }
+    }
+
+    /// An image or video frame of `size` pixels placed in `rect` by `fit`.
+    #[allow(clippy::too_many_arguments)]
+    fn media(
+        &mut self,
+        layer: usize,
+        source: Source,
+        (w, h): (u32, u32),
+        rect: Rect,
+        fit: Fit,
+        crop: Option<Rect>,
+        t: Transform,
+        opacity: f32,
+    ) {
+        let Some((dest, uv)) = images::place(rect, fit, crop, w, h) else {
+            return;
+        };
+        let corners = [
+            (dest.x, dest.y),
+            (dest.x + dest.width, dest.y),
+            (dest.x, dest.y + dest.height),
+            (dest.x + dest.width, dest.y + dest.height),
+        ]
+        .map(|(x, y)| t.apply(Point { x, y }));
+        let uvs = [
+            [uv.x, uv.y],
+            [uv.x + uv.width, uv.y],
+            [uv.x, uv.y + uv.height],
+            [uv.x + uv.width, uv.y + uv.height],
+        ];
+        self.quad(
+            layer,
+            source,
+            corners,
+            uvs,
+            QuadUniform {
+                opacity,
+                ..Default::default()
+            },
+        );
     }
 
     fn path(&mut self, layer: usize, p: &PathNode, t: Transform, opacity: f32) {

@@ -8,6 +8,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
+  import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import CalibrateView from "./CalibrateView.svelte";
 
@@ -75,6 +76,7 @@
   }
 
   function role(o: OutputConfig): string {
+    if (isBrowserSource(o)) return serves(o) === "lower" ? "Lower thirds for the stream" : "Full screen, as the room sees it";
     if (typeof o.role === "object") return o.role.Audience.primary ? "Main audience screen" : "Audience screen";
     return o.role === "Stage" ? "Stage display" : "Stream";
   }
@@ -93,6 +95,25 @@
 
   function isBrowserSource(o: OutputConfig): boolean {
     return "BrowserSource" in o.target;
+  }
+
+  /**
+   * What a browser source serves. One source, one URL in OBS: switching
+   * changes its role, so the page OBS already shows redraws in the other
+   * layout. Lower thirds is the stream layout (transparent, text in the
+   * lower third); full screen is the audience layout, background and all.
+   */
+  type Serves = "lower" | "full";
+  const servesOptions = [
+    { id: "lower", label: "Lower thirds" },
+    { id: "full", label: "Full screen" },
+  ] as const;
+  function serves(o: OutputConfig): Serves {
+    return o.role === "Stream" ? "lower" : "full";
+  }
+  function setServes(o: OutputConfig, to: Serves) {
+    if (to === serves(o)) return;
+    put({ ...o, role: to === "lower" ? "Stream" : { Audience: { primary: false } } });
   }
 
   async function loadUrl(id: string) {
@@ -146,8 +167,8 @@
         <h1>Screens</h1>
         <p class="muted intro">
           The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
-          screen on to open its window; fullscreen screens go on a display below. An OBS browser source sends the stream's
-          lower thirds to OBS over the network.
+          screen on to open its window; fullscreen screens go on a display below. An OBS browser source sends lower thirds, or
+          the full screen, to OBS over the network.
         </p>
       </div>
       <div class="add">
@@ -183,6 +204,16 @@
               <p class="calibration ok"><Icon name="checkCircle" size={14} />Safe area set</p>
             {:else}
               <p class="calibration warn"><Icon name="alert" size={14} />Not calibrated: text may be cut off at the edges</p>
+            {/if}
+            {#if isBrowserSource(o)}
+              <div class="serves">
+                <Segmented
+                  label="What {o.name} serves to OBS"
+                  options={servesOptions}
+                  value={serves(o)}
+                  onchange={(to) => setServes(o, to)}
+                />
+              </div>
             {/if}
             {#if isBrowserSource(o) && urls[o.id]}
               <div class="obs">
@@ -259,6 +290,9 @@
     display: flex;
     gap: 0.5rem;
     flex-shrink: 0;
+  }
+  .serves {
+    margin-top: 0.75rem;
   }
   .obs {
     margin-top: 0.75rem;

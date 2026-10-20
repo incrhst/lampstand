@@ -185,6 +185,23 @@ impl Os {
             Os::Linux
         }
     }
+
+    /// `dir` and then `parts`, joined with this OS's separator rather than
+    /// the host's, so another OS's paths come out as that OS writes them.
+    fn join(self, dir: impl Into<OsString>, parts: &[&str]) -> PathBuf {
+        let sep = match self {
+            Os::Windows => '\\',
+            Os::MacOs | Os::Linux => '/',
+        };
+        let mut path = dir.into().to_string_lossy().into_owned();
+        for part in parts {
+            if !path.ends_with(sep) {
+                path.push(sep);
+            }
+            path.push_str(part);
+        }
+        PathBuf::from(path)
+    }
 }
 
 /// How to start the OBS that was found.
@@ -275,12 +292,12 @@ impl Probe for System {
 
 /// Looks for OBS in the usual places, and whether it is running.
 pub fn detect(probe: &dyn Probe, os: Os) -> Found {
-    let home = probe.env("HOME").map(PathBuf::from);
+    let home = probe.env("HOME");
     let launcher = match os {
         Os::MacOs => {
             let mut candidates = vec![PathBuf::from("/Applications/OBS.app")];
             if let Some(home) = &home {
-                candidates.push(home.join("Applications/OBS.app"));
+                candidates.push(os.join(home, &["Applications", "OBS.app"]));
             }
             candidates
                 .into_iter()
@@ -290,18 +307,21 @@ pub fn detect(probe: &dyn Probe, os: Os) -> Found {
         Os::Windows => ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"]
             .iter()
             .filter_map(|key| probe.env(key))
-            .map(|dir| PathBuf::from(dir).join("obs-studio/bin/64bit/obs64.exe"))
+            .map(|dir| os.join(dir, &["obs-studio", "bin", "64bit", "obs64.exe"]))
             .find(|p| probe.exists(p))
             .map(Launcher::Exe),
         Os::Linux => {
+            // Split on Linux's `:`, not the host's separator.
             let on_path = probe.env("PATH").and_then(|path| {
-                std::env::split_paths(&path)
-                    .map(|dir| dir.join("obs"))
+                path.to_string_lossy()
+                    .split(':')
+                    .filter(|dir| !dir.is_empty())
+                    .map(|dir| os.join(dir, &["obs"]))
                     .find(|p| probe.exists(p))
             });
-            let mut flatpaks = vec![PathBuf::from("/var/lib/flatpak/app").join(FLATPAK_ID)];
+            let mut flatpaks = vec![os.join("/var/lib/flatpak/app", &[FLATPAK_ID])];
             if let Some(home) = &home {
-                flatpaks.push(home.join(".local/share/flatpak/app").join(FLATPAK_ID));
+                flatpaks.push(os.join(home, &[".local", "share", "flatpak", "app", FLATPAK_ID]));
             }
             on_path.map(Launcher::Exe).or_else(|| {
                 flatpaks
@@ -783,8 +803,8 @@ mod tests {
     fn finds_obs_on_windows_and_starts_it_in_its_folder() {
         let fake = Fake::default()
             .with_env("ProgramFiles", r"C:\Program Files")
-            .with_file(PathBuf::from(r"C:\Program Files").join("obs-studio/bin/64bit/obs64.exe"));
-        let exe = PathBuf::from(r"C:\Program Files").join("obs-studio/bin/64bit/obs64.exe");
+            .with_file(r"C:\Program Files\obs-studio\bin\64bit\obs64.exe");
+        let exe = PathBuf::from(r"C:\Program Files\obs-studio\bin\64bit\obs64.exe");
         assert_eq!(
             detect(&fake, Os::Windows).launcher,
             Some(Launcher::Exe(exe.clone()))
