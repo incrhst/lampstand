@@ -4,8 +4,10 @@
 //! `\toc1`, then the canonical English name). Verse text is the text of
 //! `\v` up to the next `\v`, `\c` or heading, with footnotes, cross
 //! references, attribute lists (`\w word|strong="H1"\w*`) and other
-//! character-style markers removed. Every verse of a range (`\v 1-2`) gets the
-//! range's text, so lookup by verse number works for each of them.
+//! character-style markers removed. Paragraph marks (`¶`, which the KJV puts
+//! at paragraph starts) are typography, not text, and are dropped too. Every
+//! verse of a range (`\v 1-2`) gets the range's text, so lookup by verse
+//! number works for each of them.
 
 use std::path::{Path, PathBuf};
 
@@ -279,7 +281,12 @@ struct Builder {
 impl Builder {
     fn flush(&mut self) {
         if let (Some(v), Some(chapter)) = (self.verse, self.chapter.checked_sub(1)) {
-            let text = self.text.split_whitespace().collect::<Vec<_>>().join(" ");
+            let text = self
+                .text
+                .replace('¶', "")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             let verses = &mut self.chapters[chapter];
             if verses.len() < v {
                 verses.resize(v, String::new());

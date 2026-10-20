@@ -215,3 +215,24 @@ fn huge_chapter_and_verse_numbers_are_skipped_not_allocated() {
     );
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn paragraph_marks_are_dropped() {
+    // eBible.org's KJV (eng-kjv) starts paragraphs with "¶ ".
+    let dir = folder(
+        "pilcrow",
+        &[(
+            "44-JHNeng-kjv.usfm",
+            "\\id JHN 44-JHNeng-kjv.usfm King James Version (KJV)\n\\c 3\n\\p\n\\v 16 ¶ For God so loved the world, that he gave his only begotten Son.\n\\v 17 For God sent not his Son ¶ into the world;\n\\v 18 ¶He that believeth on him is not condemned.\n",
+        )],
+    );
+    let i = import_bible(BibleFormat::Usfm, &dir).unwrap();
+    let john3 = &i.text.books[42][2];
+    assert_eq!(
+        john3[15],
+        "For God so loved the world, that he gave his only begotten Son."
+    );
+    assert_eq!(john3[16], "For God sent not his Son into the world;");
+    assert_eq!(john3[17], "He that believeth on him is not condemned.");
+    fs::remove_dir_all(&dir).ok();
+}
