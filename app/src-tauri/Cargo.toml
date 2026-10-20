@@ -19,7 +19,7 @@ tauri-build.workspace = true
 
 [dependencies]
 lampstand-api.workspace = true
-lampstand-connectors.workspace = true
+lampstand-connectors = { workspace = true, features = ["obs"] }
 lampstand-core.workspace = true
 lampstand-import.workspace = true
 lampstand-layout.workspace = true
@@ -42,6 +42,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 futures-util.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 tokio-tungstenite.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }

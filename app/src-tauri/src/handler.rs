@@ -30,6 +30,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
@@ -143,6 +144,9 @@ pub struct App {
     /// at. They have no window; their scenes go to `hub`.
     streams: HashMap<OutputId, (u32, u32)>,
     hub: Arc<SceneHub>,
+    /// Whether any enabled output streams, for OBS warnings (T89): read
+    /// by `obs_control` without the `App` lock.
+    streaming: Arc<AtomicBool>,
     /// Each browser-source output's URL key.
     keys: KeyStore,
     /// `host:port` of the local server, for browser-source URLs; `None`
@@ -199,6 +203,7 @@ impl App {
             sizes: HashMap::new(),
             streams: HashMap::new(),
             hub: Arc::new(SceneHub::new()),
+            streaming: Arc::new(AtomicBool::new(false)),
             keys,
             server: None,
             sent: HashMap::new(),
@@ -233,6 +238,13 @@ impl App {
         &self.hub
     }
 
+    /// True while an enabled browser-source output exists. Shared with
+    /// `obs_control`, which mentions OBS to the operator only then (or once
+    /// OBS settings are saved).
+    pub fn streaming(&self) -> Arc<AtomicBool> {
+        self.streaming.clone()
+    }
+
     /// Where the local server listens (`host:port`), for the URLs
     /// `BrowserSourceUrl` gives.
     pub fn set_server_address(&mut self, address: String) {
@@ -249,8 +261,10 @@ impl App {
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
-            // The shell answers these from `crate::sync`, without the lock.
+            // The shell answers these from `crate::sync` and
+            // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
+            Request::Obs(_) => Err("OBS control is not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
@@ -1085,6 +1099,7 @@ impl App {
                 _ => None,
             })
             .collect();
+        self.streaming.store(!wanted.is_empty(), Ordering::Relaxed);
         let stale: Vec<OutputId> = self
             .streams
             .keys()

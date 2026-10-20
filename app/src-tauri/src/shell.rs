@@ -16,6 +16,9 @@
 //! - **Sync** (`crate::sync`) runs on Tauri's async runtime: the local
 //!   server, the sync sessions and the `Team` requests. It never locks
 //!   `App`; remote changes reach it through the library's change feed.
+//! - **OBS control** (`crate::obs_control`) runs there too: the OBS
+//!   connection and the `Obs` requests. It reads whether any output
+//!   streams from an atomic flag, never the `App` lock.
 //! - The **render thread** (`lampstand-render`) owns the GPU and every
 //!   surface, and reports through a callback that only sends on a channel.
 
@@ -42,6 +45,7 @@ use crate::config::device_key;
 use crate::decks;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
+use crate::obs_control::{ObsControl, Os, System};
 use crate::sync::{Obs, Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
@@ -62,6 +66,9 @@ struct Shared {
     downloads: PathBuf,
     /// `None` when the local server could not start.
     sync: Option<Arc<Sync>>,
+    /// OBS over its WebSocket (T89). Answers `Obs` requests without the
+    /// `App` lock.
+    obs: Arc<ObsControl>,
     /// Draws slide thumbnails, apart from the output render thread so a
     /// thumbnail never holds up a frame. `None` if it could not start.
     thumbnails: Option<Arc<Renderer>>,
@@ -84,6 +91,7 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             .map_err(|e| e.to_string())
     };
     match request {
+        Request::Obs(request) => Ok(state.obs.handle(request).await),
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {
@@ -318,7 +326,17 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         hub: app.scene_hub().clone(),
         renderer: thumbnails.clone(),
     };
+    let streaming = app.streaming();
     let app = Arc::new(Mutex::new(app));
+    let obs_control = tauri::async_runtime::block_on(async {
+        ObsControl::start(
+            data_dir,
+            streaming,
+            Arc::new(System),
+            Os::current(),
+            emit.clone(),
+        )
+    });
 
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(
@@ -364,6 +382,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
         downloads: data_dir.join("downloads"),
         sync,
+        obs: obs_control,
         thumbnails,
     })
 }
