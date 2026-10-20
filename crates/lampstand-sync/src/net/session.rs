@@ -1,5 +1,6 @@
 //! One connection after the handshake: the document sweep, the sync loop,
-//! pushed changes and blob transfer.
+//! pushed changes and blob transfer. The link it runs on is already
+//! encrypted ([`super::secure`]); a frame that fails to open ends it.
 //!
 //! Repo work runs on Tokio's blocking pool (a received change is written
 //! to disk), awaited in order, so the messages for one document go out in
@@ -53,7 +54,9 @@ pub(crate) async fn run(
                 else => break,
             };
             if sink.send(bytes).await.is_err() {
-                break;
+                // A sink that failed must not be polled again, not even
+                // to close it.
+                return;
             }
         }
         let _ = sink.close().await;
@@ -87,16 +90,35 @@ pub(crate) async fn run(
                 None => break,
             },
             frame = stream.next() => {
-                let Some(Ok(first)) = frame else { break };
+                let first = match frame {
+                    Some(Ok(bytes)) => bytes,
+                    Some(Err(e)) => {
+                        eprintln!("lampstand: sync connection closed: {e}");
+                        break;
+                    }
+                    None => break,
+                };
                 // Take whatever else has already arrived, to apply together.
+                // An error (a frame that failed to open) ends the session
+                // after the frames before it.
                 let mut frames = vec![first];
+                let mut end = false;
                 while frames.len() < BATCH {
                     match stream.next().now_or_never() {
                         Some(Some(Ok(bytes))) => frames.push(bytes),
-                        _ => break,
+                        Some(Some(Err(e))) => {
+                            eprintln!("lampstand: sync connection closed: {e}");
+                            end = true;
+                            break;
+                        }
+                        Some(None) => {
+                            end = true;
+                            break;
+                        }
+                        None => break,
                     }
                 }
-                if s.handle(frames).await.is_err() {
+                if s.handle(frames).await.is_err() || end {
                     break;
                 }
             }

@@ -244,15 +244,26 @@ fn app_thread(
     const TICK: Duration = Duration::from_millis(100);
     let mut displays = host.displays();
     let mut polled = Instant::now();
+    let mut ticked = Instant::now();
     loop {
-        let message = rx.recv_timeout(TICK);
+        // Messages must not postpone the tick: wait only for what is left
+        // of this one.
+        let message = rx.recv_timeout(TICK.saturating_sub(ticked.elapsed()));
         if let Err(RecvTimeoutError::Disconnected) = message {
             return;
         }
         // One bad message must not stop the thread that shows windows on
         // their first frame and keeps sizes current.
         let step = std::panic::AssertUnwindSafe(|| {
-            app_step(&app, &host, message, &changes, &mut displays, &mut polled)
+            app_step(
+                &app,
+                &host,
+                message,
+                &changes,
+                &mut displays,
+                &mut polled,
+                &mut ticked,
+            )
         });
         if std::panic::catch_unwind(step).is_err() {
             eprintln!("lampstand: the app thread recovered from a panic");
@@ -267,7 +278,9 @@ fn app_step(
     changes: &Receiver<DocChanged>,
     displays: &mut Vec<DisplayInfo>,
     polled: &mut Instant,
+    ticked: &mut Instant,
 ) {
+    const TICK: Duration = Duration::from_millis(100);
     const DISPLAY_POLL: Duration = Duration::from_secs(1);
     {
         match message {
@@ -295,7 +308,11 @@ fn app_step(
                     if blanked { " (now black)" } else { "" }
                 ),
             },
-            Err(_) => lock(app).tick(),
+            Err(_) => {}
+        }
+        if ticked.elapsed() >= TICK {
+            *ticked = Instant::now();
+            lock(app).tick();
         }
         let batch: Vec<DocChanged> = changes.try_iter().collect();
         if !batch.is_empty() {

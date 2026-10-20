@@ -165,6 +165,7 @@
 //! nodes keep playing across scenes (same node ID and blob); T27's players
 //! hang off it.
 
+pub mod calibrate;
 mod encode;
 mod frame;
 mod gpu;
@@ -174,6 +175,7 @@ mod paint;
 mod tess;
 mod text;
 
+pub use calibrate::Edge;
 pub use gpu::AdapterChoice;
 pub use output::{Background, FrameTiming, OutputEvent, OutputOptions, Outputs};
 
@@ -205,14 +207,21 @@ pub enum OutputCommand {
     Calibrate(Option<CalibrationPattern>),
 }
 
-/// TS-1: numbered edges and corner markers. The volunteer reads off the
-/// lowest number visible on each edge; each number is 1% of the screen.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// TS-1: numbered rings at 1% steps in from every edge, corner markers and
+/// the current margins (see `calibrate`). The volunteer reads off the
+/// lowest number visible on each edge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationPattern {
     /// The margins being adjusted, drawn as a bright outline.
     pub current: SafeArea,
     /// Numbers run 0 to `max_percent` from each edge inward.
     pub max_percent: u8,
+    /// The edge being adjusted, drawn as a thick lime line with its label enlarged.
+    #[serde(default)]
+    pub active: Option<Edge>,
+    /// Names the output in the pattern's caption, next to its aspect ratio.
+    #[serde(default)]
+    pub label: String,
 }
 
 /// Where commands for one output go.
@@ -264,6 +273,10 @@ pub struct Renderer {
     pipelines: gpu::Pipelines,
     blobs: Arc<dyn BlobSource>,
     state: Mutex<State>,
+    /// Held by `render_offscreen` from drawing to read-back: `draw` releases
+    /// `state` before the encoder is submitted, and a second scene prepared
+    /// in between would overwrite the shared glyph buffers.
+    offscreen: Mutex<()>,
 }
 
 /// Everything drawing mutates. Behind a mutex so `render_offscreen` can
@@ -299,6 +312,7 @@ impl Renderer {
             gpu,
             pipelines,
             blobs,
+            offscreen: Mutex::new(()),
             state: Mutex::new(State {
                 fonts,
                 glyphs,
@@ -332,6 +346,7 @@ impl Renderer {
                 "image size {width}x{height} is outside 1..={max}"
             )));
         }
+        let _one_at_a_time = self.offscreen.lock().unwrap_or_else(|e| e.into_inner());
         let device = &self.gpu.device;
         let target = gpu::Texture::new(device, "offscreen", width, height, 1, 1);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);

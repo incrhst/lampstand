@@ -22,7 +22,7 @@ use lampstand_api::{
 };
 use lampstand_core::id::Timestamp;
 use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
-use lampstand_core::program::{Content, Program, SlideText};
+use lampstand_core::program::{Content, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::Animation;
 use lampstand_core::scripture::parse_reference;
@@ -30,7 +30,7 @@ use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, Servic
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{compose_at, paginate_passage, paginate_song, Fonts, OutputSize};
 use lampstand_library::{starter_theme, starter_theme_id, Library};
-use lampstand_live::{LiveEngine, LoadedItem, LoadedSlide};
+use lampstand_live::{Cursor, LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_sync::DocChanged;
@@ -71,6 +71,20 @@ struct Sent {
     size: (u32, u32),
     theme: Theme,
     config: OutputConfig,
+    /// Whole seconds a countdown shows on the slide and in the stage
+    /// "next", which the program alone does not change.
+    countdown: (Option<i64>, Option<i64>),
+}
+
+/// What the UI was last told about the live state.
+type LiveState = (Option<Cursor>, Option<Cursor>, bool, Overlay);
+
+/// The whole seconds a countdown shows now, rounded up as it is drawn.
+fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
+    match content {
+        Some(Content::Countdown { target, .. }) => Some(((target.0 - now.0).max(0) + 999) / 1000),
+        _ => None,
+    }
 }
 
 struct Loaded {
@@ -97,6 +111,7 @@ pub struct App {
     /// placement's size until the window reports its real one.
     sizes: HashMap<OutputId, (u32, u32)>,
     sent: HashMap<OutputId, Sent>,
+    told_ui: Option<LiveState>,
     loaded: Option<Loaded>,
 }
 
@@ -133,6 +148,7 @@ impl App {
             placed: HashMap::new(),
             sizes: HashMap::new(),
             sent: HashMap::new(),
+            told_ui: None,
             loaded: None,
         };
         app.place_windows();
@@ -374,6 +390,8 @@ impl App {
                 let pattern = active.then_some(CalibrationPattern {
                     current: config.safe_area,
                     max_percent: 10,
+                    active: None,
+                    label: config.name.clone(),
                 });
                 self.sink.send(output, OutputCommand::Calibrate(pattern));
                 Response::Ok
@@ -548,6 +566,12 @@ impl App {
     /// Composes and sends the program to every output that changed, and
     /// tells the UI.
     fn after_live(&mut self, events: Vec<lampstand_live::Event>) {
+        self.after_live_at(events, now(), false);
+    }
+
+    /// `ticked` events come from the clock, not an operator action: the UI
+    /// hears about them only if the live state it shows changed.
+    fn after_live_at(&mut self, events: Vec<lampstand_live::Event>, now: Timestamp, ticked: bool) {
         let mut program_changed = false;
         let mut cursors_changed = false;
         for event in &events {
@@ -577,20 +601,33 @@ impl App {
             }
         }
         if program_changed {
-            self.present();
+            self.present_at(now);
         }
         if cursors_changed {
-            (self.emit)(Event::Live {
-                live: self.live.live(),
-                preview: self.live.preview(),
-                idle: self.live.is_idle(),
-                overlay: self.live.program().overlay,
-            });
+            let state = (
+                self.live.live(),
+                self.live.preview(),
+                self.live.is_idle(),
+                self.live.program().overlay,
+            );
+            if !ticked || self.told_ui != Some(state) {
+                (self.emit)(Event::Live {
+                    live: state.0,
+                    preview: state.1,
+                    idle: state.2,
+                    overlay: state.3,
+                });
+            }
+            self.told_ui = Some(state);
         }
     }
 
     /// Steps 3 and 4 of the click: compose per output, send `Show`.
     fn present(&mut self) {
+        self.present_at(now());
+    }
+
+    fn present_at(&mut self, now: Timestamp) {
         let program = self.live.program().clone();
         let service_theme = self.loaded_theme();
         let ids: Vec<OutputId> = self.sizes.keys().copied().collect();
@@ -605,6 +642,10 @@ impl App {
                 size,
                 theme,
                 config,
+                countdown: (
+                    countdown_seconds(&program.content, now),
+                    countdown_seconds(&program.next, now),
+                ),
             };
             if self.sent.get(&id) == Some(&sent) {
                 continue;
@@ -618,7 +659,7 @@ impl App {
                 },
                 &sent.theme,
                 &mut self.fonts,
-                now(),
+                now,
                 local_utc_offset_minutes(),
             );
             self.sink.send(
@@ -773,17 +814,17 @@ impl App {
         self.place_windows();
     }
 
-    /// Drives auto-advancing items. Call every 100 ms or so.
-    ///
-    /// `LiveEngine::tick` is still `todo!("T34")`, so this does nothing
-    /// yet; T34 turns the call on.
+    /// Drives announcement loops and countdowns. Call every 100 ms or so;
+    /// the engine reports events only when something on air changed.
     pub fn tick(&mut self) {
-        const ENGINE_TICKS: bool = false;
-        if ENGINE_TICKS {
-            let events = self.live.tick(now());
-            if !events.is_empty() {
-                self.after_live(events);
-            }
+        self.tick_at(now());
+    }
+
+    /// `tick` with the time given, for tests.
+    pub fn tick_at(&mut self, now: Timestamp) {
+        let events = self.live.tick(now);
+        if !events.is_empty() {
+            self.after_live_at(events, now, true);
         }
     }
 

@@ -18,6 +18,7 @@ autosurgeon = "0.14"
 base64 = "0.23"
 blake3 = "1.8"
 bytemuck = { version = "1.25", features = ["derive"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 cosmic-text = "0.19"
 # PPTX reader (docs/decisions/0001-pptx-reader.md). Pinned to one commit: upstream
 # moves fast. Only `lampstand-slides` uses these; nothing of theirs is in its API.
@@ -68,7 +69,10 @@ uuid = { version = "1.28", features = ["v5", "v7", "serde"] }
 wgpu = "30"
 wiremock = "0.6"
 winit = "0.30"
+# 2.x to share curve25519-dalek 4 with ed25519-dalek.
+x25519-dalek = { version = "2.0", features = ["getrandom", "zeroize"] }
 zstd = "0.13"
+zeroize = "1.8"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 lampstand-core = { path = "crates/lampstand-core" }

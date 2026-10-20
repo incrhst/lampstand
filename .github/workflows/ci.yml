@@ -46,7 +46,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: |
+            app/package-lock.json
+            crates/lampstand-server/web/package-lock.json
 
       - name: Web UI (install, type-check, test, build)
         working-directory: app
@@ -64,6 +66,27 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      # T43: the OBS browser source page. The compiled script is committed
+      # (the server embeds it, so cargo needs no Node), so it must be fresh.
+      # The Playwright test compares the page with render_offscreen, which
+      # needs the software adapter installed above, so both run on Linux only
+      # (Windows checkouts also change line endings in the diff).
+      - name: OBS browser source (type-check, compiled script is current)
+        if: runner.os == 'Linux'
+        working-directory: crates/lampstand-server/web
+        run: |
+          npm ci
+          npm run check
+          npm run build
+          git diff --exit-code obs/dist
+
+      - name: OBS browser source (Playwright)
+        if: runner.os == 'Linux'
+        working-directory: crates/lampstand-server/web
+        run: |
+          npx playwright install --with-deps chromium-headless-shell
+          npx playwright test
 
   msrv:
     name: msrv (1.95)

@@ -270,11 +270,13 @@ fn safe_area_overlay_and_calibration_draw_over_the_scene() {
         OutputCommand::Calibrate(Some(lampstand_render::CalibrationPattern {
             current: area,
             max_percent: 10,
+            active: None,
+            label: "Test".into(),
         })),
     );
     let image = outputs.snapshot(id).unwrap();
     assert!(
-        near(px(&image, 80, 45), Color::BLACK),
+        near(px(&image, 40, 20), Color::BLACK),
         "calibration replaces the scene"
     );
     outputs.send(id, OutputCommand::Calibrate(None));

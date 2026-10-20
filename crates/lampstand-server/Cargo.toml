@@ -8,12 +8,16 @@ rust-version.workspace = true
 [dependencies]
 axum.workspace = true
 futures-util.workspace = true
+image.workspace = true
 lampstand-core.workspace = true
+lampstand-layout.workspace = true
 lampstand-render.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 lampstand-sync = { workspace = true, features = ["net"] }
-tokio = { workspace = true, features = ["net", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 tempfile.workspace = true
 tokio-tungstenite.workspace = true
-uuid.workspace = true

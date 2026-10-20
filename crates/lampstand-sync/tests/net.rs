@@ -1,15 +1,20 @@
 //! T17 acceptance tests: the handshake refuses unpaired devices, pairing
 //! with a code works and a wrong code does not, changes are pushed at once,
 //! a cut-off peer catches up, blobs move by hash, and a large first sync
-//! finishes in reasonable time.
+//! finishes in reasonable time. T75: through a relaying attacker, a changed,
+//! replayed, reordered or injected frame closes the session, and a capture
+//! shows no plaintext.
 //!
 //! Each node gets a plain tokio-tungstenite listener standing in for the
 //! local server's `WS /sync` route (`lampstand-server` has the real one).
 
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use futures_util::{SinkExt, StreamExt};
 
 use lampstand_core::song::{Section, Song, SongId};
 use lampstand_sync::net::{Link, NetError, NodeConfig, SyncNode};
@@ -17,6 +22,7 @@ use lampstand_sync::team::DeviceKeypair;
 use lampstand_sync::{DocKind, Repo};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::Message;
 
 struct Peer {
     node: Arc<SyncNode>,
@@ -398,4 +404,233 @@ async fn a_large_library_syncs_on_first_connect() {
         start.elapsed(),
         took
     );
+}
+
+/// What the relay in the middle does to the client's frames once the
+/// handshake (a hello and a proof each way) is over.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Attack {
+    Nothing,
+    /// Flips one bit of the first encrypted frame.
+    Change,
+    /// Delivers the first encrypted frame twice.
+    Replay,
+    /// Swaps the first two encrypted frames.
+    Reorder,
+    /// Writes a well-formed plain `Sync` frame before the first one.
+    Inject,
+}
+
+/// A WebSocket relay to a node's `/sync`, standing where an attacker on the
+/// church network could: it sees every byte and can change what it relays.
+/// Only the first connection is attacked; reconnections pass untouched.
+struct Relay {
+    addr: SocketAddr,
+    /// Every message either way, on every connection.
+    captured: Arc<Mutex<Vec<Vec<u8>>>>,
+    /// The node closed the first connection.
+    first_closed: Arc<AtomicBool>,
+    _task: JoinHandle<()>,
+}
+
+async fn relay(upstream: SocketAddr, attack: Attack) -> Relay {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let captured = Arc::<Mutex<Vec<Vec<u8>>>>::default();
+    let first_closed = Arc::new(AtomicBool::new(false));
+    let (cap, closed) = (captured.clone(), first_closed.clone());
+    let task = tokio::spawn(async move {
+        let mut first = true;
+        while let Ok((stream, _)) = listener.accept().await {
+            let attack = if first { attack } else { Attack::Nothing };
+            let closed = first.then(|| closed.clone());
+            first = false;
+            tokio::spawn(relay_one(stream, upstream, attack, cap.clone(), closed));
+        }
+    });
+    Relay {
+        addr,
+        captured,
+        first_closed,
+        _task: task,
+    }
+}
+
+async fn relay_one(
+    stream: tokio::net::TcpStream,
+    upstream: SocketAddr,
+    attack: Attack,
+    captured: Arc<Mutex<Vec<Vec<u8>>>>,
+    closed: Option<Arc<AtomicBool>>,
+) {
+    let Ok(client) = tokio_tungstenite::accept_async(stream).await else {
+        return;
+    };
+    let Ok((server, _)) = tokio_tungstenite::connect_async(format!("ws://{upstream}/sync")).await
+    else {
+        return;
+    };
+    let (mut to_client, mut from_client) = client.split();
+    let (mut to_server, mut from_server) = server.split();
+    let up_captured = captured.clone();
+    let up = tokio::spawn(async move {
+        let mut i = 0;
+        let mut held = None;
+        while let Some(Ok(m)) = from_client.next().await {
+            let Message::Binary(m) = m else { continue };
+            let m = m.to_vec();
+            up_captured.lock().unwrap().push(m.clone());
+            let out = match (attack, i) {
+                (Attack::Change, 2) => {
+                    let mut m = m;
+                    let k = m.len() / 2;
+                    m[k] ^= 1;
+                    vec![m]
+                }
+                (Attack::Replay, 2) => vec![m.clone(), m],
+                (Attack::Reorder, 2) => {
+                    held = Some(m);
+                    vec![]
+                }
+                (Attack::Reorder, 3) => vec![m, held.take().unwrap()],
+                // Postcard for `Sync { kind: "song", id, data: "forged" }`.
+                // Version 1 decoded it, logged the bad sync data and kept
+                // the connection open; now the connection closes.
+                (Attack::Inject, 2) => {
+                    let forged = [&[3u8, 4][..], b"song", &[9; 16], &[6], b"forged"].concat();
+                    vec![forged, m]
+                }
+                _ => vec![m],
+            };
+            i += 1;
+            for m in out {
+                if to_server.send(Message::Binary(m.into())).await.is_err() {
+                    return;
+                }
+            }
+        }
+        let _ = to_server.close().await;
+    });
+    // Server to client, untouched, until the node closes.
+    let mut node_closed = true;
+    while let Some(Ok(m)) = from_server.next().await {
+        let Message::Binary(m) = m else { continue };
+        captured.lock().unwrap().push(m.to_vec());
+        if to_client.send(Message::Binary(m)).await.is_err() {
+            node_closed = false;
+            break;
+        }
+    }
+    if let (true, Some(closed)) = (node_closed, closed) {
+        closed.store(true, Ordering::SeqCst);
+    }
+    let _ = to_client.close().await;
+    up.abort();
+}
+
+/// Pairs a new office PC with a new presenter through a relay, the
+/// office PC holding a few songs so it sends several frames at once.
+async fn paired_through(attack: Attack) -> (Peer, Peer, Relay) {
+    let presenter = peer("Sanctuary").await;
+    let office = peer("Office PC").await;
+    for i in 0..3 {
+        office
+            .repo()
+            .put(&song(&format!("Hymn {i}"), "a line"))
+            .unwrap();
+    }
+    let relay = relay(presenter.addr, attack).await;
+    let code = presenter.node.start_pairing();
+    office
+        .node
+        .pair(&code.code, Some(&relay.addr.to_string()))
+        .await
+        .unwrap();
+    (presenter, office, relay)
+}
+
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changed_replayed_reordered_or_injected_frames_close_the_session() {
+    for attack in [
+        Attack::Change,
+        Attack::Replay,
+        Attack::Reorder,
+        Attack::Inject,
+    ] {
+        let (_presenter, _office, relay) = paired_through(attack).await;
+        until(
+            Duration::from_secs(5),
+            &format!("the presenter to close the connection after {attack:?}"),
+            || relay.first_closed.load(Ordering::SeqCst),
+        )
+        .await;
+    }
+
+    // Untouched, the same connection stays up and syncs.
+    let (presenter, _office, relay) = paired_through(Attack::Nothing).await;
+    until(Duration::from_secs(5), "the songs", || {
+        presenter.repo().list(DocKind::Song).len() == 3
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!relay.first_closed.load(Ordering::SeqCst));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_capture_of_a_sync_shows_no_plaintext() {
+    let presenter = peer("Sanctuary").await;
+    let office = peer("Office PC").await;
+    let lyric = "Great is thy faithfulness, O God my Father";
+    let mut s = song("Great Is Thy Faithfulness", lyric);
+    office.repo().put(&s).unwrap();
+    // Blob chunks carry file bytes as they are, so a plain protocol would
+    // show this lyric sheet whole.
+    let sheet = format!("{lyric}\n").repeat(2000);
+    let hash = office.repo().blobs().put(sheet.as_bytes()).unwrap();
+
+    let relay = relay(presenter.addr, Attack::Nothing).await;
+    let code = presenter.node.start_pairing();
+    office
+        .node
+        .pair(&code.code, Some(&relay.addr.to_string()))
+        .await
+        .unwrap();
+    until(Duration::from_secs(5), "the song", || {
+        title(presenter.repo(), s.id).is_some()
+    })
+    .await;
+    // A change pushed on the open connection, too.
+    let pushed = "Morning by morning new mercies I see";
+    s.sections[0].lines[0] = pushed.into();
+    office.repo().put(&s).unwrap();
+    until(Duration::from_secs(5), "the edit", || {
+        presenter
+            .repo()
+            .get::<Song>(s.id.uuid())
+            .unwrap()
+            .is_some_and(|got| got.sections[0].lines[0] == pushed)
+    })
+    .await;
+    presenter.node.fetch_blob(hash).await.unwrap();
+    assert!(!relay.first_closed.load(Ordering::SeqCst));
+
+    let captured = relay.captured.lock().unwrap().concat();
+    assert!(captured.len() > sheet.len(), "the blob crossed the relay");
+    // The handshake is in the clear: device names are not secret.
+    assert!(contains(&captured, b"Office PC"));
+    for needle in [
+        "Great is thy faithfulness",
+        "Great Is Thy Faithfulness",
+        "Morning by morning",
+        "song",
+    ] {
+        assert!(
+            !contains(&captured, needle.as_bytes()),
+            "{needle:?} is visible on the wire"
+        );
+    }
 }
