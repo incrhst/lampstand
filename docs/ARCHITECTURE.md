@@ -258,6 +258,14 @@ OBS stays the streaming engine; Lampstand runs it ([decision 0005](decisions/000
 
 Presenter clickers send Page Up, Page Down, B and full stop (in the operator view, B is Bridge; see "UI"). While a service is live and clicker mode is on, those keys are registered as global shortcuts, so they work whichever window has focus (PS-9). Arrow keys are taken only while a Lampstand window has focus, so other apps keep them.
 
+How T56 built it (`app/src-tauri/src/keys.rs`):
+
+- Clicker mode is a device setting (`settings.json`, `Request::Settings`), off by default, toggled from the operator view's Clicker button. It is off by default because while it holds the keys no other app gets them: typing B or a full stop anywhere, including a text field in Lampstand, toggles Black.
+- "A service is live" means a service is open for live, so the clicker's first Page Down can start it.
+- `Keys` holds the registration lifecycle: the app thread computes a `KeyState` (clicker mode, service open, an output window focused) after every step and registers or releases only the difference, without the `App` lock (registering waits on the main thread). A key another app holds is logged and tried again on the next state change, not every tick. `ShortcutHost` hides the plugin, so the lifecycle is unit-tested with a fake.
+- Output windows have no webview and Tauri reports no key events for them, so while one has focus the app thread also registers the arrow keys, Space, Page Up, Page Down and full stop, and releases them when it loses focus. The operator window keeps handling its own keys in the web UI.
+- A press goes from the plugin's handler (main thread) to the app thread as a message, and on to the live engine as `Next`, `Previous` or `ToggleBlack`.
+
 ### Updates
 
 The Tauri updater installs only when `LiveEngine::is_idle()` is true and no service starts within the next hour (CD-11).
