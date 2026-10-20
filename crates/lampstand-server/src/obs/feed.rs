@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -16,9 +17,14 @@ use crate::Backend;
 
 #[derive(Clone)]
 pub(crate) struct Current {
-    /// 0 until the first scene; then counts up.
+    /// 0 until the first scene; then counts up, across feeds: a number is
+    /// never reused while the server runs, so a frame URL always means the
+    /// same scene.
     pub seq: u64,
     pub scene: Option<Arc<Scene>>,
+    /// The backend ended the output's scene channel (its URL was removed):
+    /// pages following this feed disconnect and the feed is not reused.
+    pub closed: bool,
 }
 
 pub(crate) struct Feed {
@@ -30,6 +36,7 @@ pub(crate) struct Feed {
 #[derive(Default)]
 pub(crate) struct Feeds {
     feeds: Mutex<HashMap<OutputId, Weak<Feed>>>,
+    seq: Arc<AtomicU64>,
 }
 
 impl Feeds {
@@ -37,23 +44,29 @@ impl Feeds {
     /// `None` when the backend has no scenes for the output.
     pub fn subscribe(&self, backend: &dyn Backend, output: OutputId) -> Option<Arc<Feed>> {
         let mut feeds = self.feeds.lock().unwrap();
-        if let Some(feed) = feeds.get(&output).and_then(Weak::upgrade) {
-            return Some(feed);
+        let running = feeds
+            .get(&output)
+            .and_then(Weak::upgrade)
+            .filter(|feed| !feed.tx.borrow().closed);
+        if running.is_some() {
+            return running;
         }
         let rx = backend.watch_scene(output)?;
         let (tx, _) = watch::channel(Current {
             seq: 0,
             scene: None,
+            closed: false,
         });
         let feed = Arc::new(Feed {
             tx,
             frame: AsyncMutex::new(None),
         });
         let weak = Arc::downgrade(&feed);
+        let counter = self.seq.clone();
         feeds.insert(output, weak.clone());
         std::thread::Builder::new()
             .name("lampstand-obs-feed".into())
-            .spawn(move || pump(&rx, &weak))
+            .spawn(move || pump(&rx, &weak, &counter))
             .ok()?;
         Some(feed)
     }
@@ -66,13 +79,13 @@ impl Feeds {
 
 /// Moves scenes from the blocking channel into the feed until nobody
 /// follows it or the backend drops the channel.
-fn pump(rx: &std::sync::mpsc::Receiver<Arc<Scene>>, feed: &Weak<Feed>) {
+fn pump(rx: &std::sync::mpsc::Receiver<Arc<Scene>>, feed: &Weak<Feed>, seq: &AtomicU64) {
     loop {
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(scene) => {
                 let Some(feed) = feed.upgrade() else { return };
                 feed.tx.send_modify(|cur| {
-                    cur.seq += 1;
+                    cur.seq = seq.fetch_add(1, Ordering::Relaxed) + 1;
                     cur.scene = Some(scene);
                 });
             }
@@ -81,7 +94,12 @@ fn pump(rx: &std::sync::mpsc::Receiver<Arc<Scene>>, feed: &Weak<Feed>) {
                     return;
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                if let Some(feed) = feed.upgrade() {
+                    feed.tx.send_modify(|cur| cur.closed = true);
+                }
+                return;
+            }
         }
     }
 }

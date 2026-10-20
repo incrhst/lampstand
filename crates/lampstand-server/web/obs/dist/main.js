@@ -1,6 +1,6 @@
 // The OBS browser source: connects to /obs/<output>/ws and draws what
 // arrives. Transparent where nothing is painted, so OBS keys it over video.
-import { build, preload } from "./render.js";
+import { build, imageHashes, preload } from "./render.js";
 const params = new URLSearchParams(location.search);
 const key = params.get("k") ?? "";
 const output = location.pathname.split("/").filter(Boolean)[1] ?? "";
@@ -24,6 +24,12 @@ async function show(msg) {
         const content = build(msg.scene, resources);
         fitStage();
         stage.replaceChildren(content);
+        // A page can run for days: keep only the images this scene shows.
+        const keep = imageHashes(msg.scene);
+        for (const hash of [...resources.images.keys()]) {
+            if (!keep.has(hash))
+                resources.images.delete(hash);
+        }
     }
     else {
         const img = new Image();

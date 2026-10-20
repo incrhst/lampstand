@@ -151,6 +151,18 @@ test("a lyrics lower third matches render_offscreen", async ({ page }) => {
   console.log(`lyrics: ${painted} painted pixels, ${(rate * 100).toFixed(2)}% mismatched`);
   expect(painted).toBeGreaterThan(10_000);
   expect(rate).toBeLessThanOrEqual(MAX_MISMATCHED);
+  // OBS 30's Chromium 103 has no `paint-order` for HTML text, so the page
+  // must not rely on it: the outline is its own layer under the fill.
+  expect(
+    await page.evaluate(
+      () => [...document.querySelectorAll("*")].filter((e) => getComputedStyle(e).paintOrder.startsWith("stroke")).length,
+    ),
+  ).toBe(0);
+  expect(
+    await page.evaluate(
+      () => [...document.querySelectorAll("*")].filter((e) => getComputedStyle(e).webkitTextStrokeWidth === "4px").length,
+    ),
+  ).toBeGreaterThan(0);
   // The tolerance still tells scenes apart.
   expect(compare("lyrics", shot, CHANNEL_TOLERANCE, "plate").rate).toBeGreaterThan(0.5);
 });

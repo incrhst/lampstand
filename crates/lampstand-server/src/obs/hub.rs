@@ -22,6 +22,30 @@ struct Slot {
     watchers: Vec<Sender<Arc<Scene>>>,
 }
 
+impl Slot {
+    fn new(key: String) -> Self {
+        Self {
+            key,
+            current: None,
+            watchers: Vec::new(),
+        }
+    }
+}
+
+fn fresh_key() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// At least 16 characters of URL-safe text: what `fresh_key` makes, and
+/// nothing that needs escaping in a URL.
+fn valid_key(key: &str) -> bool {
+    key.len() >= 16
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 impl SceneHub {
     pub fn new() -> Self {
         Self::default()
@@ -33,17 +57,35 @@ impl SceneHub {
         let mut outputs = self.outputs.lock().unwrap();
         outputs
             .entry(output)
-            .or_insert_with(|| Slot {
-                key: uuid::Uuid::new_v4().simple().to_string(),
-                current: None,
-                watchers: Vec::new(),
-            })
+            .or_insert_with(|| Slot::new(fresh_key()))
             .key
             .clone()
     }
 
+    /// Like [`SceneHub::add_output`], with a key saved from an earlier run,
+    /// so the URL pasted into OBS keeps working after the app restarts. A
+    /// saved key that is too short or has odd characters is replaced by a
+    /// fresh one; the key in use is returned, so store that. If the output
+    /// already has a URL, its key becomes `saved`.
+    pub fn add_output_with_key(&self, output: OutputId, saved: &str) -> String {
+        let key = if valid_key(saved) {
+            saved.to_string()
+        } else {
+            fresh_key()
+        };
+        let mut outputs = self.outputs.lock().unwrap();
+        match outputs.get_mut(&output) {
+            Some(slot) => slot.key = key.clone(),
+            None => {
+                outputs.insert(output, Slot::new(key.clone()));
+            }
+        }
+        key
+    }
+
     /// Takes the URL away: its key stops working and connected pages are
-    /// disconnected.
+    /// disconnected (their feed closes; a later `add_output` starts a new
+    /// one).
     pub fn remove_output(&self, output: OutputId) {
         self.outputs.lock().unwrap().remove(&output);
     }
@@ -53,7 +95,7 @@ impl SceneHub {
     pub fn rotate_key(&self, output: OutputId) -> Option<String> {
         let mut outputs = self.outputs.lock().unwrap();
         let slot = outputs.get_mut(&output)?;
-        slot.key = uuid::Uuid::new_v4().simple().to_string();
+        slot.key = fresh_key();
         Some(slot.key.clone())
     }
 
@@ -121,6 +163,31 @@ mod tests {
         assert!(hub.key_valid(a, &rotated) && !hub.key_valid(a, &ka));
         hub.remove_output(a);
         assert!(!hub.key_valid(a, &rotated) && hub.watch(a).is_none());
+    }
+
+    #[test]
+    fn a_saved_key_is_restored_unless_it_is_unusable() {
+        let hub = SceneHub::new();
+        let out = OutputId::generate();
+        let saved = "0123456789abcdefABCDEF-_";
+        assert_eq!(hub.add_output_with_key(out, saved), saved);
+        assert!(hub.key_valid(out, saved));
+        // A restart with the same key gives the same URL.
+        let again = SceneHub::new();
+        assert_eq!(again.add_output_with_key(out, saved), saved);
+        for bad in [
+            "",
+            "short",
+            "has spaces in it, too long to be ok",
+            "a/b?c=d&e=f#g1234",
+        ] {
+            let key = again.add_output_with_key(OutputId::generate(), bad);
+            assert_ne!(key, bad);
+            assert!(valid_key(&key));
+        }
+        // Setting a key on an output that has one replaces it.
+        let replaced = hub.add_output_with_key(out, "another-saved-key-1234");
+        assert!(hub.key_valid(out, &replaced) && !hub.key_valid(out, saved));
     }
 
     #[test]

@@ -203,7 +203,7 @@ async fn frame(
         return not_found();
     };
     match feed.frame(renderer, seq).await {
-        Some(bytes) => with_type("image/webp", "private, max-age=3600", bytes.to_vec()),
+        Some(bytes) => with_type("image/webp", "no-store", bytes.to_vec()),
         None => not_found(),
     }
 }
@@ -245,6 +245,9 @@ async fn follow(mut socket: WebSocket, feed: Arc<Feed>, frames: bool) {
     let mut changes = feed.watch();
     loop {
         let current = changes.borrow_and_update().clone();
+        if current.closed {
+            return;
+        }
         if let Some(scene) = &current.scene {
             let update = if frames && is_deck(scene) {
                 Update::Frame {

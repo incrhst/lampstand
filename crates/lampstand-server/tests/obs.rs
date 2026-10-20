@@ -329,6 +329,71 @@ async fn pages_follow_the_scene_feed() {
 }
 
 #[tokio::test]
+async fn scene_numbers_are_not_reused_when_a_feed_restarts() {
+    let f = fixture(None).await;
+    let out = f.output.to_string();
+    f.app.hub.publish(f.output, scene(100.0, vec![square(1)]));
+    let mut first = f.ws(&out, &f.key).await.unwrap();
+    let a = next_json(&mut first).await["seq"].as_u64().unwrap();
+    // The last page leaves (a reload, or OBS refreshing the source)...
+    drop(first);
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    // ...and a different scene is on air when the next one connects.
+    f.app.hub.publish(f.output, scene(120.0, vec![square(2)]));
+    let mut second = f.ws(&out, &f.key).await.unwrap();
+    let b = next_json(&mut second).await["seq"].as_u64().unwrap();
+    assert_ne!(a, b, "a frame URL must never mean two scenes");
+}
+
+#[tokio::test]
+async fn removing_an_output_disconnects_its_pages_and_a_new_url_works() {
+    let f = fixture(None).await;
+    let out = f.output.to_string();
+    f.app.hub.publish(f.output, scene(100.0, Vec::new()));
+    let mut old = f.ws(&out, &f.key).await.unwrap();
+    next_json(&mut old).await;
+
+    f.app.hub.remove_output(f.output);
+    // The old page is closed, not left hanging.
+    let ended = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match old.next().await {
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return,
+                Some(Ok(_)) => {}
+            }
+        }
+    })
+    .await;
+    assert!(ended.is_ok(), "the page was still connected");
+    assert!(f.ws(&out, &f.key).await.is_err(), "the old key is dead");
+
+    // The output comes back with a new key and gets live scenes.
+    let key = f.app.hub.add_output(f.output);
+    assert_ne!(key, f.key);
+    let mut fresh = f.ws(&out, &key).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), fresh.next())
+            .await
+            .is_err(),
+        "nothing is on air yet"
+    );
+    f.app.hub.publish(f.output, scene(77.0, Vec::new()));
+    assert_eq!(next_json(&mut fresh).await["scene"]["width"], 77.0);
+}
+
+#[tokio::test]
+async fn a_saved_key_keeps_the_url_working_across_restarts() {
+    let saved = "0123456789abcdef0123456789abcdef";
+    let output = OutputId::generate();
+    for _ in 0..2 {
+        let f = fixture(None).await;
+        assert_eq!(f.app.hub.add_output_with_key(output, saved), saved);
+        let (status, _, _) = f.get(&format!("/obs/{output}?k={saved}")).await;
+        assert_eq!(status, 200);
+    }
+}
+
+#[tokio::test]
 async fn blobs_are_served_with_their_type() {
     let f = fixture(None).await;
     let mut png = Vec::new();
@@ -407,6 +472,8 @@ async fn deck_slides_come_as_webp_frames_from_render_offscreen() {
     let (status, head, body) = f.get(&f.url(&format!("/frames/{out}/{n}.webp?"))).await;
     assert_eq!(status, 200);
     assert!(head.to_ascii_lowercase().contains("image/webp"));
+    // Numbers are not reused across restarts of the app, so never cache.
+    assert!(head.to_ascii_lowercase().contains("no-store"), "{head}");
     let frame = image::load_from_memory_with_format(&body, image::ImageFormat::WebP)
         .unwrap()
         .into_rgba8();

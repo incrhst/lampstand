@@ -7,7 +7,9 @@
 // - text blocks are flex columns of paragraphs. Line height is
 //   size × line_spacing, wrapping is by word then by glyph, a bullet hangs
 //   in the indent on the first line's baseline, an outline is drawn under
-//   the fill (paint-order: stroke) and overflow is drawn, never clipped;
+//   the fill and overflow is drawn, never clipped. The outline is a second
+//   copy of the block underneath the first, stroke only, because OBS 30's
+//   browser source (Chromium 103) ignores `paint-order` on HTML text;
 // - paths are SVG, images are cropped and fitted by hand.
 
 import { cssFamily } from "./fonts.js";
@@ -40,6 +42,15 @@ function visit(nodes: SceneNode[], f: (n: SceneNode) => void): void {
     f(n);
     if ("Group" in n.kind) visit(n.kind.Group, f);
   }
+}
+
+/** The blobs a scene's images name. */
+export function imageHashes(scene: Scene): Set<string> {
+  const hashes = new Set<string>();
+  visit(scene.nodes, (n) => {
+    if ("Image" in n.kind) hashes.add(n.kind.Image.blob);
+  });
+  return hashes;
 }
 
 /** Fonts and images the scene needs, loaded before it is shown. */
@@ -167,6 +178,17 @@ const JUSTIFY = { Top: "flex-start", Middle: "center", Bottom: "flex-end" } as c
 const ALIGN = { Left: "left", Center: "center", Right: "right", Justify: "justify" } as const;
 
 function text(el: HTMLElement, b: TextBlock): void {
+  if (b.outline && b.outline.width > 0) {
+    // The outline shows `width` outside the glyph edge: a stroke of twice
+    // that, drawn first so the fill of the copy above covers its inner half.
+    el.appendChild(textLayer(b, b.outline));
+  }
+  el.appendChild(textLayer(b, null));
+  if (b.shadow) el.style.filter = dropShadow(b.shadow);
+}
+
+/** The block's paragraphs: the fill, or (with `outline`) just the outline. */
+function textLayer(b: TextBlock, outline: TextBlock["outline"]): HTMLElement {
   const box = document.createElement("div");
   box.style.cssText =
     `position:absolute;left:${b.rect.x}px;top:${b.rect.y}px;` +
@@ -174,16 +196,13 @@ function text(el: HTMLElement, b: TextBlock): void {
     `display:flex;flex-direction:column;justify-content:${JUSTIFY[b.valign]};` +
     "overflow:visible;text-rendering:geometricPrecision;font-kerning:normal;" +
     "-webkit-font-smoothing:antialiased;";
-  if (b.outline && b.outline.width > 0) {
-    // The outline shows `width` outside the glyph edge: a stroke of twice
-    // that, painted first so the fill covers its inner half.
+  if (outline) {
     box.style.cssText +=
-      `-webkit-text-stroke:${2 * b.outline.width}px ${css(b.outline.color)};` +
-      "paint-order:stroke fill;";
+      `-webkit-text-stroke:${2 * outline.width}px ${css(outline.color)};` +
+      "-webkit-text-fill-color:transparent;";
   }
-  for (const p of b.paragraphs) box.appendChild(paragraph(p));
-  el.appendChild(box);
-  if (b.shadow) el.style.filter = dropShadow(b.shadow);
+  for (const p of b.paragraphs) box.appendChild(paragraph(p, outline !== null));
+  return box;
 }
 
 function runStyle(r: TextRun): string {
@@ -193,7 +212,7 @@ function runStyle(r: TextRun): string {
   );
 }
 
-function paragraph(p: Paragraph): HTMLElement {
+function paragraph(p: Paragraph, outlineOnly: boolean): HTMLElement {
   const el = document.createElement("div");
   // font-size and line-height 0 on the paragraph leave line boxes to the
   // runs' own line height (size × line_spacing) and nothing else.
@@ -205,7 +224,9 @@ function paragraph(p: Paragraph): HTMLElement {
   if (!first) return el; // No line, only the spacing.
   if (p.bullet) {
     // A zero-width inline box on the first line's baseline, with the
-    // bullet hanging out of it to the left, into the indent.
+    // bullet hanging out of it to the left, into the indent. It starts
+    // where the first line starts, so for a centred or right-aligned
+    // paragraph it follows the line, not the block's edge.
     const anchor = document.createElement("span");
     anchor.style.cssText = "display:inline-block;width:0;overflow:visible;white-space:nowrap;";
     const bullet = document.createElement("span");
@@ -220,7 +241,7 @@ function paragraph(p: Paragraph): HTMLElement {
     const span = document.createElement("span");
     span.style.cssText = `${runStyle(r)}line-height:${r.size * p.line_spacing}px;`;
     const lines = [r.underline && "underline", r.strike && "line-through"].filter(Boolean);
-    if (lines.length > 0) {
+    if (lines.length > 0 && !outlineOnly) {
       span.style.textDecoration = lines.join(" ");
       span.style.setProperty("text-decoration-skip-ink", "none");
     }

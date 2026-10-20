@@ -1,6 +1,8 @@
 // Font families as the layout engine resolves them (crates/lampstand-layout
 // fonts.rs): Office families map to the metric-compatible bundled ones, and
-// everything else falls back to Noto Sans. The @font-face rules come from the
+// everything else falls back to Noto Sans. Unlike layout, which uses an
+// installed Calibri or Arial if the machine has one, this always draws the
+// bundled stand-in: the metrics match, so lines break the same way. The @font-face rules come from the
 // server (`/obs/assets/fonts.css`) and name the same files the app bundles.
 const SUBSTITUTES = {
     calibri: "Carlito",
