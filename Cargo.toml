@@ -22,6 +22,7 @@ chacha20poly1305 = { version = "0.11", default-features = false, features = ["al
 cosmic-text = "0.19"
 # PPTX reader (docs/decisions/0001-pptx-reader.md). Pinned to one commit: upstream
 # moves fast. Only `lampstand-slides` uses these; nothing of theirs is in its API.
+deckcraft-anim = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-color = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-geom = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }
 deckcraft-model = { git = "https://github.com/storytold/deckcraft", rev = "cb78440a1618e6a2c1df55dd7bff74719685518c" }

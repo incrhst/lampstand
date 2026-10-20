@@ -11,4 +11,9 @@ label: string | null, lines: Array<string>,
 /**
  * Build steps after the slide appears (deck slides).
  */
-steps: number, };
+steps: number, 
+/**
+ * Speaker notes (deck slides), one line per paragraph; empty when
+ * there are none.
+ */
+notes: string, };

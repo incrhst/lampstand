@@ -152,7 +152,7 @@ Free and open source means no company cloud that every church depends on. Collab
 | CD-8 | Service package: one file holding the order, songs, decks and media. Send it by email, USB stick or chat; it opens with a double click. Licensed Bible text is left out and pulled from the receiver's own library. | P0 |
 | CD-9 | Guest speakers deliver decks without an account: a per-service upload link, or a pasted Google Slides or OneDrive share link. | P0 |
 | CD-10 | Readiness check on the projection laptop before the service: every item, deck and video downloaded and cached, shown as a single green or red status. | P0 |
-| CD-11 | App delivery: signed Windows installer, signed and notarised macOS DMG, Linux AppImage, Flatpak (Flathub) and .deb. Auto-update, never during a live service. | P0 |
+| CD-11 | App delivery: signed Windows installer, signed and notarised macOS DMG, Linux AppImage, Flatpak (Flathub) and .deb. Auto-update, never during a live service. Early adopters get macOS and Linux first (see Phasing). | P0 |
 | CD-12 | Portable mode: run from a USB stick with the library beside it. | P2 |
 
 ### Live operation and outputs
@@ -197,7 +197,7 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 | Latency | Operator click to output frame under 50 ms. Remote and phone control under 150 ms on local Wi-Fi. |
 | Reliability | The output window never shows a desktop, dialog or cursor. A crash restores the live slide within 5 seconds. |
 | Hardware | Runs a 3-screen service on a 2019 laptop with 8 GB RAM and integrated graphics. |
-| Platforms | Windows 10+, macOS 13+, Linux (AppImage, Flatpak, .deb), all from launch. Same file format on all three. |
+| Platforms | Windows 10+, macOS 13+, Linux (AppImage, Flatpak, .deb), all from launch. Same file format on all three. Early adopters start on macOS and Linux, with Windows as an unsigned preview (see Phasing). |
 | Slide fidelity | Imported PowerPoint and Google Slides look the same as in their source apps on 95% of a test corpus of 200 real church decks. |
 | Accessibility | Operator UI meets WCAG 2.2 AA. All live actions have keyboard shortcuts. |
 | Data | Library, services and media export to open formats (OpenLyrics XML, PPTX, PDF, JSON). No lock-in. |
@@ -225,6 +225,8 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 **Migration.** A first-run wizard finds OpenSong, OpenLP, EasyWorship, ProPresenter and FreeShow data on the machine and imports songs, sets, themes and media in one pass, with a report of anything it could not carry over.
 
 **Phasing.**
+
+Before Phase 1, an early-adopter release goes to a small, hand-picked group of churches. It ships on macOS (signed and notarised DMG) and Linux (AppImage and .deb). A Windows build is offered as an unsigned preview: SmartScreen warns on install, and churches that choose it know that. Windows code signing and Flathub follow by launch. This keeps the slowest step, getting a Windows signing certificate, off the early-adopter path; the code is already tested on Windows in CI. Most church projection laptops run Windows, so choose early adopters with this in mind.
 
 1. Phase 1, launch: all P0 items. Windows, macOS and Linux; one to three outputs; LAN and relay sync; service packages; PowerPoint and Google Slides import, OBS browser source, title-safe calibration.
 2. Phase 2: P1 items. Browser planner, shared-folder sync, Planning Center sync, NDI, OBS scene control, corner pin, phone remote, translations side by side.

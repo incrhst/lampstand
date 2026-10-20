@@ -101,14 +101,14 @@
   <div class="page">
     <div class="head">
       <div>
-        <h1>Outputs</h1>
+        <h1>Screens</h1>
         <p class="muted intro">
-          The screens this device drives. Each keeps lyrics and scripture inside its own safe area. Turn an output on to open
-          its window; fullscreen outputs go on a display below.
+          The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
+          screen on to open its window; fullscreen screens go on a display below.
         </p>
       </div>
       <Button variant="primary" icon="plus" onclick={() => add("Rehearsal window", { Window: { width: 960, height: 540 } })}>
-        Add window output
+        Add window
       </Button>
     </div>
 
@@ -148,8 +148,8 @@
       {:else}
         <li class="empty">
           <Icon name="monitor" size={24} />
-          <p><strong>No outputs yet</strong></p>
-          <p class="muted">Add a window output to see slides while you rehearse.</p>
+          <p><strong>No screens yet</strong></p>
+          <p class="muted">Add a window to see slides while you rehearse, or use a display below.</p>
         </li>
       {/each}
     </ul>
@@ -164,13 +164,13 @@
           <Icon name="monitor" />
           <span class="display-name">{d.name || `Display ${i + 1}`}</span>
           <span class="faint num">{d.width}×{d.height} at {d.x},{d.y}</span>
-          <Button size="small" onclick={() => add(d.name || `Display ${i + 1}`, { Display: d })}>Add fullscreen output</Button>
+          <Button size="small" onclick={() => add(d.name || `Display ${i + 1}`, { Display: d })}>Use as a screen</Button>
         </li>
       {:else}
         <li class="faint">No displays found.</li>
       {/each}
     </ul>
-    <p class="faint note">OBS browser-source outputs arrive with the local server (T42, T43).</p>
+    <p class="faint note">OBS browser sources arrive with the local server (T42, T43).</p>
   </div>
 </div>
 {/if}

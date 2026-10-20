@@ -1207,6 +1207,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
+name = "deckcraft-anim"
+version = "0.8.0"
+source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
+dependencies = [
+ "deckcraft-geom",
+ "deckcraft-model",
+ "serde",
+]
+
+[[package]]
 name = "deckcraft-av1"
 version = "0.8.0"
 source = "git+https://github.com/storytold/deckcraft?rev=cb78440a1618e6a2c1df55dd7bff74719685518c#cb78440a1618e6a2c1df55dd7bff74719685518c"
@@ -3320,6 +3330,7 @@ dependencies = [
 name = "lampstand-slides"
 version = "0.1.0"
 dependencies = [
+ "deckcraft-anim",
  "deckcraft-color",
  "deckcraft-geom",
  "deckcraft-model",

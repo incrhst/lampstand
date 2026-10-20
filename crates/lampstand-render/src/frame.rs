@@ -599,6 +599,12 @@ impl Builder<'_> {
             let buffer = &self.frame.buffers[area.buffer];
             for run in buffer.layout_runs() {
                 for glyph in run.glyphs {
+                    // Transparent text has no outline either: a deck
+                    // paragraph that has not built yet is laid out in its
+                    // block but not drawn.
+                    if glyph.color_opt.is_some_and(|c| c.a() == 0) {
+                        continue;
+                    }
                     let physical = glyph.physical((area.left, area.top), area.scale);
                     let x0 = physical.x as f32 + physical.cache_key.x_bin.as_float();
                     // `physical` truncates y, so there is no vertical bin.
