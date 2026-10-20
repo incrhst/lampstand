@@ -390,3 +390,137 @@ fn send_to_present_is_fast() {
     // click to photon including composition and one display refresh.
     assert!(median < Duration::from_millis(250), "median {median:?}");
 }
+
+/// The bundled 2-second test clip (160×90, 30 fps H.264) as blob "clip".
+struct Clip;
+
+impl BlobSource for Clip {
+    fn path(&self, blob: &BlobHash) -> Option<PathBuf> {
+        (*blob == BlobHash::of(b"clip")).then(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../lampstand-media/tests/fixtures/clip-2s.mp4")
+        })
+    }
+}
+
+fn start_with_clip() -> Option<Outputs> {
+    let options = RendererOptions {
+        adapter: AdapterChoice::PreferIntegrated,
+        system_fonts: false,
+    };
+    let renderer = match Renderer::with_options(Arc::new(Clip), options) {
+        Ok(r) => r,
+        Err(RenderError::NoAdapter) => {
+            eprintln!("skipped: no GPU adapter");
+            return None;
+        }
+        Err(e) => panic!("renderer: {e:?}"),
+    };
+    Some(Outputs::spawn(renderer, OutputOptions::default(), |_| {}).unwrap())
+}
+
+fn video_scene(looped: bool, cover: Option<Color>) -> Arc<Scene> {
+    let mut nodes = vec![Node {
+        id: 1,
+        transform: Transform::IDENTITY,
+        opacity: 1.0,
+        visible: true,
+        kind: NodeKind::Video(VideoNode {
+            blob: BlobHash::of(b"clip"),
+            rect: lampstand_core::geom::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: W as f32,
+                height: H as f32,
+            },
+            fit: Fit::Contain,
+            looped,
+            muted: true,
+            autoplay: true,
+        }),
+    }];
+    if let Some(color) = cover {
+        nodes.push(rect(2, 0.0, 0.0, W as f32, H as f32, color));
+    }
+    Arc::new(Scene {
+        width: W as f32,
+        height: H as f32,
+        nodes,
+    })
+}
+
+/// Pixels that are not black.
+fn lit(image: &Image) -> usize {
+    image
+        .pixels
+        .chunks(4)
+        .filter(|p| p[0] > 24 || p[1] > 24 || p[2] > 24)
+        .count()
+}
+
+/// Snapshots until `ok` holds, for up to 10 s.
+fn snapshot_until(outputs: &Outputs, id: OutputId, ok: impl Fn(&Image) -> bool) -> Image {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let image = outputs.snapshot(id).unwrap();
+        if ok(&image) || Instant::now() > deadline {
+            return image;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_video_plays_on_an_output() {
+    let Some(outputs) = start_with_clip() else {
+        return;
+    };
+    let id = OutputId::generate();
+    outputs.attach_headless(id, W, H).unwrap();
+    show(&outputs, id, video_scene(false, None), Transition::CUT);
+    let first = snapshot_until(&outputs, id, |i| lit(i) > (W * H / 2) as usize);
+    assert!(lit(&first) > (W * H / 2) as usize, "the video never drew");
+    // testsrc2 moves every frame: a later snapshot differs.
+    let later = snapshot_until(&outputs, id, |i| i.pixels != first.pixels);
+    assert_ne!(later.pixels, first.pixels, "the video did not advance");
+}
+
+#[test]
+fn black_covers_a_playing_video_and_uncovering_shows_it_again() {
+    let Some(outputs) = start_with_clip() else {
+        return;
+    };
+    let id = OutputId::generate();
+    outputs.attach_headless(id, W, H).unwrap();
+    show(&outputs, id, video_scene(true, None), Transition::CUT);
+    snapshot_until(&outputs, id, |i| lit(i) > (W * H / 2) as usize);
+    show(
+        &outputs,
+        id,
+        video_scene(true, Some(Color::BLACK)),
+        Transition::CUT,
+    );
+    let black = outputs.snapshot(id).unwrap();
+    assert_eq!(lit(&black), 0);
+    std::thread::sleep(Duration::from_millis(100));
+    show(&outputs, id, video_scene(true, None), Transition::CUT);
+    let back = snapshot_until(&outputs, id, |i| lit(i) > (W * H / 2) as usize);
+    assert!(lit(&back) > (W * H / 2) as usize);
+}
+
+#[test]
+fn offscreen_rendering_shows_a_videos_first_frame() {
+    let options = RendererOptions {
+        adapter: AdapterChoice::PreferIntegrated,
+        system_fonts: false,
+    };
+    let renderer = match Renderer::with_options(Arc::new(Clip), options) {
+        Ok(r) => r,
+        Err(RenderError::NoAdapter) => return eprintln!("skipped: no GPU adapter"),
+        Err(e) => panic!("renderer: {e:?}"),
+    };
+    let image = renderer
+        .render_offscreen(&video_scene(false, None), W, H)
+        .unwrap();
+    assert!(lit(&image) > (W * H / 2) as usize);
+}

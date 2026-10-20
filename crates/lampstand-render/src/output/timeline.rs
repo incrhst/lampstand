@@ -344,7 +344,7 @@ impl NodeAnim {
             Effect::Transparency(value) => {
                 self.opacity *= 1.0 - value.clamp(0.0, 1.0) * e;
             }
-            // Video playback is T27's.
+            // Starts the video (`VideoClock::play`); nothing to animate.
             Effect::Play => {}
         }
     }

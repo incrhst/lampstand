@@ -19,11 +19,16 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import ObsNotice from "./ObsNotice.svelte";
+  import { obsPill } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
 
-  /** Opens Setup › Screens (the no-screen prompt) and Plan (the blank view). */
-  let { onsetup, onplan }: { onsetup?: () => void; onplan?: () => void } = $props();
+  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
+  let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
+
+  // OBS only appears for devices that stream (lib/obs.ts).
+  let pill = $derived(obsPill(live.obs));
 
   // With no service open, offer the next few to open: the core lists
   // upcoming ones first, then undated ones newest first.
@@ -202,6 +207,25 @@
   let output = $derived(mainOutput(live.outputs));
   let showGuide = $state(true);
 
+  // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
+  // Down, B (Black) and full stop work whichever window has focus. It is
+  // this machine's setting, so it is read from the core, not kept here.
+  let clicker = $state(false);
+  $effect(() => {
+    request({ area: "Settings", request: "Get" }, "Settings")
+      .then((s) => (clicker = s.clicker_mode))
+      .catch(report);
+  });
+
+  async function toggleClicker() {
+    try {
+      const s = await request({ area: "Settings", request: { Put: { clicker_mode: !clicker } } }, "Settings");
+      clicker = s.clicker_mode;
+    } catch (e) {
+      report(e);
+    }
+  }
+
   function kindOf(id: string) {
     const item = service?.items[id];
     return item ? kindName(item.kind) : null;
@@ -225,6 +249,7 @@
 {#if !live.loaded}
   <div class="none">
     {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+    {#if pill?.tone === "warn" && live.obs?.problem}<div class="no-screen"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
     <div class="pick">
       <div class="pick-head">
         <h1>No service is open</h1>
@@ -259,8 +284,14 @@
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
       <Placeholder ticket="T36">Readiness</Placeholder>
+      {#if pill}
+        <button class="obs-pill" onclick={onobs} title={pill.title} aria-label="OBS: {pill.text}. Open Setup › OBS">
+          <StatusPill tone={pill.tone} icon={pill.tone === "live" ? undefined : "play"}>{pill.text}</StatusPill>
+        </button>
+      {/if}
       <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
+      <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
       <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
     </div>
@@ -295,6 +326,7 @@
       <section class="pane centre" aria-label="Live screen">
         <div class="centre-body">
           {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+          {#if pill?.tone === "warn" && live.obs?.problem}<div class="no-screen"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
           {#if presenting && liveItem && live.live}
             {#key liveItem.id}
               <PresenterView
@@ -318,9 +350,6 @@
               <span class="muted">{output?.name ?? "No screen yet"}</span>
               {#if liveItem && live.live}
                 <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
-            {/if}
-            {#if live.liveSlide?.label === "Video"}
-              <Placeholder ticket="T27">Video plays on screen</Placeholder>
             {/if}
           </div>
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
@@ -364,8 +393,6 @@
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
                       {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
-                      <!-- The core labels video slides "Video"; the output draws nothing for them yet. -->
-                      {#if slide.label === "Video"}<Placeholder ticket="T27">Not on screen yet</Placeholder>{/if}
                     </span>
                   </button>
                 </li>
@@ -425,6 +452,14 @@
 {/if}
 
 <style>
+  .obs-pill {
+    display: inline-flex;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    border-radius: 999px;
+  }
   .none {
     height: 100%;
     display: flex;

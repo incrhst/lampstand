@@ -62,7 +62,7 @@ Goals:
 
 Non-goals:
 
-- **Replacing OBS.** We integrate with it. OBS is free, already used by most streaming churches, and owns encoding, audio mixing, camera switching and multi-platform streaming. Rebuilding that would take years and give churches nothing they lack. We send OBS clean graphics and cues; OBS stays the streaming engine.
+- **Replacing OBS.** We integrate with it. OBS is free, already used by most streaming churches, and owns encoding, audio mixing, camera switching and multi-platform streaming. Rebuilding that would take years and give churches nothing they lack. We send OBS clean graphics and cues, and run it from Lampstand (OB-4 to OB-9); OBS stays the streaming engine. See [decision 0005](decisions/0005-manage-obs-not-replace.md).
 - Editing PowerPoint or Google Slides content. We play decks and offer light changes (hide a slide, reorder); authoring stays in the source app.
 - Video editing, audio mixing, or lighting desk replacement. We trigger external systems, we do not replace them.
 - Church management (giving, membership, check-in). We integrate with Planning Center and similar tools.
@@ -109,6 +109,9 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 | OB-4 | Connect to OBS through its built-in WebSocket (OBS 28 and later). A service item can switch the OBS scene when it goes live, for example the sermon item moves OBS to the "Pastor and slides" scene. | P1 |
 | OB-5 | Show OBS streaming and recording status, and a warning if OBS disconnects, in the operator view. | P1 |
 | OB-6 | Start and stop OBS streaming and recording from the service order (pre-service countdown starts the stream). | P2 |
+| OB-7 | One-click OBS setup: Lampstand creates a scene collection with starter scenes and the browser source already pointing at the stream output. It never changes the church's own scenes. | P1 |
+| OB-8 | Run OBS from the operator view: its scenes as buttons with the live one marked, and a mute toggle for each audio input, so nobody opens OBS during a service. | P1 |
+| OB-9 | Set where OBS streams (a listed service such as YouTube, or a custom server, with its stream key) and turn OBS's virtual camera on and off from Lampstand. The stream key stays on the device and is never synced. | P1 |
 
 ### Songs and library
 
@@ -152,7 +155,7 @@ Free and open source means no company cloud that every church depends on. Collab
 | CD-8 | Service package: one file holding the order, songs, decks and media. Send it by email, USB stick or chat; it opens with a double click. Licensed Bible text is left out and pulled from the receiver's own library. | P0 |
 | CD-9 | Guest speakers deliver decks without an account: a per-service upload link, or a pasted Google Slides or OneDrive share link. | P0 |
 | CD-10 | Readiness check on the projection laptop before the service: every item, deck and video downloaded and cached, shown as a single green or red status. | P0 |
-| CD-11 | App delivery: signed Windows installer, signed and notarised macOS DMG, Linux AppImage, Flatpak (Flathub) and .deb. Auto-update, never during a live service. | P0 |
+| CD-11 | App delivery: signed Windows installer, signed and notarised macOS DMG, Linux AppImage, Flatpak (Flathub) and .deb. Auto-update, never during a live service. Early adopters get macOS and Linux first (see Phasing). | P0 |
 | CD-12 | Portable mode: run from a USB stick with the library beside it. | P2 |
 
 ### Live operation and outputs
@@ -197,7 +200,7 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 | Latency | Operator click to output frame under 50 ms. Remote and phone control under 150 ms on local Wi-Fi. |
 | Reliability | The output window never shows a desktop, dialog or cursor. A crash restores the live slide within 5 seconds. |
 | Hardware | Runs a 3-screen service on a 2019 laptop with 8 GB RAM and integrated graphics. |
-| Platforms | Windows 10+, macOS 13+, Linux (AppImage, Flatpak, .deb), all from launch. Same file format on all three. |
+| Platforms | Windows 10+, macOS 13+, Linux (AppImage, Flatpak, .deb), all from launch. Same file format on all three. Early adopters start on macOS and Linux, with Windows as an unsigned preview (see Phasing). |
 | Slide fidelity | Imported PowerPoint and Google Slides look the same as in their source apps on 95% of a test corpus of 200 real church decks. |
 | Accessibility | Operator UI meets WCAG 2.2 AA. All live actions have keyboard shortcuts. |
 | Data | Library, services and media export to open formats (OpenLyrics XML, PPTX, PDF, JSON). No lock-in. |
@@ -218,13 +221,15 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 
 - **Why Rust:** the output must never freeze or crash mid-service. Rust prevents whole classes of memory bugs and has no garbage-collector pauses. It also keeps the app small (tens of MB, not Electron's 150+) and light enough for an old church laptop, and the team already builds in it.
 - **Outputs render natively, not in a webview.** Each projector, stage and stream output is a native window drawn with wgpu (Metal, DirectX 12, Vulkan). Tauri uses a different webview on each OS (WebView2, WebKit), and those differ in video codecs and frame timing, so the webview is used only for the operator UI.
-- **Video and media** through GStreamer (gstreamer-rs), which also gives NDI, Spout and Syphon a common frame pipeline.
+- **Video and media** decode in process with DeckCraft's pure-Rust decoders (H.264, HEVC, VP9, AV1), so nothing has to be installed beside the app. NDI, Spout and Syphon bring their own SDKs in Phase 2.
 - **Slide engine in Rust:** a PPTX parser into our own scene format, rendered by the same wgpu engine. This is the largest build item: no mature open-source Rust PPTX renderer exists. The closest is DeckCraft, from the ArtCraft team: a pure-Rust PowerPoint clone that opens and presents .pptx files. It is alpha (around v0.5), its reader is tested only on decks it made itself, and its code licence still needs confirming (reported as MIT or Apache-2.0, both usable in a GPL-3.0 project). Evaluate it first as the base for our reader, and contribute our church-deck test corpus upstream; budget to build our own if it does not fit.
 - **Trade-offs:** a smaller hiring pool than TypeScript, and slower UI iteration on the Rust side. Keeping all UI in web code and only the engine in Rust limits both.
 
 **Migration.** A first-run wizard finds OpenSong, OpenLP, EasyWorship, ProPresenter and FreeShow data on the machine and imports songs, sets, themes and media in one pass, with a report of anything it could not carry over.
 
 **Phasing.**
+
+Before Phase 1, an early-adopter release goes to a small, hand-picked group of churches. It ships on macOS (signed and notarised DMG) and Linux (AppImage and .deb). A Windows build is offered as an unsigned preview: SmartScreen warns on install, and churches that choose it know that. Windows code signing and Flathub follow by launch. This keeps the slowest step, getting a Windows signing certificate, off the early-adopter path; the code is already tested on Windows in CI. Most church projection laptops run Windows, so choose early adopters with this in mind.
 
 1. Phase 1, launch: all P0 items. Windows, macOS and Linux; one to three outputs; LAN and relay sync; service packages; PowerPoint and Google Slides import, OBS browser source, title-safe calibration.
 2. Phase 2: P1 items. Browser planner, shared-folder sync, Planning Center sync, NDI, OBS scene control, corner pin, phone remote, translations side by side.

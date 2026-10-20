@@ -1,5 +1,6 @@
 //! Peer sync for the app: the local server's `WS /sync`, the sync node and
-//! the `Team` requests behind the devices screen.
+//! the `Team` requests behind the devices screen. The same server carries
+//! the OBS browser sources, fed by the app's [`SceneHub`] (see [`Obs`]).
 //!
 //! Until teams (T18) a device syncs only with devices it has paired with:
 //! the presenting machine shows a code (`StartPairing`), the service
@@ -25,7 +26,8 @@ use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
 use lampstand_core::scene::Scene;
 use lampstand_library::Library;
-use lampstand_server::{Backend, Server};
+use lampstand_render::Renderer;
+use lampstand_server::{Backend, SceneHub, Server};
 use lampstand_sync::net::{local_addresses, NodeConfig, NodeStatus, SyncNode};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
@@ -62,6 +64,16 @@ impl SyncConfig {
     }
 }
 
+/// What the local server's OBS routes read: the app's browser-source keys
+/// and scenes, and a renderer for deck frames.
+#[derive(Clone)]
+pub struct Obs {
+    pub hub: Arc<SceneHub>,
+    /// An offscreen renderer of its own (not the render thread's), so
+    /// deck slides go out as frames; without one they are drawn in the DOM.
+    pub renderer: Option<Arc<Renderer>>,
+}
+
 /// The sync node and the server it listens on.
 pub struct Sync {
     node: Arc<SyncNode>,
@@ -71,15 +83,18 @@ pub struct Sync {
 struct AppBackend {
     node: Arc<SyncNode>,
     blobs: PathBuf,
+    obs: Obs,
 }
 
 impl Backend for AppBackend {
-    // Browser-source outputs arrive with T43.
-    fn output_key_valid(&self, _: OutputId, _: &str) -> bool {
-        false
+    fn output_key_valid(&self, output: OutputId, key: &str) -> bool {
+        self.obs.hub.key_valid(output, key)
     }
-    fn watch_scene(&self, _: OutputId) -> Option<std::sync::mpsc::Receiver<Arc<Scene>>> {
-        None
+    fn watch_scene(&self, output: OutputId) -> Option<std::sync::mpsc::Receiver<Arc<Scene>>> {
+        self.obs.hub.watch(output)
+    }
+    fn renderer(&self) -> Option<Arc<Renderer>> {
+        self.obs.renderer.clone()
     }
     fn blob_path(&self, hash: &BlobHash) -> Option<PathBuf> {
         let path = self.blobs.join(hash.to_string());
@@ -93,12 +108,14 @@ impl Backend for AppBackend {
 impl Sync {
     /// Starts the local server and the sync node over `library`, keeping
     /// `paired.json` in `data_dir`, and emits `Event::SyncStatus` whenever
-    /// connections or nearby devices change. Call inside the Tokio runtime.
+    /// connections or nearby devices change. The server's OBS routes read
+    /// `obs`. Call inside the Tokio runtime.
     pub async fn start(
         library: &Arc<Library>,
         key: DeviceKeypair,
         data_dir: &Path,
         config: SyncConfig,
+        obs: Obs,
         emit: EventSink,
     ) -> Result<Self, String> {
         let node = SyncNode::new(
@@ -113,6 +130,7 @@ impl Sync {
         let backend = Arc::new(AppBackend {
             node: node.clone(),
             blobs: data_dir.join("library/repo/blobs"),
+            obs,
         });
         let any = SocketAddr::from(([0, 0, 0, 0], config.port));
         let server = match Server::start(any, backend.clone()).await {
@@ -163,6 +181,16 @@ impl Sync {
 
     pub fn local_addr(&self) -> SocketAddr {
         self.server.local_addr()
+    }
+
+    /// `host:port` for URLs other machines (OBS) open: this machine's LAN
+    /// address, else localhost.
+    pub fn public_address(&self) -> String {
+        let port = self.local_addr().port();
+        local_addresses(port)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| format!("127.0.0.1:{port}"))
     }
 
     pub async fn handle(&self, request: TeamRequest) -> Response {

@@ -6,6 +6,8 @@ import {
   request,
   type Cursor,
   type LoadedService,
+  type ObsRequest,
+  type ObsView,
   type OutputConfig,
   type Overlay,
   type SlideView,
@@ -28,6 +30,8 @@ class LiveState {
   songsVersion: number = $state(0);
   /** Bumped when a deck is added or changes (here or synced in). */
   decksVersion: number = $state(0);
+  /** OBS: where it is, whether it's connected and streaming (T89). */
+  obs: ObsView | null = $state(null);
 
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
@@ -63,6 +67,9 @@ onEvent((event) => {
     case "Changed":
       if (event.data.kind === "deck") live.decksVersion++;
       break;
+    case "Obs":
+      live.obs = event.data;
+      break;
   }
 });
 
@@ -75,6 +82,25 @@ export function report(error: unknown) {
 export async function refreshOutputs() {
   try {
     live.outputs = await request({ area: "Outputs", request: "List" }, "Outputs");
+  } catch (e) {
+    report(e);
+  }
+}
+
+/**
+ * Sends an OBS request and keeps `live.obs` current with the answer.
+ * Throws on failure, like `request`.
+ */
+export async function obs(req: ObsRequest): Promise<ObsView> {
+  const view = await request({ area: "Obs", request: req }, "Obs");
+  live.obs = view;
+  return view;
+}
+
+/** Refetches OBS's state, reporting a failure in the status bar. */
+export async function refreshObs() {
+  try {
+    await obs("Status");
   } catch (e) {
     report(e);
   }

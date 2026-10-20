@@ -20,14 +20,22 @@
 //! the step before, never a `Show`, which would cut the animation short.
 //! A deck slide arrives with its own transition, not the theme's, and
 //! steps that jump (Previous through builds) cut.
+//!
+//! Browser-source outputs (OBS, T86) go through the same compose step at
+//! their configured size, but the scene is published to the [`SceneHub`]
+//! the local server reads, instead of a window. Each one's URL key is kept
+//! in `browser-sources.json` and given back to the hub at start, so the URL
+//! pasted into OBS survives restarts. Browser sources get each deck build
+//! step as a cut to the stepped slide (the page has no animations).
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
     Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest, Request, Response,
-    ServiceRequest, ServiceSummary, SlideView, SongDatabase, SongHit,
+    ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -42,14 +50,17 @@ use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
 };
 use lampstand_library::{starter_theme, starter_theme_id, Library};
-use lampstand_live::{Cursor, LiveEngine, LoadedItem, LoadedSlide};
+use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
+use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
-use crate::config::{device_key, OutputStore};
+use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
+use crate::journal::{Journal, LiveRecord};
+use crate::keys::KeyState;
 use crate::seed;
 
 /// Where an output window goes.
@@ -121,6 +132,7 @@ pub struct App {
     live: LiveEngine,
     fonts: Fonts,
     outputs: OutputStore,
+    settings: SettingsStore,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -130,12 +142,29 @@ pub struct App {
     /// The pixel size each output with a window is composed at: the
     /// placement's size until the window reports its real one.
     sizes: HashMap<OutputId, (u32, u32)>,
+    /// Enabled browser-source outputs, each with the size it is composed
+    /// at. They have no window; their scenes go to `hub`.
+    streams: HashMap<OutputId, (u32, u32)>,
+    hub: Arc<SceneHub>,
+    /// Whether any enabled output streams, for OBS warnings (T89): read
+    /// by `obs_control` without the `App` lock.
+    streaming: Arc<AtomicBool>,
+    /// Each browser-source output's URL key.
+    keys: KeyStore,
+    /// `host:port` of the local server, for browser-source URLs; `None`
+    /// until the shell has started it.
+    server: Option<String>,
     sent: HashMap<OutputId, Sent>,
     told_ui: Option<LiveState>,
     loaded: Option<Loaded>,
     /// Parsed decks by the blob they were parsed from, for the decks in
     /// the open service.
     parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
+    /// What is on air, for crash recovery (T57).
+    journal: Journal,
+    /// Set from `open` until the journal is restored, so the windows
+    /// being placed and the half-restored state do not overwrite it.
+    restoring: bool,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -146,8 +175,11 @@ fn err(e: impl std::fmt::Display) -> String {
 
 impl App {
     /// Opens (or creates) everything under `data_dir`: the library in
-    /// `library/`, the device key and `outputs.json`. On first run the
-    /// seed hymns are imported. Enabled outputs get their windows.
+    /// `library/`, the device key, `outputs.json` and
+    /// `browser-sources.json`. On first run the seed hymns are imported.
+    /// Enabled outputs get their windows, or their browser-source URL, and
+    /// a service that was live less than 10 minutes ago (the crash journal,
+    /// `journal.json`) is reopened on the same slide.
     pub fn open(
         data_dir: &Path,
         fonts: Fonts,
@@ -160,22 +192,33 @@ impl App {
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
+        let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
+        let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
         let mut app = Self {
             library,
             live: LiveEngine::new(),
             fonts,
             outputs,
+            settings,
             sink,
             windows,
             emit,
             placed: HashMap::new(),
             sizes: HashMap::new(),
+            streams: HashMap::new(),
+            hub: Arc::new(SceneHub::new()),
+            streaming: Arc::new(AtomicBool::new(false)),
+            keys,
+            server: None,
             sent: HashMap::new(),
             told_ui: None,
             loaded: None,
             parsed: HashMap::new(),
+            journal: Journal::new(data_dir),
+            restoring: true,
         };
         app.place_windows();
+        app.restore();
         Ok(app)
     }
 
@@ -189,8 +232,37 @@ impl App {
         self.emit.clone()
     }
 
+    /// Which keys to take from the system (T56): clicker mode, and
+    /// whether a service is open for live. The shell adds window focus.
+    pub fn key_state(&self) -> KeyState {
+        KeyState {
+            clicker_mode: self.settings.get().clicker_mode,
+            live: self.loaded.is_some(),
+            output_focused: false,
+        }
+    }
+
     pub fn program(&self) -> &Program {
         self.live.program()
+    }
+
+    /// The browser sources' keys and scenes, for the local server's
+    /// `Backend` to delegate to.
+    pub fn scene_hub(&self) -> &Arc<SceneHub> {
+        &self.hub
+    }
+
+    /// True while an enabled browser-source output exists. Shared with
+    /// `obs_control`, which mentions OBS to the operator only then (or once
+    /// OBS settings are saved).
+    pub fn streaming(&self) -> Arc<AtomicBool> {
+        self.streaming.clone()
+    }
+
+    /// Where the local server listens (`host:port`), for the URLs
+    /// `BrowserSourceUrl` gives.
+    pub fn set_server_address(&mut self, address: String) {
+        self.server = Some(address);
     }
 
     pub fn handle(&mut self, request: Request) -> Response {
@@ -203,8 +275,18 @@ impl App {
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
-            // The shell answers these from `crate::sync`, without the lock.
+            // The shell answers these from `crate::sync` and
+            // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
+            Request::Settings(SettingsRequest::Get) => {
+                Ok(Response::Settings(self.settings.get().clone()))
+            }
+            Request::Settings(SettingsRequest::Put(settings)) => self
+                .settings
+                .put(settings)
+                .map(|()| Response::Settings(self.settings.get().clone()))
+                .map_err(err),
+            Request::Obs(_) => Err("OBS control is not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
@@ -414,11 +496,6 @@ impl App {
             ),
             OutputRequest::List => Response::Outputs(self.outputs.all().to_vec()),
             OutputRequest::Put(config) => {
-                if let OutputTarget::BrowserSource { .. } = config.target {
-                    return Err(
-                        "OBS browser sources arrive with the local server (T42, T43)".into(),
-                    );
-                }
                 let id = config.id;
                 self.outputs.put(config).map_err(err)?;
                 self.sent.remove(&id);
@@ -427,6 +504,7 @@ impl App {
             }
             OutputRequest::Remove(id) => {
                 self.outputs.remove(id).map_err(err)?;
+                self.keys.remove(id).map_err(err)?;
                 self.place_windows();
                 Response::Outputs(self.outputs.all().to_vec())
             }
@@ -448,10 +526,45 @@ impl App {
                 self.present();
                 Response::Ok
             }
-            OutputRequest::BrowserSourceUrl(_) => {
-                return Err("OBS browser sources arrive with the local server (T42, T43)".into())
+            OutputRequest::BrowserSourceUrl(output) => {
+                self.browser_source(output)?;
+                let key = match self.keys.get(output) {
+                    Some(key) => key.to_string(),
+                    None => {
+                        let key = fresh_key();
+                        self.keys.put(output, &key).map_err(err)?;
+                        key
+                    }
+                };
+                Response::Text(self.browser_source_url(output, &key)?)
+            }
+            OutputRequest::RotateBrowserSourceKey(output) => {
+                self.browser_source(output)?;
+                let key = self.hub.rotate_key(output).unwrap_or_else(fresh_key);
+                self.keys.put(output, &key).map_err(err)?;
+                Response::Text(self.browser_source_url(output, &key)?)
             }
         })
+    }
+
+    /// Checks that `output` is a browser-source output.
+    fn browser_source(&self, output: OutputId) -> Result<()> {
+        match self.outputs.get(output).map(|o| &o.target) {
+            Some(OutputTarget::BrowserSource { .. }) => Ok(()),
+            Some(_) => Err("that output is not an OBS browser source".into()),
+            None => Err("no such output".into()),
+        }
+    }
+
+    fn browser_source_url(&self, output: OutputId, key: &str) -> Result<String> {
+        let server = self
+            .server
+            .as_ref()
+            .ok_or("the local server is not running, so OBS cannot connect")?;
+        Ok(format!(
+            "http://{server}/obs/{}?k={key}",
+            output.uuid().hyphenated()
+        ))
     }
 
     // ---- Live --------------------------------------------------------
@@ -729,6 +842,7 @@ impl App {
             }
             self.told_ui = Some(state);
         }
+        self.write_journal(now);
     }
 
     /// Steps 3 and 4 of the click: compose per output, send `Show`.
@@ -736,6 +850,8 @@ impl App {
         self.present_at(now());
     }
 
+    /// Composes every output with a window or a browser-source URL whose
+    /// program, size, theme or config changed since it was last sent.
     fn present_at(&mut self, now: Timestamp) {
         self.present_with(now, None);
     }
@@ -745,12 +861,16 @@ impl App {
     fn present_with(&mut self, now: Timestamp, build: Option<(usize, Vec<Animation>)>) {
         let program = self.stepped(self.live.program().clone());
         let service_theme = self.loaded_theme();
-        let ids: Vec<OutputId> = self.sizes.keys().copied().collect();
-        for id in ids {
+        let ids: Vec<(OutputId, (u32, u32))> = self
+            .sizes
+            .iter()
+            .chain(&self.streams)
+            .map(|(id, size)| (*id, *size))
+            .collect();
+        for (id, size) in ids {
             let Some(config) = self.outputs.get(id).cloned() else {
                 continue;
             };
-            let size = self.sizes[&id];
             let theme = self.theme(config.theme.or(program.theme).or(service_theme));
             let sent = Sent {
                 program: program.clone(),
@@ -764,6 +884,23 @@ impl App {
             };
             let previous = self.sent.get(&id);
             if previous == Some(&sent) {
+                continue;
+            }
+            if self.streams.contains_key(&id) {
+                let composed = compose_at(
+                    &sent.program,
+                    &sent.config,
+                    OutputSize {
+                        width: size.0 as f32,
+                        height: size.1 as f32,
+                    },
+                    &sent.theme,
+                    &mut self.fonts,
+                    now,
+                    local_utc_offset_minutes(),
+                );
+                self.hub.publish(id, Arc::new(composed.scene));
+                self.sent.insert(id, sent);
                 continue;
             }
             let change = deck_change(
@@ -963,7 +1100,51 @@ impl App {
                 Err(e) => eprintln!("lampstand: cannot open output {name}: {e}"),
             }
         }
+        self.place_streams();
         self.present();
+        self.write_journal(now());
+    }
+
+    /// Gives every enabled browser-source output its URL in the hub, with
+    /// its saved key, and takes the URL away from the rest (their pages
+    /// disconnect). Keys stay saved while an output is off.
+    fn place_streams(&mut self) {
+        let wanted: HashMap<OutputId, (u32, u32)> = self
+            .outputs
+            .all()
+            .iter()
+            .filter(|o| o.enabled)
+            .filter_map(|o| match o.target {
+                OutputTarget::BrowserSource { width, height } => {
+                    Some((o.id, (width.max(1), height.max(1))))
+                }
+                _ => None,
+            })
+            .collect();
+        self.streaming.store(!wanted.is_empty(), Ordering::Relaxed);
+        let stale: Vec<OutputId> = self
+            .streams
+            .keys()
+            .filter(|id| !wanted.contains_key(id))
+            .copied()
+            .collect();
+        for id in stale {
+            self.hub.remove_output(id);
+            self.streams.remove(&id);
+            self.sent.remove(&id);
+        }
+        for (id, size) in wanted {
+            if !self.streams.contains_key(&id) {
+                let key = self
+                    .hub
+                    .add_output_with_key(id, self.keys.get(id).unwrap_or_default());
+                if let Err(e) = self.keys.put(id, &key) {
+                    eprintln!("lampstand: cannot save the browser-source key: {e}");
+                }
+                self.sent.remove(&id);
+            }
+            self.streams.insert(id, size);
+        }
     }
 
     /// The window system reports an output window's real inner size
@@ -993,6 +1174,7 @@ impl App {
                 });
             }
         }
+        self.write_journal(now());
     }
 
     /// Displays came or went: place display outputs again.
@@ -1012,6 +1194,103 @@ impl App {
         if !events.is_empty() {
             self.after_live_at(events, now, true);
         }
+        // The heartbeat while live, and an fsync a burst of clicks put off.
+        self.write_journal(now);
+    }
+
+    // ---- Crash recovery (T57) ----------------------------------------
+
+    /// What is on air now, as the journal keeps it.
+    fn live_record(&self) -> LiveRecord {
+        let program = self.live.program();
+        let mut outputs: Vec<OutputId> = self.sizes.keys().copied().collect();
+        outputs.sort();
+        LiveRecord {
+            service: self.loaded.as_ref().map(|l| l.view.service),
+            live: self.live.live(),
+            preview: self.live.preview(),
+            overlay: program.overlay,
+            text: program.content.is_some(),
+            background: program.background.is_some(),
+            outputs,
+        }
+    }
+
+    fn write_journal(&mut self, now: Timestamp) {
+        if !self.restoring {
+            let record = self.live_record();
+            self.journal.record(&record, now);
+        }
+    }
+
+    /// Reopens the service the journal says was live, on the same slide,
+    /// with the same overlay, preview and cleared text or background.
+    fn restore(&mut self) {
+        let record = self.journal.recover(now());
+        let loaded = match record.as_ref().and_then(|r| r.service) {
+            Some(service) => self.load_service(service).map(|_| ()),
+            None => Ok(()),
+        };
+        self.restoring = false;
+        let Some(record) = record else {
+            return;
+        };
+        if let Err(e) = loaded {
+            eprintln!("lampstand: cannot restore the live service: {e}");
+            return;
+        }
+        let mut commands = Vec::new();
+        commands.extend(record.live.map(Command::Show));
+        match record.overlay {
+            Overlay::Black => commands.push(Command::ToggleBlack),
+            Overlay::Logo => commands.push(Command::ToggleLogo),
+            Overlay::None => {}
+        }
+        if !record.text {
+            commands.push(Command::ClearText);
+        }
+        if !record.background {
+            commands.push(Command::ClearBackground);
+        }
+        commands.extend(record.preview.map(Command::Preview));
+        let events = commands
+            .into_iter()
+            .flat_map(|c| self.live.apply(c))
+            .collect();
+        self.after_live(events);
+        let missing = record
+            .outputs
+            .iter()
+            .filter(|id| !self.sizes.contains_key(id))
+            .count();
+        eprintln!(
+            "lampstand: restored the live service after a crash{}",
+            if missing > 0 {
+                format!(" ({missing} of its outputs are not connected)")
+            } else {
+                String::new()
+            }
+        );
+    }
+
+    /// A clean quit: the journal goes, so the next start does not reopen
+    /// the service.
+    pub fn closing(&mut self) {
+        self.journal.clear();
+    }
+
+    /// Tells the UI what is loaded and on air, for a webview that was not
+    /// listening when it happened (a restore at start, or a reload).
+    pub fn announce(&self) {
+        if let Some(loaded) = &self.loaded {
+            (self.emit)(Event::Loaded(loaded.view.clone()));
+        }
+        (self.emit)(Event::Live {
+            live: self.live.live(),
+            preview: self.live.preview(),
+            idle: self.live.is_idle(),
+            overlay: self.live.program().overlay,
+        });
     }
 
     /// Documents changed here or on another device: tell the UI, and
@@ -1183,6 +1462,11 @@ fn sort_services(services: &mut [ServiceSummary], now: Timestamp) {
 /// Local time's offset from UTC, for the stage clock.
 fn local_utc_offset_minutes() -> i32 {
     chrono::Local::now().offset().local_minus_utc() / 60
+}
+
+/// A new browser-source key: what `SceneHub` makes, 32 hex digits.
+fn fresh_key() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 fn now() -> Timestamp {
