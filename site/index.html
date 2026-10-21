@@ -9,7 +9,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Lampstand · free, open-source church projection">
-  <meta property="og:description" content="One laptop runs the whole service, offline on Sunday. Free and open source, in development.">
+  <meta property="og:description" content="One laptop runs the whole service, offline on Sunday. Free and open source. Download the first preview for Mac, Windows or Linux.">
   <meta property="og:image" content="https://lampstand.dbain.com/media/og.jpg">
   <meta property="og:url" content="https://lampstand.dbain.com/">
   <meta name="twitter:card" content="summary_large_image">
@@ -17,11 +17,13 @@
   <link rel="preload" href="fonts/courier-prime-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="main.js" defer></script>
+  <script src="download.js" defer></script>
 </head>
 <body>
   <svg width="0" height="0" class="defs" aria-hidden="true" focusable="false">
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.9 5.9 6.5.95-4.7 4.6 1.1 6.45L12 17.65 6.2 20.7l1.1-6.45-4.7-4.6 6.5-.95z" fill="currentColor"/></symbol>
     <symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></g></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
     <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
   </svg>
@@ -36,15 +38,30 @@
         <p class="subtitle">Order of Worship for every Sunday, on every screen</p>
         <hr class="rule rule--double">
         <p class="offer">Lampstand is a free church projection app, built so one laptop can run the whole service: songs, scripture, sermon slides and the live stream. Offline on Sunday morning, fitted to every screen in the room, and simple enough for a volunteer after ten minutes of training.</p>
-        <p class="typed status"><span class="stamp" aria-hidden="true">In development</span>Free and open source (<span class="nowrap">GPL-3.0</span>), planned for Windows, macOS and Linux. Nothing to download yet: we&rsquo;re building it in the open.</p>
+        <p class="typed status"><span class="stamp" aria-hidden="true">Preview</span>Free and open source (<span class="nowrap">GPL-3.0</span>) for Mac, Windows and Linux. An early version for churches willing to try it: tell us what you find.</p>
         <div class="actions">
-          <a class="btn btn--stamp" href="https://github.com/incrhst/lampstand">
-            <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-            Star Lampstand on GitHub
+          <a id="download" class="btn btn--stamp" href="https://github.com/incrhst/lampstand/releases/latest">
+            <svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>
+            <span class="btn-label">Download Lampstand</span>
           </a>
-          <a class="link" href="https://github.com/incrhst/lampstand/blob/main/docs/PRD.md">Read the plan</a>
+          <a class="link" href="docs/getting-started.html">Install guide</a>
           <a class="link" href="docs/">Read the docs</a>
         </div>
+        <p id="download-note" class="typed download-note">Free, with no sign-up.</p>
+        <details id="download-others" class="others" hidden>
+          <summary class="typed"><svg class="icon chevron" aria-hidden="true"><use href="#i-next"/></svg>Other downloads</summary>
+          <ul class="plain"></ul>
+        </details>
+        <ol class="steps typed" aria-label="From download to your first service">
+          <li><b>Download</b> and open the installer.</li>
+          <li><b>Open Lampstand.</b> A Welcome service is waiting for you.</li>
+          <li><b>Press Space</b> to go live, then make it yours.</li>
+        </ol>
+        <p class="typed small-note">
+          <a id="register" href="https://tally.so/r/BEzDz7">Tell us about your church</a>
+          <a href="https://github.com/incrhst/lampstand">Star it on GitHub</a>
+          <a href="https://github.com/incrhst/lampstand/issues/new/choose">Report a problem</a>
+        </p>
       </div>
 
       <div class="panel panel--right">
@@ -72,6 +89,20 @@
             </details>
           </figcaption>
         </figure>
+      </div>
+    </section>
+
+    <!-- The story: why this exists -->
+    <section class="spread spread--notices spread--story" aria-labelledby="story-title">
+      <h2 id="story-title" class="heading">Why I built it</h2>
+      <div class="panel panel--left">
+        <p class="plain">I was working with a team that ran a whole service from a single machine, using OpenSong, OBS, PowerPoint and Zoom. Let&rsquo;s just say there was a lot of juggling.</p>
+        <p class="plain">I wanted to recommend a replacement, and I couldn&rsquo;t find the right thing. So I decided to build it instead.</p>
+        <p class="plain">Learn more about the author at <a rel="author" href="https://dbain.com">dbain.com</a>.</p>
+      </div>
+      <div class="panel panel--right">
+        <p class="plain">Lampstand reads your PowerPoint and Google Slides, brings your songs across from OpenSong and other apps, and works hand in hand with OBS, so the juggling happens inside one app and one volunteer can run Sunday.</p>
+        <p class="plain">It is free, it is open source, and it is built in the open with the people who use it. If it is missing something your church needs, <a href="https://github.com/incrhst/lampstand/discussions">tell us</a>.</p>
       </div>
     </section>
 
@@ -185,7 +216,7 @@
       <ul class="connect" role="list">
         <li>
           <span class="connect-who">I run the screens at my church</span><span class="leader" aria-hidden="true"></span>
-          <a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star it, and watch for the first release</a>
+          <a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star it, and follow each release</a>
         </li>
         <li>
           <span class="connect-who">I write Rust or TypeScript</span><span class="leader" aria-hidden="true"></span>
@@ -202,22 +233,22 @@
     <section class="spread spread--notices" aria-labelledby="notices-title">
       <h2 id="notices-title" class="heading">Notices</h2>
       <div class="panel panel--left">
-        <h3 class="subhead">In the workshop: built so far</h3>
+        <h3 class="subhead">In this preview</h3>
         <ul class="ledger" role="list">
-          <li>The data model, and the live engine that moves through a service</li>
-          <li>Layout and a GPU renderer with output windows and per-screen calibration</li>
-          <li>Encrypted sync between the church&rsquo;s own devices on the local network</li>
-          <li>Song and Bible importers for the common formats</li>
-          <li>A PowerPoint reader, built on the open-source DeckCraft crates</li>
-          <li>The OBS browser source, and the desktop app&rsquo;s first screens</li>
+          <li>Plan a service, then run it from one operator screen, with speaker notes and a next-slide preview</li>
+          <li>Songs and Bibles in, from OpenSong, OpenLP, EasyWorship, ProPresenter, FreeShow and SongSelect</li>
+          <li>PowerPoint and Google Slides decks with their builds, and video and images</li>
+          <li>Output windows fitted to every screen, with calibration for the edges</li>
+          <li>OBS: switch scenes with the service, and send lower thirds or the full screen as a Browser source</li>
+          <li>Encrypted sync between your church&rsquo;s own devices, and updates inside the app</li>
         </ul>
       </div>
       <div class="panel panel--right">
         <h3 class="subhead subhead--first">Still to come</h3>
         <ul class="ledger" role="list">
-          <li>The operator view, deck import and the planner</li>
-          <li>Team invites and the self-hosted sync relay</li>
-          <li>Signed installers for Windows, macOS and Linux</li>
+          <li>A signed Windows installer (for now Windows asks you to confirm)</li>
+          <li>A Flatpak on Flathub for Linux</li>
+          <li>Whatever your church tells us it needs</li>
         </ul>
         <h3 class="subhead">Free, for good</h3>
         <p class="plain">GPL-3.0, with no paid tier and no company cloud your Sunday depends on. Your songs and services stay on your own machines, in open formats you can take anywhere.</p>

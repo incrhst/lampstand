@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Getting started · Lampstand docs</title>
-  <meta name="description" content="Build Lampstand from source and run it with a fresh library.">
+  <meta name="description" content="Download Lampstand, install it on Mac, Windows or Linux, and run your first service in about ten minutes.">
   <meta name="theme-color" content="#2b211a">
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../style.css">
@@ -14,43 +14,69 @@
   <main class="sheet sheet--docs">
     <header class="docs-bar">
       <a class="brand" href="../">Lampstand</a>
-      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html" aria-current="page">Getting started</a><a href="using.html">Using Lampstand</a><a href="how-it-works.html">How it works</a><a href="decisions.html">Decisions</a></nav>
+      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html" aria-current="page">Getting started</a><a href="using.html">Using Lampstand</a><a href="how-it-works.html">How it works</a><a href="contributing.html">Contributing</a><a href="decisions.html">Decisions</a></nav>
     </header>
     <div class="docs-wrap">
-      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#requirements">What you need</a></li><li><a href="#run">Run the app</a></li><li><a href="#data">Where your data lives</a></li><li><a href="#first-run">First run</a></li><li><a href="#build">Build and test</a></li><li><a href="#contribute">Contributing</a></li></ol></aside>
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#requirements">What you need</a></li><li><a href="#install">Install</a></li><li><a href="#first">Your first service</a></li><li><a href="#updates">Updating</a></li><li><a href="#data">Where your data lives</a></li><li><a href="#help">Help</a></li></ol></aside>
       <article class="doc">
         <h1>Getting started</h1>
-        <p class="lede">Build Lampstand from source and run it with a fresh library.</p>
+        <p class="lede">From download to your first service in about ten minutes. You do not need a projector to try it.</p>
+        <p><a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand/releases/latest">Download Lampstand</a></p>
         <h2 id="requirements">What you need</h2>
 <ul>
-  <li>Node 22 (tested with 22.22, npm 10.9).</li>
-  <li>Rust 1.95 or newer (tested with 1.99).</li>
-  <li>The Tauri CLI comes with the npm dependencies (2.12). A global <code>cargo tauri</code> (tested with 2.9.4) also works.</li>
-  <li>On Linux, install the system libraries first: <code>libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev</code>.</li>
+  <li><b>Mac:</b> macOS 11 or later, Apple silicon or Intel.</li>
+  <li><b>Windows:</b> Windows 10 or 11, 64-bit.</li>
+  <li><b>Linux:</b> 64-bit, with a graphics driver that supports Vulkan.</li>
+  <li>A projector or TV is optional. Lampstand can show the congregation&rsquo;s screen in a window on the laptop, so you can try everything first.</li>
+  <li>Internet is only needed to download and to update. Lampstand runs offline on Sunday morning.</li>
 </ul>
-<h2 id="run">Run the app</h2>
-<pre><code>git clone https://github.com/incrhst/lampstand
-cd lampstand/app
-npm ci
-npm run tauri dev</code></pre>
-<h2 id="data">Where your data lives</h2>
-<p>Lampstand keeps its library in the OS app-data folder (on macOS, <code>~/Library/Application Support/org.lampstand.app</code>). To start from a fresh folder, set <code>LAMPSTAND_DATA_DIR</code>:</p>
-<pre><code>LAMPSTAND_DATA_DIR=/tmp/lampstand-fresh npm run tauri dev</code></pre>
-<h2 id="first-run">First run</h2>
+<h2 id="install">Install</h2>
+<h3>Mac</h3>
 <ol>
-  <li>Two public-domain hymns (Amazing Grace, Holy, Holy, Holy) are already in the library.</li>
-  <li>Under <b>Plan</b>, create a service, add a song and click <b>Open for live</b>.</li>
-  <li>Under <b>Setup &rsaquo; Screens</b>, add a window and turn it on.</li>
-  <li>Under <b>Present</b>, press <kbd>Space</kbd> to advance.</li>
+  <li>Open the <code>.dmg</code> and drag <b>Lampstand</b> into <b>Applications</b>.</li>
+  <li>Open it from Applications. The first time, macOS asks whether you want to open an app downloaded from the internet: choose <b>Open</b>. Lampstand is signed and checked by Apple.</li>
 </ol>
-<p>To fill the library, see <a href="using.html#songs">Songs and imports</a>.</p>
-<h2 id="build">Build and test</h2>
-<p>The app crate embeds the built web UI, so build that once before any workspace-wide cargo command:</p>
-<pre><code>cd app && npm ci && npm run build && cd ..
-cargo test --workspace</code></pre>
-<p>In <code>app/</code>, <code>npm run check</code> type-checks the UI and <code>npm test</code> runs its unit tests. CI runs both, plus the Rust checks, on Linux, macOS and Windows.</p>
-<h2 id="contribute">Contributing</h2>
-<p>Work is tracked as numbered tickets in <a href="https://github.com/incrhst/lampstand/blob/main/docs/TICKETS.md">docs/TICKETS.md</a>. Pick one, and read <a href="how-it-works.html">How it works</a> first to find the crate it touches. Lampstand is GPL-3.0-or-later.</p>
+<h3>Windows</h3>
+<ol>
+  <li>Run the installer. Windows may show <b>&ldquo;Windows protected your PC&rdquo;</b>, because the installer is not signed yet. Choose <b>More info</b>, then <b>Run anyway</b>.</li>
+  <li>If it is missing, Windows fetches a small helper (WebView2) the first time, which needs the internet once.</li>
+</ol>
+<h3>Linux</h3>
+<ul>
+  <li><b>AppImage:</b> make it runnable and start it:
+<pre><code>chmod +x Lampstand_*.AppImage
+./Lampstand_*.AppImage</code></pre>
+  If it does not start on Ubuntu 22.04 or later, install <code>libfuse2</code> first (<code>sudo apt install libfuse2</code>).</li>
+  <li><b>.deb</b> (Debian, Ubuntu): <code>sudo apt install ./Lampstand_*.deb</code>.</li>
+  <li>Output to a projector needs a working Vulkan graphics driver.</li>
+</ul>
+<h2 id="first">Your first service</h2>
+<p>When Lampstand opens it shows a <b>Get started</b> strip across the top. Work along it, or follow these steps.</p>
+<ol>
+  <li><b>Try the Welcome service.</b> Choose <b>Try the Welcome service</b>, then press <kbd>Space</kbd> to go live and <kbd>Space</kbd> again to move on. It has two hymns and a verse. <kbd>&larr;</kbd> goes back and <kbd>.</kbd> blanks the screen.</li>
+  <li><b>Choose your screen.</b> Plug in the projector or TV, open <b>Setup &rsaquo; Screens</b> and choose it under <b>Displays</b>, or add a window to try it on the laptop. Use <b>Calibrate</b> so words never run off the edge of the picture.</li>
+  <li><b>Add your songs.</b> In <b>Plan</b>, drop song files onto the library: OpenLP, EasyWorship, ProPresenter, FreeShow, OpenSong, OpenLyrics or a SongSelect export. PowerPoint files and Google Slides links become decks, and pictures and video can be added too.</li>
+  <li><b>Plan your first service.</b> In <b>Plan</b>, choose <b>New service</b>. Press <kbd>/</kbd> to search: type a song title, or a verse like <code>John 3:16</code>, and press <kbd>Enter</kbd> to add it. Drag items to put them in order.</li>
+  <li><b>Go live.</b> Choose <b>Open for live</b>. In <b>Present</b>, <kbd>Space</kbd> moves on. <kbd>/</kbd> quick-adds a song or verse to the running order, even in the middle of the service.</li>
+</ol>
+<p>More on each of these is in <a href="using.html">Using Lampstand</a>.</p>
+<h2 id="updates">Updating</h2>
+<p>Lampstand looks for a new version when it starts and every few hours, and shows <b>Update available</b> at the bottom of the window. Install it from <b>Setup &rsaquo; About</b>. It only installs when nothing is on air and no service starts within the hour, so an update never interrupts one. The Linux <code>.deb</code> does not update itself; download the new one.</p>
+<h2 id="data">Where your data lives</h2>
+<p>Your songs, services and settings stay on your computer. Back this folder up to keep them safe:</p>
+<ul>
+  <li><b>Mac:</b> <code>~/Library/Application Support/org.lampstand.app</code></li>
+  <li><b>Windows:</b> <code>%APPDATA%\org.lampstand.app</code></li>
+  <li><b>Linux:</b> <code>~/.local/share/org.lampstand.app</code></li>
+</ul>
+<h2 id="help">Help</h2>
+<ul>
+  <li><b>A question?</b> Ask in <a href="https://github.com/incrhst/lampstand/discussions">Discussions</a>. Other churches and the team answer.</li>
+  <li><b>Something broken, or an idea?</b> <a href="https://github.com/incrhst/lampstand/issues/new/choose">Open an issue</a>.</li>
+  <li>In the app, <b>Setup &rsaquo; About</b> has buttons for all of these that fill in your version for you.</li>
+  <li><b>Tell us about your church</b> (optional, two minutes) so we know who Lampstand is for and what to build next: <a href="https://tally.so/r/BEzDz7">the form</a>.</li>
+</ul>
+<p>Please leave passwords and OBS Browser source addresses out of anything you post: they contain a key.</p>
         <nav class="pager" aria-label="Pages"><span>&larr; <a href="./">Docs</a></span><span><a href="using.html">Using Lampstand</a> &rarr;</span></nav>
       </article>
     </div>
