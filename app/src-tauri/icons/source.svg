@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- The lamp used in the app's header (app/src/lib/kit/icons.ts), gold on dark, on the macOS icon grid. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#15131c"/>
+  <g transform="translate(512 512) scale(30) translate(-12 -12)" fill="none" stroke="#f2c452" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3c-2 3-3 4.5-3 6.5a3 3 0 0 0 6 0C15 7.5 14 6 12 3z"/>
+    <path d="M12 13v5M8 21h8M9.5 18h5"/>
+  </g>
+</svg>
