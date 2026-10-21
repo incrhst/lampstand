@@ -1,15 +1,18 @@
 // What the presenter view says about where a deck stands: "Slide 3 of 8",
-// "Build 2 of 3", and how long the deck has been on air.
+// "Step 2 of 3", and how long the deck has been on air.
 
 /** "Slide 3 of 8" for the 0-based `slide` of `count`. */
 export function slideCounter(slide: number, count: number): string {
   return `Slide ${slide + 1} of ${count}`;
 }
 
-/** "Build 2 of 3" after `step` of `steps` clicks; null on a slide without builds. */
-export function buildCounter(step: number, steps: number): string | null {
+/**
+ * "Step 2 of 3" after `step` of a slide's `steps` (its PowerPoint builds,
+ * named for the operator, who just presses Next); null on a slide with none.
+ */
+export function stepCounter(step: number, steps: number): string | null {
   if (steps <= 0) return null;
-  return step === 0 ? `${steps} ${steps === 1 ? "build" : "builds"} to go` : `Build ${step} of ${steps}`;
+  return step === 0 ? `${steps} ${steps === 1 ? "step" : "steps"} on this slide` : `Step ${step} of ${steps}`;
 }
 
 /** Elapsed time as a clock: "0:07", "12:34", "1:02:03". */

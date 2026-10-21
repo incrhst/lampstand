@@ -65,6 +65,11 @@
       report(e);
     }
   }
+  /** Opens Plan on this service. */
+  function planService(id: string) {
+    live.planning = id;
+    onplan?.();
+  }
   let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
 
   async function command(c: Command) {
@@ -293,11 +298,23 @@
       {#if services.length > 0}
         <ul class="plain pick-list" aria-label="Services to open">
           {#each services as svc (svc.id)}
-            <ListRow title={svc.title} subtitle={formatWhen(svc.starts_at, svc.time_zone)} divided>
+            <!-- An empty service has nothing to go live with: say so, and
+                 offer to plan it instead. -->
+            <ListRow
+              title={svc.title}
+              subtitle={svc.items === 0
+                ? `${formatWhen(svc.starts_at, svc.time_zone)} · No items yet`
+                : `${formatWhen(svc.starts_at, svc.time_zone)} · ${svc.items} ${svc.items === 1 ? "item" : "items"}`}
+              divided
+            >
               {#snippet trailing()}
-                <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
-                  Open
-                </Button>
+                {#if svc.items === 0 && onplan}
+                  <Button size="small" icon="calendar" onclick={() => planService(svc.id)} label="Plan {svc.title}">Plan</Button>
+                {:else}
+                  <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                    Open
+                  </Button>
+                {/if}
               {/snippet}
             </ListRow>
           {/each}
@@ -448,7 +465,7 @@
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
-                      {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
+                      {#if slide.steps > 0}<span class="faint steps">{slide.steps} {slide.steps === 1 ? "step" : "steps"}</span>{/if}
                     </span>
                   </button>
                 </li>
