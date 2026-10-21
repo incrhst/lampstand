@@ -58,6 +58,10 @@ jobs:
           npm test
           npm run build
 
+      # The website's Download button chooses an installer from a release.
+      - name: Website (download button)
+        run: node --test site/download.test.js
+
       - name: Format
         run: cargo fmt --all --check
 
