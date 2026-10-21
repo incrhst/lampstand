@@ -144,15 +144,179 @@ impl Video {
     }
 }
 
-/// The first frame of the video at `path`, for thumbnails.
+/// The first frame of the video at `path`.
 pub fn poster(path: &Path) -> Result<Frame, MediaError> {
     let bytes = std::fs::read(path).map_err(|e| MediaError::Unreadable(e.to_string()))?;
     Ok(deckcraft_media::poster_frame(&Arc::new(bytes), 0.0)?)
 }
 
+/// Mean and spread of the brightness (0 to 255) of a picture, from a
+/// sample of its pixels.
+fn brightness(frame: &Frame) -> (f32, f32) {
+    let pixels = frame.rgba.len() / 4;
+    if pixels == 0 {
+        return (0.0, 0.0);
+    }
+    let step = (pixels / 4096).max(1);
+    let (mut sum, mut sum_sq, mut n) = (0.0f64, 0.0f64, 0.0f64);
+    for px in frame.rgba.as_chunks::<4>().0.iter().step_by(step) {
+        let y = 0.2126 * f64::from(px[0]) + 0.7152 * f64::from(px[1]) + 0.0722 * f64::from(px[2]);
+        sum += y;
+        sum_sq += y * y;
+        n += 1.0;
+    }
+    let mean = sum / n;
+    let spread = (sum_sq / n - mean * mean).max(0.0).sqrt();
+    (mean as f32, spread as f32)
+}
+
+/// A picture with nothing to preview: one flat colour, or all but black or
+/// white. Typical of the first frame of a video that fades in from black.
+pub fn is_blank(frame: &Frame) -> bool {
+    let (mean, spread) = brightness(frame);
+    spread < 6.0 || (mean < 14.0 && spread < 12.0) || (mean > 245.0 && spread < 12.0)
+}
+
+/// The first picture that is not blank, or the one with the most going on
+/// if every one is.
+fn choose(frames: impl IntoIterator<Item = Frame>) -> Option<Frame> {
+    let mut best: Option<(f32, Frame)> = None;
+    for frame in frames {
+        if !is_blank(&frame) {
+            return Some(frame);
+        }
+        let spread = brightness(&frame).1;
+        if best.as_ref().is_none_or(|(s, _)| spread > *s) {
+            best = Some((spread, frame));
+        }
+    }
+    best.map(|(_, frame)| frame)
+}
+
+/// Where in a video of `duration` seconds to look for a picture: the start,
+/// then points through it. A duration the file does not give tries the first
+/// few seconds.
+pub fn poster_times(duration: f64) -> Vec<f64> {
+    if duration <= 0.0 || !duration.is_finite() {
+        return vec![0.0, 1.0, 3.0, 6.0];
+    }
+    let last = (duration - 0.1).max(0.0);
+    let mut times = vec![0.0];
+    for fraction in [0.1, 0.25, 0.5, 0.75] {
+        let t = (duration * fraction).min(last);
+        if t > times[times.len() - 1] + 0.01 {
+            times.push(t);
+        }
+    }
+    times
+}
+
+/// A picture of the video at `path` worth showing as its thumbnail: the
+/// first frame, unless that is blank (a fade-in from black, a title card
+/// that has not appeared yet), in which case the first of several later
+/// points that is not. If every point is blank, the one with most in it.
+pub fn poster_best(path: &Path) -> Result<Frame, MediaError> {
+    let bytes = Arc::new(std::fs::read(path).map_err(|e| MediaError::Unreadable(e.to_string()))?);
+    let duration = deckcraft_media::probe(&bytes)
+        .map(|info| info.duration())
+        .unwrap_or(0.0);
+    let mut first_error = None;
+    let frames = poster_times(duration).into_iter().filter_map(|t| {
+        match deckcraft_media::poster_frame(&bytes, t) {
+            Ok(frame) => Some(frame),
+            Err(e) => {
+                first_error.get_or_insert(e);
+                None
+            }
+        }
+    });
+    match choose(frames) {
+        Some(frame) => Ok(frame),
+        None => Err(first_error.map_or(
+            MediaError::Unsupported("a video with no picture".into()),
+            MediaError::from,
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Frame {
+        let mut rgba = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                rgba.extend_from_slice(&pixel(x, y));
+            }
+        }
+        Frame {
+            time: 0.0,
+            width,
+            height,
+            rgba,
+        }
+    }
+
+    fn flat(value: u8) -> Frame {
+        frame(32, 18, |_, _| [value, value, value, 255])
+    }
+
+    fn busy() -> Frame {
+        frame(32, 18, |x, y| {
+            let v = ((x * 8 + y * 5) % 256) as u8;
+            [v, 255 - v, v / 2, 255]
+        })
+    }
+
+    #[test]
+    fn black_white_and_flat_pictures_are_blank_and_a_busy_one_is_not() {
+        assert!(is_blank(&flat(0)));
+        assert!(is_blank(&flat(255)));
+        assert!(is_blank(&flat(128)), "a flat grey has nothing in it either");
+        assert!(!is_blank(&busy()));
+    }
+
+    #[test]
+    fn a_black_picture_with_a_small_bright_logo_is_not_blank() {
+        let logo = frame(64, 36, |x, y| {
+            if (20..44).contains(&x) && (12..24).contains(&y) {
+                [255; 4]
+            } else {
+                [0, 0, 0, 255]
+            }
+        });
+        assert!(!is_blank(&logo));
+    }
+
+    #[test]
+    fn the_first_picture_that_is_not_blank_is_chosen() {
+        let chosen = choose([flat(0), flat(0), busy(), flat(255)]).unwrap();
+        assert_eq!(chosen.rgba, busy().rgba);
+    }
+
+    #[test]
+    fn when_every_picture_is_blank_the_one_with_most_in_it_is_chosen() {
+        // Faint noise on black is still blank, but has more going on than flat black.
+        let faint = frame(32, 18, |x, _| {
+            let v = if x % 2 == 0 { 9 } else { 0 };
+            [v, v, v, 255]
+        });
+        let chosen = choose([flat(0), faint.clone(), flat(0)]).unwrap();
+        assert_eq!(chosen.rgba, faint.rgba);
+        assert!(choose(Vec::new()).is_none());
+    }
+
+    #[test]
+    fn poster_times_start_at_the_start_and_run_through_the_video() {
+        assert_eq!(poster_times(0.0), [0.0, 1.0, 3.0, 6.0]);
+        let t = poster_times(100.0);
+        assert_eq!(t, [0.0, 10.0, 25.0, 50.0, 75.0]);
+        // A clip of two seconds stays inside it.
+        let short = poster_times(2.0);
+        assert!(short.iter().all(|t| *t < 2.0), "{short:?}");
+        assert!(short.windows(2).all(|w| w[0] < w[1]), "{short:?}");
+    }
 
     #[test]
     fn looped_time_wraps_and_unlooped_time_holds_at_the_end() {

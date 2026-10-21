@@ -229,6 +229,7 @@
     title: d.title,
     subtitle: `Slide deck · ${deckSourceLabel(d.source)}`,
     item: { Deck: { deck: d.id } },
+    version: d.current.blob,
   });
   const mediaEntry = (m: MediaFile): Entry => ({
     key: `media:${m.blob}`,

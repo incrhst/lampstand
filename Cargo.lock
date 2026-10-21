@@ -3210,6 +3210,7 @@ dependencies = [
  "lampstand-layout",
  "lampstand-library",
  "lampstand-live",
+ "lampstand-media",
  "lampstand-render",
  "lampstand-server",
  "lampstand-slides",

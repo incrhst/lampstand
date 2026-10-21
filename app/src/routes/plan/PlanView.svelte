@@ -21,6 +21,8 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import DeckThumb from "../../lib/kit/DeckThumb.svelte";
+  import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
@@ -337,6 +339,11 @@
     }
   }
 
+  /** The version of a deck's file, so its thumbnail is drawn again when the deck changes. */
+  function deckVersion(id: string): string {
+    return decks.find((d) => d.id === id)?.current.blob ?? "";
+  }
+
   function ordered(service: Service) {
     return Object.entries(service.items)
       .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] != null)
@@ -586,7 +593,13 @@
                   <Icon name="grip" />
                 </button>
                 <span class="index num">{i + 1}</span>
-                <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                {#if "Media" in item.kind}
+                  <MediaThumb blob={item.kind.Media.blob} name={item.kind.Media.name} icon={kindIcon[kindName(item.kind)]} />
+                {:else if "Deck" in item.kind}
+                  <DeckThumb deck={item.kind.Deck.deck} version={deckVersion(item.kind.Deck.deck)} />
+                {:else}
+                  <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                {/if}
                 <span class="text">
                   <span class="title">{itemTitle(item)}</span>
                   <span class="subtitle">{itemSubtitle(item)}</span>
@@ -795,8 +808,8 @@
     color: var(--faint);
   }
   .kind {
-    width: 2rem;
-    height: 2rem;
+    width: var(--tile-width);
+    height: var(--tile-height);
     border-radius: var(--radius);
     background: var(--raised);
     color: var(--muted);

@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use lampstand_media::{poster, Video};
+use lampstand_media::{is_blank, poster, poster_best, Video};
 
 fn clip() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/clip-2s.mp4")
@@ -63,4 +63,11 @@ fn missing_and_non_video_files_are_errors() {
     assert!(Video::open(&clip().with_file_name("nope.mp4"), false).is_err());
     let not_video = Video::from_bytes(std::sync::Arc::new(b"hello".to_vec()), false);
     assert!(not_video.is_err());
+}
+
+#[test]
+fn the_best_poster_of_the_clip_is_a_real_picture() {
+    let frame = poster_best(&clip()).unwrap();
+    assert_eq!((frame.width, frame.height), (160, 90));
+    assert!(!is_blank(&frame));
 }

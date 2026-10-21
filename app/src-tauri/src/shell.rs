@@ -85,6 +85,9 @@ struct Shared {
     /// Draws slide thumbnails, apart from the output render thread so a
     /// thumbnail never holds up a frame. `None` if it could not start.
     thumbnails: Option<Arc<Renderer>>,
+    /// Fonts for parsing a deck to draw its thumbnail: loaded when the first
+    /// one is asked for, and used one at a time.
+    thumbnail_fonts: Arc<Mutex<Option<Fonts>>>,
 }
 
 fn lock(app: &Mutex<App>) -> MutexGuard<'_, App> {
@@ -151,6 +154,31 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             blocking(Box::new(move || {
                 decks::add_deck_file(&library, &path)
                     .map(Response::Deck)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // A deck's first slide, drawn like a service's slide thumbnails but
+        // from the library, off the `App` lock.
+        Request::Library(LibraryRequest::DeckThumbnail { deck, width }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "thumbnails are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                decks::deck_thumbnail(&library, deck, width, &fonts, &renderer)
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // Decoding a video for its thumbnail runs off the `App` lock.
+        Request::Library(LibraryRequest::MediaThumbnail { blob, name, width }) => {
+            blocking(Box::new(move || {
+                decks::media_thumbnail(&library, &blob, &name, width)
+                    .map(Response::Thumbnail)
                     .unwrap_or_else(|message| Response::Error { message })
             }))
             .await
@@ -422,6 +450,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         sync,
         obs: obs_control,
         thumbnails,
+        thumbnail_fonts: Arc::new(Mutex::new(None)),
     })
 }
 

@@ -4,6 +4,8 @@
   import type { Entry } from "../../lib/library";
   import { isVideo } from "../../lib/media";
   import Icon from "../../lib/kit/Icon.svelte";
+  import DeckThumb from "../../lib/kit/DeckThumb.svelte";
+  import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import type { IconName } from "../../lib/kit/icons";
 
   let {
@@ -44,7 +46,13 @@
     {onpointerdown}
     aria-label="{entry.title}{inService ? ', in service' : ''}"
   >
-    <span class="kind"><Icon name={entry.key === "link" ? "deck" : icon(entry)} /></span>
+    {#if entry.item && "Media" in entry.item}
+      <MediaThumb blob={entry.item.Media.blob} name={entry.item.Media.name} icon={icon(entry)} />
+    {:else if entry.item && "Deck" in entry.item}
+      <DeckThumb deck={entry.item.Deck.deck} version={entry.version} />
+    {:else}
+      <span class="kind"><Icon name={entry.key === "link" ? "deck" : icon(entry)} /></span>
+    {/if}
     <span class="text">
       <span class="title">{entry.title}{#if entry.fresh && !inService}<span class="new">New</span>{/if}</span>
       <span class="subtitle" class:snippet={!!entry.snippet}>{entry.snippet ?? entry.subtitle}</span>
@@ -86,8 +94,8 @@
     cursor: default;
   }
   .kind {
-    width: 1.9rem;
-    height: 1.9rem;
+    width: var(--tile-width);
+    height: var(--tile-height);
     flex-shrink: 0;
     border-radius: var(--radius);
     background: var(--raised);

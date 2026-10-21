@@ -233,6 +233,91 @@ pub fn add_media_file(library: &Library, path: &str) -> Result<MediaFile, String
     })
 }
 
+/// `LibraryRequest::DeckThumbnail`: the deck's first slide, after its
+/// builds, as a PNG `data:` URL `width` pixels wide. Parses the deck (the
+/// first time takes a moment) and draws it with `renderer`.
+pub fn deck_thumbnail(
+    library: &Library,
+    deck: DeckId,
+    width: u32,
+    fonts: &std::sync::Mutex<Option<lampstand_layout::Fonts>>,
+    renderer: &lampstand_render::Renderer,
+) -> Result<String, String> {
+    let deck = library
+        .deck(deck)
+        .map_err(|e| e.to_string())?
+        .ok_or("no such deck")?;
+    let parsed = {
+        // One deck is parsed at a time, with fonts loaded on first use.
+        let mut fonts = fonts.lock().unwrap_or_else(|e| e.into_inner());
+        parse(
+            library,
+            &deck,
+            fonts.get_or_insert_with(lampstand_layout::Fonts::load),
+        )?
+    };
+    let scene = parsed
+        .slides
+        .first()
+        .and_then(|slide| slide.scenes.last())
+        .ok_or("the deck has no slides")?;
+    let (w, h) = thumbnail_size(scene, width);
+    let image = renderer
+        .render_offscreen(scene, w, h)
+        .map_err(|e| format!("{e:?}"))?;
+    png_data_url(&image)
+}
+
+const VIDEO_EXTENSIONS: [&str; 5] = ["mp4", "mov", "m4v", "webm", "mkv"];
+
+/// `LibraryRequest::MediaThumbnail`: a JPEG `data:` URL, `width` pixels wide,
+/// of an image, or of the first frame of a video that is not blank.
+pub fn media_thumbnail(
+    library: &Library,
+    blob: &BlobHash,
+    name: &str,
+    width: u32,
+) -> Result<String, String> {
+    use base64::Engine;
+    let path = library
+        .repo()
+        .blobs()
+        .path(blob)
+        .ok_or("this file is not on this device yet")?;
+    let is_video = Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| VIDEO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
+    let picture = if is_video {
+        let frame = lampstand_media::poster_best(&path).map_err(|e| e.to_string())?;
+        image::RgbaImage::from_raw(frame.width, frame.height, frame.rgba)
+            .ok_or("the video's picture has the wrong size")?
+            .into()
+    } else {
+        image::ImageReader::open(&path)
+            .map_err(|e| e.to_string())?
+            .with_guessed_format()
+            .map_err(|e| e.to_string())?
+            .decode()
+            .map_err(|e| e.to_string())?
+    };
+    let width = width.clamp(16, 640);
+    let height = (u64::from(picture.height()) * u64::from(width)
+        / u64::from(picture.width().max(1)))
+    .max(1) as u32;
+    let small = picture
+        .resize_exact(width, height, image::imageops::FilterType::Triangle)
+        .to_rgb8();
+    let mut jpeg = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 80)
+        .encode_image(&small)
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(jpeg.into_inner())
+    ))
+}
+
 /// `LibraryRequest::ListMedia`: every `Media` item in every service, once
 /// per blob, by name.
 pub fn list_media(library: &Library) -> Result<Vec<MediaFile>, String> {
@@ -466,5 +551,55 @@ mod tests {
         );
         assert!(classify("https://example.com/talk.pptx").is_err());
         assert_eq!(title_of("Easter Sunday.pptx"), "Easter Sunday");
+    }
+
+    fn decode(url: &str) -> image::DynamicImage {
+        use base64::Engine;
+        let b64 = url
+            .strip_prefix("data:image/jpeg;base64,")
+            .expect("a jpeg data url");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
+        image::load_from_memory(&bytes).unwrap()
+    }
+
+    #[test]
+    fn an_image_gets_a_thumbnail_of_the_width_asked_for() {
+        let (dir, lib) = library();
+        let path = dir.path().join("photo.png");
+        image::RgbaImage::from_fn(400, 200, |x, y| {
+            image::Rgba([(x % 256) as u8, (y % 256) as u8, 90, 255])
+        })
+        .save(&path)
+        .unwrap();
+        let media = add_media_file(&lib, path.to_str().unwrap()).unwrap();
+        let thumb = decode(&media_thumbnail(&lib, &media.blob, "photo.png", 100).unwrap());
+        assert_eq!(
+            (thumb.width(), thumb.height()),
+            (100, 50),
+            "the shape is kept"
+        );
+    }
+
+    #[test]
+    fn a_video_gets_a_thumbnail_from_a_frame_that_is_not_blank() {
+        let (_dir, lib) = library();
+        let clip = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/lampstand-media/tests/fixtures/clip-2s.mp4");
+        let media = add_media_file(&lib, clip.to_str().unwrap()).unwrap();
+        let thumb = decode(&media_thumbnail(&lib, &media.blob, "clip-2s.mp4", 80).unwrap());
+        assert_eq!((thumb.width(), thumb.height()), (80, 45));
+        // Not one flat colour.
+        let rgb = thumb.to_rgb8();
+        assert!(rgb.pixels().any(|p| p != rgb.get_pixel(0, 0)));
+    }
+
+    #[test]
+    fn a_file_that_is_not_on_this_device_has_no_thumbnail() {
+        let (_dir, lib) = library();
+        let missing = BlobHash::of(b"never imported");
+        let error = media_thumbnail(&lib, &missing, "x.mp4", 80).unwrap_err();
+        assert!(error.contains("not on this device"), "{error}");
     }
 }

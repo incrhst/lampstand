@@ -399,6 +399,15 @@ impl App {
             LibraryRequest::AddMediaFile { path } => {
                 Response::Media(decks::add_media_file(lib, &path)?)
             }
+            LibraryRequest::DeckThumbnail { .. } => {
+                // It needs the GPU, so the shell draws it.
+                return Err("deck thumbnails are drawn by the app shell".into());
+            }
+            LibraryRequest::MediaThumbnail { blob, name, width } => {
+                // Decoding a video takes a moment, so the shell runs it off
+                // the `App` lock; this is the same work, for callers without one.
+                Response::Thumbnail(decks::media_thumbnail(lib, &blob, &name, width)?)
+            }
             LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
     }

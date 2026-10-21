@@ -20,6 +20,8 @@ export interface Entry {
   snippet?: string;
   /** What adding it inserts; null when it cannot be added (a failed lookup). */
   item: ItemKind | null;
+  /** For a deck: which version of its file this is, so its thumbnail is drawn again when it changes. */
+  version?: string;
   /** Added to the library and not yet put in a service: marked "New" in Recent. */
   fresh?: boolean;
 }
