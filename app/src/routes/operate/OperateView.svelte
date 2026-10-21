@@ -23,6 +23,7 @@
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
+  import QuickAdd from "./QuickAdd.svelte";
   import ObsNotice from "./ObsNotice.svelte";
   import { isConnected, isPicture, isScreen, obsPill, pictureStatus, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
@@ -158,6 +159,11 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (live.loaded && e.key === "/") {
+      e.preventDefault();
+      quickAddOpen = true;
+      return;
+    }
     if (pill && live.loaded && (e.key === "o" || e.key === "O")) {
       e.preventDefault();
       setObsOpen(!obsOpen);
@@ -224,6 +230,15 @@
   const isDeckSlide = (slide: SlideView) => slide.lines.length === 0 && /^Slide \d+$/.test(slide.label ?? "");
 
   let items = $derived(live.loaded?.items ?? []);
+
+  // Quick add (/): a song or passage into the service on air, after what is
+  // on air, without going back to Plan.
+  let quickAddOpen = $state(false);
+  function quickAdded(id: string | null, showNow: boolean, title: string) {
+    quickAddOpen = false;
+    live.status = `Added ${title}`;
+    if (showNow && id) show({ item: id, slide: 0, step: 0 });
+  }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
@@ -414,7 +429,7 @@
           <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
         </button>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O control OBS" : ""}</span>
+      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections · / quick add{pill ? " · O control OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
       <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
@@ -424,11 +439,23 @@
     <!-- While a deck is on air the presenter view takes the right column
          too; outputs stay in the status bar. -->
     <div class="grid" class:presenting>
+      {#if quickAddOpen && live.loaded}
+        <QuickAdd
+          service={live.loaded.service}
+          order={items.map((i) => i.id)}
+          liveItem={live.live?.item ?? null}
+          onclose={() => (quickAddOpen = false)}
+          onadded={quickAdded}
+        />
+      {/if}
       {#if obsOpen}
         <ObsDrawer view={live.obs} onclose={() => setObsOpen(false)} onsetup={onobs} />
       {/if}
       <nav class="pane pane-side queue" aria-label="Service order">
-        <div class="pane-head"><h2>Service order</h2></div>
+        <div class="pane-head">
+          <h2>Service order</h2>
+          <Button size="small" icon="plus" shortcut="/" onclick={() => (quickAddOpen = true)} title="Quick add a song or scripture after what is on air">Quick add</Button>
+        </div>
         <ol class="plain pane-body">
           {#each items as item, i (item.id)}
             {@const kind = kindOf(item.id)}
