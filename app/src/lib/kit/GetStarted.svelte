@@ -7,7 +7,18 @@
   import Button from "./Button.svelte";
   import Icon from "./Icon.svelte";
 
-  let { steps, onstep, onhide }: { steps: Step[]; onstep: (id: StepId) => void; onhide: () => void } = $props();
+  let {
+    steps,
+    onstep,
+    ontell,
+    onhide,
+  }: {
+    steps: Step[];
+    onstep: (id: StepId) => void;
+    /** Opens the optional form about the church; the link is left out when not given. */
+    ontell?: () => void;
+    onhide: () => void;
+  } = $props();
 </script>
 
 <section class="strip" aria-label="Get started">
@@ -26,6 +37,11 @@
       </li>
     {/each}
   </ol>
+  {#if ontell}
+    <button type="button" class="tell" onclick={ontell} title="An optional two-minute form, in your browser: who you are and how you plan to use Lampstand">
+      Tell us about your church <span class="optional">(optional)</span>
+    </button>
+  {/if}
   <Button variant="ghost" size="small" icon="x" label="Hide Get started" onclick={onhide} />
 </section>
 
@@ -74,6 +90,13 @@
   }
   button.done :global(svg) {
     color: var(--ready, #6fbf73);
+  }
+  .tell {
+    border-style: dashed;
+    white-space: nowrap;
+  }
+  .optional {
+    color: var(--muted);
   }
   .num {
     display: inline-grid;

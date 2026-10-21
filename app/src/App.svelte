@@ -87,6 +87,7 @@
   };
   let hidden = $state(flag("lampstand.getstarted.hidden"));
   let tried = $state(flag("lampstand.getstarted.tried"));
+  let told = $state(flag("lampstand.getstarted.told"));
   let songCount = $state(0);
   let serviceList: Facts["services"] = $state([]);
   async function refreshFacts() {
@@ -118,6 +119,16 @@
     // Everything is done: it has done its job.
     if (allDone(started) && !hidden) hide();
   });
+  /** Opens the optional "tell us about your church" form in the browser, and stops asking. */
+  async function tellUs() {
+    try {
+      await request({ area: "About", request: "TellUs" }, "Ok");
+      told = true;
+      setFlag("lampstand.getstarted.told");
+    } catch (e) {
+      live.status = e instanceof Error ? e.message : String(e);
+    }
+  }
   async function startStep(id: StepId) {
     if (id === "try") {
       const welcome = welcomeService(serviceList);
@@ -170,7 +181,7 @@
     </div>
   </header>
 
-  {#if showStrip}<GetStarted steps={started} onstep={startStep} onhide={hide} />{/if}
+  {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
   <main>
     {#if screen === "plan"}
