@@ -11,7 +11,7 @@
   import { request, send, type Command, type Cursor, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { nextClick, nextSlide } from "../../lib/cursor";
+  import { jumpItem, nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -140,6 +140,14 @@
     if (c) {
       e.preventDefault();
       command(c);
+      return;
+    }
+    // Up and Down move through the running order: the start of the
+    // previous or next item, where Left and Right move through slides.
+    if (live.loaded && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      const cursor = jumpItem(live.loaded, live.live, e.key === "ArrowDown" ? 1 : -1);
+      if (cursor) show(cursor);
       return;
     }
     if (live.loaded) {

@@ -33,3 +33,21 @@ export function nextClick(loaded: LoadedService, live: Cursor | null): NextClick
   const next = nextSlide(loaded, live);
   return next ? { ...next, build: false } : null;
 }
+
+/**
+ * The start of the next (`1`) or previous (`-1`) item in the running order
+ * that has something to show, from the live item; items with no slides are
+ * skipped. With nothing live, "next" is the first item and "previous" is
+ * nowhere. Null at either end.
+ */
+export function jumpItem(loaded: LoadedService, live: Cursor | null, direction: 1 | -1): Cursor | null {
+  const at = live ? loaded.items.findIndex((i) => i.id === live.item) : -1;
+  const candidates =
+    direction === 1
+      ? loaded.items.slice(at + 1)
+      : at < 0
+        ? []
+        : loaded.items.slice(0, at).reverse();
+  const item = candidates.find((i) => i.slides.length > 0);
+  return item ? { item: item.id, slide: 0, step: 0 } : null;
+}
