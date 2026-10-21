@@ -612,6 +612,34 @@ fn a_display_output_waits_for_its_display() {
 }
 
 #[test]
+fn the_ui_is_told_when_displays_change_so_it_need_not_be_refreshed() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = Host::default();
+    let mut h = open_with(dir.path(), host.clone());
+    let told = |h: &Harness| {
+        h.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, Event::DisplaysChanged))
+            .count()
+    };
+    assert_eq!(told(&h), 0);
+    host.0.lock().unwrap().displays.push(DisplayInfo {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    });
+    h.app.displays_changed();
+    assert_eq!(told(&h), 1);
+    host.0.lock().unwrap().displays.clear();
+    h.app.displays_changed();
+    assert_eq!(told(&h), 2, "unplugging one is announced too");
+}
+
+#[test]
 fn the_real_window_size_is_what_gets_composed() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());

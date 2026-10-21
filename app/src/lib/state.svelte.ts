@@ -32,6 +32,8 @@ class LiveState {
   decksVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
+  displaysVersion: number = $state(0);
 
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
@@ -69,6 +71,9 @@ onEvent((event) => {
       break;
     case "Obs":
       live.obs = event.data;
+      break;
+    case "DisplaysChanged":
+      live.displaysVersion++;
       break;
   }
 });

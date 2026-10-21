@@ -46,6 +46,15 @@
     }
   }
 
+  // A monitor plugged in or removed shows up here by itself; the Refresh
+  // button is only a backstop.
+  let lastDisplays = live.displaysVersion;
+  $effect(() => {
+    if (live.displaysVersion === lastDisplays) return;
+    lastDisplays = live.displaysVersion;
+    refresh();
+  });
+
   async function put(config: OutputConfig) {
     try {
       live.outputs = await request({ area: "Outputs", request: { Put: config } }, "Outputs");
