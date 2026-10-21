@@ -33,3 +33,16 @@ export function nextClick(loaded: LoadedService, live: Cursor | null): NextClick
   const next = nextSlide(loaded, live);
   return next ? { ...next, build: false } : null;
 }
+
+/**
+ * The next (`1`) or previous (`-1`) item in the running order that has
+ * something to show, from `from` (the item being looked at). With none
+ * chosen, "next" is the first item and "previous" is nowhere. Null at
+ * either end. This only chooses: it does not put anything on air.
+ */
+export function neighbourItem(items: { id: string; slides: unknown[] }[], from: string | null, direction: 1 | -1): string | null {
+  const at = from === null ? -1 : items.findIndex((i) => i.id === from);
+  const candidates =
+    direction === 1 ? items.slice(at + 1) : at < 0 ? [] : items.slice(0, at).reverse();
+  return candidates.find((i) => i.slides.length > 0)?.id ?? null;
+}

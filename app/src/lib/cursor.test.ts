@@ -1,7 +1,7 @@
 // node --test --experimental-strip-types (npm test)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextClick, nextSlide } from "./cursor.ts";
+import { neighbourItem, nextClick, nextSlide } from "./cursor.ts";
 import type { LoadedService } from "./api";
 
 const slide = (label: string, steps = 0) => ({ label, lines: [label], steps, notes: "" });
@@ -45,4 +45,19 @@ test("the next click builds the live slide before moving on", () => {
   assert.equal(at(2)?.build, false);
   assert.deepEqual(nextClick(deck, { item: "d", slide: 1, step: 0 })?.cursor, { item: "a", slide: 0, step: 0 });
   assert.equal(nextClick(deck, null)?.cursor.item, "d");
+});
+
+test("choosing moves to the next or previous item with something to show, skipping empty ones", () => {
+  assert.equal(neighbourItem(loaded.items, "a", 1), "b", "the header between them is skipped");
+  assert.equal(neighbourItem(loaded.items, "b", -1), "a");
+});
+
+test("there is nothing to choose past either end", () => {
+  assert.equal(neighbourItem(loaded.items, "b", 1), null);
+  assert.equal(neighbourItem(loaded.items, "a", -1), null);
+});
+
+test("with nothing chosen, next is the first item and previous is nowhere", () => {
+  assert.equal(neighbourItem(loaded.items, null, 1), "a");
+  assert.equal(neighbourItem(loaded.items, null, -1), null);
 });
