@@ -625,6 +625,9 @@ pub enum Event {
         total: usize,
         message: String,
     },
+    /// The monitors connected changed (one was plugged in or removed, or
+    /// the arrangement changed): refetch `OutputRequest::ListDisplays`.
+    DisplaysChanged,
     /// OBS's connection, streaming, recording, scenes or mutes changed.
     /// Boxed: the view is much bigger than the other events.
     Obs(Box<ObsView>),

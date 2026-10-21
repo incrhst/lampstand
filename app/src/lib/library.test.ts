@@ -6,6 +6,7 @@ import {
   importedCounts,
   isLink,
   mightBeReference,
+  newSongs,
   rank,
   remember,
   songProgress,
@@ -100,4 +101,24 @@ test("links and references", () => {
   assert.ok(!isLink("https grace"));
   assert.ok(mightBeReference("Rom 8:28"));
   assert.ok(!mightBeReference("Jude"));
+});
+
+test("recent holds what was just added as well as what was used, and using a new row clears its mark", () => {
+  let recent: Entry[] = [];
+  recent = remember(recent, { ...entry("deck", "Easter deck"), fresh: true });
+  recent = remember(recent, entry("song", "Amazing Grace"));
+  assert.deepEqual(recent.map((e) => [e.title, !!e.fresh]), [["Amazing Grace", false], ["Easter deck", true]]);
+  // Putting the new deck in a service moves it up and drops the "New" mark.
+  recent = remember(recent, { ...entry("deck", "Easter deck"), fresh: false });
+  assert.deepEqual(recent.map((e) => [e.title, !!e.fresh]), [["Easter deck", false], ["Amazing Grace", false]]);
+});
+
+test("a few new songs are listed as recent; a whole songbook is not", () => {
+  const hit = (id: string) => ({ song: id, title: id, line: null });
+  const before = ["a", "b"];
+  assert.deepEqual(newSongs(before, [hit("a"), hit("b"), hit("c")]).map((h) => h.song), ["c"]);
+  assert.deepEqual(newSongs(before, [hit("a"), hit("b")]), []);
+  const book = Array.from({ length: 40 }, (_, i) => hit(`s${i}`));
+  assert.deepEqual(newSongs(before, [...book, hit("a")]), [], "too many to be recent");
+  assert.equal(newSongs(before, book, 50).length, 40, "unless the limit allows it");
 });

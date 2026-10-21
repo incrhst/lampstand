@@ -25,6 +25,7 @@
     isLink,
     mightBeReference,
     rank,
+    newSongs,
     remember,
     sortByTitle,
     sortPaths,
@@ -256,7 +257,7 @@
   );
   let counts = $derived(countKinds(results));
 
-  // Recently used rows that are still in the library.
+  // Recent rows (used in a service, or just added) that are still in the library.
   let recentShown = $derived(
     recent.filter(
       (e) =>
@@ -305,7 +306,7 @@
     addedKey = entry.key;
     clearTimeout(addedTimer);
     addedTimer = setTimeout(() => (addedKey = null), 1200);
-    recent = remember(recent, { ...entry, snippet: undefined });
+    recent = remember(recent, { ...entry, snippet: undefined, fresh: false });
     save("lampstand.library.recent", recent);
   }
 
@@ -325,6 +326,8 @@
       const deck = await request({ area: "Library", request: { AddDeckFromLink: { url } } }, "Deck");
       await ondecks();
       live.status = `Added ${deck.title}`;
+      recent = remember(recent, { ...deckEntry(deck), fresh: true });
+      save("lampstand.library.recent", recent);
       query = "";
       if (service) await onadd({ Deck: { deck: deck.id } });
     } catch (e) {
@@ -437,15 +440,23 @@
     const added = { songs: 0, bibles: 0, decks: 0, media: 0 };
     const failed: string[] = [];
     let message = "";
+    const knownSongs = allSongs.map((s) => s.song);
+    const fresh: Entry[] = [];
     try {
       if (sorted.imports.length) {
         message = await request({ area: "Library", request: { ImportFiles: { paths: sorted.imports } } }, "Text");
         Object.assign(added, importedCounts(message));
+        // A few new songs are worth listing under Recent; a songbook is not.
+        if (added.songs > 0) {
+          const after = await request({ area: "Library", request: { SearchSongs: { query: "", limit: LISTED } } }, "Songs");
+          fresh.push(...newSongs(knownSongs, after).map((h) => ({ ...songEntry(h), fresh: true })));
+        }
       }
       for (const path of sorted.decks) {
         try {
-          await request({ area: "Library", request: { AddDeckFile: { path } } }, "Deck");
+          const deck = await request({ area: "Library", request: { AddDeckFile: { path } } }, "Deck");
           added.decks++;
+          fresh.push({ ...deckEntry(deck), fresh: true });
         } catch (e) {
           failed.push(e instanceof Error ? e.message : String(e));
         }
@@ -456,11 +467,16 @@
           const file = await request({ area: "Library", request: { AddMediaFile: { path } } }, "Media");
           looseMedia = [...looseMedia.filter((m) => m.blob !== file.blob), file];
           added.media++;
+          fresh.push({ ...mediaEntry(file), fresh: true });
         } catch (e) {
           failed.push(e instanceof Error ? e.message : String(e));
         }
       }
       save("lampstand.library.media", looseMedia);
+      if (fresh.length > 0) {
+        for (const entry of fresh) recent = remember(recent, entry);
+        save("lampstand.library.recent", recent);
+      }
       if (added.decks) await ondecks();
       if (added.bibles) await ontranslations();
       const summary = summarize(added);
@@ -658,8 +674,8 @@
           </div>
         {/if}
         {#if showRecent}
-          <section aria-label="Recently used" class="recent">
-            <h3>Recently used</h3>
+          <section aria-label="Recent" class="recent">
+            <h3>Recent</h3>
             <ul class="plain">
               {#each recentShown as entry, i (entry.key)}{@render row(entry, i)}{/each}
             </ul>
@@ -670,7 +686,7 @@
           {#if translations.length === 0}
             <p class="hint muted">No Bibles on this device yet. Drop one here (OSIS, USFM, Zefania, OpenSong or OpenLP) to import it.</p>
           {:else if list.length > 0}
-            <h3>Recently used</h3>
+            <h3>Recent</h3>
           {/if}
         {/if}
         {#if showRecent || (showEmpty && list.length > 0)}<h3>Everything</h3>{/if}
