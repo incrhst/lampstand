@@ -142,9 +142,11 @@
       command(c);
       return;
     }
-    // Up and Down move through the running order: the start of the
-    // previous or next item, where Left and Right move through slides.
-    if (live.loaded && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    // Shift+Down and Shift+Up move through the running order: the start of
+    // the next or previous item, where Left and Right move through slides.
+    // Plain Up and Down are left alone, so they still scroll the notes and
+    // lists and a stray press cannot change what is on air.
+    if (live.loaded && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       const cursor = jumpItem(live.loaded, live.live, e.key === "ArrowDown" ? 1 : -1);
       if (cursor) show(cursor);
