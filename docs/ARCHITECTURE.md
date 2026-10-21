@@ -170,6 +170,10 @@ Google Slides arrive as their PPTX export and take the same path. A 200-deck fid
   - *Blobs* are fetched on request (`SyncNode::fetch_blob`) from whichever connected device has them, and verified on arrival (`BlobStore::put_verified`).
   - *Measured* (`crates/lampstand-server/tests/sync.rs`, two processes on an M1, debug build): found by mDNS in under 1 s, converged 30–50 ms after pairing, edit to change on the other process median 13–19 ms, a restarted peer caught up in under 1 s. `app/src-tauri/tests/sync.rs` times edit to `Event::Loaded` on the presenting app at about 50 ms. Target: under 1 s on a LAN. Encryption (T75) did not move the edit median (13–15 ms before and after, four interleaved runs); a 500-song first sync went from 0.66–1.13 s to 0.87–1.06 s (`crates/lampstand-sync/tests/net.rs`).
 
+### Plans from Notion (proposed)
+
+A church that plans in Notion points Lampstand at its Services database; Lampstand reads the service and its items, matches the songs and passages against its own library, and the person checks the result and creates the service ([decision 0007](decisions/0007-plans-from-notion.md), not built yet). The connector produces a [plan](plan-contract.md), a source-neutral list of entries with no people, lyrics or files in it, so a companion planning tool or a plain file could produce the same thing. Matching is shared with "New service from a list": CCLI number first, then title, then search, and only the first two count as matched. A service remembers the plan row each item came from and a hash of what the import wrote, so a later update replaces untouched items and leaves the operator's edits alone. The Notion token lives in the OS keychain, never in a synced document.
+
 ### What syncs and what stays on the device
 
 | Synced | Device only |

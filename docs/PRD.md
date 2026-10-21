@@ -139,6 +139,7 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 | PL-1 | Build a service order in the browser or desktop app; the whole team sees changes live. | P0 |
 | PL-2 | Templates for recurring services. Comments and assignments per item. | P1 |
 | PL-3 | Two-way sync with Planning Center Services. | P1 |
+| PL-4 | Import a service plan, with its songs and scripture matched against the church's own library, from Notion or any tool that produces the [plan contract](plan-contract.md), and update it later without losing the operator's edits. Lampstand holds no people. | P1 |
 
 ### Collaboration and delivery
 
@@ -216,7 +217,7 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 - **Slide engine:** parses PPTX (including Google Slides exports) into our own scene format and plays builds, transitions and media.
 - **Local server:** serves the OBS browser source, the phone remote, the stage display and the congregation lyric view on the local network; also sends NDI.
 - **Sync (local-first):** every device holds the full data and merges changes over the church network, a self-hosted relay or a shared folder (CD-1 to CD-7). No central cloud is required.
-- **Connectors:** Google Drive and Slides, OneDrive, CCLI SongSelect, Planning Center, OBS WebSocket.
+- **Connectors:** Google Drive and Slides, OneDrive, CCLI SongSelect, Planning Center, Notion (service plans, PL-4), OBS WebSocket.
 
 **Technology: Rust core, web UI.** Build the core in Rust, inside a Tauri shell, with the operator and planning screens in a web UI that the browser planner shares.
 
