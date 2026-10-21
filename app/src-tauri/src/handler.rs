@@ -1243,6 +1243,8 @@ impl App {
     /// Displays came or went: place display outputs again.
     pub fn displays_changed(&mut self) {
         self.place_windows();
+        // The Screens page and the no-screen prompt list the displays.
+        (self.emit)(Event::DisplaysChanged);
     }
 
     /// Drives announcement loops and countdowns. Call every 100 ms or so;

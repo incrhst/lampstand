@@ -22,6 +22,24 @@ pub struct DisplayInfo {
 }
 
 impl DisplayInfo {
+    /// This display's frame as logical points `(x, y, width, height)`, given
+    /// the display's own scale factor.
+    ///
+    /// The window system reports each monitor in that monitor's own pixels,
+    /// so a Retina display (scale 2) and a plain one (scale 1) side by side
+    /// do not share a pixel space. A window being placed must be given
+    /// logical points: converted with the *window's* scale (the display it
+    /// starts on), a physical position on another display lands somewhere
+    /// else, such as on the operator's own screen.
+    pub fn logical_frame(&self, scale: f64) -> (f64, f64, f64, f64) {
+        (
+            f64::from(self.x) / scale,
+            f64::from(self.y) / scale,
+            f64::from(self.width) / scale,
+            f64::from(self.height) / scale,
+        )
+    }
+
     /// What an output configured on this display remembers.
     pub fn to_match(&self) -> DisplayMatch {
         DisplayMatch {
@@ -221,5 +239,35 @@ mod tests {
         let got = assign_displays(&wants, &after);
         assert_eq!(got.get(&a), None);
         assert_eq!(got.get(&b), Some(&1));
+    }
+
+    #[test]
+    fn a_displays_frame_is_converted_with_its_own_scale() {
+        let display = |x, y, width, height| DisplayInfo {
+            name: String::new(),
+            width,
+            height,
+            x,
+            y,
+        };
+        // A Retina laptop panel at the origin, scale 2.
+        assert_eq!(
+            display(0, 0, 2880, 1800).logical_frame(2.0),
+            (0.0, 0.0, 1440.0, 900.0)
+        );
+        // A 1080p TV to its right, scale 1: the window system reports its
+        // position as 1440 in its own pixels, which is also 1440 points.
+        // Converting that with the laptop's scale (2) would give 720, a spot
+        // on the laptop panel.
+        assert_eq!(
+            display(1440, 0, 1920, 1080).logical_frame(1.0),
+            (1440.0, 0.0, 1920.0, 1080.0)
+        );
+        // A Retina external to the right of the same laptop: position 2880
+        // in its own pixels, 1440 points.
+        assert_eq!(
+            display(2880, 0, 5120, 2880).logical_frame(2.0),
+            (1440.0, 0.0, 2560.0, 1440.0)
+        );
     }
 }
