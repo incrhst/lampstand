@@ -46,7 +46,7 @@
   >
     <span class="kind"><Icon name={entry.key === "link" ? "deck" : icon(entry)} /></span>
     <span class="text">
-      <span class="title">{entry.title}</span>
+      <span class="title">{entry.title}{#if entry.fresh && !inService}<span class="new">New</span>{/if}</span>
       <span class="subtitle" class:snippet={!!entry.snippet}>{entry.snippet ?? entry.subtitle}</span>
     </span>
     {#if added}
@@ -158,5 +158,17 @@
   .row:hover .in-service .again,
   .row.active .in-service .again {
     display: inline;
+  }
+  .new {
+    margin-left: 0.5rem;
+    padding: 0 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border: 1px solid currentColor;
+    border-radius: var(--radius);
+    vertical-align: 0.1em;
   }
 </style>

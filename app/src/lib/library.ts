@@ -3,7 +3,7 @@
 // sorted to the request that imports them, and the short lines it shows
 // afterwards. Kept free of Svelte and Tauri so node can test it.
 
-import type { ItemKind } from "./api";
+import type { ItemKind, SongHit } from "./api";
 import { deckExtensions, imageExtensions, videoExtensions } from "./media.ts";
 
 export type Kind = "song" | "scripture" | "deck" | "media";
@@ -20,6 +20,8 @@ export interface Entry {
   snippet?: string;
   /** What adding it inserts; null when it cannot be added (a failed lookup). */
   item: ItemKind | null;
+  /** Added to the library and not yet put in a service: marked "New" in Recent. */
+  fresh?: boolean;
 }
 
 const terms = (query: string) => query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -75,9 +77,24 @@ export function byFilter(entries: Entry[], filter: Filter): Entry[] {
   return filter === "all" ? entries : entries.filter((e) => e.kind === filter);
 }
 
-/** The newest first, once each, at most `max`. */
-export function remember(recent: Entry[], entry: Entry, max = 6): Entry[] {
+/**
+ * The Recent list: what was put in a service or just added to the library,
+ * newest first, once each, at most `max`. Putting a row in a service later
+ * replaces its "New" mark.
+ */
+export function remember(recent: Entry[], entry: Entry, max = 8): Entry[] {
   return [entry, ...recent.filter((e) => e.key !== entry.key)].slice(0, max);
+}
+
+/**
+ * The songs in `after` that were not in the library before an import, when
+ * there are few enough to be worth listing. A bulk import (a whole songbook)
+ * is not "recent": it would bury everything else.
+ */
+export function newSongs(before: Iterable<string>, after: SongHit[], max = 6): SongHit[] {
+  const known = new Set(before);
+  const added = after.filter((h) => !known.has(h.song));
+  return added.length <= max ? added : [];
 }
 
 /** A pasted share link, which adds a deck rather than searching. */
