@@ -112,11 +112,11 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<aside id="obs-drawer" class="drawer" aria-label="OBS" bind:this={body} {onkeydown} {onkeyup}>
+<aside id="obs-drawer" class="drawer" aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
   <div class="head">
-    <h2 class="title">OBS</h2>
+    <h2 class="title">Control OBS</h2>
     <span class="faint small">O or Esc to close</span>
-    <Button variant="ghost" size="small" icon="x" label="Close OBS" onclick={onclose} />
+    <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={onclose} />
   </div>
 
   {#if !connected}

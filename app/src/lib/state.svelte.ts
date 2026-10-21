@@ -87,6 +87,40 @@ export async function refreshOutputs() {
   }
 }
 
+/** Saves an output and keeps `live.outputs` current. */
+export async function putOutput(config: OutputConfig) {
+  try {
+    live.outputs = await request({ area: "Outputs", request: { Put: config } }, "Outputs");
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Removes an output and keeps `live.outputs` current. */
+export async function removeOutput(id: string) {
+  try {
+    live.outputs = await request({ area: "Outputs", request: { Remove: id } }, "Outputs");
+  } catch (e) {
+    report(e);
+  }
+}
+
+/**
+ * How many OBS pages are showing each picture sent to OBS, by output ID.
+ * Kept current by `refreshPictures`, which the screens that show it call
+ * every few seconds.
+ */
+export const pictures: { clients: Record<string, number> } = $state({ clients: {} });
+
+export async function refreshPictures() {
+  try {
+    const all = await request({ area: "Outputs", request: "BrowserSourceStatus" }, "BrowserSources");
+    pictures.clients = Object.fromEntries(all.map((s) => [s.output, s.clients]));
+  } catch (e) {
+    report(e);
+  }
+}
+
 /**
  * Sends an OBS request and keeps `live.obs` current with the answer.
  * Throws on failure, like `request`.

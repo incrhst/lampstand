@@ -9,7 +9,7 @@
   import { request } from "./lib/api";
   import { isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
-  import { obsPill } from "./lib/obs";
+  import { isPicture, isScreen, obsPill } from "./lib/obs";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
@@ -31,7 +31,11 @@
     screen = "setup";
   }
   let obsStatus = $derived(obsPill(live.obs));
-  let enabled = $derived(live.outputs.filter((o) => o.enabled).length);
+  // Screens are windows and displays; pictures sent to OBS are counted apart.
+  let screenOutputs = $derived(live.outputs.filter(isScreen));
+  let pictureOutputs = $derived(live.outputs.filter(isPicture));
+  let enabled = $derived(screenOutputs.filter((o) => o.enabled).length);
+  let picturesOn = $derived(pictureOutputs.filter((o) => o.enabled).length);
   let uncalibrated = $derived(live.outputs.filter((o) => !isCalibrated(o)).map((o) => o.name));
 
   // The live service's date, beside its title: most services are called
@@ -119,11 +123,19 @@
       {/if}
       <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
         <Icon name="monitor" size={14} />
-        {live.outputs.length}
-        {live.outputs.length === 1 ? "screen" : "screens"}
-        {#if live.outputs.length > 0}<span>· {enabled} on</span>{/if}
+        {screenOutputs.length}
+        {screenOutputs.length === 1 ? "screen" : "screens"}
+        {#if screenOutputs.length > 0}<span>· {enabled} on</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
+      {#if pictureOutputs.length > 0}
+        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Setup › OBS">
+          <Icon name="broadcast" size={14} />
+          {pictureOutputs.length}
+          {pictureOutputs.length === 1 ? "picture" : "pictures"} to OBS
+          <span>· {picturesOn} on</span>
+        </button>
+      {/if}
     {/snippet}
   </StatusBar>
 </div>

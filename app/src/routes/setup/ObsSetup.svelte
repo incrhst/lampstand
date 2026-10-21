@@ -1,15 +1,29 @@
-<!-- Setup › OBS (T89): where OBS's WebSocket server is, its password, and
-     whether Lampstand is connected. The password is sent to the core once
-     and never comes back: an empty field keeps the saved one. -->
+<!-- Setup › OBS: the two separate ways OBS and Lampstand work together.
+     "Send to OBS" is OBS loading a picture from Lampstand (a browser
+     source). "Control OBS" (T89) is Lampstand driving OBS over its
+     WebSocket: where the server is, its password, and whether Lampstand is
+     connected. The password is sent to the core once and never comes back:
+     an empty field keeps the saved one. Either works without the other. -->
 <script lang="ts">
   import { untrack } from "svelte";
-  import { live, obs, refreshObs, report } from "../../lib/state.svelte";
+  import { live, obs, putOutput, refreshObs, report } from "../../lib/state.svelte";
   import { notice, SERVER_OFF_STEPS } from "../../lib/obs";
-  import type { ObsConnection } from "../../lib/api";
+  import type { ObsConnection, OutputConfig } from "../../lib/api";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
+  import Icon from "../../lib/kit/Icon.svelte";
   import ObsNotice from "../operate/ObsNotice.svelte";
+  import CalibrateView from "../outputs/CalibrateView.svelte";
+  import ObsPicture from "./ObsPicture.svelte";
+
+  // A picture sent to OBS is calibrated like a screen, on a page of its own.
+  let calibrating: string | null = $state(null);
+  let calibratingOutput = $derived(live.outputs.find((o) => o.id === calibrating) ?? null);
+  async function saveSafeArea(o: OutputConfig, safe_area: OutputConfig["safe_area"], background: OutputConfig["background"]) {
+    await putOutput({ ...o, safe_area, background });
+    calibrating = null;
+  }
 
   let host = $state("localhost");
   let port = $state(4455);
@@ -66,65 +80,92 @@
   );
 </script>
 
+{#if calibratingOutput}
+  <CalibrateView
+    output={calibratingOutput}
+    onsave={(area, background) => saveSafeArea(calibratingOutput!, area, background)}
+    oncancel={() => (calibrating = null)}
+  />
+{:else}
 <div class="page">
   <h1>OBS</h1>
   <p class="muted intro">
-    Lampstand sends lyrics and slides to OBS as a browser source (Setup › Screens). Connect it to OBS's WebSocket
-    server too, and Present shows whether you're live, and warns you when OBS stops.
+    OBS and Lampstand can work together in two separate ways. You can use either one without the other.
   </p>
 
-  <div class="stack">
-    <Panel title="Connection" description="OBS 28 or later. Use localhost when OBS runs on this computer.">
-      {#snippet actions()}
-        {#if shown}<StatusPill tone={shown.tone}>{shown.text}</StatusPill>{/if}
-      {/snippet}
-      <form
-        class="form"
-        onsubmit={(e) => {
-          e.preventDefault();
-          save();
-        }}
-      >
-        <label>
-          <span>Computer</span>
-          <input type="text" bind:value={host} autocomplete="off" spellcheck="false" placeholder="localhost" />
-        </label>
-        <label class="port">
-          <span>Port</span>
-          <input type="number" bind:value={port} min="1" max="65535" />
-        </label>
-        <label>
-          <span>Password</span>
-          <input
-            type="password"
-            bind:value={password}
-            autocomplete="off"
-            placeholder={live.obs?.has_password ? "Saved · type to change" : "From Show Connect Info in OBS"}
-          />
-        </label>
-        <div class="buttons">
-          <Button variant="primary" onclick={() => save()} disabled={busy || !host.trim()}>
-            {busy ? "Testing…" : "Save and test"}
-          </Button>
-          {#if live.obs?.has_password}
-            <Button variant="ghost" onclick={() => save(true)} disabled={busy}>Remove password</Button>
-          {/if}
-        </div>
-      </form>
-      {#if reason}<p class="muted reason">{reason}</p>{/if}
-      <div class="notice"><ObsNotice {view} /></div>
-    </Panel>
+  <section class="way" aria-labelledby="send-head">
+    <div class="way-head">
+      <Icon name="broadcast" size={20} />
+      <div>
+        <h2 id="send-head">Send to OBS</h2>
+        <p class="flow"><strong>OBS shows Lampstand's picture.</strong> Lyrics as lower thirds, or the full screen, in a Browser source.</p>
+      </div>
+    </div>
+    <ObsPicture oncalibrate={(id) => (calibrating = id)} />
+  </section>
 
-    {#if !stepsShown}
-      <Panel title="Turn on OBS's WebSocket server" description="It's off when OBS is first installed.">
-        <ol class="steps">
-          {#each SERVER_OFF_STEPS as step (step)}<li>{step}</li>{/each}
-        </ol>
-        <p class="muted small">Lampstand never changes OBS's own settings.</p>
+  <section class="way" aria-labelledby="control-head">
+    <div class="way-head">
+      <Icon name="remote" size={20} />
+      <div>
+        <h2 id="control-head">Control OBS</h2>
+        <p class="flow"><strong>Lampstand tells OBS what to do.</strong> Switch scenes with the service and show whether you're live. Needs OBS's WebSocket server.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <Panel title="Connection" description="OBS 28 or later. Use localhost when OBS runs on this computer.">
+        {#snippet actions()}
+          {#if shown}<StatusPill tone={shown.tone}>{shown.text}</StatusPill>{/if}
+        {/snippet}
+        <form
+          class="form"
+          onsubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <label>
+            <span>Computer</span>
+            <input type="text" bind:value={host} autocomplete="off" spellcheck="false" placeholder="localhost" />
+          </label>
+          <label class="port">
+            <span>Port</span>
+            <input type="number" bind:value={port} min="1" max="65535" />
+          </label>
+          <label>
+            <span>Password</span>
+            <input
+              type="password"
+              bind:value={password}
+              autocomplete="off"
+              placeholder={live.obs?.has_password ? "Saved · type to change" : "From Show Connect Info in OBS"}
+            />
+          </label>
+          <div class="buttons">
+            <Button variant="primary" onclick={() => save()} disabled={busy || !host.trim()}>
+              {busy ? "Testing…" : "Save and test"}
+            </Button>
+            {#if live.obs?.has_password}
+              <Button variant="ghost" onclick={() => save(true)} disabled={busy}>Remove password</Button>
+            {/if}
+          </div>
+        </form>
+        {#if reason}<p class="muted reason">{reason}</p>{/if}
+        <div class="notice"><ObsNotice {view} /></div>
       </Panel>
-    {/if}
-  </div>
+
+      {#if !stepsShown}
+        <Panel title="Turn on OBS's WebSocket server" description="It's off when OBS is first installed.">
+          <ol class="steps">
+            {#each SERVER_OFF_STEPS as step (step)}<li>{step}</li>{/each}
+          </ol>
+          <p class="muted small">Lampstand never changes OBS's own settings.</p>
+        </Panel>
+      {/if}
+    </div>
+  </section>
 </div>
+{/if}
 
 <style>
   .page {
@@ -147,6 +188,38 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+  .way {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+  .way:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .way-head {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+  }
+  .way-head h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  .flow {
+    margin-top: 0.2rem;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--muted);
+    max-width: 44rem;
+  }
+  .flow strong {
+    color: var(--text);
+    font-weight: 600;
   }
   .form {
     display: grid;

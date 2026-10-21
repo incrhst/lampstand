@@ -252,6 +252,49 @@ async fn turning_a_stream_output_off_takes_its_url_away_until_it_is_back() {
     ));
 }
 
+fn clients(app: &mut App, output: OutputId) -> u32 {
+    match ok(app.handle(Request::Outputs(OutputRequest::BrowserSourceStatus))) {
+        Response::BrowserSources(all) => {
+            all.into_iter()
+                .find(|s| s.output == output)
+                .unwrap_or_else(|| panic!("no status for {output:?}"))
+                .clients
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_setup_screen_can_tell_whether_obs_is_showing_a_browser_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = open(dir.path());
+    let _sync = serve(&mut app, dir.path()).await;
+    let output = stream_output();
+    ok(app.handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let url = url(&mut app, output.id);
+    // The URL is made but no page has loaded it: waiting for OBS.
+    assert_eq!(clients(&mut app, output.id), 0);
+
+    let mut page = follow(&url).await;
+    assert!(next_message(&mut page, Duration::from_secs(10))
+        .await
+        .is_some());
+    assert_eq!(clients(&mut app, output.id), 1, "OBS is showing it");
+
+    // OBS closes the source; the next look no longer counts it.
+    page.close(None).await.ok();
+    drop(page);
+    let mut left = clients(&mut app, output.id);
+    for _ in 0..50 {
+        if left == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        left = clients(&mut app, output.id);
+    }
+    assert_eq!(left, 0, "a closed page is not counted");
+}
+
 /// Puts a service with one song live: the program then shows its first
 /// verse.
 fn go_live_with_a_song(app: &mut App) {

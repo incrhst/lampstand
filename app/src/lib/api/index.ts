@@ -4,6 +4,7 @@ export * from "./Background";
 export * from "./BackgroundMode";
 export * from "./BlobHash";
 export * from "./Book";
+export * from "./BrowserSourceStatus";
 export * from "./ChapterVerse";
 export * from "./Color";
 export * from "./Command";
