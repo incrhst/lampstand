@@ -58,6 +58,7 @@ use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
+use crate::seed;
 use crate::sync::{Obs, Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
@@ -408,6 +409,9 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let emit = Arc::new(move |event: Event| {
         let _ = emitter.emit("api-event", event);
     });
+    // A folder that has never been seeded is a brand-new install, which
+    // starts with a welcome service. Known before `App::open` seeds it.
+    let first_run = !data_dir.join("seeded").exists();
     let app = App::open(
         data_dir,
         Fonts::load(),
@@ -418,6 +422,9 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let changes = app.library().subscribe();
     let wake = app.library().subscribe();
     let library = app.library().clone();
+    if let Err(e) = seed::seed_welcome_service(&library, data_dir, first_run) {
+        eprintln!("lampstand: cannot add the welcome service: {e}");
+    }
     let emit = app.emitter();
     let obs = Obs {
         hub: app.scene_hub().clone(),

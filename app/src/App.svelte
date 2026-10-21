@@ -11,6 +11,8 @@
   import { formatWhen } from "./lib/when";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
+  import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
+  import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
@@ -66,6 +68,90 @@
       .catch(() => {});
   });
 
+  // Get started: what a new install still has to do, from what the app can
+  // see. It is shown until everything is done or the operator hides it, and
+  // both are remembered on this device.
+  const flag = (key: string) => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  };
+  const setFlag = (key: string) => {
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      // Not remembered this time.
+    }
+  };
+  let hidden = $state(flag("lampstand.getstarted.hidden"));
+  let tried = $state(flag("lampstand.getstarted.tried"));
+  let told = $state(flag("lampstand.getstarted.told"));
+  let songCount = $state(0);
+  let serviceList: Facts["services"] = $state([]);
+  async function refreshFacts() {
+    try {
+      songCount = (await request({ area: "Library", request: { SearchSongs: { query: "", limit: 4 } } }, "Songs")).length;
+      serviceList = (await request({ area: "Service", request: "List" }, "Services")).map((s) => ({ id: s.id, title: s.title, items: s.items }));
+    } catch {
+      // The strip just keeps what it knew.
+    }
+  }
+  $effect(() => {
+    void live.songsVersion;
+    void screen; // Look again as the operator moves about: a service may have been planned.
+    refreshFacts();
+  });
+  $effect(() => {
+    if (live.loaded && !tried) {
+      tried = true;
+      setFlag("lampstand.getstarted.tried");
+    }
+  });
+  let started = $derived(getStartedSteps({ screensOn: enabled, songs: songCount, services: serviceList, triedService: tried }));
+  let showStrip = $derived(!hidden && !allDone(started));
+  function hide() {
+    hidden = true;
+    setFlag("lampstand.getstarted.hidden");
+  }
+  $effect(() => {
+    // Everything is done: it has done its job.
+    if (allDone(started) && !hidden) hide();
+  });
+  /** Opens the optional "tell us about your church" form in the browser, and stops asking. */
+  async function tellUs() {
+    try {
+      await request({ area: "About", request: "TellUs" }, "Ok");
+      told = true;
+      setFlag("lampstand.getstarted.told");
+    } catch (e) {
+      live.status = e instanceof Error ? e.message : String(e);
+    }
+  }
+  async function startStep(id: StepId) {
+    if (id === "try") {
+      const welcome = welcomeService(serviceList);
+      if (live.loaded) {
+        screen = "operate";
+      } else if (welcome) {
+        try {
+          live.planning = welcome.id;
+          live.loaded = await request({ area: "Service", request: { Open: welcome.id } }, "Loaded");
+          screen = "operate";
+        } catch (e) {
+          live.status = e instanceof Error ? e.message : String(e);
+        }
+      } else {
+        screen = "plan";
+      }
+    } else if (id === "screen") {
+      openSetup("screens");
+    } else {
+      screen = "plan";
+    }
+  }
+
   refreshOutputs();
   refreshObs();
 </script>
@@ -94,6 +180,8 @@
       </button>
     </div>
   </header>
+
+  {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
   <main>
     {#if screen === "plan"}
