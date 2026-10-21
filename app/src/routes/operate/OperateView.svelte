@@ -24,6 +24,7 @@
   import PresenterView from "./PresenterView.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
+  import { loadMediaThumb } from "../../lib/mediaThumbLoader";
   import ObsNotice from "./ObsNotice.svelte";
   import { isConnected, isPicture, isScreen, obsPill, pictureStatus, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
@@ -260,6 +261,9 @@
   // A deck on air gets the presenter view, whose Next is the next click.
   let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
+  // The picture of what is on air is large for a deck (the presenter view)
+  // and for an image or video, which fills the big preview.
+  let liveWidth = $derived(presenting || mediaOf(liveItem?.id) ? 1280 : 480);
 
   // Deck slides have no lines to draw, so the core renders a picture of
   // each at a build step, fetched once per loaded service as slides come
@@ -271,15 +275,26 @@
   const asked = new Set<string>();
   const thumbKey = (item: string, slide: number, step: number, width: number) => `${item}/${slide}/${step}/${width}`;
 
+  /** The file an image or video item shows, if this is one. */
+  function mediaOf(item: string | undefined) {
+    const kind = item ? service?.items[item]?.kind : undefined;
+    return kind && "Media" in kind ? kind.Media : null;
+  }
+  /** A slide with a picture to ask for: a deck's slide, or a media item's file. */
+  const hasPicture = (item: string, slide: SlideView) => isDeckSlide(slide) || mediaOf(item) !== null;
+
   async function fetchThumb(item: string, slide: number, step: number, width = THUMB_WIDTH) {
     const key = thumbKey(item, slide, step, width);
     if (asked.has(key)) return;
     asked.add(key);
     try {
-      thumbs[key] = await request(
-        { area: "Service", request: { SlideThumbnail: { item, slide, step, width } } },
-        "Thumbnail",
-      );
+      const media = mediaOf(item);
+      // An image, or a video's first frame that is not blank, from the
+      // library; a deck's slide is drawn by the core at its build step.
+      const picture = media
+        ? await loadMediaThumb(media.blob, media.name, width)
+        : await request({ area: "Service", request: { SlideThumbnail: { item, slide, step, width } } }, "Thumbnail");
+      if (picture) thumbs[key] = picture;
     } catch {
       // No picture (no GPU, or the deck reloaded): the slide shows its label.
     }
@@ -302,14 +317,14 @@
   $effect(() => {
     // Most urgent first: the slide on air and what the next click shows.
     const want: [string, number, number, number][] = [];
-    if (liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)) {
-      want.push([liveItem.id, live.live.slide, live.live.step, presenting ? LARGE_WIDTH : THUMB_WIDTH]);
+    if (liveItem && live.live && live.liveSlide && hasPicture(liveItem.id, live.liveSlide)) {
+      want.push([liveItem.id, live.live.slide, live.live.step, liveWidth]);
     }
     if (presenting && clickNext && isDeckSlide(clickNext.slide)) {
       want.push([clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH]);
     }
-    if (upcoming && isDeckSlide(upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide, upcoming.slide.steps, THUMB_WIDTH]);
-    if (viewed) viewed.slides.forEach((s, i) => isDeckSlide(s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
+    if (upcoming && hasPicture(upcoming.cursor.item, upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide, upcoming.slide.steps, THUMB_WIDTH]);
+    if (viewed) viewed.slides.forEach((s, i) => hasPicture(viewed.id, s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
     untrack(async () => {
       for (const [item, slide, step, width] of want) await fetchThumb(item, slide, step, width);
     });
@@ -524,7 +539,7 @@
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
-              image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step) : null}
+              image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step, liveWidth) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
               {showGuide}

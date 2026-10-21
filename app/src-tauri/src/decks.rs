@@ -301,7 +301,7 @@ pub fn media_thumbnail(
             .decode()
             .map_err(|e| e.to_string())?
     };
-    let width = width.clamp(16, 640);
+    let width = width.clamp(16, 1280);
     let height = (u64::from(picture.height()) * u64::from(width)
         / u64::from(picture.width().max(1)))
     .max(1) as u32;
