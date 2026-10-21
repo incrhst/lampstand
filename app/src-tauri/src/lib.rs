@@ -11,6 +11,7 @@
 
 pub mod config;
 pub mod decks;
+pub mod display_names;
 pub mod handler;
 pub mod import;
 pub mod journal;

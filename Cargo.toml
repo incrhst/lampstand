@@ -47,7 +47,8 @@ libc = "0.2"
 lyon = "1.0"
 mdns-sd = "0.21"
 objc2 = "0.5"
-objc2-app-kit = { version = "0.2", default-features = false, features = ["std", "NSColor", "NSResponder", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.2", default-features = false, features = ["std", "NSColor", "NSResponder", "NSScreen", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.2", default-features = false, features = ["std", "NSArray", "NSString", "NSThread"] }
 pollster = "0.4"
 proptest = "1.7"
 prost = "0.14"
