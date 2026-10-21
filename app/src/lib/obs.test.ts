@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { droppedPercent, isConnected, notice, obsPill, pollImages, sceneNotice, upcomingScene } from "./obs.ts";
+import { droppedPercent, isConnected, isPicture, isScreen, notice, obsPill, pictureStatus, pollImages, sceneNotice, upcomingScene } from "./obs.ts";
 import type { ObsOutputView, ObsView } from "./api";
 
 const connected = { Connected: { obs_version: "30.2.3", websocket_version: "5.5.2" } } as const;
@@ -187,4 +187,21 @@ test("a failed picture is reported and the preview keeps trying", async () => {
   stop();
   assert.equal(errors.length, 1);
   assert.ok(shown.length >= 1);
+});
+
+test("a picture sent to OBS is off, waiting for OBS, or on show there", () => {
+  assert.equal(pictureStatus(false, 0).text, "Off");
+  assert.equal(pictureStatus(false, 2).text, "Off", "an off picture is off whatever is connected");
+  assert.deepEqual([pictureStatus(true, 0).tone, pictureStatus(true, 0).text], ["warn", "Waiting for OBS"]);
+  assert.deepEqual([pictureStatus(true, 1).tone, pictureStatus(true, 1).text], ["ready", "OBS is showing this"]);
+  assert.match(pictureStatus(true, 3).title, /3 OBS pages/);
+});
+
+test("a browser source is a picture sent to OBS and not a screen", () => {
+  const base = { id: "a", name: "a", role: "Stream", safe_area: { top: 0, right: 0, bottom: 0, left: 0 }, background: "Bleed", theme: null, enabled: true } as const;
+  const picture = { ...base, target: { BrowserSource: { width: 1920, height: 1080 } } };
+  const window = { ...base, target: { Window: { width: 960, height: 540 } } };
+  assert.equal(isPicture(picture), true);
+  assert.equal(isScreen(picture), false);
+  assert.equal(isScreen(window), true);
 });

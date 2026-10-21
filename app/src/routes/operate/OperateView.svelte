@@ -9,9 +9,9 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
-  import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
+  import { isCalibrated, live, mainOutput, pictures, refreshPictures, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { jumpItem, nextClick, nextSlide } from "../../lib/cursor";
+  import { nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -24,10 +24,11 @@
   import PresenterView from "./PresenterView.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import ObsNotice from "./ObsNotice.svelte";
-  import { isConnected, obsPill, upcomingScene } from "../../lib/obs";
+  import { isConnected, isPicture, isScreen, obsPill, pictureStatus, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
+  import { steppedDown, windowToDemote } from "../../lib/primary";
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
   let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
@@ -71,7 +72,20 @@
     live.planning = id;
     onplan?.();
   }
-  let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
+  // Screens are windows and displays. A picture sent to OBS is not one: it
+  // never reaches the projector, so it does not count as "a screen is on".
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled && isScreen(o)).length);
+  let screens = $derived(live.outputs.filter(isScreen));
+  let sentToObs = $derived(live.outputs.filter(isPicture));
+
+  // Whether OBS has loaded each picture, checked every few seconds while
+  // there is one.
+  $effect(() => {
+    if (sentToObs.length === 0) return;
+    refreshPictures();
+    const timer = setInterval(refreshPictures, 3000);
+    return () => clearInterval(timer);
+  });
 
   // With no screen on, the prompt offers to turn one on: screens set up and
   // left off, and connected displays that are not a screen yet.
@@ -88,6 +102,9 @@
     const config: OutputConfig =
       offer.kind === "enable" ? { ...offer.output, enabled: true } : newScreen(offer.display, live.outputs, crypto.randomUUID());
     try {
+      // A display takes the main place from the rehearsal window.
+      const window = windowToDemote(live.outputs, config.target);
+      if (window && config.enabled) await request({ area: "Outputs", request: { Put: steppedDown(window) } }, "Outputs");
       live.outputs = await request({ area: "Outputs", request: { Put: config } }, "Outputs");
     } catch (e) {
       report(e);
@@ -167,11 +184,11 @@
     // Shift+Down and Shift+Up move through the running order: the start of
     // the next or previous item, where Left and Right move through slides.
     // Plain Up and Down are left alone, so they still scroll the notes and
-    // lists and a stray press cannot change what is on air.
+    // lists and a stray press cannot change what is on air. The engine does
+    // the jump, as it does for an output window's Shift+Up and Shift+Down.
     if (live.loaded && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      const cursor = jumpItem(live.loaded, live.live, e.key === "ArrowDown" ? 1 : -1);
-      if (cursor) show(cursor);
+      command(e.key === "ArrowDown" ? "NextItem" : "PreviousItem");
       return;
     }
     if (live.loaded) {
@@ -384,9 +401,9 @@
           onclick={() => setObsOpen(!obsOpen)}
           aria-expanded={obsOpen}
           aria-controls="obs-drawer"
-          title="OBS: switch scenes, preview them, mute audio (O)"
+          title="Control OBS: switch scenes, preview them, mute audio (O)"
         >
-          <span class="obs-tag"><Icon name="broadcast" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
+          <span class="obs-tag"><Icon name="remote" size={14} />Control OBS<Dot tone={pill.tone} size={6} /></span>
           {#if obsOn && live.obs?.program_scene}
             <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
             {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
@@ -396,7 +413,7 @@
           <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
         </button>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O OBS" : ""}</span>
+      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O control OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
       <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
@@ -544,7 +561,7 @@
           <section>
             <h2 class="title">Screens</h2>
             <ul class="plain outputs">
-              {#each live.outputs as o (o.id)}
+              {#each screens as o (o.id)}
                 <li>
                   <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
                   <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
@@ -555,6 +572,22 @@
               {/each}
             </ul>
           </section>
+
+          {#if sentToObs.length > 0}
+            <section>
+              <h2 class="title">Sent to OBS</h2>
+              <ul class="plain outputs">
+                {#each sentToObs as o (o.id)}
+                  {@const status = pictureStatus(o.enabled, pictures.clients[o.id] ?? 0)}
+                  <li title={status.title}>
+                    <Icon name="broadcast" size={14} />
+                    <span class="name">{o.name}</span>
+                    <span class="muted small status-{status.tone}">{status.text}</span>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
         </aside>
       {/if}
     </div>
@@ -910,6 +943,12 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.85rem;
+  }
+  .outputs .status-ready {
+    color: var(--ready, var(--text));
+  }
+  .outputs .status-warn {
+    color: var(--gold);
   }
   .outputs .small {
     margin: 0 0 0 auto;

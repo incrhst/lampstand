@@ -1,7 +1,7 @@
 <!-- Setup: what is set up once and checked before a service, apart from
      the weekly work in Plan and Present. Screens are the outputs this
      device drives; Devices pairs and syncs this machine with others.
-     OBS connects this device to OBS for the live stream (T89).
+     OBS is where pictures are sent to OBS and where OBS is controlled (T89).
      Themes (T51) and Team (T54) join them here. -->
 <script module lang="ts">
   export type SetupTab = "screens" | "devices" | "obs";
@@ -19,7 +19,7 @@
   const tabs = [
     { id: "screens", label: "Screens", subtitle: "Projectors, TVs and windows", icon: "monitor" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
-    { id: "obs", label: "OBS", subtitle: "Live stream", icon: "play" },
+    { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
   ] as const;
 </script>
 
@@ -37,7 +37,7 @@
 
   <div class="content">
     {#if tab === "screens"}
-      <OutputsView />
+      <OutputsView onobs={() => onchange("obs")} />
     {:else if tab === "obs"}
       <ObsSetup />
     {:else}

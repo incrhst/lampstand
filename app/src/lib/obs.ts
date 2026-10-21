@@ -8,7 +8,7 @@
 // not running stops the stream's slides; a WebSocket problem only stops
 // Lampstand controlling OBS.
 
-import type { ObsOutputView, ObsView } from "./api";
+import type { ObsOutputView, ObsView, OutputConfig } from "./api";
 
 export type PillTone = "ready" | "warn" | "live" | "gold" | "neutral";
 
@@ -212,4 +212,35 @@ export function pollImages(
     stopped = true;
     clearTimeout(timer);
   };
+}
+
+// Two separate ways OBS and Lampstand work together. "Control OBS" is
+// Lampstand telling OBS what to do over its WebSocket (scenes, mutes).
+// "Send to OBS" is OBS loading a picture from Lampstand, as a browser
+// source. Each can be used without the other, and they fail differently,
+// so they are named, placed and worded apart.
+
+/** An output that sends its picture to OBS as a browser source. */
+export function isPicture(output: OutputConfig): boolean {
+  return "BrowserSource" in output.target;
+}
+
+/** An output that is a screen: a window or a display, not a picture sent to OBS. */
+export function isScreen(output: OutputConfig): boolean {
+  return !isPicture(output);
+}
+
+export interface PictureStatus {
+  tone: PillTone;
+  text: string;
+  title: string;
+}
+
+/** What a picture sent to OBS is doing: off, waiting for OBS to load it, or on show there. */
+export function pictureStatus(enabled: boolean, clients: number): PictureStatus {
+  if (!enabled) return { tone: "neutral", text: "Off", title: "Turn it on, then add its URL as a Browser source in OBS" };
+  if (clients > 0) {
+    return { tone: "ready", text: "OBS is showing this", title: clients === 1 ? "OBS has this picture loaded" : `${clients} OBS pages have this picture loaded` };
+  }
+  return { tone: "warn", text: "Waiting for OBS", title: "OBS hasn't loaded this URL yet. In OBS, add a Browser source with it." };
 }

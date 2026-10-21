@@ -46,9 +46,9 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, RunEvent,
     WindowEvent,
 };
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-use crate::config::{device_key, OutputStore};
+use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
 use crate::handler::{App, EventSink, Placement, WindowHost};
@@ -348,12 +348,6 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let emit = Arc::new(move |event: Event| {
         let _ = emitter.emit("api-event", event);
     });
-    // A fresh install gets a rehearsal window. This is here and not in
-    // `App::open` so that tests, which start from an empty folder, keep
-    // starting with no outputs.
-    if let Err(e) = OutputStore::load_or_seed(data_dir.join("outputs.json")) {
-        eprintln!("lampstand: cannot set up the first output: {e}");
-    }
     let app = App::open(
         data_dir,
         Fonts::load(),
@@ -560,18 +554,21 @@ fn app_step(
     }
 }
 
-/// The global shortcut for a key: the key alone, no modifiers.
+/// The global shortcut for a key: the key alone, except the item jumps,
+/// which are Shift+Up and Shift+Down as in the operator window.
 fn shortcut_for(key: Key) -> Shortcut {
-    let code = match key {
-        Key::PageUp => Code::PageUp,
-        Key::PageDown => Code::PageDown,
-        Key::B => Code::KeyB,
-        Key::Period => Code::Period,
-        Key::Left => Code::ArrowLeft,
-        Key::Right => Code::ArrowRight,
-        Key::Space => Code::Space,
+    let (modifiers, code) = match key {
+        Key::PageUp => (None, Code::PageUp),
+        Key::PageDown => (None, Code::PageDown),
+        Key::B => (None, Code::KeyB),
+        Key::Period => (None, Code::Period),
+        Key::Left => (None, Code::ArrowLeft),
+        Key::Right => (None, Code::ArrowRight),
+        Key::Space => (None, Code::Space),
+        Key::ShiftUp => (Some(Modifiers::SHIFT), Code::ArrowUp),
+        Key::ShiftDown => (Some(Modifiers::SHIFT), Code::ArrowDown),
     };
-    Shortcut::new(None, code)
+    Shortcut::new(modifiers, code)
 }
 
 /// `tauri-plugin-global-shortcut` behind `keys::ShortcutHost`.

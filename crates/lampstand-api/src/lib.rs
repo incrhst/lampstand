@@ -205,6 +205,19 @@ pub enum OutputRequest {
     /// working; answers the new URL as `Response::Text`. Pages already
     /// open keep going until they reload.
     RotateBrowserSourceKey(OutputId),
+    /// How many OBS pages are showing each browser-source output now, as
+    /// `Response::BrowserSources`: "OBS is showing this" or "waiting".
+    BrowserSourceStatus,
+}
+
+/// One browser-source output and the OBS pages showing it.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserSourceStatus {
+    pub output: OutputId,
+    /// Pages watching it now; 0 means OBS has not loaded the URL (or has
+    /// stopped).
+    pub clients: u32,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -466,6 +479,8 @@ pub enum Response {
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
+    /// Each browser-source output and how many OBS pages are showing it.
+    BrowserSources(Vec<BrowserSourceStatus>),
     /// The service now in the live engine, split into slides.
     Loaded(LoadedService),
     SongDatabases(Vec<SongDatabase>),

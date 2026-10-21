@@ -34,8 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
-    Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest, Request, Response,
-    ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit,
+    BrowserSourceStatus, Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest,
+    Request, Response, ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase,
+    SongHit,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -569,6 +570,17 @@ impl App {
                 };
                 Response::Text(self.browser_source_url(output, &key)?)
             }
+            OutputRequest::BrowserSourceStatus => Response::BrowserSources(
+                self.outputs
+                    .all()
+                    .iter()
+                    .filter(|o| matches!(o.target, OutputTarget::BrowserSource { .. }))
+                    .map(|o| BrowserSourceStatus {
+                        output: o.id,
+                        clients: self.hub.watcher_count(o.id) as u32,
+                    })
+                    .collect(),
+            ),
             OutputRequest::RotateBrowserSourceKey(output) => {
                 self.browser_source(output)?;
                 let key = self.hub.rotate_key(output).unwrap_or_else(fresh_key);

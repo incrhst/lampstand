@@ -118,6 +118,21 @@ impl SceneHub {
         slot.current = Some(scene);
     }
 
+    /// How many pages (OBS browser sources) are watching `output` now. A
+    /// page that went away is only noticed when something is sent to it, so
+    /// this re-sends the current scene (a repeat is harmless: the page
+    /// draws the same thing) and forgets the pages that fail to take it.
+    pub fn watcher_count(&self, output: OutputId) -> usize {
+        let mut outputs = self.outputs.lock().unwrap();
+        let Some(slot) = outputs.get_mut(&output) else {
+            return 0;
+        };
+        if let Some(scene) = slot.current.clone() {
+            slot.watchers.retain(|w| w.send(scene.clone()).is_ok());
+        }
+        slot.watchers.len()
+    }
+
     /// `Backend::watch_scene`: the current scene (if there is one) at once,
     /// then every one published after it.
     pub fn watch(&self, output: OutputId) -> Option<Receiver<Arc<Scene>>> {
@@ -188,6 +203,27 @@ mod tests {
         // Setting a key on an output that has one replaces it.
         let replaced = hub.add_output_with_key(out, "another-saved-key-1234");
         assert!(hub.key_valid(out, &replaced) && !hub.key_valid(out, saved));
+    }
+
+    #[test]
+    fn watchers_are_counted_and_a_closed_page_is_forgotten() {
+        let hub = SceneHub::new();
+        let out = OutputId::generate();
+        assert_eq!(hub.watcher_count(out), 0, "no URL yet");
+        hub.add_output(out);
+        assert_eq!(hub.watcher_count(out), 0);
+        hub.publish(out, scene(1.0));
+        let first = hub.watch(out).unwrap();
+        let second = hub.watch(out).unwrap();
+        assert_eq!(hub.watcher_count(out), 2);
+        drop(first);
+        assert_eq!(
+            hub.watcher_count(out),
+            1,
+            "a page that closed is not counted"
+        );
+        drop(second);
+        assert_eq!(hub.watcher_count(out), 0);
     }
 
     #[test]
