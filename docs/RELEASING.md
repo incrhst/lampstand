@@ -7,7 +7,7 @@ until someone reads the notes and presses **Publish**.
 
 | Platform | Installers | Signed? |
 |---|---|---|
-| macOS (Apple silicon and Intel in one) | `.dmg` | Signed with a Developer ID and notarised by Apple, so it opens without a warning |
+| macOS (Apple silicon and Intel in one) | `.dmg` | The app and the disk image are both signed with a Developer ID and notarised by Apple, with the tickets stapled, so it opens without a warning, even offline |
 | Linux | `.AppImage`, `.deb` | Not signed |
 | Windows | NSIS installer (`.exe`) | **Not signed yet**: Windows shows a SmartScreen warning (T95 adds signing) |
 
