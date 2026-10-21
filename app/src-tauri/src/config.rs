@@ -9,8 +9,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use lampstand_api::DeviceSettings;
-use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
-use lampstand_core::safe_area::SafeArea;
+use lampstand_core::output::{OutputConfig, OutputId};
 use lampstand_sync::team::DeviceKeypair;
 
 /// `outputs.json`: every output configured on this machine.
@@ -39,22 +38,6 @@ impl OutputStore {
             Err(e) => return Err(e),
         };
         Ok(Self { path, outputs })
-    }
-
-    /// Like `load`, but on a machine with no `outputs.json` yet it starts
-    /// with a rehearsal window and saves it, so a first launch has a screen
-    /// to show. Once the file exists the outputs are the user's: deleting
-    /// them all leaves none.
-    pub fn load_or_seed(path: PathBuf) -> io::Result<Self> {
-        let first_run = !path.exists();
-        let mut store = Self::load(path)?;
-        if first_run && store.outputs.is_empty() {
-            if let Some(dir) = store.path.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            store.put(rehearsal_window())?;
-        }
-        Ok(store)
     }
 
     pub fn all(&self) -> &[OutputConfig] {
@@ -86,25 +69,6 @@ impl OutputStore {
     fn save(&self) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(&self.outputs).map_err(io::Error::other)?;
         write_atomically(&self.path, &json)
-    }
-}
-
-/// The window a fresh install starts with: small, a normal window in the
-/// corner of the operator's screen, and the audience screen until a real
-/// display is added.
-fn rehearsal_window() -> OutputConfig {
-    OutputConfig {
-        id: OutputId::generate(),
-        name: "Rehearsal".into(),
-        role: OutputRole::Audience { primary: true },
-        target: OutputTarget::Window {
-            width: 960,
-            height: 540,
-        },
-        safe_area: SafeArea::default(),
-        background: BackgroundMode::Bleed,
-        theme: None,
-        enabled: true,
     }
 }
 
@@ -222,9 +186,23 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lampstand_core::output::{BackgroundMode, OutputRole, OutputTarget};
+    use lampstand_core::safe_area::SafeArea;
 
     fn window() -> OutputConfig {
-        rehearsal_window()
+        OutputConfig {
+            id: OutputId::generate(),
+            name: "Rehearsal".into(),
+            role: OutputRole::Audience { primary: true },
+            target: OutputTarget::Window {
+                width: 960,
+                height: 540,
+            },
+            safe_area: SafeArea::default(),
+            background: BackgroundMode::Bleed,
+            theme: None,
+            enabled: true,
+        }
     }
 
     #[test]
@@ -283,32 +261,5 @@ mod tests {
         let first = device_key(dir.path()).unwrap();
         let second = device_key(dir.path()).unwrap();
         assert_eq!(first.public(), second.public());
-    }
-
-    #[test]
-    fn a_fresh_install_starts_with_one_rehearsal_window() {
-        let dir = tempfile::tempdir().unwrap();
-        // The app's data folder does not exist yet on a first launch.
-        let path = dir.path().join("not-made-yet").join("outputs.json");
-        let store = OutputStore::load_or_seed(path.clone()).unwrap();
-        let [seeded] = store.all() else {
-            panic!("expected one output, found {}", store.all().len());
-        };
-        assert_eq!(seeded.name, "Rehearsal");
-        assert!(seeded.enabled);
-        assert!(matches!(seeded.target, OutputTarget::Window { .. }));
-        // It is saved, so a second launch finds the same output.
-        let again = OutputStore::load_or_seed(path).unwrap();
-        assert_eq!(again.all(), store.all());
-    }
-
-    #[test]
-    fn outputs_the_user_removed_are_not_seeded_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("outputs.json");
-        let mut store = OutputStore::load_or_seed(path.clone()).unwrap();
-        let id = store.all()[0].id;
-        store.remove(id).unwrap();
-        assert!(OutputStore::load_or_seed(path).unwrap().all().is_empty());
     }
 }

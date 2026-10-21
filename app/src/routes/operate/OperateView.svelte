@@ -28,6 +28,7 @@
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
+  import { steppedDown, windowToDemote } from "../../lib/primary";
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
   let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
@@ -88,6 +89,9 @@
     const config: OutputConfig =
       offer.kind === "enable" ? { ...offer.output, enabled: true } : newScreen(offer.display, live.outputs, crypto.randomUUID());
     try {
+      // A display takes the main place from the rehearsal window.
+      const window = windowToDemote(live.outputs, config.target);
+      if (window && config.enabled) await request({ area: "Outputs", request: { Put: steppedDown(window) } }, "Outputs");
       live.outputs = await request({ area: "Outputs", request: { Put: config } }, "Outputs");
     } catch (e) {
       report(e);

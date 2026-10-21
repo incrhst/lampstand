@@ -7,6 +7,7 @@
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
+  import { steppedDown, takesMainPlace, windowToDemote } from "../../lib/primary";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
@@ -54,9 +55,12 @@
     }
   }
 
-  function add(name: string, target: OutputConfig["target"], stream = false) {
-    const primary = !live.outputs.some((o) => typeof o.role === "object" && o.role.Audience.primary);
-    put({
+  async function add(name: string, target: OutputConfig["target"], stream = false) {
+    const primary = !stream && takesMainPlace(live.outputs, target);
+    // A display takes the main place from the rehearsal window.
+    const window = stream ? null : windowToDemote(live.outputs, target);
+    if (window) await put(steppedDown(window));
+    await put({
       id: crypto.randomUUID(),
       name,
       role: stream ? "Stream" : { Audience: { primary } },
