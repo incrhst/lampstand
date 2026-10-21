@@ -1,0 +1,64 @@
+name: Something is not working
+description: Lampstand crashed, showed the wrong thing, or did not do what you expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for telling us. Lampstand is free and made by a small team, and every report helps the next church that uses it.
+
+        **Please do not paste passwords or links with a key in them.** An OBS Browser source address (it has `?k=` and a long code in it), an OBS password or an Apple or Google password should never go in a report. Cover them in screenshots too.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what were you doing?
+      placeholder: When I clicked Next on the third slide, the projector went black.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again?
+      description: Step by step, if you can. If it only happens sometimes, say so.
+      placeholder: |
+        1. Open the Sunday service
+        2. Go live
+        3. ...
+    validations:
+      required: false
+  - type: dropdown
+    id: when
+    attributes:
+      label: When did it happen?
+      options:
+        - Going live in a service
+        - Planning a service
+        - Setting up screens or a projector
+        - Using OBS
+        - Importing songs, slides or media
+        - Updating Lampstand
+        - Something else
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Lampstand version and computer
+      description: Filled in for you when you use Report a problem in Lampstand. Otherwise the version is under Setup, About.
+      placeholder: Lampstand 0.1.0 on macOS (aarch64)
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots are very helpful. You can drag them in here.
+    validations:
+      required: false

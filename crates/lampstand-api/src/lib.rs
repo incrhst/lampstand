@@ -32,6 +32,22 @@ pub enum Request {
     Obs(ObsRequest),
     Settings(SettingsRequest),
     Update(UpdateRequest),
+    About(AboutRequest),
+}
+
+/// Telling the project about a problem or an idea, or asking for help. Each
+/// opens the right GitHub page in the browser (an issue form, or a new
+/// question in Discussions) with the version and the kind of computer
+/// filled in; the person submits it themselves.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AboutRequest {
+    ReportProblem,
+    SuggestIdea,
+    /// A question about using Lampstand, which goes in Discussions rather than Issues.
+    AskForHelp,
+    /// The optional form where a church says who it is and how it plans to use Lampstand.
+    TellUs,
 }
 
 /// Updating Lampstand itself (T59).

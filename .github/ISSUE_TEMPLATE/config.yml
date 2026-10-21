@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question or get help
+    url: https://github.com/incrhst/lampstand/discussions/new?category=q-a
+    about: How do I...? Questions about using Lampstand, setting up a projector or OBS, or moving over from another app go in Discussions, where the community can help.

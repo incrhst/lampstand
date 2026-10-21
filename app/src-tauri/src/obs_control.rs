@@ -378,17 +378,22 @@ pub fn launch(probe: &dyn Probe, os: Os) -> Result<(), String> {
 
 /// Opens [`DOWNLOAD_URL`] in the default browser.
 pub fn open_download(probe: &dyn Probe, os: Os) -> Result<(), String> {
+    open_url(probe, os, DOWNLOAD_URL)
+}
+
+/// Opens a web page in the default browser.
+pub fn open_url(probe: &dyn Probe, os: Os, url: &str) -> Result<(), String> {
     let started = match os {
-        Os::MacOs => probe.spawn(Path::new("open"), &[DOWNLOAD_URL], None),
+        Os::MacOs => probe.spawn(Path::new("open"), &[url], None),
         // Not `cmd /c start`, which would need the URL quoted for cmd.
         Os::Windows => probe.spawn(
             Path::new("rundll32"),
-            &["url.dll,FileProtocolHandler", DOWNLOAD_URL],
+            &["url.dll,FileProtocolHandler", url],
             None,
         ),
-        Os::Linux => probe.spawn(Path::new("xdg-open"), &[DOWNLOAD_URL], None),
+        Os::Linux => probe.spawn(Path::new("xdg-open"), &[url], None),
     };
-    started.map_err(|e| format!("Could not open {DOWNLOAD_URL}: {e}"))
+    started.map_err(|e| format!("Could not open {url}: {e}"))
 }
 
 /// Whether `host` is this machine, where detection means something.
