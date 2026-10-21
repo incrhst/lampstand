@@ -40,3 +40,6 @@
   .doc td:first-child { white-space: normal; }
 }
 .docs-bar nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; }
+.shot { margin: 1.4rem 0; }
+.shot img { display: block; width: 100%; height: auto; border: 2px solid var(--ink); background: var(--screen); }
+.shot figcaption, .note-shot { margin-top: 0.5rem; font-family: var(--typed); font-size: 0.85rem; color: var(--ink-soft); }
