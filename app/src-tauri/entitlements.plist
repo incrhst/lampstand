@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the signed, notarised macOS build.
+  Lampstand is not sandboxed (it reads and writes its own data folder, opens
+  output windows on other displays and runs a local server for sync and OBS),
+  so it needs none of the sandbox entitlements. The hardened runtime itself is
+  on; add an entitlement here only if a notarised build fails without it, and
+  say why in the commit.
+-->
+<plist version="1.0">
+<dict/>
+</plist>
