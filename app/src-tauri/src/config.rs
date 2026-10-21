@@ -90,13 +90,14 @@ impl OutputStore {
 }
 
 /// The window a fresh install starts with: small, a normal window in the
-/// corner of the operator's screen, and the audience screen until a real
-/// display is added.
+/// corner of the operator's screen. It is not the main audience screen, so
+/// a display added later takes that place (a lone audience output is used
+/// when none is main).
 fn rehearsal_window() -> OutputConfig {
     OutputConfig {
         id: OutputId::generate(),
         name: "Rehearsal".into(),
-        role: OutputRole::Audience { primary: true },
+        role: OutputRole::Audience { primary: false },
         target: OutputTarget::Window {
             width: 960,
             height: 540,
@@ -296,6 +297,7 @@ mod tests {
         };
         assert_eq!(seeded.name, "Rehearsal");
         assert!(seeded.enabled);
+        assert_eq!(seeded.role, OutputRole::Audience { primary: false });
         assert!(matches!(seeded.target, OutputTarget::Window { .. }));
         // It is saved, so a second launch finds the same output.
         let again = OutputStore::load_or_seed(path).unwrap();

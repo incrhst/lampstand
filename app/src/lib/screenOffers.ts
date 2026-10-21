@@ -5,6 +5,7 @@
 // can cover the controls.
 
 import type { DisplayMatch, OutputConfig } from "./api";
+import { takesMainPlace } from "./primary.ts";
 
 export type ScreenOffer =
   /** An audience screen that is set up and off. */
@@ -35,14 +36,15 @@ export function screenOffers(outputs: OutputConfig[], displays: DisplayMatch[], 
   return offers.slice(0, limit);
 }
 
-/** The output for a display turned on from the prompt: on, and the main audience screen if none is. */
+/** The output for a display turned on from the prompt: on, and the main audience screen unless a display already is. */
 export function newScreen(display: DisplayMatch, outputs: OutputConfig[], id: string): OutputConfig {
-  const primary = !outputs.some((o) => typeof o.role === "object" && "Audience" in o.role && o.role.Audience.primary);
+  const target = { Display: display };
+  const primary = takesMainPlace(outputs, target);
   return {
     id,
     name: display.name || "Display",
     role: { Audience: { primary } },
-    target: { Display: display },
+    target,
     safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
     background: "Bleed",
     theme: null,
