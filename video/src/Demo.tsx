@@ -1,7 +1,7 @@
 import React from "react";
-import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { brand } from "./brand";
-import { Cam, cams, captions, lyrics, OUTPUT, PERSPECTIVE, planes, Plane } from "./timeline";
+import { Cam, cams, captions, cues, lyrics, OUTPUT, PERSPECTIVE, planes, Plane } from "./timeline";
 
 const fonts = `
 @font-face{font-family:"Old Standard TT";src:url(${staticFile("fonts/old-standard-tt-400-normal.woff2")}) format("woff2");font-weight:400}
@@ -173,6 +173,16 @@ export const Demo: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: brand.table, opacity: fadeIn * fadeOut, overflow: "hidden" }}>
       <style>{fonts}</style>
+      {/* Background music (public/music): sits under the effects, fades in and out. */}
+      <Audio
+        src={staticFile("music/lampstand-intro.m4a")}
+        volume={(f) => 0.38 * Math.min(1, f / (1.5 * fps)) * Math.min(1, (durationInFrames - f) / (4 * fps))}
+      />
+      {cues.map((c, i) => (
+        <Sequence key={i} from={Math.round(c.at * fps)} layout="none">
+          <Audio src={staticFile(`sfx/${c.sound}.wav`)} volume={c.volume} />
+        </Sequence>
+      ))}
       <AbsoluteFill style={{ perspective: PERSPECTIVE, perspectiveOrigin: "50% 50%" }}>
         <div
           style={{

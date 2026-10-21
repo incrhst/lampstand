@@ -1,6 +1,6 @@
 # Lampstand demo video
 
-A 72-second, silent, 1920×1080 fly-over of the Lampstand interface, made with
+A 72-second, 1920×1080 (background music and sound effects, no voice) fly-over of the Lampstand interface, made with
 [Remotion](https://www.remotion.dev) (React → MP4). The camera glides across
 tilted window planes in 3D; captions are short and plain ("animation steps",
 not "builds"). Colours and type come from `site/style.css`; the fonts are the
@@ -16,6 +16,15 @@ npm run studio        # live preview and scrubbing
 ```
 
 `out/` is not committed.
+
+## Sound
+
+The background music is `public/music/lampstand-intro.m4a` (supplied by the project owner; only the first 72 seconds play, faded in and out).
+
+The effects (camera whooshes, caption stamps, key clicks, an end bell) are
+synthesised from noise and sine waves by `audio/make-sfx.mjs`, so nothing is
+licensed. `npm run sfx` rewrites `public/sfx/*.wav`; the cues are in
+`src/timeline.ts` (`cues`).
 
 ## What is real and what is staged
 

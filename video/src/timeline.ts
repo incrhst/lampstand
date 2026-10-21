@@ -81,3 +81,20 @@ export const lyrics = [
   ["'Twas grace that taught my heart to fear", "And grace my fears relieved"],
   ["Through many dangers, toils and snares", "I have already come"],
 ];
+
+export type Cue = { at: number; sound: "whoosh" | "stamp" | "key" | "bell"; volume: number };
+
+// Sound effects, all synthesised by audio/make-sfx.mjs: a whoosh in the middle of
+// each camera glide, a stamp as each caption lands, a click for each key press,
+// and a bell on the end card. The glide timing mirrors camAt() in Demo.tsx.
+export const cues: Cue[] = [
+  ...cams.slice(0, -1).map((a, i): Cue => {
+    const b = cams[i + 1];
+    const rest = i === 0 ? 0 : Math.min(1.6, (b.t - a.t) * 0.3);
+    const mid = a.t + rest + (b.t - a.t - rest) / 2;
+    return { at: Math.max(0, mid - 0.9), sound: "whoosh", volume: 0.5 };
+  }),
+  ...captions.map((c): Cue => ({ at: c.from, sound: "stamp", volume: 0.6 })),
+  ...captions.flatMap((c) => (c.keys ?? []).map((_, n): Cue => ({ at: c.from + 1.2 + n * 0.9, sound: "key", volume: 0.7 }))),
+  { at: 65.4, sound: "bell", volume: 0.35 },
+];

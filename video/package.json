@@ -8,7 +8,8 @@
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts Demo out/lampstand-demo.mp4 --codec=h264 --crf=18",
     "capture:serve": "vite --config capture/vite.config.ts",
-    "capture": "node capture/shoot.mjs"
+    "capture": "node capture/shoot.mjs",
+    "sfx": "node audio/make-sfx.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.290",
