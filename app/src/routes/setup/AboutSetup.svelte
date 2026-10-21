@@ -22,7 +22,7 @@
   }
 
   /** Opens the project's issue form in the browser, with the version filled in. */
-  async function tell(what: "ReportProblem" | "SuggestIdea") {
+  async function tell(what: "AskForHelp" | "ReportProblem" | "SuggestIdea") {
     try {
       await request({ area: "About", request: what }, "Ok");
     } catch (e) {
@@ -65,14 +65,17 @@
     {/if}
   </Panel>
 
-  <Panel title="Tell us" description="Something not working, or something your church needs? It opens in your browser with your version already filled in.">
+  <Panel title="Help and feedback" description="Opens in your browser with your version already filled in.">
     <div class="buttons">
-      <Button variant="primary" icon="alert" onclick={() => tell("ReportProblem")}>Report a problem</Button>
+      <Button variant="primary" icon="info" onclick={() => tell("AskForHelp")}>Ask for help</Button>
+      <Button icon="alert" onclick={() => tell("ReportProblem")}>Report a problem</Button>
       <Button icon="plus" onclick={() => tell("SuggestIdea")}>Suggest an idea</Button>
     </div>
     <p class="muted small">
-      Reports are public, on GitHub (github.com/incrhst/lampstand/issues). Please do not include passwords or OBS
-      Browser source addresses: they contain a key.
+      <strong>Ask for help</strong> with how to do something: other churches and the team answer in Discussions.
+      <strong>Report a problem</strong> when something is broken, and <strong>Suggest an idea</strong> for something
+      new. All of it is public, on GitHub (github.com/incrhst/lampstand), so please leave out passwords and OBS
+      Browser source addresses, which contain a key.
     </p>
   </Panel>
 </div>

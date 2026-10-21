@@ -137,7 +137,7 @@ jobs:
             - **Windows:** run the installer. Windows will warn that the publisher is unknown (SmartScreen): choose **More info**, then **Run anyway**. The installer is not signed yet.
             - **Linux:** make the `.AppImage` executable and run it, or install the `.deb`. A GPU with Vulkan support is needed for the projector output.
 
-            **Something not working, or an idea?** Please [tell us](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Setup › About** has Report a problem and Suggest an idea buttons that fill in your version for you.
+            **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Setup › About** has buttons for all three that fill in your version for you.
 
             See the changes below.
           args: ${{ matrix.args }}
