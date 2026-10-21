@@ -18,7 +18,8 @@ pub const FOOTER_SCALE: f32 = 0.5;
 /// slides of at most `theme.max_lines` lines, split as evenly as possible
 /// with longer slides first (at 4 lines: 6 is 3 + 3, 7 is 4 + 3, 9 is
 /// 3 + 3 + 3). A blank line in a section forces a break. Chords are
-/// stripped; `label` is the section label. The first slide carries the copyright footer when
+/// stripped; `label` is the section label. The first slide carries the
+/// attribution footer (author, copyright, CCLI number) when
 /// `theme.show_copyright` is set.
 ///
 /// `arrangement` replaces the song's own arrangement when given (the
@@ -52,7 +53,7 @@ pub fn paginate_song(song: &Song, arrangement: Option<&[String]>, theme: &Theme)
     }
     if theme.show_copyright {
         if let Some(first) = slides.first_mut() {
-            first.footer = copyright_line(song);
+            first.footer = attribution_line(song);
         }
     }
     slides
@@ -94,12 +95,26 @@ fn split_evenly(lines: &[String], max: usize) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn copyright_line(song: &Song) -> Option<String> {
+/// The line under a song's first slide: who wrote it, who holds the
+/// copyright, and its CCLI song number, whichever of them it has, joined by
+/// " | ". The author is left out when the copyright line already names them
+/// ("Words: John Newton"), so they are not credited twice.
+fn attribution_line(song: &Song) -> Option<String> {
+    let copyright = song
+        .copyright
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let author = song
+        .author
+        .as_deref()
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .filter(|a| !copyright.is_some_and(|c| c.to_lowercase().contains(&a.to_lowercase())));
     let ccli = song.ccli_number.map(|n| format!("CCLI Song #{n}"));
-    let parts: Vec<&str> = [song.copyright.as_deref(), ccli.as_deref()]
+    let parts: Vec<&str> = [author, copyright, ccli.as_deref()]
         .into_iter()
         .flatten()
-        .filter(|s| !s.trim().is_empty())
         .collect();
     (!parts.is_empty()).then(|| parts.join(" | "))
 }
@@ -521,6 +536,53 @@ mod tests {
             Some("(c) 2001 Someone | CCLI Song #1234567")
         );
         assert!(slides[1..].iter().all(|s| s.footer.is_none()));
+    }
+
+    #[test]
+    fn the_author_leads_the_attribution_on_the_first_slide() {
+        // A public-domain hymn: who wrote it, and that it is free to use.
+        let mut hymn = song(&[("V1", &["a"])]);
+        hymn.author = Some("John Newton".into());
+        hymn.copyright = Some("Public Domain".into());
+        assert_eq!(
+            paginate_song(&hymn, None, &theme(4, true))[0]
+                .footer
+                .as_deref(),
+            Some("John Newton | Public Domain")
+        );
+        // With everything: author, copyright, CCLI number.
+        hymn.ccli_number = Some(4);
+        assert_eq!(
+            paginate_song(&hymn, None, &theme(4, true))[0]
+                .footer
+                .as_deref(),
+            Some("John Newton | Public Domain | CCLI Song #4")
+        );
+    }
+
+    #[test]
+    fn a_song_with_only_an_author_still_credits_them() {
+        let mut only = song(&[("V1", &["a"])]);
+        only.author = Some("  Charles Wesley ".into());
+        assert_eq!(
+            paginate_song(&only, None, &theme(4, true))[0]
+                .footer
+                .as_deref(),
+            Some("Charles Wesley")
+        );
+    }
+
+    #[test]
+    fn an_author_the_copyright_already_names_is_not_credited_twice() {
+        let mut named = song(&[("V1", &["a"])]);
+        named.author = Some("Chris Tomlin".into());
+        named.copyright = Some("© 2004 Words and music by chris tomlin".into());
+        assert_eq!(
+            paginate_song(&named, None, &theme(4, true))[0]
+                .footer
+                .as_deref(),
+            Some("© 2004 Words and music by chris tomlin")
+        );
     }
 
     #[test]
