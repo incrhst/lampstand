@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How it works · Lampstand docs</title>
+  <meta name="description" content="A Rust workspace of small crates, with a Tauri shell and a Svelte web UI on top.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+  <main class="sheet sheet--docs">
+    <header class="docs-bar">
+      <a class="brand" href="../">Lampstand</a>
+      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html">Getting started</a><a href="using.html">Using Lampstand</a><a href="how-it-works.html" aria-current="page">How it works</a><a href="decisions.html">Decisions</a></nav>
+    </header>
+    <div class="docs-wrap">
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#crates">The crates</a></li><li><a href="#scenes">Scenes are the only thing renderers see</a></li><li><a href="#ui">One web app, one message set</a></li><li><a href="#render">Rendering</a></li><li><a href="#sync">Sync</a></li><li><a href="#server">Local server</a></li><li><a href="#testing">Testing</a></li></ol></aside>
+      <article class="doc">
+        <h1>How it works</h1>
+        <p class="lede">A Rust workspace of small crates, with a Tauri shell and a Svelte web UI on top.</p>
+        <h2 id="crates">The crates</h2>
+<table>
+  <tr><th>Path</th><th>What it holds</th></tr>
+  <tr><td>crates/lampstand-core</td><td>Data model: songs, scripture, services, themes, outputs, decks, the scene format</td></tr>
+  <tr><td>crates/lampstand-live</td><td>Live engine: preview, live, navigation, overlays</td></tr>
+  <tr><td>crates/lampstand-layout</td><td>Fonts, splitting text into slides, composing each output&rsquo;s scene</td></tr>
+  <tr><td>crates/lampstand-slides</td><td>PPTX import: scenes, builds, transitions, fidelity report</td></tr>
+  <tr><td>crates/lampstand-render</td><td>wgpu renderer and output windows</td></tr>
+  <tr><td>crates/lampstand-media</td><td>Video and audio (GStreamer)</td></tr>
+  <tr><td>crates/lampstand-sync</td><td>Local-first sync, blobs, teams and roles</td></tr>
+  <tr><td>crates/lampstand-library</td><td>Library access, song search, service packages, readiness, CCLI</td></tr>
+  <tr><td>crates/lampstand-import</td><td>Song and Bible importers from other tools</td></tr>
+  <tr><td>crates/lampstand-connectors</td><td>Google Drive and Slides, share links</td></tr>
+  <tr><td>crates/lampstand-server</td><td>Local server: OBS browser source, peer sync</td></tr>
+  <tr><td>crates/lampstand-api</td><td>Messages between the web UI and the core</td></tr>
+  <tr><td>crates/lampstand-relay</td><td>Self-hostable sync relay</td></tr>
+  <tr><td>app</td><td>Tauri 2 shell (<code>app/src-tauri</code>) and Svelte 5 web UI (<code>app/src</code>)</td></tr>
+</table>
+<h2 id="scenes">Scenes are the only thing renderers see</h2>
+<p>Every kind of item (a verse, a slide, a countdown) is turned into a scene, and every output draws scenes. The screen, the OBS browser source and the stage display all consume the same format, so they cannot disagree about what is live. Each item has one slide list, fitted separately for each output&rsquo;s safe area, with sizes relative to a 1080-pixel-tall output.</p>
+<h2 id="ui">One web app, one message set</h2>
+<p>The Svelte UI talks to the core through a single <code>api</code> command and an <code>api-event</code> stream. The message types live in <code>lampstand-api</code> and are generated into TypeScript (<code>app/src/lib/api/</code>, never edited by hand), so the same messages can later serve a browser-based remote. Handlers are plain Rust without Tauri and are tested directly.</p>
+<h2 id="render">Rendering</h2>
+<p>Outputs render natively on one render thread using wgpu, with text laid out by cosmic-text everywhere so measurement and drawing agree. A journal records state so a crash restores the service.</p>
+<h2 id="sync">Sync</h2>
+<p>Each thing (a service, a song) is its own Automerge document, with large files held as blobs beside them. Devices pair with a six-digit code, membership is signed, and some things stay per-device. See decisions <a href="decisions.html#d0002">0002</a> and <a href="decisions.html#d0004">0004</a>.</p>
+<h2 id="server">Local server</h2>
+<p><code>lampstand-server</code> listens on the laptop (port 7340 by default) and serves the OBS browser source, the tablet remote and peer sync.</p>
+<h2 id="testing">Testing</h2>
+<p>Handler, journal, sync and OBS control tests live under <code>app/src-tauri/tests/</code>; the workspace runs with <code>cargo test --workspace</code>. The full set of decisions and the end-to-end walk-through of a Sunday click are in <a href="https://github.com/incrhst/lampstand/blob/main/docs/ARCHITECTURE.md">ARCHITECTURE.md</a>.</p>
+        <nav class="pager" aria-label="Pages"><span>&larr; <a href="using.html">Using Lampstand</a></span><span><a href="decisions.html">Decisions</a> &rarr;</span></nav>
+      </article>
+    </div>
+    <footer class="colophon typed">
+      <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; These pages track the repository&rsquo;s <a href="https://github.com/incrhst/lampstand/blob/main/docs/">docs folder</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>

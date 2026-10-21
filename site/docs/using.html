@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Using Lampstand · Lampstand docs</title>
+  <meta name="description" content="Two jobs, Plan and Present, with the one-time configuration under Setup.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+  <main class="sheet sheet--docs">
+    <header class="docs-bar">
+      <a class="brand" href="../">Lampstand</a>
+      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html">Getting started</a><a href="using.html" aria-current="page">Using Lampstand</a><a href="how-it-works.html">How it works</a><a href="decisions.html">Decisions</a></nav>
+    </header>
+    <div class="docs-wrap">
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#modes">Plan, Present and Setup</a></li><li><a href="#keys">Keyboard</a></li><li><a href="#songs">Songs and imports</a></li><li><a href="#slides">PowerPoint and Google Slides</a></li><li><a href="#obs">Live stream with OBS</a></li><li><a href="#remote">Tablet and phone remote</a></li><li><a href="#offline">Offline and recovery</a></li></ol></aside>
+      <article class="doc">
+        <h1>Using Lampstand</h1>
+        <p class="lede">Two jobs, Plan and Present, with the one-time configuration under Setup.</p>
+        <h2 id="modes">Plan, Present and Setup</h2>
+<p>Plan and Present are the jobs a volunteer does every week. Setup is configured once and checked before a service.</p>
+<table>
+  <tr><th>Area</th><th>What it is for</th></tr>
+  <tr><td>Plan</td><td>Build the service: songs, scripture, slides and media in order. <b>Open for live</b> hands it to Present.</td></tr>
+  <tr><td>Present</td><td>Run the service: next, previous, black, jump to a verse. Also where OBS status, scene buttons and the tablet remote QR code appear.</td></tr>
+  <tr><td>Setup</td><td><b>Screens</b> (the windows Lampstand draws on, each with its own safe area) and <b>Devices</b>. Themes and Team are planned to join them.</td></tr>
+</table>
+<h2 id="keys">Keyboard</h2>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>Space</kbd> or <kbd>&rarr;</kbd></td><td>Next</td></tr>
+  <tr><td><kbd>&larr;</kbd></td><td>Previous</td></tr>
+  <tr><td><kbd>.</kbd></td><td>Black</td></tr>
+  <tr><td><kbd>1</kbd> to <kbd>9</kbd></td><td>Jump to that verse</td></tr>
+  <tr><td><kbd>C</kbd></td><td>Jump to the chorus</td></tr>
+  <tr><td><kbd>B</kbd></td><td>Jump to the bridge</td></tr>
+</table>
+<h2 id="songs">Songs and imports</h2>
+<p>Use <b>Get songs</b> for a free song database by language. To bring in your own library, use <b>Import files&hellip;</b> or <b>Import folder&hellip;</b>. Lampstand detects the format of OpenSong, OpenLyrics, SongSelect, FreeShow and ProPresenter files.</p>
+<h2 id="slides">PowerPoint and Google Slides</h2>
+<p>PowerPoint decks are read directly, so PowerPoint does not need to be installed on the projection laptop. The aim is to keep builds, transitions, video and speaker notes, and to show a fidelity report when something can&rsquo;t be reproduced. Google Slides arrive through a connector.</p>
+<h2 id="obs">Live stream with OBS</h2>
+<p>Lampstand does not replace OBS; it feeds and drives it.</p>
+<ul>
+  <li><b>Graphics in:</b> lyrics and lower thirds are served as a transparent browser source from Lampstand&rsquo;s local server.</li>
+  <li><b>Control out:</b> over the OBS WebSocket (OBS 28 and later), Lampstand shows connection, streaming, recording and dropped-frame status in Present, switches to the scene named on a service item, and offers scene buttons and audio mutes.</li>
+</ul>
+<p>Rationale: <a href="decisions.html#d0005">decision 0005</a>.</p>
+<h2 id="remote">Tablet and phone remote</h2>
+<p>Present shows a QR code for a page on the local server (<code>http://&lt;laptop-ip&gt;:7340/remote</code> by default). Scan it on a device on the same Wi-Fi, enter the PIN, and it controls the service. Nothing is installed on the tablet. Rationale: <a href="decisions.html#d0006">decision 0006</a>.</p>
+<h2 id="offline">Offline and recovery</h2>
+<p>A whole service runs offline from one laptop. Changes are journaled so the app can recover after a crash. Several computers can share a library through local-first sync; see <a href="how-it-works.html#sync">Sync</a>.</p>
+        <nav class="pager" aria-label="Pages"><span>&larr; <a href="getting-started.html">Getting started</a></span><span><a href="how-it-works.html">How it works</a> &rarr;</span></nav>
+      </article>
+    </div>
+    <footer class="colophon typed">
+      <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; These pages track the repository&rsquo;s <a href="https://github.com/incrhst/lampstand/blob/main/docs/">docs folder</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>
