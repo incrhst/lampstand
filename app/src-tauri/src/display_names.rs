@@ -17,30 +17,52 @@ pub struct Native {
 }
 
 /// The displays the OS names. Must run on the main thread; elsewhere, and
-/// on platforms without a lookup yet, it finds none.
+/// on platforms without a lookup yet, it finds none. A name is only a
+/// label, so a failed lookup finds none rather than taking the app down.
 #[cfg(target_os = "macos")]
 pub fn native_displays() -> Vec<Native> {
+    std::panic::catch_unwind(macos_displays).unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn macos_displays() -> Vec<Native> {
+    use std::ffi::c_void;
+
+    use objc2::rc::Retained;
     use objc2_app_kit::NSScreen;
     use objc2_foundation::MainThreadMarker;
+
+    // The screens array is Swift-backed, and its `count` reports a signed
+    // type where objc2 expects an unsigned one, which its debug checks
+    // reject. CoreFoundation reads the same array without that check.
+    extern "C" {
+        fn CFArrayGetCount(array: *const c_void) -> isize;
+        fn CFArrayGetValueAtIndex(array: *const c_void, index: isize) -> *const c_void;
+    }
 
     let Some(mtm) = MainThreadMarker::new() else {
         return Vec::new();
     };
     let screens = NSScreen::screens(mtm);
-    (0..screens.count())
-        .map(|i| {
-            // SAFETY: `i` is below `count`.
-            let screen = unsafe { screens.objectAtIndex(i) };
+    let array = Retained::as_ptr(&screens).cast::<c_void>();
+    // SAFETY: `array` is a live NSArray, which is toll-free bridged to
+    // CFArray; every index below the count holds an NSScreen that `screens`
+    // keeps alive.
+    let count = unsafe { CFArrayGetCount(array) };
+    (0..count)
+        .filter_map(|i| {
+            let ptr = unsafe { CFArrayGetValueAtIndex(array, i) }.cast::<NSScreen>();
+            let screen = unsafe { ptr.as_ref() }?;
             let scale = screen.backingScaleFactor();
             let frame = screen.frame();
             // SAFETY: `localizedName` is a plain getter, available on
             // macOS 10.15 and later.
             let name = unsafe { screen.localizedName() }.to_string();
-            Native {
+            Some(Native {
                 name,
                 width: (frame.size.width * scale).round() as u32,
                 height: (frame.size.height * scale).round() as u32,
-            }
+            })
         })
         .collect()
 }
