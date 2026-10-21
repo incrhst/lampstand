@@ -124,6 +124,21 @@ async fn api(
     match request {
         Request::Obs(request) => Ok(state.obs.handle(request).await),
         Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
+        Request::About(request) => {
+            let url = crate::help::page(
+                &request,
+                &app_handle.package_info().version.to_string(),
+                crate::help::os_name(),
+                std::env::consts::ARCH,
+            );
+            blocking(Box::new(move || {
+                match crate::obs_control::open_url(&System, Os::current(), &url) {
+                    Ok(()) => Response::Ok,
+                    Err(message) => Response::Error { message },
+                }
+            }))
+            .await
+        }
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {

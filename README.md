@@ -66,6 +66,19 @@ library, use **Get songs** (a free song database by language) or **Import
 files…** / **Import folder…** for your own OpenSong library, OpenLyrics,
 SongSelect, FreeShow or ProPresenter files.
 
+## Help, problems and ideas
+
+- **A question?** Ask it in
+  **[Discussions](https://github.com/incrhst/lampstand/discussions)**: how to do
+  something, setting up a projector or OBS, moving over from another app.
+- **Something broken, or an idea?** Open an
+  **[issue](https://github.com/incrhst/lampstand/issues/new/choose)**.
+
+In the app, **Setup › About** has **Ask for help**, **Report a problem** and
+**Suggest an idea** buttons that open the right page in your browser with your
+version already filled in. Everything is public, so please do not paste
+passwords or OBS Browser source addresses (they contain a key).
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

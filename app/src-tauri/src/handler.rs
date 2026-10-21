@@ -302,6 +302,8 @@ impl App {
             Request::Obs(_) => Err("OBS control is not running".into()),
             // The shell answers updates: it owns the updater.
             Request::Update(_) => Err("updates are not available here".into()),
+            // The shell opens the browser.
+            Request::About(_) => Err("the browser is opened by the app shell".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }

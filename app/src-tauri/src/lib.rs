@@ -13,6 +13,7 @@ pub mod config;
 pub mod decks;
 pub mod display_names;
 pub mod handler;
+pub mod help;
 pub mod import;
 pub mod journal;
 pub mod keys;
