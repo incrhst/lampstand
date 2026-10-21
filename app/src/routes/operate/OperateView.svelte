@@ -7,11 +7,11 @@
      connection status is in the footer.
      T47 replaces this with the full operator view. -->
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, pictures, refreshPictures, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { nextClick, nextSlide } from "../../lib/cursor";
+  import { neighbourItem, nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -181,15 +181,29 @@
       command(c);
       return;
     }
-    // Shift+Down and Shift+Up move through the running order: the start of
-    // the next or previous item, where Left and Right move through slides.
-    // Plain Up and Down are left alone, so they still scroll the notes and
-    // lists and a stray press cannot change what is on air. The engine does
-    // the jump, as it does for an output window's Shift+Up and Shift+Down.
+    // Shift+Down and Shift+Up choose an item in the running order: the one
+    // shown in the middle pane and lit in the list. Nothing goes on air
+    // until Enter starts it. Plain Up and Down are left alone, so they still
+    // scroll the notes and lists and a stray press cannot change the screen.
     if (live.loaded && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      command(e.key === "ArrowDown" ? "NextItem" : "PreviousItem");
+      const chosen = neighbourItem(items, viewed?.id ?? null, e.key === "ArrowDown" ? 1 : -1);
+      if (chosen) {
+        viewing = chosen;
+        // Keep the chosen row in view in a long order of service.
+        tick().then(() => document.querySelector(".queue .row.active")?.scrollIntoView({ block: "nearest" }));
+      }
       return;
+    }
+    // Enter starts the chosen item from its first slide. It leaves a button
+    // or link to do its own Enter, and does nothing for the item already on
+    // air, so it cannot restart it by accident.
+    if (live.loaded && e.key === "Enter" && !e.shiftKey && viewed && viewed.slides.length > 0 && viewed.id !== live.live?.item) {
+      if (!target?.closest("button, a, select, summary, [role='button']")) {
+        e.preventDefault();
+        show({ item: viewed.id, slide: 0, step: 0 });
+        return;
+      }
     }
     if (live.loaded) {
       const cursor = sectionCursor(live.loaded, live.live, e.key);
@@ -413,7 +427,7 @@
           <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
         </button>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections{pill ? " · O control OBS" : ""}</span>
+      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections · ⇧↑ ⇧↓ choose an item, Enter starts it{pill ? " · O control OBS" : ""}</span>
       <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
       <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
