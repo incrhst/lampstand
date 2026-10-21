@@ -1,7 +1,7 @@
 // node --test --experimental-strip-types (npm test)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newScreen, screenOffers } from "./screenOffers.ts";
+import { displaysWithScreens, newScreen, screenOffers } from "./screenOffers.ts";
 import type { DisplayMatch, OutputConfig } from "./api";
 
 const display = (name: string, width = 1920, height = 1080): DisplayMatch => ({ name, width, height, x: 0, y: 0 });
@@ -59,4 +59,33 @@ test("a display turned on becomes the main audience screen only if there is none
   assert.equal(first.enabled, true);
   const second = newScreen(d, [first], "b");
   assert.deepEqual(second.role, { Audience: { primary: false } });
+});
+
+const at = (name: string, x: number, width = 1920, height = 1080): DisplayMatch => ({ name, width, height, x, y: 0 });
+const onDisplay = (name: string, d: DisplayMatch): OutputConfig => output({ name, target: { Display: d } });
+
+test("a display with a screen is claimed, and one without is free", () => {
+  const claimed = displaysWithScreens([onDisplay("TV", at("TV", 1440))], [at("TV", 1440), at("Projector", 3360, 1280, 720)]);
+  assert.deepEqual([...claimed], [0]);
+});
+
+test("two displays of one size are told apart, so a second can still be added", () => {
+  // Two identical projectors: the one screen set up claims the one at its position.
+  const projectors = [at("", 1440), at("", 3360)];
+  const claimed = displaysWithScreens([onDisplay("Left", at("", 1440))], projectors);
+  assert.deepEqual([...claimed], [0]);
+  const offers = screenOffers([onDisplay("Left", at("", 1440))], projectors);
+  assert.deepEqual(offers.map((o) => o.label), ["Turn on Left", "Use display 2"]);
+});
+
+test("a second output for the same display claims nothing more", () => {
+  const tv = at("Android TV", 1440);
+  const claimed = displaysWithScreens([onDisplay("A", tv), onDisplay("B", tv)], [tv]);
+  assert.deepEqual([...claimed], [0]);
+});
+
+test("a name match beats a size match", () => {
+  // Two same-size displays; the output was made for the second by name.
+  const claimed = displaysWithScreens([onDisplay("Epson", at("Epson", 3360))], [at("LG", 1440), at("Epson", 3360)]);
+  assert.deepEqual([...claimed], [1]);
 });
