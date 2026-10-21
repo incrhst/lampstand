@@ -414,3 +414,14 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
 }
+
+/* The Download button and the three steps under it. */
+.download-note { margin: 0.9rem 0 0; font-size: 0.9rem; color: var(--ink-soft); }
+.others { margin: 0.5rem 0 0; font-size: 0.9rem; }
+.others summary { cursor: pointer; }
+.others ul { margin: 0.4rem 0 0 1.4rem; padding: 0; list-style: none; }
+.others li { margin: 0.2rem 0; }
+.steps { margin: 1.6rem 0 0; padding-left: 1.4rem; font-size: 0.95rem; line-height: 1.7; color: var(--ink-soft); }
+.steps li { margin: 0.1rem 0; }
+.small-note { margin: 1.2rem 0 0; display: flex; flex-wrap: wrap; gap: 0.3rem 1.4rem; font-size: 0.9rem; }
+.small-note a[hidden] { display: none; }

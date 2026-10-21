@@ -9,7 +9,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Lampstand · free, open-source church projection">
-  <meta property="og:description" content="One laptop runs the whole service, offline on Sunday. Free and open source, in development.">
+  <meta property="og:description" content="One laptop runs the whole service, offline on Sunday. Free and open source. Download the first preview for Mac, Windows or Linux.">
   <meta property="og:image" content="https://lampstand.dbain.com/media/og.jpg">
   <meta property="og:url" content="https://lampstand.dbain.com/">
   <meta name="twitter:card" content="summary_large_image">
@@ -17,11 +17,13 @@
   <link rel="preload" href="fonts/courier-prime-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="main.js" defer></script>
+  <script src="download.js" defer></script>
 </head>
 <body>
   <svg width="0" height="0" class="defs" aria-hidden="true" focusable="false">
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.9 5.9 6.5.95-4.7 4.6 1.1 6.45L12 17.65 6.2 20.7l1.1-6.45-4.7-4.6 6.5-.95z" fill="currentColor"/></symbol>
     <symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></g></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
     <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
   </svg>
@@ -36,15 +38,31 @@
         <p class="subtitle">Order of Worship for every Sunday, on every screen</p>
         <hr class="rule rule--double">
         <p class="offer">Lampstand is a free church projection app, built so one laptop can run the whole service: songs, scripture, sermon slides and the live stream. Offline on Sunday morning, fitted to every screen in the room, and simple enough for a volunteer after ten minutes of training.</p>
-        <p class="typed status"><span class="stamp" aria-hidden="true">In development</span>Free and open source (<span class="nowrap">GPL-3.0</span>), planned for Windows, macOS and Linux. Nothing to download yet: we&rsquo;re building it in the open.</p>
+        <p class="typed status"><span class="stamp" aria-hidden="true">Preview</span>Free and open source (<span class="nowrap">GPL-3.0</span>) for Mac, Windows and Linux. An early version for churches willing to try it: tell us what you find.</p>
         <div class="actions">
-          <a class="btn btn--stamp" href="https://github.com/incrhst/lampstand">
-            <svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>
-            Star Lampstand on GitHub
+          <a id="download" class="btn btn--stamp" href="https://github.com/incrhst/lampstand/releases/latest">
+            <svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>
+            <span class="btn-label">Download Lampstand</span>
           </a>
-          <a class="link" href="https://github.com/incrhst/lampstand/blob/main/docs/PRD.md">Read the plan</a>
+          <a class="link" href="docs/getting-started.html">Install guide</a>
           <a class="link" href="docs/">Read the docs</a>
         </div>
+        <p id="download-note" class="typed download-note">Free, with no sign-up.</p>
+        <details id="download-others" class="others" hidden>
+          <summary class="typed"><svg class="icon chevron" aria-hidden="true"><use href="#i-next"/></svg>Other downloads</summary>
+          <ul class="plain"></ul>
+        </details>
+        <ol class="steps typed" aria-label="From download to your first service">
+          <li><b>Download</b> and open the installer.</li>
+          <li><b>Open Lampstand.</b> A Welcome service is waiting for you.</li>
+          <li><b>Press Space</b> to go live, then make it yours.</li>
+        </ol>
+        <p class="typed small-note">
+          <!-- The hosted "Tell us about your church" form: set its address here and remove `hidden`. -->
+          <a id="register" href="#" hidden>Tell us about your church</a>
+          <a href="https://github.com/incrhst/lampstand">Star it on GitHub</a>
+          <a href="https://github.com/incrhst/lampstand/issues/new/choose">Report a problem</a>
+        </p>
       </div>
 
       <div class="panel panel--right">
@@ -185,7 +203,7 @@
       <ul class="connect" role="list">
         <li>
           <span class="connect-who">I run the screens at my church</span><span class="leader" aria-hidden="true"></span>
-          <a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star it, and watch for the first release</a>
+          <a class="btn btn--stamp btn--small" href="https://github.com/incrhst/lampstand"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star it, and follow each release</a>
         </li>
         <li>
           <span class="connect-who">I write Rust or TypeScript</span><span class="leader" aria-hidden="true"></span>
