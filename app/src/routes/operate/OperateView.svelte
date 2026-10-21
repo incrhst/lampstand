@@ -8,10 +8,10 @@
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { untrack } from "svelte";
-  import { request, send, type Command, type Cursor, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
+  import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { nextClick, nextSlide } from "../../lib/cursor";
+  import { jumpItem, nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -27,6 +27,7 @@
   import { isConnected, obsPill, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
+  import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
   let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
@@ -71,6 +72,27 @@
     onplan?.();
   }
   let screensOn = $derived(live.outputs.filter((o) => o.enabled).length);
+
+  // With no screen on, the prompt offers to turn one on: screens set up and
+  // left off, and connected displays that are not a screen yet.
+  let displays: DisplayMatch[] = $state([]);
+  $effect(() => {
+    if (screensOn !== 0) return;
+    request({ area: "Outputs", request: "ListDisplays" }, "Displays")
+      .then((found) => (displays = found))
+      .catch(report);
+  });
+  let offers = $derived(screensOn === 0 ? screenOffers(live.outputs, displays) : []);
+
+  async function turnOn(offer: ScreenOffer) {
+    const config: OutputConfig =
+      offer.kind === "enable" ? { ...offer.output, enabled: true } : newScreen(offer.display, live.outputs, crypto.randomUUID());
+    try {
+      live.outputs = await request({ area: "Outputs", request: { Put: config } }, "Outputs");
+    } catch (e) {
+      report(e);
+    }
+  }
 
   async function command(c: Command) {
     try {
@@ -140,6 +162,16 @@
     if (c) {
       e.preventDefault();
       command(c);
+      return;
+    }
+    // Shift+Down and Shift+Up move through the running order: the start of
+    // the next or previous item, where Left and Right move through slides.
+    // Plain Up and Down are left alone, so they still scroll the notes and
+    // lists and a stray press cannot change what is on air.
+    if (live.loaded && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      const cursor = jumpItem(live.loaded, live.live, e.key === "ArrowDown" ? 1 : -1);
+      if (cursor) show(cursor);
       return;
     }
     if (live.loaded) {
@@ -282,7 +314,12 @@
 {#snippet noScreen()}
   <Banner tone="warn">
     <span>No screen is on, so nothing reaches the projector.</span>
-    {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+    <span class="offers">
+      {#each offers as offer (offer.label)}
+        <Button size="small" variant="primary" icon="monitor" onclick={() => turnOn(offer)}>{offer.label}</Button>
+      {/each}
+      {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+    </span>
   </Banner>
 {/snippet}
 
@@ -725,6 +762,12 @@
   .none .no-screen {
     width: min(36rem, calc(100% - 2rem));
     color: var(--text);
+  }
+  .offers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
   }
   .no-screen :global(.body) {
     display: flex;

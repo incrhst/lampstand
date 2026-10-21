@@ -108,15 +108,18 @@
     }
   }
 
+  // What the next click shows. A step stays on the same slide, so the label
+  // names the slide plainly and puts the step in a quieter note beside it.
   let nextLabel = $derived(
     !upcoming
       ? "End of service"
       : upcoming.build
-        ? `Next: step ${upcoming.cursor.step} of ${upcoming.slide.steps}`
+        ? `Next: Slide ${upcoming.cursor.slide + 1}`
         : upcoming.cursor.item === item.id
           ? `Next: ${slideCounter(upcoming.cursor.slide, item.slides.length).toLowerCase()}`
           : `Next: ${upcoming.title}`,
   );
+  let nextStep = $derived(upcoming?.build ? `step ${upcoming.cursor.step} of ${upcoming.slide.steps}` : null);
 </script>
 
 <svelte:window {onkeydown} />
@@ -150,7 +153,10 @@
 
     <aside class="aside">
       <section aria-label="Next">
-        <h2 class="title label">{nextLabel}</h2>
+        <h2 class="title label">
+          <span class="where">{nextLabel}</span>
+          {#if nextStep}<span class="step">{nextStep}</span>{/if}
+        </h2>
         <div class="next">
           {#if upcoming}
             <SlidePreview lines={upcoming.slide.lines} image={nextImage} {safeArea} empty="" />
@@ -260,6 +266,18 @@
   .label {
     font-size: 0.75rem;
     color: var(--muted);
+  }
+  /* The slide is the headline; the step is a quiet note beside it. */
+  .where {
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .step {
+    margin-left: 0.5rem;
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 400;
   }
   .next {
     margin-top: 0.5rem;

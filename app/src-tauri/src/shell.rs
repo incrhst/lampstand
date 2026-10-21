@@ -45,8 +45,9 @@ use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::config::device_key;
+use crate::config::{device_key, OutputStore};
 use crate::decks;
+use crate::display_names;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
@@ -344,6 +345,12 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let emit = Arc::new(move |event: Event| {
         let _ = emitter.emit("api-event", event);
     });
+    // A fresh install gets a rehearsal window. This is here and not in
+    // `App::open` so that tests, which start from an empty folder, keep
+    // starting with no outputs.
+    if let Err(e) = OutputStore::load_or_seed(data_dir.join("outputs.json")) {
+        eprintln!("lampstand: cannot set up the first output: {e}");
+    }
     let app = App::open(
         data_dir,
         Fonts::load(),
@@ -622,6 +629,35 @@ struct TauriWindows {
 }
 
 impl TauriWindows {
+    /// The display the operator window is on, if it has one.
+    fn operator_display(&self) -> Option<DisplayInfo> {
+        let monitor = self
+            .handle
+            .get_webview_window("main")?
+            .current_monitor()
+            .ok()??;
+        Some(DisplayInfo {
+            name: String::new(),
+            width: monitor.size().width,
+            height: monitor.size().height,
+            x: monitor.position().x,
+            y: monitor.position().y,
+        })
+    }
+
+    /// What the OS calls each display. AppKit only answers on the main
+    /// thread; if it does not in time, the generic names stand.
+    fn native_displays(&self) -> Vec<display_names::Native> {
+        let (tx, rx) = mpsc::channel();
+        let sent = self.handle.run_on_main_thread(move || {
+            let _ = tx.send(display_names::native_displays());
+        });
+        if sent.is_err() {
+            return Vec::new();
+        }
+        rx.recv_timeout(Duration::from_secs(1)).unwrap_or_default()
+    }
+
     fn label(id: OutputId) -> String {
         format!("output-{}", id.uuid().simple())
     }
@@ -647,7 +683,8 @@ impl TauriWindows {
 
 impl WindowHost for TauriWindows {
     fn displays(&self) -> Vec<DisplayInfo> {
-        self.handle
+        let mut displays: Vec<DisplayInfo> = self
+            .handle
             .available_monitors()
             .unwrap_or_default()
             .iter()
@@ -658,7 +695,10 @@ impl WindowHost for TauriWindows {
                 x: m.position().x,
                 y: m.position().y,
             })
-            .collect()
+            .collect();
+        display_names::without_operator(&mut displays, self.operator_display());
+        display_names::apply(&mut displays, &self.native_displays());
+        displays
     }
 
     fn open(&mut self, output: OutputId, title: &str, placement: Placement) -> Result<(), String> {
