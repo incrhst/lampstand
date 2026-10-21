@@ -10,6 +10,7 @@
   import Banner from "../../lib/kit/Banner.svelte";
   import { steppedDown, takesMainPlace, windowToDemote } from "../../lib/primary";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
+  import { displaysWithScreens } from "../../lib/screenOffers";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import CalibrateView from "./CalibrateView.svelte";
@@ -184,11 +185,16 @@
     </div>
     <ul class="plain displays">
       {#each displays as d, i (i)}
+        {@const hasScreen = displaysWithScreens(live.outputs, displays).has(i)}
         <li>
           <Icon name="monitor" />
           <span class="display-name">{d.name || `Display ${i + 1}`}</span>
           <span class="faint num">{d.width}×{d.height} at {d.x},{d.y}</span>
-          <Button size="small" onclick={() => add(d.name || `Display ${i + 1}`, { Display: d })}>Use as a screen</Button>
+          {#if hasScreen}
+            <Button size="small" disabled onclick={() => {}} title="This display already has a screen above">Already a screen</Button>
+          {:else}
+            <Button size="small" onclick={() => add(d.name || `Display ${i + 1}`, { Display: d })}>Use as a screen</Button>
+          {/if}
         </li>
       {:else}
         <li class="faint">No displays found.</li>
