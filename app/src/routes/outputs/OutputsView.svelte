@@ -4,6 +4,7 @@
 <script lang="ts">
   import { request, type DisplayMatch, type OutputConfig } from "../../lib/api";
   import { isCalibrated, live, refreshOutputs, report } from "../../lib/state.svelte";
+  import { isScreen } from "../../lib/obs";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
@@ -11,6 +12,12 @@
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import CalibrateView from "./CalibrateView.svelte";
+
+  /** Opens Setup › OBS, where pictures sent to OBS are set up. */
+  let { onobs }: { onobs?: () => void } = $props();
+
+  /** The screens: windows and displays. Pictures sent to OBS are on the OBS page. */
+  let screens = $derived(live.outputs.filter(isScreen));
 
   let displays: DisplayMatch[] = $state([]);
   /** The output being calibrated, and the one just saved (for the notice). */
@@ -72,11 +79,10 @@
     const t = o.target;
     if ("Window" in t) return `Window · ${t.Window.width}×${t.Window.height}`;
     if ("Display" in t) return `Fullscreen on ${t.Display.name || "display"} · ${t.Display.width}×${t.Display.height}`;
-    return `Browser source · ${t.BrowserSource.width}×${t.BrowserSource.height}`;
+    return `Sent to OBS · ${t.BrowserSource.width}×${t.BrowserSource.height}`;
   }
 
   function role(o: OutputConfig): string {
-    if (isBrowserSource(o)) return serves(o) === "lower" ? "Lower thirds for the stream" : "Full screen, as the room sees it";
     if (typeof o.role === "object") return o.role.Audience.primary ? "Main audience screen" : "Audience screen";
     return o.role === "Stage" ? "Stage display" : "Stream";
   }
@@ -87,67 +93,6 @@
     if (all.every((m) => m === 0)) return "No safe-area margins";
     const fit = o.background === "Fit" ? ", backgrounds inside" : "";
     return `Margins ${all.map((m) => `${Math.round(m * 1000) / 10}%`).join(" ")}${fit}`;
-  }
-
-  /** The OBS URL of each browser-source output, by output ID. */
-  let urls: Record<string, string> = $state({});
-  let copied: string | null = $state(null);
-
-  function isBrowserSource(o: OutputConfig): boolean {
-    return "BrowserSource" in o.target;
-  }
-
-  /**
-   * What a browser source serves. One source, one URL in OBS: switching
-   * changes its role, so the page OBS already shows redraws in the other
-   * layout. Lower thirds is the stream layout (transparent, text in the
-   * lower third); full screen is the audience layout, background and all.
-   */
-  type Serves = "lower" | "full";
-  const servesOptions = [
-    { id: "lower", label: "Lower thirds" },
-    { id: "full", label: "Full screen" },
-  ] as const;
-  function serves(o: OutputConfig): Serves {
-    return o.role === "Stream" ? "lower" : "full";
-  }
-  function setServes(o: OutputConfig, to: Serves) {
-    if (to === serves(o)) return;
-    put({ ...o, role: to === "lower" ? "Stream" : { Audience: { primary: false } } });
-  }
-
-  async function loadUrl(id: string) {
-    try {
-      urls[id] = await request({ area: "Outputs", request: { BrowserSourceUrl: id } }, "Text");
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  $effect(() => {
-    for (const o of live.outputs) if (isBrowserSource(o) && !(o.id in urls)) loadUrl(o.id);
-  });
-
-  async function copy(id: string) {
-    try {
-      await navigator.clipboard.writeText(urls[id]);
-      copied = id;
-      setTimeout(() => {
-        if (copied === id) copied = null;
-      }, 2000);
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  /** A new key, so a leaked URL stops working. OBS needs the new URL. */
-  async function newKey(id: string) {
-    try {
-      urls[id] = await request({ area: "Outputs", request: { RotateBrowserSourceKey: id } }, "Text");
-      copied = null;
-    } catch (e) {
-      report(e);
-    }
   }
 
   refresh();
@@ -167,14 +112,11 @@
         <h1>Screens</h1>
         <p class="muted intro">
           The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
-          screen on to open its window; fullscreen screens go on a display below. An OBS browser source sends lower thirds, or
-          the full screen, to OBS over the network.
+          screen on to open its window; fullscreen screens go on a display below. Pictures for OBS are under Setup › OBS.
         </p>
       </div>
       <div class="add">
-        <Button icon="plus" onclick={() => add("OBS stream", { BrowserSource: { width: 1920, height: 1080 } }, true)}>
-          Add OBS browser source
-        </Button>
+        {#if onobs}<Button icon="broadcast" onclick={onobs}>Send to OBS…</Button>{/if}
         <Button variant="primary" icon="plus" onclick={() => add("Rehearsal window", { Window: { width: 960, height: 540 } })}>
           Add window
         </Button>
@@ -191,7 +133,7 @@
     {/if}
 
     <ul class="plain screens">
-      {#each live.outputs as o (o.id)}
+      {#each screens as o (o.id)}
         <li class="screen">
           <div class="preview">
             <SlidePreview lines={sample} safeArea={o.safe_area} showGuide size="small" />
@@ -204,28 +146,6 @@
               <p class="calibration ok"><Icon name="checkCircle" size={14} />Safe area set</p>
             {:else}
               <p class="calibration warn"><Icon name="alert" size={14} />Not calibrated: text may be cut off at the edges</p>
-            {/if}
-            {#if isBrowserSource(o)}
-              <div class="serves">
-                <Segmented
-                  label="What {o.name} serves to OBS"
-                  options={servesOptions}
-                  value={serves(o)}
-                  onchange={(to) => setServes(o, to)}
-                />
-              </div>
-            {/if}
-            {#if isBrowserSource(o) && urls[o.id]}
-              <div class="obs">
-                <p class="muted">
-                  In OBS, add a Browser source with this URL{o.enabled ? "" : " (turn the screen on first)"}:
-                </p>
-                <div class="url">
-                  <input type="text" readonly value={urls[o.id]} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
-                  <Button size="small" onclick={() => copy(o.id)}>{copied === o.id ? "Copied" : "Copy"}</Button>
-                  <Button variant="ghost" size="small" title="Stops the old URL working" onclick={() => newKey(o.id)}>New key</Button>
-                </div>
-              </div>
             {/if}
           </div>
           <div class="controls">
@@ -290,30 +210,6 @@
     display: flex;
     gap: 0.5rem;
     flex-shrink: 0;
-  }
-  .serves {
-    margin-top: 0.75rem;
-  }
-  .obs {
-    margin-top: 0.75rem;
-  }
-  .url {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
-  }
-  .url input {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-    padding: 0.35rem 0.5rem;
-    color: var(--text);
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
   }
   .intro {
     margin-top: 0.3rem;
