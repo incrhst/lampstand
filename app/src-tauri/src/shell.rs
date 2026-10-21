@@ -43,7 +43,7 @@ use lampstand_sync::DocChanged;
 use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use crate::config::device_key;
 use crate::decks;
@@ -551,18 +551,21 @@ fn app_step(
     }
 }
 
-/// The global shortcut for a key: the key alone, no modifiers.
+/// The global shortcut for a key: the key alone, except the item jumps,
+/// which are Shift+Up and Shift+Down as in the operator window.
 fn shortcut_for(key: Key) -> Shortcut {
-    let code = match key {
-        Key::PageUp => Code::PageUp,
-        Key::PageDown => Code::PageDown,
-        Key::B => Code::KeyB,
-        Key::Period => Code::Period,
-        Key::Left => Code::ArrowLeft,
-        Key::Right => Code::ArrowRight,
-        Key::Space => Code::Space,
+    let (modifiers, code) = match key {
+        Key::PageUp => (None, Code::PageUp),
+        Key::PageDown => (None, Code::PageDown),
+        Key::B => (None, Code::KeyB),
+        Key::Period => (None, Code::Period),
+        Key::Left => (None, Code::ArrowLeft),
+        Key::Right => (None, Code::ArrowRight),
+        Key::Space => (None, Code::Space),
+        Key::ShiftUp => (Some(Modifiers::SHIFT), Code::ArrowUp),
+        Key::ShiftDown => (Some(Modifiers::SHIFT), Code::ArrowDown),
     };
-    Shortcut::new(None, code)
+    Shortcut::new(modifiers, code)
 }
 
 /// `tauri-plugin-global-shortcut` behind `keys::ShortcutHost`.

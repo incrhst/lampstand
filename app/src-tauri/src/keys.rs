@@ -9,7 +9,8 @@
 //!
 //! The operator window handles its own keys in the web UI. Output windows
 //! have no webview, so they cannot see key presses; while one of them has
-//! focus, the arrow keys (and Page Up, Page Down, full stop and Space) are
+//! focus, the arrow keys (and Page Up, Page Down, full stop, Space and
+//! Shift+Up / Shift+Down, which jump between items) are
 //! registered too, and released as soon as it loses focus, so other apps
 //! keep their arrow keys.
 //!
@@ -31,6 +32,10 @@ pub enum Key {
     Left,
     Right,
     Space,
+    /// Shift+Up: the previous item in the order of service.
+    ShiftUp,
+    /// Shift+Down: the next item in the order of service.
+    ShiftDown,
 }
 
 impl Key {
@@ -40,16 +45,18 @@ impl Key {
     /// The operator keys an output window takes while it has focus. B is
     /// left out: in Lampstand's windows it means Bridge, which needs the
     /// operator view.
-    pub const OUTPUT_WINDOW: [Key; 6] = [
+    pub const OUTPUT_WINDOW: [Key; 8] = [
         Key::Left,
         Key::Right,
         Key::Space,
         Key::PageUp,
         Key::PageDown,
         Key::Period,
+        Key::ShiftUp,
+        Key::ShiftDown,
     ];
 
-    pub const ALL: [Key; 7] = [
+    pub const ALL: [Key; 9] = [
         Key::PageUp,
         Key::PageDown,
         Key::B,
@@ -57,6 +64,8 @@ impl Key {
         Key::Left,
         Key::Right,
         Key::Space,
+        Key::ShiftUp,
+        Key::ShiftDown,
     ];
 
     /// The live command a press sends.
@@ -64,6 +73,8 @@ impl Key {
         match self {
             Key::PageDown | Key::Right | Key::Space => Command::Next,
             Key::PageUp | Key::Left => Command::Previous,
+            Key::ShiftDown => Command::NextItem,
+            Key::ShiftUp => Command::PreviousItem,
             Key::B | Key::Period => Command::ToggleBlack,
         }
     }
@@ -262,7 +273,16 @@ mod tests {
         assert_eq!(*keys.held(), set(&Key::CLICKER));
         // Only the arrows and Space were released; Page Up stayed put.
         let released: BTreeSet<Key> = keys.host().calls.iter().map(|(_, k)| *k).collect();
-        assert_eq!(released, set(&[Key::Left, Key::Right, Key::Space]));
+        assert_eq!(
+            released,
+            set(&[
+                Key::Left,
+                Key::Right,
+                Key::Space,
+                Key::ShiftUp,
+                Key::ShiftDown
+            ])
+        );
         assert!(keys.host().calls.iter().all(|(register, _)| !register));
     }
 
@@ -311,5 +331,18 @@ mod tests {
         assert_eq!(Key::Right.command(), Command::Next);
         assert_eq!(Key::Left.command(), Command::Previous);
         assert_eq!(Key::Space.command(), Command::Next);
+    }
+
+    #[test]
+    fn shift_up_and_down_move_between_items_and_only_in_an_output_window() {
+        assert_eq!(Key::ShiftDown.command(), Command::NextItem);
+        assert_eq!(Key::ShiftUp.command(), Command::PreviousItem);
+        assert!(Key::OUTPUT_WINDOW.contains(&Key::ShiftUp));
+        assert!(Key::OUTPUT_WINDOW.contains(&Key::ShiftDown));
+        // A clicker has no such keys, and a plain press elsewhere is not taken.
+        assert!(!Key::CLICKER.contains(&Key::ShiftUp));
+        let mut keys = Keys::new(Fake::default());
+        keys.update(state(true, true, false));
+        assert!(!keys.held().contains(&Key::ShiftDown));
     }
 }
