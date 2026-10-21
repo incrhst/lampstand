@@ -366,6 +366,7 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
         listed.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
         ["Sunday"]
     );
+    assert_eq!(listed[0].items, 1, "the song counts");
 
     let loaded = open_service(&mut h, &service);
     assert_eq!(loaded.items.len(), 1);
@@ -448,6 +449,7 @@ fn a_service_is_created_at_a_time_and_rescheduled() {
         Response::Services(list) => {
             assert_eq!(list[0].starts_at, Some(later));
             assert_eq!(list[0].time_zone.as_deref(), Some("America/Jamaica"));
+            assert_eq!(list[0].items, 0, "nothing planned yet");
         }
         other => panic!("{other:?}"),
     }
