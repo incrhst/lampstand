@@ -448,7 +448,7 @@
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
-                      {#if slide.steps > 0}<span class="faint steps">{slide.steps} builds</span>{/if}
+                      {#if slide.steps > 0}<span class="faint steps">{slide.steps} {slide.steps === 1 ? "step" : "steps"}</span>{/if}
                     </span>
                   </button>
                 </li>
