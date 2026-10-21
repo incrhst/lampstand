@@ -78,6 +78,7 @@
   let displays: DisplayMatch[] = $state([]);
   $effect(() => {
     if (screensOn !== 0) return;
+    void live.displaysVersion; // Refetch when a monitor is plugged in or removed.
     request({ area: "Outputs", request: "ListDisplays" }, "Displays")
       .then((found) => (displays = found))
       .catch(report);

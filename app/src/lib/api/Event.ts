@@ -11,4 +11,4 @@ export type Event = { "type": "Live", "data": { live: Cursor | null, preview: Cu
 /**
  * Black or logo, which persist across slides.
  */
-overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { peers: number, relay_connected: boolean, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "Obs", "data": ObsView };
+overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { peers: number, relay_connected: boolean, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView };
