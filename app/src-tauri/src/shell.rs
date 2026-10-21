@@ -47,6 +47,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutSt
 
 use crate::config::device_key;
 use crate::decks;
+use crate::display_names;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
@@ -622,6 +623,35 @@ struct TauriWindows {
 }
 
 impl TauriWindows {
+    /// The display the operator window is on, if it has one.
+    fn operator_display(&self) -> Option<DisplayInfo> {
+        let monitor = self
+            .handle
+            .get_webview_window("main")?
+            .current_monitor()
+            .ok()??;
+        Some(DisplayInfo {
+            name: String::new(),
+            width: monitor.size().width,
+            height: monitor.size().height,
+            x: monitor.position().x,
+            y: monitor.position().y,
+        })
+    }
+
+    /// What the OS calls each display. AppKit only answers on the main
+    /// thread; if it does not in time, the generic names stand.
+    fn native_displays(&self) -> Vec<display_names::Native> {
+        let (tx, rx) = mpsc::channel();
+        let sent = self.handle.run_on_main_thread(move || {
+            let _ = tx.send(display_names::native_displays());
+        });
+        if sent.is_err() {
+            return Vec::new();
+        }
+        rx.recv_timeout(Duration::from_secs(1)).unwrap_or_default()
+    }
+
     fn label(id: OutputId) -> String {
         format!("output-{}", id.uuid().simple())
     }
@@ -647,7 +677,8 @@ impl TauriWindows {
 
 impl WindowHost for TauriWindows {
     fn displays(&self) -> Vec<DisplayInfo> {
-        self.handle
+        let mut displays: Vec<DisplayInfo> = self
+            .handle
             .available_monitors()
             .unwrap_or_default()
             .iter()
@@ -658,7 +689,10 @@ impl WindowHost for TauriWindows {
                 x: m.position().x,
                 y: m.position().y,
             })
-            .collect()
+            .collect();
+        display_names::without_operator(&mut displays, self.operator_display());
+        display_names::apply(&mut displays, &self.native_displays());
+        displays
     }
 
     fn open(&mut self, output: OutputId, title: &str, placement: Placement) -> Result<(), String> {
