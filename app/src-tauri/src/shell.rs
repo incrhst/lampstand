@@ -45,7 +45,7 @@ use tauri::window::{Color, Window, WindowBuilder};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::config::device_key;
+use crate::config::{device_key, OutputStore};
 use crate::decks;
 use crate::handler::{App, EventSink, Placement, WindowHost};
 use crate::import::import_files;
@@ -344,6 +344,12 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let emit = Arc::new(move |event: Event| {
         let _ = emitter.emit("api-event", event);
     });
+    // A fresh install gets a rehearsal window. This is here and not in
+    // `App::open` so that tests, which start from an empty folder, keep
+    // starting with no outputs.
+    if let Err(e) = OutputStore::load_or_seed(data_dir.join("outputs.json")) {
+        eprintln!("lampstand: cannot set up the first output: {e}");
+    }
     let app = App::open(
         data_dir,
         Fonts::load(),
