@@ -92,6 +92,20 @@
       </div>
     </section>
 
+    <!-- The story: why this exists -->
+    <section class="spread spread--notices spread--story" aria-labelledby="story-title">
+      <h2 id="story-title" class="heading">Why I built it</h2>
+      <div class="panel panel--left">
+        <p class="plain">I was working with a team that ran a whole service from a single machine, using OpenSong, OBS, PowerPoint and Zoom. Let&rsquo;s just say there was a lot of juggling.</p>
+        <p class="plain">I wanted to recommend a replacement, and I couldn&rsquo;t find the right thing. So I decided to build it instead.</p>
+        <p class="plain">Learn more about the author at <a rel="author" href="https://dbain.com">dbain.com</a>.</p>
+      </div>
+      <div class="panel panel--right">
+        <p class="plain">Lampstand reads your PowerPoint and Google Slides, brings your songs across from OpenSong and other apps, and works hand in hand with OBS, so the juggling happens inside one app and one volunteer can run Sunday.</p>
+        <p class="plain">It is free, it is open source, and it is built in the open with the people who use it. If it is missing something your church needs, <a href="https://github.com/incrhst/lampstand/discussions">tell us</a>.</p>
+      </div>
+    </section>
+
     <!-- Inside spread: the order of worship, live -->
     <section id="order" class="spread spread--order" aria-labelledby="order-title" tabindex="-1">
       <div class="panel panel--left">
@@ -219,22 +233,22 @@
     <section class="spread spread--notices" aria-labelledby="notices-title">
       <h2 id="notices-title" class="heading">Notices</h2>
       <div class="panel panel--left">
-        <h3 class="subhead">In the workshop: built so far</h3>
+        <h3 class="subhead">In this preview</h3>
         <ul class="ledger" role="list">
-          <li>The data model, and the live engine that moves through a service</li>
-          <li>Layout and a GPU renderer with output windows and per-screen calibration</li>
-          <li>Encrypted sync between the church&rsquo;s own devices on the local network</li>
-          <li>Song and Bible importers for the common formats</li>
-          <li>A PowerPoint reader, built on the open-source DeckCraft crates</li>
-          <li>The OBS browser source, and the desktop app&rsquo;s first screens</li>
+          <li>Plan a service, then run it from one operator screen, with speaker notes and a next-slide preview</li>
+          <li>Songs and Bibles in, from OpenSong, OpenLP, EasyWorship, ProPresenter, FreeShow and SongSelect</li>
+          <li>PowerPoint and Google Slides decks with their builds, and video and images</li>
+          <li>Output windows fitted to every screen, with calibration for the edges</li>
+          <li>OBS: switch scenes with the service, and send lower thirds or the full screen as a Browser source</li>
+          <li>Encrypted sync between your church&rsquo;s own devices, and updates inside the app</li>
         </ul>
       </div>
       <div class="panel panel--right">
         <h3 class="subhead subhead--first">Still to come</h3>
         <ul class="ledger" role="list">
-          <li>The operator view, deck import and the planner</li>
-          <li>Team invites and the self-hosted sync relay</li>
-          <li>Signed installers for Windows, macOS and Linux</li>
+          <li>A signed Windows installer (for now Windows asks you to confirm)</li>
+          <li>A Flatpak on Flathub for Linux</li>
+          <li>Whatever your church tells us it needs</li>
         </ul>
         <h3 class="subhead">Free, for good</h3>
         <p class="plain">GPL-3.0, with no paid tier and no company cloud your Sunday depends on. Your songs and services stay on your own machines, in open formats you can take anywhere.</p>

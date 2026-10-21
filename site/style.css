@@ -425,3 +425,7 @@ kbd {
 .steps li { margin: 0.1rem 0; }
 .small-note { margin: 1.2rem 0 0; display: flex; flex-wrap: wrap; gap: 0.3rem 1.4rem; font-size: 0.9rem; }
 .small-note a[hidden] { display: none; }
+
+/* The story reads as paragraphs: space between them. */
+.spread--story .plain + .plain { margin-top: 0.9rem; }
+.spread--story .panel--right { padding-top: 0.9rem; }
