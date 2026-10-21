@@ -23,7 +23,7 @@ Lampstand is a free, open-source church projection app. It replaces OpenSong and
 ## Positioning
 
 - **Free and open source (GPL-3.0).** No subscription and no company cloud a church depends on.
-- **PowerPoint and Google Slides play with their builds, video and speaker notes intact,** without PowerPoint installed on the projection laptop. Other tools flatten decks to images or remote-control PowerPoint.
+- **PowerPoint and Google Slides play with their animations, video and speaker notes intact,** without PowerPoint installed on the projection laptop. Other tools flatten decks to images or remote-control PowerPoint.
 - **The team plans the service together during the week.** Local-first sync means the projection laptop has everything offline on Sunday.
 - **Per-screen title-safe calibration:** text never falls off a cropped TV or behind the band.
 - **Lyrics and lower thirds go to OBS** as a browser source, with no plugin.
