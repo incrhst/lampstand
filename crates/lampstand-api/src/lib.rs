@@ -119,6 +119,13 @@ pub enum LibraryRequest {
         name: String,
         width: u32,
     },
+    /// A picture of a deck's first slide (as it looks once its builds have
+    /// played), `width` pixels wide, for the library and the service order.
+    /// Answers `Response::Thumbnail`.
+    DeckThumbnail {
+        deck: DeckId,
+        width: u32,
+    },
     /// Every image and video used in a service, once each, by name, as
     /// `Response::MediaFiles`. Media has no document of its own; the
     /// services are its library.

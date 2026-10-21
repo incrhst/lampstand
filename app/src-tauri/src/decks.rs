@@ -233,6 +233,41 @@ pub fn add_media_file(library: &Library, path: &str) -> Result<MediaFile, String
     })
 }
 
+/// `LibraryRequest::DeckThumbnail`: the deck's first slide, after its
+/// builds, as a PNG `data:` URL `width` pixels wide. Parses the deck (the
+/// first time takes a moment) and draws it with `renderer`.
+pub fn deck_thumbnail(
+    library: &Library,
+    deck: DeckId,
+    width: u32,
+    fonts: &std::sync::Mutex<Option<lampstand_layout::Fonts>>,
+    renderer: &lampstand_render::Renderer,
+) -> Result<String, String> {
+    let deck = library
+        .deck(deck)
+        .map_err(|e| e.to_string())?
+        .ok_or("no such deck")?;
+    let parsed = {
+        // One deck is parsed at a time, with fonts loaded on first use.
+        let mut fonts = fonts.lock().unwrap_or_else(|e| e.into_inner());
+        parse(
+            library,
+            &deck,
+            fonts.get_or_insert_with(lampstand_layout::Fonts::load),
+        )?
+    };
+    let scene = parsed
+        .slides
+        .first()
+        .and_then(|slide| slide.scenes.last())
+        .ok_or("the deck has no slides")?;
+    let (w, h) = thumbnail_size(scene, width);
+    let image = renderer
+        .render_offscreen(scene, w, h)
+        .map_err(|e| format!("{e:?}"))?;
+    png_data_url(&image)
+}
+
 const VIDEO_EXTENSIONS: [&str; 5] = ["mp4", "mov", "m4v", "webm", "mkv"];
 
 /// `LibraryRequest::MediaThumbnail`: a JPEG `data:` URL, `width` pixels wide,

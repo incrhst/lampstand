@@ -21,6 +21,7 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import DeckThumb from "../../lib/kit/DeckThumb.svelte";
   import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import Library from "./Library.svelte";
@@ -338,6 +339,11 @@
     }
   }
 
+  /** The version of a deck's file, so its thumbnail is drawn again when the deck changes. */
+  function deckVersion(id: string): string {
+    return decks.find((d) => d.id === id)?.current.blob ?? "";
+  }
+
   function ordered(service: Service) {
     return Object.entries(service.items)
       .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] != null)
@@ -589,6 +595,8 @@
                 <span class="index num">{i + 1}</span>
                 {#if "Media" in item.kind}
                   <MediaThumb blob={item.kind.Media.blob} name={item.kind.Media.name} icon={kindIcon[kindName(item.kind)]} />
+                {:else if "Deck" in item.kind}
+                  <DeckThumb deck={item.kind.Deck.deck} version={deckVersion(item.kind.Deck.deck)} />
                 {:else}
                   <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
                 {/if}
