@@ -94,8 +94,8 @@
     cursor: default;
   }
   .kind {
-    width: 1.9rem;
-    height: 1.9rem;
+    width: var(--tile-width);
+    height: var(--tile-height);
     flex-shrink: 0;
     border-radius: var(--radius);
     background: var(--raised);

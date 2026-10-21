@@ -1,6 +1,10 @@
 /* Tokens for every screen. T60 checks contrast against these: text
    colours are at least 4.5:1 on --panel and --canvas, --faint included. */
 :root {
+  /* The leading tile of a library or service row: every kind of row (song,
+     scripture, deck, media) gets the same one, so titles start on one line. */
+  --tile-width: 3.4rem;
+  --tile-height: 1.95rem;
   --canvas: #121419;
   --panel: #1b1f27;
   --raised: #232833;

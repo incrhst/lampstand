@@ -808,8 +808,8 @@
     color: var(--faint);
   }
   .kind {
-    width: 2rem;
-    height: 2rem;
+    width: var(--tile-width);
+    height: var(--tile-height);
     border-radius: var(--radius);
     background: var(--raised);
     color: var(--muted);

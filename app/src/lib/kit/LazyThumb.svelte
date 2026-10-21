@@ -54,8 +54,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 3.5rem;
-    aspect-ratio: 16 / 9;
+    width: var(--tile-width);
+    height: var(--tile-height);
     overflow: hidden;
     flex-shrink: 0;
     border-radius: var(--radius);
