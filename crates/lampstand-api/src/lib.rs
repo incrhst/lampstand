@@ -31,6 +31,51 @@ pub enum Request {
     Team(TeamRequest),
     Obs(ObsRequest),
     Settings(SettingsRequest),
+    Update(UpdateRequest),
+}
+
+/// Updating Lampstand itself (T59).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateRequest {
+    /// What is known now, without asking the network: `Response::Update`.
+    Status,
+    /// Asks whether a newer release exists, and answers `Response::Update`.
+    Check,
+    /// Downloads the release `Check` found, installs it and restarts. Refused
+    /// unless nothing is on air and no service starts within the hour, so an
+    /// update never interrupts one.
+    Install,
+}
+
+/// Where updating stands.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateStatus {
+    /// The version running now.
+    pub current: String,
+    pub state: UpdateState,
+    /// Why `Install` would be refused right now, if it would be.
+    pub blocked: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateState {
+    /// No check has been made since the app started.
+    NotChecked,
+    UpToDate,
+    /// A newer release exists. `notes` are its release notes.
+    Available {
+        version: String,
+        notes: Option<String>,
+    },
+    /// Downloading and installing; the app restarts when it is done.
+    Installing,
+    /// The last check or install failed.
+    Failed {
+        message: String,
+    },
 }
 
 /// This machine's settings that are not about one screen. They stay on the
@@ -507,6 +552,7 @@ pub enum Response {
     Thumbnail(String),
     Obs(ObsView),
     Settings(DeviceSettings),
+    Update(UpdateStatus),
 }
 
 /// An image or video in the blob store, as a `Media` item names it.

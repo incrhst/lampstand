@@ -6,5 +6,6 @@ import type { OutputRequest } from "./OutputRequest";
 import type { ServiceRequest } from "./ServiceRequest";
 import type { SettingsRequest } from "./SettingsRequest";
 import type { TeamRequest } from "./TeamRequest";
+import type { UpdateRequest } from "./UpdateRequest";
 
-export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest } | { "area": "Obs", "request": ObsRequest } | { "area": "Settings", "request": SettingsRequest };
+export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest } | { "area": "Obs", "request": ObsRequest } | { "area": "Settings", "request": SettingsRequest } | { "area": "Update", "request": UpdateRequest };

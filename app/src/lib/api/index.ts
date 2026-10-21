@@ -67,5 +67,8 @@ export * from "./Timestamp";
 export * from "./Transition";
 export * from "./TransitionKind";
 export * from "./Translation";
+export * from "./UpdateRequest";
+export * from "./UpdateState";
+export * from "./UpdateStatus";
 export * from "./VAlign";
 export * from "./Version";

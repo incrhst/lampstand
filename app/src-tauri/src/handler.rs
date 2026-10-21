@@ -300,6 +300,8 @@ impl App {
                 .map(|()| Response::Settings(self.settings.get().clone()))
                 .map_err(err),
             Request::Obs(_) => Err("OBS control is not running".into()),
+            // The shell answers updates: it owns the updater.
+            Request::Update(_) => Err("updates are not available here".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
@@ -1254,6 +1256,26 @@ impl App {
         self.place_windows();
         // The Screens page and the no-screen prompt list the displays.
         (self.emit)(Event::DisplaysChanged);
+    }
+
+    /// Why an update must not be installed now, if it must not: something is
+    /// on air, or a service is about to start. Checked again by the shell
+    /// at the moment of installing, however the screen looked a moment ago.
+    pub fn update_blocker(&self) -> Option<String> {
+        self.update_blocker_at(now())
+    }
+
+    /// `update_blocker` with the time given, for tests.
+    pub fn update_blocker_at(&self, now: Timestamp) -> Option<String> {
+        let next_service = self
+            .library
+            .services()
+            .ok()?
+            .iter()
+            .filter_map(|s| s.starts_at)
+            .filter(|t| *t > now)
+            .min();
+        crate::update::blocker(self.live.is_idle(), next_service, now)
     }
 
     /// Drives announcement loops and countdowns. Call every 100 ms or so;

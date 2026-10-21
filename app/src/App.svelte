@@ -7,9 +7,10 @@
   import OperateView from "./routes/operate/OperateView.svelte";
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import { request } from "./lib/api";
-  import { isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
+  import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
@@ -31,6 +32,19 @@
     screen = "setup";
   }
   let obsStatus = $derived(obsPill(live.obs));
+
+  // A new release is looked for shortly after starting and then every few
+  // hours, quietly: no network is not worth an error. Installing it is up to
+  // the operator, on Setup › About.
+  let newVersion = $derived(live.update ? availableVersion(live.update.state) : null);
+  $effect(() => {
+    const first = setTimeout(() => checkForUpdate(), FIRST_CHECK_MS);
+    const again = setInterval(() => checkForUpdate(), CHECK_EVERY_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(again);
+    };
+  });
   // Screens are windows and displays; pictures sent to OBS are counted apart.
   let screenOutputs = $derived(live.outputs.filter(isScreen));
   let pictureOutputs = $derived(live.outputs.filter(isPicture));
@@ -113,6 +127,12 @@
       {/if}
     {/snippet}
     {#snippet end()}
+      {#if newVersion}
+        <button class="status-link" onclick={() => openSetup("about")} title="A new version of Lampstand is ready to install. Open Setup › About">
+          <Icon name="download" size={14} />
+          <span class="update">Update {newVersion} available</span>
+        </button>
+      {/if}
       {#if obsStatus}
         <!-- OBS's connection, streaming and recording, kept quiet here;
              Present has the OBS control itself. -->
@@ -242,6 +262,9 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  .update {
+    color: var(--gold);
   }
   .status-link {
     font: inherit;
