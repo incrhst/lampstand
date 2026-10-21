@@ -661,6 +661,43 @@ fn the_real_window_size_is_what_gets_composed() {
 }
 
 #[test]
+fn an_update_waits_while_something_is_on_air_or_a_service_is_about_to_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let starts = days_from_2100(0);
+    let hour = 60 * 60 * 1000;
+    let service = create_service_at(&mut h, "Sunday", Some(starts));
+
+    // Quiet: nothing on air, and the service is a day away.
+    assert_eq!(
+        h.app.update_blocker_at(Timestamp(starts.0 - 24 * hour)),
+        None
+    );
+    // Half an hour before it starts, an update would be in the way.
+    let soon = h
+        .app
+        .update_blocker_at(Timestamp(starts.0 - hour / 2))
+        .unwrap();
+    assert!(soon.contains("starts in 30 minutes"), "{soon}");
+
+    // Once something is on air, it waits however far off the next service is.
+    let hits = search(&mut h, "");
+    let service = insert_song(&mut h, &service, hits[0].0);
+    open_service(&mut h, &service);
+    assert_eq!(
+        h.app.update_blocker_at(Timestamp(starts.0 - 24 * hour)),
+        None,
+        "open is not on air"
+    );
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let on_air = h
+        .app
+        .update_blocker_at(Timestamp(starts.0 - 24 * hour))
+        .unwrap();
+    assert!(on_air.contains("on air"), "{on_air}");
+}
+
+#[test]
 fn editing_the_open_service_reloads_it_without_changing_what_is_live() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());

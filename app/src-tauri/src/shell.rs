@@ -31,7 +31,10 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use lampstand_api::{Event, LibraryRequest, Request, Response, ServiceRequest};
+use lampstand_api::{
+    Event, LibraryRequest, Request, Response, ServiceRequest, UpdateRequest, UpdateState,
+    UpdateStatus,
+};
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -88,6 +91,14 @@ struct Shared {
     /// Fonts for parsing a deck to draw its thumbnail: loaded when the first
     /// one is asked for, and used one at a time.
     thumbnail_fonts: Arc<Mutex<Option<Fonts>>>,
+    /// Where updating Lampstand itself stands: what the last check found.
+    update: Arc<tokio::sync::Mutex<UpdaterState>>,
+}
+
+/// What the last check for a new release found, and the release to install.
+struct UpdaterState {
+    state: UpdateState,
+    pending: Option<tauri_plugin_updater::Update>,
 }
 
 fn lock(app: &Mutex<App>) -> MutexGuard<'_, App> {
@@ -98,7 +109,11 @@ fn lock(app: &Mutex<App>) -> MutexGuard<'_, App> {
 /// slide never holds up the async runtime or the event loop. Imports and
 /// downloads run without the `App` lock.
 #[tauri::command]
-async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Response, String> {
+async fn api(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, Shared>,
+    request: Request,
+) -> Result<Response, String> {
     let library = state.library.clone();
     let emit = state.emit.clone();
     let blocking = |f: Box<dyn FnOnce() -> Response + Send>| async move {
@@ -108,6 +123,7 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
     };
     match request {
         Request::Obs(request) => Ok(state.obs.handle(request).await),
+        Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {
@@ -266,6 +282,7 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![api])
         .setup(|tauri_app| {
             let handle = tauri_app.handle().clone();
@@ -451,7 +468,83 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         obs: obs_control,
         thumbnails,
         thumbnail_fonts: Arc::new(Mutex::new(None)),
+        update: Arc::new(tokio::sync::Mutex::new(UpdaterState {
+            state: UpdateState::NotChecked,
+            pending: None,
+        })),
     })
+}
+
+/// Looks for a newer release, or installs the one found. An install is
+/// refused unless nothing is on air and no service starts within the hour
+/// (`update::blocker`), judged now and not from what the screen showed.
+async fn update_request(
+    app: &tauri::AppHandle,
+    state: &Shared,
+    request: UpdateRequest,
+) -> Response {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let status = |u: &UpdaterState| {
+        Response::Update(UpdateStatus {
+            current: app.package_info().version.to_string(),
+            state: u.state.clone(),
+            blocked: lock(&state.app).update_blocker(),
+        })
+    };
+
+    match request {
+        UpdateRequest::Status => status(&*state.update.lock().await),
+        UpdateRequest::Check => {
+            let mut u = state.update.lock().await;
+            let found = match app.updater() {
+                Err(e) => Err(e.to_string()),
+                Ok(updater) => updater.check().await.map_err(|e| e.to_string()),
+            };
+            match found {
+                Ok(Some(update)) => {
+                    u.state = UpdateState::Available {
+                        version: update.version.clone(),
+                        notes: update.body.clone().filter(|n| !n.trim().is_empty()),
+                    };
+                    u.pending = Some(update);
+                }
+                Ok(None) => {
+                    u.state = UpdateState::UpToDate;
+                    u.pending = None;
+                }
+                Err(message) => u.state = UpdateState::Failed { message },
+            }
+            status(&u)
+        }
+        UpdateRequest::Install => {
+            if let Some(message) = lock(&state.app).update_blocker() {
+                return Response::Error { message };
+            }
+            let update = {
+                let mut u = state.update.lock().await;
+                let Some(update) = u.pending.take() else {
+                    return Response::Error {
+                        message: "There is no update to install. Check for updates first.".into(),
+                    };
+                };
+                u.state = UpdateState::Installing;
+                update
+            };
+            // Not under the lock: it can take a while, and the screen asks
+            // for the status as it goes.
+            match update.download_and_install(|_, _| {}, || {}).await {
+                Ok(()) => app.restart(),
+                Err(e) => {
+                    let mut u = state.update.lock().await;
+                    u.state = UpdateState::Failed {
+                        message: e.to_string(),
+                    };
+                    status(&u)
+                }
+            }
+        }
+    }
 }
 
 fn app_thread(

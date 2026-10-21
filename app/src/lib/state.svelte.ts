@@ -11,6 +11,7 @@ import {
   type OutputConfig,
   type Overlay,
   type SlideView,
+  type UpdateStatus,
 } from "./api";
 
 class LiveState {
@@ -32,6 +33,10 @@ class LiveState {
   decksVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** Where updating Lampstand itself stands; null until first asked. */
+  update: UpdateStatus | null = $state(null);
+  /** When a new release was last looked for, in ms, so it is not asked too often. */
+  updateCheckedAt: number | null = $state(null);
   /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
   displaysVersion: number = $state(0);
 
@@ -89,6 +94,40 @@ export async function refreshOutputs() {
     live.outputs = await request({ area: "Outputs", request: "List" }, "Outputs");
   } catch (e) {
     report(e);
+  }
+}
+
+/**
+ * Asks whether a newer release exists. A check that fails is only
+ * reported when the operator asked for it (`quiet` false): the background
+ * checks stay silent with no network.
+ */
+export async function checkForUpdate(quiet = true) {
+  try {
+    live.update = await request({ area: "Update", request: "Check" }, "Update");
+    live.updateCheckedAt = Date.now();
+  } catch (e) {
+    if (!quiet) report(e);
+  }
+}
+
+/** Where updating stands, without asking the network. */
+export async function refreshUpdate() {
+  try {
+    live.update = await request({ area: "Update", request: "Status" }, "Update");
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Downloads and installs the release found, and restarts. Refused mid-service. */
+export async function installUpdate() {
+  try {
+    live.update = { ...(live.update as UpdateStatus), state: "Installing" };
+    live.update = await request({ area: "Update", request: "Install" }, "Update");
+  } catch (e) {
+    report(e);
+    await refreshUpdate();
   }
 }
 
