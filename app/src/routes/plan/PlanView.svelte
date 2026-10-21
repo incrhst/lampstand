@@ -21,6 +21,7 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
+  import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
@@ -586,7 +587,11 @@
                   <Icon name="grip" />
                 </button>
                 <span class="index num">{i + 1}</span>
-                <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                {#if "Media" in item.kind}
+                  <MediaThumb blob={item.kind.Media.blob} name={item.kind.Media.name} icon={kindIcon[kindName(item.kind)]} />
+                {:else}
+                  <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                {/if}
                 <span class="text">
                   <span class="title">{itemTitle(item)}</span>
                   <span class="subtitle">{itemSubtitle(item)}</span>

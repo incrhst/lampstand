@@ -152,6 +152,15 @@ async fn api(state: tauri::State<'_, Shared>, request: Request) -> Result<Respon
             }))
             .await
         }
+        // Decoding a video for its thumbnail runs off the `App` lock.
+        Request::Library(LibraryRequest::MediaThumbnail { blob, name, width }) => {
+            blocking(Box::new(move || {
+                decks::media_thumbnail(&library, &blob, &name, width)
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
         Request::Library(LibraryRequest::AddMediaFile { path }) => {
             blocking(Box::new(move || {
                 decks::add_media_file(&library, &path)

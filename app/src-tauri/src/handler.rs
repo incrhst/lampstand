@@ -399,6 +399,11 @@ impl App {
             LibraryRequest::AddMediaFile { path } => {
                 Response::Media(decks::add_media_file(lib, &path)?)
             }
+            LibraryRequest::MediaThumbnail { blob, name, width } => {
+                // Decoding a video takes a moment, so the shell runs it off
+                // the `App` lock; this is the same work, for callers without one.
+                Response::Thumbnail(decks::media_thumbnail(lib, &blob, &name, width)?)
+            }
             LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
     }

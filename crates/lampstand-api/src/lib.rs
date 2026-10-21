@@ -109,6 +109,16 @@ pub enum LibraryRequest {
     AddMediaFile {
         path: String,
     },
+    /// A small picture of an image or video in the blob store, `width`
+    /// pixels wide, for the library and the service order. For a video it
+    /// is the first frame that is not blank (a fade-in from black is
+    /// skipped), not simply the first. `name` is the file's name, which says
+    /// which kind it is. Answers `Response::Thumbnail`.
+    MediaThumbnail {
+        blob: BlobHash,
+        name: String,
+        width: u32,
+    },
     /// Every image and video used in a service, once each, by name, as
     /// `Response::MediaFiles`. Media has no document of its own; the
     /// services are its library.

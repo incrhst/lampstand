@@ -25,6 +25,7 @@ lampstand-import.workspace = true
 lampstand-layout.workspace = true
 lampstand-library.workspace = true
 lampstand-live.workspace = true
+lampstand-media.workspace = true
 lampstand-render.workspace = true
 lampstand-slides.workspace = true
 lampstand-server.workspace = true
