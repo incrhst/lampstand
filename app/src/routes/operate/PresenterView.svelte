@@ -80,6 +80,34 @@
   const sizes = [0.95, 1.1, 1.3, 1.55, 1.85];
   let notesSize = $state(1);
 
+  // Speaker notes can be hidden (N), for a speaker who knows the talk or a
+  // small screen. The choice is remembered on this device; storage can be
+  // missing or full, so reads and writes are wrapped.
+  const NOTES_KEY = "lampstand.notes-shown";
+  let notesShown = $state(true);
+  try {
+    notesShown = localStorage.getItem(NOTES_KEY) !== "false";
+  } catch {
+    // Shown, as by default.
+  }
+  function toggleNotes() {
+    notesShown = !notesShown;
+    try {
+      localStorage.setItem(NOTES_KEY, String(notesShown));
+    } catch {
+      // Not remembered this time.
+    }
+  }
+  function onkeydown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "n" || e.key === "N") {
+      e.preventDefault();
+      toggleNotes();
+    }
+  }
+
   let nextLabel = $derived(
     !upcoming
       ? "End of service"
@@ -90,6 +118,8 @@
           : `Next: ${upcoming.title}`,
   );
 </script>
+
+<svelte:window {onkeydown} />
 
 <div class="presenter">
   <div class="head">
@@ -133,13 +163,20 @@
       <section class="notes-pane" aria-label="Speaker notes">
         <div class="notes-head">
           <h2 class="title label">Speaker notes</h2>
-          <Button size="small" variant="ghost" label="Smaller notes" disabled={notesSize === 0} onclick={() => (notesSize = Math.max(0, notesSize - 1))}>A−</Button>
-          <Button size="small" variant="ghost" label="Larger notes" disabled={notesSize === sizes.length - 1} onclick={() => (notesSize = Math.min(sizes.length - 1, notesSize + 1))}>A+</Button>
+          {#if notesShown}
+            <Button size="small" variant="ghost" label="Smaller notes" disabled={notesSize === 0} onclick={() => (notesSize = Math.max(0, notesSize - 1))}>A−</Button>
+            <Button size="small" variant="ghost" label="Larger notes" disabled={notesSize === sizes.length - 1} onclick={() => (notesSize = Math.min(sizes.length - 1, notesSize + 1))}>A+</Button>
+          {/if}
+          <Button size="small" variant="ghost" shortcut="N" onclick={toggleNotes} title={notesShown ? "Hide the speaker notes" : "Show the speaker notes"}>
+            {notesShown ? "Hide" : "Show"}
+          </Button>
         </div>
-        {#if slide?.notes}
-          <p class="notes" style="font-size: {sizes[notesSize]}rem">{slide.notes}</p>
-        {:else}
-          <p class="faint small">No speaker notes on this slide.</p>
+        {#if notesShown}
+          {#if slide?.notes}
+            <p class="notes" style="font-size: {sizes[notesSize]}rem">{slide.notes}</p>
+          {:else}
+            <p class="faint small">No speaker notes on this slide.</p>
+          {/if}
         {/if}
       </section>
 
