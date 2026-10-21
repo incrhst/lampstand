@@ -42,7 +42,10 @@ use lampstand_render::{Background, BlobSource, OutputEvent, OutputOptions, Outpu
 use lampstand_sync::DocChanged;
 use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, RunEvent,
+    WindowEvent,
+};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::config::{device_key, OutputStore};
@@ -629,6 +632,24 @@ struct TauriWindows {
 }
 
 impl TauriWindows {
+    /// The scale factor of the monitor `display` describes, matched by
+    /// position and size as `displays()` reports them.
+    fn scale_of(&self, display: &DisplayInfo) -> Option<f64> {
+        self.handle
+            .available_monitors()
+            .ok()?
+            .iter()
+            .find(|m| {
+                (
+                    m.position().x,
+                    m.position().y,
+                    m.size().width,
+                    m.size().height,
+                ) == (display.x, display.y, display.width, display.height)
+            })
+            .map(|m| m.scale_factor())
+    }
+
     /// The display the operator window is on, if it has one.
     fn operator_display(&self) -> Option<DisplayInfo> {
         let monitor = self
@@ -774,13 +795,21 @@ impl TauriWindows {
             self.place_in_corner(&window);
         }
         if let Placement::Display(d) = placement {
-            // Physical units, so the window covers the display exactly
-            // whatever its scale factor.
+            // In logical points, converted with the display's own scale. A
+            // physical position would be converted with the scale of the
+            // display the window starts on (the operator's), which puts a
+            // window for a display of a different scale on the wrong
+            // screen, and fullscreen then blacks out the operator's.
+            let scale = self
+                .scale_of(d)
+                .or_else(|| window.scale_factor().ok())
+                .unwrap_or(1.0);
+            let (x, y, width, height) = d.logical_frame(scale);
             window
-                .set_position(PhysicalPosition::new(d.x, d.y))
+                .set_position(LogicalPosition::new(x, y))
                 .map_err(|e| e.to_string())?;
             window
-                .set_size(PhysicalSize::new(d.width, d.height))
+                .set_size(LogicalSize::new(width, height))
                 .map_err(|e| e.to_string())?;
         }
         let size = window.inner_size().map_err(|e| e.to_string())?;
