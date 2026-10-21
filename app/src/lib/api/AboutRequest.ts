@@ -6,4 +6,4 @@
  * question in Discussions) with the version and the kind of computer
  * filled in; the person submits it themselves.
  */
-export type AboutRequest = "ReportProblem" | "SuggestIdea" | "AskForHelp";
+export type AboutRequest = "ReportProblem" | "SuggestIdea" | "AskForHelp" | "TellUs";

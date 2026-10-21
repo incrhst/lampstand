@@ -22,7 +22,7 @@
   }
 
   /** Opens the project's issue form in the browser, with the version filled in. */
-  async function tell(what: "AskForHelp" | "ReportProblem" | "SuggestIdea") {
+  async function tell(what: "AskForHelp" | "ReportProblem" | "SuggestIdea" | "TellUs") {
     try {
       await request({ area: "About", request: what }, "Ok");
     } catch (e) {
@@ -63,6 +63,13 @@
         <Button variant="primary" onclick={check} disabled={checking}>{checking ? "Checking…" : "Check for updates"}</Button>
       </div>
     {/if}
+  </Panel>
+
+  <Panel title="Tell us about your church" description="An optional two-minute form: who you are and how you plan to use Lampstand, so we know who it is for and what to build next.">
+    <div class="buttons">
+      <Button icon="info" onclick={() => tell("TellUs")}>Open the form</Button>
+    </div>
+    <p class="muted small">It opens in your browser. Nothing is sent from Lampstand, and everything on it is optional.</p>
   </Panel>
 
   <Panel title="Help and feedback" description="Opens in your browser with your version already filled in.">

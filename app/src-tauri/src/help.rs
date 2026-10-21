@@ -12,6 +12,10 @@ use lampstand_api::AboutRequest;
 /// Where problems and ideas are reported.
 pub const ISSUES_URL: &str = "https://github.com/incrhst/lampstand/issues";
 
+/// The optional form where a church says who it is and how it plans to use
+/// Lampstand. It is hosted by Tally; nothing is sent from the app.
+pub const REGISTER_URL: &str = "https://tally.so/r/BEzDz7";
+
 /// Where questions are asked and answered.
 pub const DISCUSSIONS_URL: &str = "https://github.com/incrhst/lampstand/discussions";
 
@@ -20,6 +24,7 @@ pub const DISCUSSIONS_URL: &str = "https://github.com/incrhst/lampstand/discussi
 pub fn page(request: &AboutRequest, version: &str, os: &str, arch: &str) -> String {
     let computer = format!("Lampstand {version} on {os} ({arch})");
     match request {
+        AboutRequest::TellUs => REGISTER_URL.to_string(),
         AboutRequest::ReportProblem => issue_form("bug_report.yml", &computer),
         AboutRequest::SuggestIdea => issue_form("idea.yml", &computer),
         // Discussions has no form fields, so the version leads the question.
@@ -90,6 +95,12 @@ mod tests {
             url,
             "https://github.com/incrhst/lampstand/discussions/new?category=q-a&body=Lampstand%200.1.0%20on%20macOS%20%28aarch64%29%0A%0A"
         );
+    }
+
+    #[test]
+    fn telling_us_about_your_church_opens_the_hosted_form_and_carries_nothing_with_it() {
+        let url = page(&AboutRequest::TellUs, "0.1.0", "macOS", "aarch64");
+        assert_eq!(url, "https://tally.so/r/BEzDz7");
     }
 
     #[test]

@@ -46,6 +46,8 @@ pub enum AboutRequest {
     SuggestIdea,
     /// A question about using Lampstand, which goes in Discussions rather than Issues.
     AskForHelp,
+    /// The optional form where a church says who it is and how it plans to use Lampstand.
+    TellUs,
 }
 
 /// Updating Lampstand itself (T59).
