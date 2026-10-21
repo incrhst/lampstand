@@ -103,6 +103,12 @@ pub enum Command {
     Show(Cursor),
     Next,
     Previous,
+    /// The first slide of the next item that has slides, from wherever the
+    /// live slide is (Shift+Down). With nothing live, the first item.
+    NextItem,
+    /// The first slide of the previous item that has slides (Shift+Up).
+    /// Nothing happens at the start, or with nothing live.
+    PreviousItem,
     ToggleBlack,
     ToggleLogo,
     ClearText,
@@ -228,6 +234,34 @@ impl LiveEngine {
             }
             Command::Previous => {
                 if let Some(target) = self.live.and_then(|live| self.step_back(live)) {
+                    self.go_live(target, &mut events);
+                }
+            }
+            Command::NextItem => {
+                let target = match self.live {
+                    Some(live) => self
+                        .slot_of(live.item)
+                        .and_then(|(_, after)| self.first_slide_from(after)),
+                    None => self.first_slide_from(0),
+                };
+                if let Some(target) = target {
+                    self.go_live(target, &mut events);
+                }
+            }
+            Command::PreviousItem => {
+                let target = self.live.and_then(|live| {
+                    let (before, _) = self.slot_of(live.item)?;
+                    self.items[..before]
+                        .iter()
+                        .rev()
+                        .find(|i| !i.slides.is_empty())
+                        .map(|i| Cursor {
+                            item: i.id,
+                            slide: 0,
+                            step: 0,
+                        })
+                });
+                if let Some(target) = target {
                     self.go_live(target, &mut events);
                 }
             }
@@ -626,6 +660,47 @@ mod tests {
         );
         e.apply(Command::Previous);
         assert_eq!(on_air(&e).as_deref(), Some("a2"));
+    }
+
+    #[test]
+    fn next_item_jumps_to_the_start_of_the_next_item_from_any_slide() {
+        let (mut e, items) = service();
+        e.apply(Command::Show(Cursor {
+            item: items[0].id,
+            slide: 1,
+            step: 0,
+        }));
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+        // The header between them has no slides, so it is skipped.
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+        // Past the last item nothing happens.
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn previous_item_goes_to_the_previous_items_first_slide_not_this_ones() {
+        let (mut e, items) = service();
+        e.apply(Command::Show(Cursor {
+            item: items[2].id,
+            slide: 0,
+            step: 0,
+        }));
+        e.apply(Command::PreviousItem);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+        // Before the first item nothing happens.
+        e.apply(Command::PreviousItem);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn with_nothing_live_next_item_starts_the_service_and_previous_does_nothing() {
+        let (mut e, _) = service();
+        assert!(e.apply(Command::PreviousItem).is_empty());
+        assert_eq!(on_air(&e), None);
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
     }
 
     #[test]

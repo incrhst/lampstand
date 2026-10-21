@@ -11,7 +11,7 @@
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
   import { isCalibrated, live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
-  import { jumpItem, nextClick, nextSlide } from "../../lib/cursor";
+  import { nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -167,11 +167,11 @@
     // Shift+Down and Shift+Up move through the running order: the start of
     // the next or previous item, where Left and Right move through slides.
     // Plain Up and Down are left alone, so they still scroll the notes and
-    // lists and a stray press cannot change what is on air.
+    // lists and a stray press cannot change what is on air. The engine does
+    // the jump, as it does for an output window's Shift+Up and Shift+Down.
     if (live.loaded && e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      const cursor = jumpItem(live.loaded, live.live, e.key === "ArrowDown" ? 1 : -1);
-      if (cursor) show(cursor);
+      command(e.key === "ArrowDown" ? "NextItem" : "PreviousItem");
       return;
     }
     if (live.loaded) {
