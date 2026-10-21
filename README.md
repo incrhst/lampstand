@@ -66,6 +66,15 @@ library, use **Get songs** (a free song database by language) or **Import
 files…** / **Import folder…** for your own OpenSong library, OpenLyrics,
 SongSelect, FreeShow or ProPresenter files.
 
+## Reporting problems and ideas
+
+Something not working, or something your church needs? Please tell us at
+**[github.com/incrhst/lampstand/issues](https://github.com/incrhst/lampstand/issues)**.
+In the app, **Setup › About** has **Report a problem** and **Suggest an idea**
+buttons that open the right form in your browser with your version already
+filled in. Please do not paste passwords or OBS Browser source addresses (they
+contain a key) into a report.
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

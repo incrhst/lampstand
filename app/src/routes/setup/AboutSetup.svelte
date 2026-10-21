@@ -3,7 +3,8 @@
      startup and every few hours), and installed from here when nothing is on
      air and no service is about to start, so an update never interrupts one. -->
 <script lang="ts">
-  import { checkForUpdate, installUpdate, live, refreshUpdate } from "../../lib/state.svelte";
+  import { request } from "../../lib/api";
+  import { checkForUpdate, installUpdate, live, refreshUpdate, report } from "../../lib/state.svelte";
   import { availableVersion, canInstall, updateSummary } from "../../lib/updates";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
@@ -18,6 +19,15 @@
     checking = true;
     await checkForUpdate(false);
     checking = false;
+  }
+
+  /** Opens the project's issue form in the browser, with the version filled in. */
+  async function tell(what: "ReportProblem" | "SuggestIdea") {
+    try {
+      await request({ area: "About", request: what }, "Ok");
+    } catch (e) {
+      report(e);
+    }
   }
 
   let status = $derived(live.update);
@@ -54,9 +64,23 @@
       </div>
     {/if}
   </Panel>
+
+  <Panel title="Tell us" description="Something not working, or something your church needs? It opens in your browser with your version already filled in.">
+    <div class="buttons">
+      <Button variant="primary" icon="alert" onclick={() => tell("ReportProblem")}>Report a problem</Button>
+      <Button icon="plus" onclick={() => tell("SuggestIdea")}>Suggest an idea</Button>
+    </div>
+    <p class="muted small">
+      Reports are public, on GitHub (github.com/incrhst/lampstand/issues). Please do not include passwords or OBS
+      Browser source addresses: they contain a key.
+    </p>
+  </Panel>
 </div>
 
 <style>
+  .page :global(section + section) {
+    margin-top: 1rem;
+  }
   .page {
     max-width: 64rem;
     margin: 0 auto;

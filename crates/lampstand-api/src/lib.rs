@@ -32,6 +32,17 @@ pub enum Request {
     Obs(ObsRequest),
     Settings(SettingsRequest),
     Update(UpdateRequest),
+    About(AboutRequest),
+}
+
+/// Telling the project about a problem or an idea. Each opens the
+/// project's GitHub issue form in the browser with the version and the kind
+/// of computer filled in; the person submits it themselves.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AboutRequest {
+    ReportProblem,
+    SuggestIdea,
 }
 
 /// Updating Lampstand itself (T59).

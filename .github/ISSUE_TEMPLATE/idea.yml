@@ -1,0 +1,29 @@
+name: An idea or a request
+description: Something Lampstand could do, or do better, for your church.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us what your church needs. The more you say about the moment it comes up on a Sunday, the easier it is for us to get it right.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Lampstand to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What are you doing when you need it?
+      description: For example, "I am the operator and the preacher asks for a verse mid-sermon."
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Lampstand version and computer
+      description: Filled in for you when you use Suggest an idea in Lampstand.
+      placeholder: Lampstand 0.1.0 on macOS (aarch64)
+    validations:
+      required: false
