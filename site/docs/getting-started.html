@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started · Lampstand docs</title>
+  <meta name="description" content="Build Lampstand from source and run it with a fresh library.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+  <main class="sheet sheet--docs">
+    <header class="docs-bar">
+      <a class="brand" href="../">Lampstand</a>
+      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html" aria-current="page">Getting started</a><a href="using.html">Using Lampstand</a><a href="how-it-works.html">How it works</a><a href="decisions.html">Decisions</a></nav>
+    </header>
+    <div class="docs-wrap">
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#requirements">What you need</a></li><li><a href="#run">Run the app</a></li><li><a href="#data">Where your data lives</a></li><li><a href="#first-run">First run</a></li><li><a href="#build">Build and test</a></li><li><a href="#contribute">Contributing</a></li></ol></aside>
+      <article class="doc">
+        <h1>Getting started</h1>
+        <p class="lede">Build Lampstand from source and run it with a fresh library.</p>
+        <h2 id="requirements">What you need</h2>
+<ul>
+  <li>Node 22 (tested with 22.22, npm 10.9).</li>
+  <li>Rust 1.95 or newer (tested with 1.99).</li>
+  <li>The Tauri CLI comes with the npm dependencies (2.12). A global <code>cargo tauri</code> (tested with 2.9.4) also works.</li>
+  <li>On Linux, install the system libraries first: <code>libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev</code>.</li>
+</ul>
+<h2 id="run">Run the app</h2>
+<pre><code>git clone https://github.com/incrhst/lampstand
+cd lampstand/app
+npm ci
+npm run tauri dev</code></pre>
+<h2 id="data">Where your data lives</h2>
+<p>Lampstand keeps its library in the OS app-data folder (on macOS, <code>~/Library/Application Support/org.lampstand.app</code>). To start from a fresh folder, set <code>LAMPSTAND_DATA_DIR</code>:</p>
+<pre><code>LAMPSTAND_DATA_DIR=/tmp/lampstand-fresh npm run tauri dev</code></pre>
+<h2 id="first-run">First run</h2>
+<ol>
+  <li>Two public-domain hymns (Amazing Grace, Holy, Holy, Holy) are already in the library.</li>
+  <li>Under <b>Plan</b>, create a service, add a song and click <b>Open for live</b>.</li>
+  <li>Under <b>Setup &rsaquo; Screens</b>, add a window and turn it on.</li>
+  <li>Under <b>Present</b>, press <kbd>Space</kbd> to advance.</li>
+</ol>
+<p>To fill the library, see <a href="using.html#songs">Songs and imports</a>.</p>
+<h2 id="build">Build and test</h2>
+<p>The app crate embeds the built web UI, so build that once before any workspace-wide cargo command:</p>
+<pre><code>cd app && npm ci && npm run build && cd ..
+cargo test --workspace</code></pre>
+<p>In <code>app/</code>, <code>npm run check</code> type-checks the UI and <code>npm test</code> runs its unit tests. CI runs both, plus the Rust checks, on Linux, macOS and Windows.</p>
+<h2 id="contribute">Contributing</h2>
+<p>Work is tracked as numbered tickets in <a href="https://github.com/incrhst/lampstand/blob/main/docs/TICKETS.md">docs/TICKETS.md</a>. Pick one, and read <a href="how-it-works.html">How it works</a> first to find the crate it touches. Lampstand is GPL-3.0-or-later.</p>
+        <nav class="pager" aria-label="Pages"><span>&larr; <a href="./">Docs</a></span><span><a href="using.html">Using Lampstand</a> &rarr;</span></nav>
+      </article>
+    </div>
+    <footer class="colophon typed">
+      <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; These pages track the repository&rsquo;s <a href="https://github.com/incrhst/lampstand/blob/main/docs/">docs folder</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,42 @@
+/* Docs pages: the same bulletin sheet, one reading column plus a contents rail. */
+.sheet--docs { background: var(--paper); }
+.docs-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.6rem; padding: 1.1rem var(--gutter); border-bottom: 4px double var(--ink); font-family: var(--typed); font-size: 0.95rem; }
+.docs-bar .brand { font-family: var(--serif); font-weight: 700; font-size: 1.5rem; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; margin-right: auto; }
+.docs-bar a[aria-current="page"] { font-weight: 700; text-decoration-thickness: 4px; }
+.docs-wrap { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 0 clamp(24px, 4vw, 64px); padding: var(--gutter); }
+.toc { position: sticky; top: 16px; align-self: start; font-family: var(--typed); font-size: 0.88rem; }
+.toc h2 { margin: 0 0 0.6rem; font-family: var(--serif); font-size: 1rem; letter-spacing: 0.16em; text-transform: uppercase; }
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0.35rem 0; }
+.doc { max-width: 46rem; min-width: 0; }
+.doc h1 { margin: 0 0 0.3rem; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.05; letter-spacing: 0.03em; text-transform: uppercase; }
+.doc .lede { font-size: 1.2rem; line-height: 1.5; margin: 0.6rem 0 1.4rem; text-wrap: pretty; }
+.doc h2 { display: flex; align-items: center; gap: 0.7em; margin: 2.4rem 0 0.7rem; font-size: 1.25rem; letter-spacing: 0.14em; text-transform: uppercase; scroll-margin-top: 16px; }
+.doc h2::after { content: ""; flex: 1; border-top: 1px solid var(--ink); }
+.doc h3 { margin: 1.6rem 0 0.4rem; font-size: 1.1rem; font-style: italic; }
+.doc p, .doc li { text-wrap: pretty; }
+.doc code, .doc pre, .doc kbd { font-family: var(--typed); font-size: 0.9em; }
+.doc code { background: rgba(29, 26, 21, 0.1); padding: 0.05em 0.3em; }
+.doc pre { margin: 1rem 0; padding: 0.9rem 1.1rem; overflow-x: auto; background: var(--screen); color: var(--screen-ink); font-size: 0.85rem; line-height: 1.55; }
+.doc pre code { background: none; padding: 0; }
+.doc kbd { border: 1.5px solid var(--ink); border-bottom-width: 3px; padding: 0 0.35em; background: rgba(255, 240, 200, 0.5); }
+.doc table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 0.45rem 0.7rem 0.45rem 0; border-bottom: 1px solid rgba(29, 26, 21, 0.3); }
+.doc th { font-family: var(--typed); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
+.doc td:first-child { font-family: var(--typed); font-size: 0.88rem; white-space: nowrap; }
+.callout { margin: 1.2rem 0; padding: 0.8rem 1.1rem; border-left: 6px solid var(--stamp); background: rgba(255, 240, 200, 0.45); }
+.callout p { margin: 0; }
+.cards { list-style: none; padding: 0; margin: 1.2rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.cards a { display: block; height: 100%; padding: 1rem 1.1rem; border: 2px solid var(--ink); text-decoration: none; }
+.cards a:hover { background: var(--stamp); color: var(--paper); }
+.cards b { display: block; font-size: 1.15rem; }
+.cards span { font-family: var(--typed); font-size: 0.85rem; }
+.pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; padding-top: 1rem; border-top: 4px double var(--ink); font-family: var(--typed); }
+.adr { margin: 1.4rem 0; }
+.adr .meta { font-family: var(--typed); font-size: 0.82rem; color: var(--ink-soft); margin: 0 0 0.4rem; }
+@media (max-width: 880px) {
+  .docs-wrap { grid-template-columns: 1fr; }
+  .toc { position: static; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(29, 26, 21, 0.3); }
+  .doc td:first-child { white-space: normal; }
+}
+.docs-bar nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; }
