@@ -46,9 +46,46 @@ jobs:
             fi
           done
 
+  # The three builds start together; if each made the draft release itself
+  # they would make three, each with only its own files and its own
+  # latest.json. Make the one draft here and let the builds add to it.
+  draft:
+    name: make the draft release
+    needs: version
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.make.outputs.id }}
+    steps:
+      - id: make
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: |
+            **Preview release.** Lampstand is free and open source (GPL-3.0). This is an early version for churches willing to test it; please report what you find.
+
+            Already installed? Lampstand offers this release itself under **Setup › About**; there is no need to download it again. (The Linux `.deb` does not update itself; the AppImage does.)
+
+            - **Mac:** open the `.dmg` and drag Lampstand to Applications.
+            - **Windows:** run the installer. Windows will warn that the publisher is unknown (SmartScreen): choose **More info**, then **Run anyway**. The installer is not signed yet.
+            - **Linux:** make the `.AppImage` executable and run it, or install the `.deb`. A GPU with Vulkan support is needed for the projector output.
+
+            **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Setup › About** has buttons for all three that fill in your version for you.
+
+            See the changes below.
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name==\"$GITHUB_REF_NAME\" and .draft) | .id" | head -n 1)
+          if [ -z "$id" ]; then
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$GITHUB_REF_NAME" -f name="Lampstand $GITHUB_REF_NAME" \
+              -f body="$BODY" -F draft=true -F prerelease=false --jq .id)
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.name }}
-    needs: version
+    needs: [version, draft]
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -119,8 +156,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: Lampstand ${{ github.ref_name }}
+          releaseId: ${{ needs.draft.outputs.id }}
           releaseDraft: true
           # Installed copies look for the latest release that is NOT a
           # pre-release, so a published release is what people are offered.
@@ -128,18 +164,6 @@ jobs:
           prerelease: false
           # Adds latest.json (the update's address, version and signature).
           includeUpdaterJson: true
-          releaseBody: |
-            **Preview release.** Lampstand is free and open source (GPL-3.0). This is an early version for churches willing to test it; please report what you find.
-
-            Already installed? Lampstand offers this release itself under **Setup › About**; there is no need to download it again. (The Linux `.deb` does not update itself; the AppImage does.)
-
-            - **Mac:** open the `.dmg` and drag Lampstand to Applications.
-            - **Windows:** run the installer. Windows will warn that the publisher is unknown (SmartScreen): choose **More info**, then **Run anyway**. The installer is not signed yet.
-            - **Linux:** make the `.AppImage` executable and run it, or install the `.deb`. A GPU with Vulkan support is needed for the projector output.
-
-            **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Setup › About** has buttons for all three that fill in your version for you.
-
-            See the changes below.
           args: ${{ matrix.args }}
 
       # The build notarises and staples the app inside the disk image, but not
