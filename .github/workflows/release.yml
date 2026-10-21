@@ -145,5 +145,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ runner.os }}
-          path: ${{ join(fromJSON(steps.tauri.outputs.artifactPaths), '\n') }}
+          # The installers and their update signatures, whichever platform built
+          # them, wherever the bundler put them (a universal Mac build uses a
+          # different folder from the others).
+          path: |
+            target/**/bundle/**/*.dmg
+            target/**/bundle/**/*.deb
+            target/**/bundle/**/*.rpm
+            target/**/bundle/**/*.AppImage
+            target/**/bundle/**/*.exe
+            target/**/bundle/**/*.msi
+            target/**/bundle/**/*.sig
+            target/**/bundle/**/*.tar.gz
+            target/**/bundle/**/*.zip
           if-no-files-found: error
