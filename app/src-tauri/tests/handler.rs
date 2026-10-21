@@ -383,7 +383,8 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
     };
     assert_eq!(*shown, song);
     assert_eq!(slide.lines[0], "Amazing grace! How sweet the sound");
-    assert_eq!(slide.footer.as_deref(), Some("Public Domain"));
+    // The first slide credits the author as well as the copyright.
+    assert_eq!(slide.footer.as_deref(), Some("John Newton | Public Domain"));
 
     let shown = shown_scenes(&h.sink);
     assert_eq!(shown.len(), 1, "one Show for the one enabled output");
