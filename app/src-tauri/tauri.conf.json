@@ -38,7 +38,6 @@
     "longDescription": "Lampstand runs a whole church service: songs, scripture, PowerPoint decks and video on the projector, with OBS and stage displays. Free and open source.",
     "copyright": "Copyright © Lampstand contributors. GPL-3.0-or-later.",
     "license": "GPL-3.0-or-later",
-    "licenseFile": "../../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
