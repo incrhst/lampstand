@@ -26,6 +26,7 @@
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
+  import SongOrder from "./SongOrder.svelte";
   import LoopPicker from "./LoopPicker.svelte";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
@@ -46,7 +47,10 @@
   let editWhen: When | null = $state(null);
   const at = (w: When) => fromInputs(w.date, w.time, w.zone);
   /** Title and author of every song we have looked up, by song ID. */
-  let songInfo: Record<string, { title: string; author: string | null }> = $state({});
+  let songInfo: Record<
+    string,
+    { title: string; author: string | null; sections?: string[]; order?: string[] }
+  > = $state({});
   let busy = $state(false);
   /** Songs already looked up with GetSong, so each is fetched once. */
   const lookedUp = new Set<string>();
@@ -174,7 +178,12 @@
       lookedUp.add(id);
       try {
         const song = await request({ area: "Library", request: { GetSong: id } }, "Song");
-        songInfo[id] = { title: song.title, author: song.author };
+        songInfo[id] = {
+          title: song.title,
+          author: song.author,
+          sections: song.sections.map((x) => x.label),
+          order: song.arrangement,
+        };
       } catch {
         // A song missing from the library shows as "Song".
       }
@@ -318,6 +327,19 @@
     }
   }
 
+  /** This service's order for a song item; null goes back to the song's own. */
+  async function setOrder(item: string, arrangement: string[] | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetItemArrangement: { service: selected.id, item, arrangement } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
   /** Loop an item, or a header's section: seconds per slide, or null for none. */
   async function setLoop(item: string, seconds: number | null) {
     if (!selected) return;
@@ -326,6 +348,19 @@
         { area: "Service", request: { SetLoop: { service: selected.id, item, seconds } } },
         "Service",
       );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** Makes an order the song's own, in every service, and drops this service's copy. */
+  async function saveSongOrder(item: string, songId: string, order: string[]) {
+    try {
+      const song = await request({ area: "Library", request: { GetSong: songId } }, "Song");
+      song.arrangement = order;
+      await request({ area: "Library", request: { PutSong: song } }, "Song");
+      songInfo[songId] = { ...songInfo[songId], order };
+      await setOrder(item, null);
     } catch (e) {
       report(e);
     }
@@ -618,6 +653,17 @@
                   <span class="title">{itemTitle(item)}</span>
                   <span class="subtitle">{itemSubtitle(item)}</span>
                 </span>
+                {#if "Song" in item.kind && songInfo[item.kind.Song.song]?.sections}
+                  {@const songId = item.kind.Song.song}
+                  <SongOrder
+                    sections={songInfo[songId].sections ?? []}
+                    songOrder={songInfo[songId].order ?? []}
+                    value={item.kind.Song.arrangement}
+                    label="Order for {itemTitle(item)}"
+                    onchange={(order) => setOrder(id, order)}
+                    onsave={(order) => saveSongOrder(id, songId, order)}
+                  />
+                {/if}
                 <!-- Only where OBS matters; a scene already set always shows. -->
                 {#if !("Header" in item.kind) && (live.obs?.relevant || item.obs_scene)}
                   <ObsScenePicker
