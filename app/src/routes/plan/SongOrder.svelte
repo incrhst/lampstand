@@ -4,7 +4,8 @@
      it sets this service's order, and blank or Reset goes back to the song's.
      "Save to song" makes the order the song's own. Labels are separated by
      spaces or commas, and case doesn't matter. A label that matches no
-     section is flagged here, since the slides skip it on the day. -->
+     section is flagged here, since the slides skip it on the day. In the song
+     editor (`bare`) the field is the song's own order, with no Reset or Save. -->
 <script lang="ts">
   import Button from "../../lib/kit/Button.svelte";
   import { parseOrder, unknownLabels } from "../../lib/sections";
@@ -16,6 +17,7 @@
     label,
     onchange,
     onsave,
+    bare = false,
   }: {
     /** The song's section labels, in written order. */
     sections: string[];
@@ -25,7 +27,8 @@
     value: string[] | null;
     label: string;
     onchange: (order: string[] | null) => void;
-    onsave: (order: string[]) => void;
+    onsave?: (order: string[]) => void;
+    bare?: boolean;
   } = $props();
 
   let shown = $derived(value ?? (songOrder.length > 0 ? songOrder : sections));
@@ -69,9 +72,9 @@
       }
     }}
   />
-  {#if value}
+  {#if value && !bare}
     <Button variant="ghost" size="small" onclick={() => onchange(null)} title="Use the song's own order">Reset</Button>
-    <Button variant="ghost" size="small" onclick={() => onsave(value)} title="Make this the song's order everywhere">Save to song</Button>
+    <Button variant="ghost" size="small" onclick={() => onsave?.(value)} title="Make this the song's order everywhere">Save to song</Button>
   {/if}
   {#if message}<span class="note" role="status">{message}</span>{/if}
 </span>
