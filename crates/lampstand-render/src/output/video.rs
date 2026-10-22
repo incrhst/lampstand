@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use lampstand_core::id::BlobHash;
 use lampstand_core::scene::{Node, NodeId, NodeKind, Scene};
-use lampstand_media::{Frame, MediaError, Video};
+use lampstand_media::{Frame, MediaError, Sound, Video};
 
 use crate::gpu::{Gpu, Texture};
 use crate::BlobSource;
@@ -27,12 +27,14 @@ pub struct VideoClock {
     pub started: HashMap<VideoKey, f64>,
     /// The playing videos that loop.
     pub looped: HashSet<VideoKey>,
+    /// The playing videos whose node is not muted.
+    pub sounding: HashSet<VideoKey>,
 }
 
-fn videos(nodes: &[Node], out: &mut Vec<(VideoKey, bool, bool)>) {
+fn videos(nodes: &[Node], out: &mut Vec<(VideoKey, bool, bool, bool)>) {
     for node in nodes {
         match &node.kind {
-            NodeKind::Video(v) => out.push(((node.id, v.blob), v.autoplay, v.looped)),
+            NodeKind::Video(v) => out.push(((node.id, v.blob), v.autoplay, v.looped, !v.muted)),
             NodeKind::Group(children) => videos(children, out),
             _ => {}
         }
@@ -53,7 +55,8 @@ impl VideoClock {
         videos(&scene.nodes, &mut found);
         let mut next = HashMap::new();
         let mut looped = HashSet::new();
-        for (key, autoplay, loops) in found {
+        let mut sounding = HashSet::new();
+        for (key, autoplay, loops, audible) in found {
             let start = match self.started.get(&key) {
                 Some(&start) => start,
                 None if autoplay => playing.get(&key.1).copied().unwrap_or(now),
@@ -63,9 +66,13 @@ impl VideoClock {
             if loops {
                 looped.insert(key);
             }
+            if audible {
+                sounding.insert(key);
+            }
         }
         self.started = next;
         self.looped = looped;
+        self.sounding = sounding;
     }
 
     /// A build step's `Effect::Play` on `node`: starts that video (one that
@@ -73,11 +80,14 @@ impl VideoClock {
     pub fn play(&mut self, scene: &Scene, node: NodeId, now: f64) {
         let mut found = Vec::new();
         videos(&scene.nodes, &mut found);
-        for (key, _, loops) in found {
+        for (key, _, loops, audible) in found {
             if key.0 == node && !self.started.contains_key(&key) {
                 self.started.insert(key, now);
                 if loops {
                     self.looped.insert(key);
+                }
+                if audible {
+                    self.sounding.insert(key);
                 }
             }
         }
@@ -137,6 +147,8 @@ struct Playing {
     shown: Option<f64>,
     texture: Option<FrameView>,
     finished: bool,
+    /// The file's sound, while an audible output shows this video.
+    sound: Option<Sound>,
 }
 
 #[derive(Default)]
@@ -188,6 +200,7 @@ impl Players {
                         shown: None,
                         texture: None,
                         finished: false,
+                        sound: None,
                     })),
                     Ok(Err(e)) => {
                         eprintln!("lampstand-render: video {:?}: {e}", key.blob);
@@ -206,6 +219,7 @@ impl Players {
                 shown,
                 texture,
                 finished,
+                ..
             } = &mut **p;
             if *finished {
                 continue;
@@ -223,6 +237,27 @@ impl Players {
             *finished = video.finished(elapsed);
         }
         changed
+    }
+
+    /// Plays the sound of the players in `audible` and silences the rest.
+    /// A sound starts once its video has its first frame up, at the point
+    /// the picture has reached.
+    pub fn sync_sound(&mut self, audible: &HashSet<PlayerKey>, blobs: &Arc<dyn BlobSource>, now: f64) {
+        for (key, player) in &mut self.players {
+            let Player::Playing(p) = player else {
+                continue;
+            };
+            if !audible.contains(key) || p.finished {
+                p.sound = None;
+            } else if p.sound.is_none() {
+                let (Some(origin), Some(path)) = (p.origin, blobs.path(&key.blob)) else {
+                    continue;
+                };
+                let elapsed = ((now - origin) / 1000.0).max(0.0);
+                let at = lampstand_media::media_time(elapsed, p.video.duration(), key.looped);
+                p.sound = Some(Sound::start(path, at, key.looped));
+            }
+        }
     }
 
     pub fn frame(&self, key: &PlayerKey) -> Option<&FrameView> {

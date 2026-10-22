@@ -81,6 +81,12 @@ pub(crate) enum Msg {
         reply: Sender<Result<Image, RenderError>>,
     },
     InjectPanic(Option<OutputId>),
+    /// Whether videos on `output` are heard. Only a rehearsal window is:
+    /// other outputs share its decoders and would play the sound twice.
+    Audible {
+        output: OutputId,
+        audible: bool,
+    },
 }
 
 #[derive(Default)]
@@ -149,6 +155,7 @@ pub(crate) struct Engine {
     logical: HashMap<OutputId, Logical>,
     attached: HashMap<OutputId, Attached>,
     players: Players,
+    audible: HashSet<OutputId>,
     thread_panics: Vec<Instant>,
 }
 
@@ -192,6 +199,7 @@ impl Engine {
             logical: HashMap::new(),
             attached: HashMap::new(),
             players: Players::default(),
+            audible: HashSet::new(),
             thread_panics: Vec::new(),
         }
     }
@@ -317,6 +325,13 @@ impl Engine {
                     },
                 );
                 self.logical.entry(output).or_default().dirty = true;
+            }
+            Msg::Audible { output, audible } => {
+                if audible {
+                    self.audible.insert(output);
+                } else {
+                    self.audible.remove(&output);
+                }
             }
             Msg::Resize {
                 output,
@@ -512,6 +527,19 @@ impl Engine {
             .collect();
         self.players.sync(&wanted, &self.renderer.blobs);
         let changed = self.players.advance(now_ms, &self.renderer.gpu);
+        let heard: HashSet<PlayerKey> = self
+            .logical
+            .iter()
+            .filter(|(id, _)| self.audible.contains(id))
+            .flat_map(|(_, l)| {
+                l.videos
+                    .players()
+                    .filter(|(node, _)| l.videos.sounding.contains(node))
+                    .map(|(_, key)| key)
+            })
+            .collect();
+        self.players
+            .sync_sound(&heard, &self.renderer.blobs, now_ms);
         if changed.is_empty() {
             return;
         }

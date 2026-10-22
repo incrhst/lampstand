@@ -226,7 +226,7 @@ Video backgrounds, media items and video embedded in decks decode with `deckcraf
 
 GStreamer was the plan. We chose DeckCraft instead because it needs nothing installed. The decoders add about 2.7 MB to a release binary, where a GStreamer runtime adds about 180 MB on macOS and something similar on Windows, has to be bundled and signed, and its macOS cask now fails Gatekeeper. It also builds the same for contributors and CI. The cost is CPU decoding with no hardware acceleration. On an M1 one core decodes 1080p H.264 at 53 to 66 fps and 1080p HEVC at 74 fps (colour conversion included), about twice real time for 30 fps. 1080p60 is at the limit, and 4K is not real time. The decoders are always built optimised, even in debug builds (`[profile.dev.package]` in the workspace `Cargo.toml`), or `tauri dev` could not play video. If T61 finds older laptops dropping frames, platform decoders (VideoToolbox, Media Foundation) can sit behind `Video`. NDI, Spout and Syphon (Phase 2) will need their own SDKs either way.
 
-Not yet: audio. Videos play silently, so `VideoNode::muted` has no effect. A video's audio must play once per video, not once per output; DeckCraft's `player::Player` mixes and clocks audio over an `AudioOut` the host provides (cpal), and is the way in. A whole video file is held in memory while it plays.
+Audio: `lampstand_media::Sound` decodes a file's audio track and plays it on the default output device (cpal), joining at the picture's position. Only an output the shell marks audible plays it: the rehearsal window, never a display or the browser source, so a clip shared between outputs sounds once. A video node with `muted` set stays silent (backgrounds). A whole video file is held in memory while it plays.
 
 ### Local server
 
