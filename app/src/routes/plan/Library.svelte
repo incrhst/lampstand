@@ -34,7 +34,9 @@
     type Filter,
   } from "../../lib/library";
   import { deckSourceLabel, mediaKind } from "../../lib/media";
-  import { formatPassage, parseReference } from "../../lib/passage";
+  import { formatPassage, parseReferenceVersioned } from "../../lib/passage";
+  import { chooseTranslation } from "../../lib/bibles";
+  import { loadDefaultTranslation, saveDefaultTranslation } from "../../lib/bibleSetting";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
@@ -118,7 +120,9 @@
    */
   let looseMedia: MediaFile[] = $state(load("lampstand.library.media", []));
   let recent: Entry[] = $state(load("lampstand.library.recent", []));
-  let translation = $state(load("lampstand.library.translation", ""));
+  let translation = $state("");
+  /** Set in Setup › Scripture; what a reference with no version is read from. */
+  let defaultTranslation: string | null = $state(null);
   let databases: SongDatabase[] = $state([]);
   let database = $state("en");
 
@@ -136,11 +140,20 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
-  // Keep the chosen translation one this device has.
+  // Read from the default Bible unless one was picked here, and keep the
+  // choice one this device has.
+  loadDefaultTranslation()
+    .then((id) => (defaultTranslation = id))
+    .catch(report);
   $effect(() => {
-    if (translations.length && !translations.some((t) => t.id === translation)) translation = translations[0].id;
+    const next = chooseTranslation(translations, defaultTranslation, translation);
+    if (next !== translation) translation = next;
   });
-  $effect(() => save("lampstand.library.translation", translation));
+  /** Picking a Bible here makes it the default, so the next reference is read from it too. */
+  function pick() {
+    defaultTranslation = translation;
+    saveDefaultTranslation(translation).catch(report);
+  }
 
   // --- Search -------------------------------------------------------------
 
@@ -178,19 +191,19 @@
   }
 
   // The reference the search reads as, and the core's lookup of it.
-  let reference = $derived(mightBeReference(trimmed) ? parseReference(trimmed) : null);
+  let reference = $derived(mightBeReference(trimmed) ? parseReferenceVersioned(trimmed) : null);
   let passage: Entry | null = $state(null);
   let lookupSeq = 0;
   $effect(() => {
-    const ref = reference;
+    const typed = reference;
     const t = translation;
     const seq = ++lookupSeq;
-    if (!ref) {
+    if (!typed) {
       passage = null;
       return;
     }
-    const title = formatPassage(ref);
-    const key = `scripture:${JSON.stringify(ref)}:${t}`;
+    const title = formatPassage(typed.passage);
+    const key = `scripture:${JSON.stringify(typed.passage)}:${typed.version ?? t}`;
     if (!t) {
       passage = { key, kind: "scripture", title, subtitle: "No Bible on this device yet. Drop one here to import it.", item: null };
       return;
@@ -201,11 +214,11 @@
         if (seq !== lookupSeq) return;
         const first = found.verses[0]?.[2] ?? "";
         passage = {
-          key: `scripture:${JSON.stringify(found.passage)}:${t}`,
+          key: `scripture:${JSON.stringify(found.passage)}:${found.translation}`,
           kind: "scripture",
           title: found.display,
-          subtitle: `${abbreviation[t] ?? ""} · ${first}`,
-          item: { Scripture: { passage: found.passage, translation: t } },
+          subtitle: `${abbreviation[found.translation] ?? ""} · ${first}`,
+          item: { Scripture: { passage: found.passage, translation: found.translation } },
         };
       })
       .catch((e) => {
@@ -649,7 +662,7 @@
     {#if translations.length > 0 && (passage || filter === "scripture")}
       <label class="translation">
         <span class="muted">Read from</span>
-        <select title="The translation scripture is read from" bind:value={translation}>
+        <select title="The translation scripture is read from when a reference names none, like “John 3:16 KJV”" bind:value={translation} onchange={pick}>
           {#each translations as t (t.id)}
             <option value={t.id}>{t.abbreviation ? `${t.abbreviation} · ${t.name}` : t.name}</option>
           {/each}

@@ -114,6 +114,11 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
+    /// The Bible version scripture is read from when a reference does not
+    /// name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
+    /// longer on this device, means the first version by name.
+    #[serde(default)]
+    pub default_translation: Option<TranslationId>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -128,7 +133,11 @@ pub enum LibraryRequest {
     ListThemes,
     PutTheme(Theme),
     ListTranslations,
-    /// "Jn 3:16" in a translation, for the scripture panel (BI-1).
+    /// "Jn 3:16" in a translation, for the scripture panel (BI-1). A version
+    /// typed after the reference ("Jn 3:16 ESV") wins over `translation`,
+    /// which is the default for a reference that names none. A version
+    /// that matches no translation is an error that lists the ones there
+    /// are.
     LookupPassage {
         reference: String,
         translation: TranslationId,
@@ -591,6 +600,9 @@ pub enum Response {
     Translations(Vec<Translation>),
     Passage {
         passage: Passage,
+        /// The translation the verses are from: the one typed after the
+        /// reference, or else the one asked for.
+        translation: TranslationId,
         display: String,
         verses: Vec<(u16, u16, String)>,
     },

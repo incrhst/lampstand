@@ -364,7 +364,9 @@
 
   async function toggleClicker() {
     try {
-      const s = await request({ area: "Settings", request: { Put: { clicker_mode: !clicker } } }, "Settings");
+      // Put replaces every setting, so the others are sent back as they are.
+      const current = await request({ area: "Settings", request: "Get" }, "Settings");
+      const s = await request({ area: "Settings", request: { Put: { ...current, clicker_mode: !clicker } } }, "Settings");
       clicker = s.clicker_mode;
     } catch (e) {
       report(e);

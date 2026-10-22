@@ -44,7 +44,9 @@ use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::program::{Content, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Animation, Scene, Transition};
-use lampstand_core::scripture::parse_reference;
+use lampstand_core::scripture::{
+    find_translation, parse_reference_versioned, unrecognised_version_message,
+};
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
@@ -364,7 +366,17 @@ impl App {
                 reference,
                 translation,
             } => {
-                let passage = parse_reference(&reference).map_err(|e| format!("{e:?}"))?;
+                let (passage, typed) =
+                    parse_reference_versioned(&reference).map_err(|e| format!("{e:?}"))?;
+                let translation = match typed {
+                    Some(typed) => {
+                        let all = lib.translations().map_err(err)?;
+                        find_translation(&all, &typed)
+                            .map(|t| t.id)
+                            .ok_or_else(|| unrecognised_version_message(&typed, &all))?
+                    }
+                    None => translation,
+                };
                 let text = lib
                     .bible_text(translation)
                     .map_err(err)?
@@ -378,6 +390,7 @@ impl App {
                 Response::Passage {
                     display: passage.to_string(),
                     passage,
+                    translation,
                     verses,
                 }
             }

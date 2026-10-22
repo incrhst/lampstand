@@ -7,4 +7,10 @@ export type DeviceSettings = {
  * whichever window has focus, and B means Black, not Bridge. Off by
  * default, because while it is on those keys never reach other apps.
  */
-clicker_mode: boolean, };
+clicker_mode: boolean, 
+/**
+ * The Bible version scripture is read from when a reference does not
+ * name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
+ * longer on this device, means the first version by name.
+ */
+default_translation: string | null, };

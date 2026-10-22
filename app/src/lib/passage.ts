@@ -100,10 +100,27 @@ function point(text: string): [number, number | null] | null {
 
 /**
  * Reads a reference as the core's `parse_reference` does ("Jn 3:16-18",
- * "1 Cor 13", "Ps 23", "Jude 3"), or null when it is not one. The core
- * still has the last word: the library looks the passage up with it.
+ * "1 Cor 13", "Ps 23", "Jude 3"), or null when it is not one or names a
+ * Bible version. The core still has the last word: the library looks the
+ * passage up with it.
  */
 export function parseReference(input: string): Passage | null {
+  const found = parseReferenceVersioned(input);
+  return found && found.version == null ? found.passage : null;
+}
+
+/** A reference and the Bible version typed after it, as typed ("ESV"), if any. */
+export interface VersionedReference {
+  passage: Passage;
+  version: string | null;
+}
+
+/**
+ * As `parseReference`, and also reads a version after the reference:
+ * "James 3:11 ESV" or "James 3:11 (ESV)". Mirrors `parse_reference_versioned`.
+ * A version follows a space, so "John 3:16a" is not a reference.
+ */
+export function parseReferenceVersioned(input: string): VersionedReference | null {
   const text = input.trim();
   if (!text) return null;
   // The book is everything before the first digit after the first character.
@@ -124,14 +141,23 @@ export function parseReference(input: string): Passage | null {
   }
   if (book == null || used < words.length) return null;
 
-  const numbers = text
-    .slice(split)
+  // The numbers end where the first letter begins; that is the version.
+  let rest = text.slice(split);
+  let version: string | null = null;
+  const letter = rest.search(/\p{L}/u);
+  if (letter >= 0) {
+    if (!/[\s([]$/.test(rest.slice(0, letter))) return null;
+    version = rest.slice(letter).replace(/^[\s()[\],]+|[\s()[\],]+$/g, "") || null;
+    rest = rest.slice(0, letter).replace(/[([]+$/, "");
+  }
+
+  const numbers = rest
     .replace(/\s+/g, "")
     .replace(/[–—−]/g, "-")
     .replaceAll(".", ":");
   const cv = (chapter: number, verse: number) => ({ chapter, verse });
   const single = SINGLE_CHAPTER.has(book);
-  if (!numbers) return single ? { book, start: cv(1, 1), end: cv(1, END_OF_CHAPTER) } : null;
+  if (!numbers) return single ? { passage: { book, start: cv(1, 1), end: cv(1, END_OF_CHAPTER) }, version } : null;
 
   const dash = numbers.indexOf("-");
   const first = point(dash < 0 ? numbers : numbers.slice(0, dash));
@@ -152,5 +178,5 @@ export function parseReference(input: string): Passage | null {
     end = !second ? cv(a, b) : second[1] == null ? cv(a, second[0]) : cv(second[0], second[1]);
   }
   const before = end.chapter < start.chapter || (end.chapter === start.chapter && end.verse < start.verse);
-  return before ? null : { book, start, end };
+  return before ? null : { passage: { book, start, end }, version };
 }
