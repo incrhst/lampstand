@@ -33,7 +33,7 @@ const deckSlides: Record<string, any[]> = {
 };
 let seq = 0;
 const pos = () => String(1000 + seq++);
-const item = (kind: any, notes = "") => ({ position: pos(), kind, notes, obs_scene: null });
+const item = (kind: any, notes = "") => ({ position: pos(), kind, notes, obs_scene: null, loop_seconds: null });
 const sunday = {
   id: "sunday", title: "Sunday service", starts_at: new Date("2026-10-25T10:00:00").getTime(), time_zone: null, theme: null,
   items: {
@@ -49,7 +49,7 @@ const welcome = {
   id: "welcome", title: "Welcome to Lampstand", starts_at: null, time_zone: null, theme: null,
   items: { w1: item({ Song: { song: "amazing-grace", arrangement: null } }), w2: item({ Scripture: { passage: { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } }, translation: "kjv" } }), w3: item({ Song: { song: "how-great-thou-art", arrangement: null } }) } as Record<string, any>,
 };
-const state: any = { services: [welcome, sunday], outputs: [], loaded: null, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
+const state: any = { services: [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, enabled: true });
 (window as any).__mock = state;
 
@@ -71,7 +71,15 @@ function titleFor(kind: any) {
 }
 function load(id: string) {
   const s = state.services.find((x: any) => x.id === id);
-  return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })) };
+  const sections: any[] = [];
+  for (const [iid, it] of sorted(s) as any) {
+    if (it.kind.Header) {
+      const own = state.loopOverrides[iid];
+      const seconds = own !== undefined ? own : it.loop_seconds ?? null;
+      sections.push({ header: iid, title: it.kind.Header.title, seconds, items: [] });
+    } else if (sections.length) sections[sections.length - 1].items.push(iid);
+  }
+  return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })), sections };
 }
 function pushLive() { emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: false, overlay: state.overlay } }); }
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
@@ -108,8 +116,42 @@ function api(req: any): any {
         case "List": return { type: "Services", data: state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length })) };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }
-        case "InsertItem": { const s = state.services.find((x: any) => x.id === arg.service); s.items["n" + Date.now()] = item(arg.kind); const all = sorted(s); const e = all[all.length - 1]; const targetPos = arg.index; const keys = all.slice(0, -1); keys.splice(targetPos, 0, e); keys.forEach(([, v]: any, n: number) => (v.position = String(2000 + n).padStart(5, "0"))); return ok; }
-        case "MoveItem": case "RemoveItem": case "SetObsScene": case "Reschedule": return ok;
+        case "InsertItem": {
+          const s = state.services.find((x: any) => x.id === arg.service);
+          const id = "n" + Date.now() + (seq++);
+          s.items[id] = item(arg.kind);
+          const order = sorted(s).filter(([k]: any) => k !== id).map(([k]: any) => k);
+          order.splice(Math.min(arg.index, order.length), 0, id);
+          order.forEach((k: string, n: number) => (s.items[k].position = String(2000 + n).padStart(5, "0")));
+          return { type: "Service", data: s };
+        }
+        case "MoveItem": {
+          const s = state.services.find((x: any) => x.id === arg.service);
+          const order = sorted(s).map(([k]: any) => k).filter((k: string) => k !== arg.item);
+          order.splice(arg.index, 0, arg.item);
+          order.forEach((k: string, n: number) => (s.items[k].position = String(2000 + n).padStart(5, "0")));
+          return { type: "Service", data: s };
+        }
+        case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
+        case "SetLoop": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].loop_seconds = arg.seconds; return { type: "Service", data: s }; }
+        case "SetMediaLooped": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].kind.Media.looped = arg.looped; return { type: "Service", data: s }; }
+        case "SetObsScene": case "Reschedule": return ok;
+        case "SetLiveLoop": {
+          state.loopOverrides[arg.header] = arg.seconds;
+          if (state.loaded) { state.loaded = load(state.loaded.service); emit({ type: "Loaded", data: state.loaded }); }
+          return ok;
+        }
+        case "Estimate": {
+          const s = state.services.find((x: any) => x.id === arg);
+          return { type: "Estimate", data: sorted(s).filter(([, it]: any) => !it.kind.Header).map(([iid, it]: any) => ({
+            item: iid,
+            stills: it.kind.Media ? 0 : slidesFor(it.kind).length,
+            click_slides: slidesFor(it.kind).filter((sl: any) => sl.steps > 0).length,
+            video_ms: it.kind.Media ? 45000 : null,
+            self_loop: !!it.kind.Media?.looped,
+            open_ended: !!it.kind.Countdown,
+          })) };
+        }
         case "Open": { state.loaded = load(arg); emit({ type: "Loaded", data: state.loaded }); return { type: "Loaded", data: state.loaded }; }
         case "SlideThumbnail": return { type: "Thumbnail", data: svgThumb("Slide") };
         case "Readiness": return { type: "Text", data: "ready" };

@@ -8,6 +8,7 @@ const slide = (label: string, steps = 0) => ({ label, lines: [label], steps, not
 const loaded: LoadedService = {
   service: "s",
   title: "Sunday",
+  sections: [],
   items: [
     { id: "a", title: "Amazing Grace", slides: [slide("V1"), slide("V2")] },
     { id: "h", title: "Welcome", slides: [] },

@@ -198,6 +198,14 @@ fn choose(frames: impl IntoIterator<Item = Frame>) -> Option<Frame> {
     best.map(|(_, frame)| frame)
 }
 
+/// How long the video at `path` runs, in seconds, or `None` when the file
+/// cannot be read or does not say.
+pub fn duration(path: &Path) -> Option<f64> {
+    let bytes = Arc::new(std::fs::read(path).ok()?);
+    let seconds = deckcraft_media::probe(&bytes).ok()?.duration();
+    (seconds.is_finite() && seconds > 0.0).then_some(seconds)
+}
+
 /// Where in a video of `duration` seconds to look for a picture: the start,
 /// then points through it. A duration the file does not give tries the first
 /// few seconds.

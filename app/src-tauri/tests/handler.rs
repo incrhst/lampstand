@@ -1424,3 +1424,152 @@ fn editing_a_song_in_an_open_service_changes_what_is_shown() {
         scene_text(&shown[0].1)
     );
 }
+
+fn service_request(h: &mut Harness, request: ServiceRequest) -> Response {
+    h.app.handle(Request::Service(request))
+}
+
+fn header(title: &str) -> ItemKind {
+    ItemKind::Header {
+        title: title.into(),
+    }
+}
+
+#[test]
+fn a_service_is_renamed_closed_and_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let service = create_service(&mut h, "Sunday");
+    insert(&mut h, &service, header("Welcome"));
+    open_service(&mut h, &service);
+
+    let renamed = match ok(service_request(
+        &mut h,
+        ServiceRequest::Rename {
+            service: service.id,
+            title: "  Easter  ".into(),
+        },
+    )) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(renamed.title, "Easter");
+    assert!(matches!(
+        service_request(
+            &mut h,
+            ServiceRequest::Rename {
+                service: service.id,
+                title: "   ".into()
+            }
+        ),
+        Response::Error { .. }
+    ));
+
+    ok(service_request(&mut h, ServiceRequest::Close(service.id)));
+    assert_eq!(list_titles(&mut h), ["Easter"], "off air keeps the service");
+
+    open_service(&mut h, &service);
+    ok(service_request(&mut h, ServiceRequest::Delete(service.id)));
+    assert!(list_titles(&mut h).is_empty());
+}
+
+#[test]
+fn a_section_loop_is_changed_on_air_and_the_saved_loop_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let service = create_service(&mut h, "Sunday");
+    insert(&mut h, &service, header("Pre-service"));
+    let s = insert(
+        &mut h,
+        &service,
+        ItemKind::Countdown {
+            target: CountdownTarget::At(Timestamp(1_800_000_000_000)),
+            label: "Starts".into(),
+        },
+    );
+    let order: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
+    ok(service_request(
+        &mut h,
+        ServiceRequest::SetLoop {
+            service: service.id,
+            item: order[0],
+            seconds: Some(8),
+        },
+    ));
+
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.sections.len(), 1);
+    assert_eq!(loaded.sections[0].seconds, Some(8));
+    assert_eq!(loaded.sections[0].items, [order[1]]);
+
+    ok(service_request(
+        &mut h,
+        ServiceRequest::SetLiveLoop {
+            header: order[0],
+            seconds: Some(12),
+        },
+    ));
+    let announced = h
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            Event::Loaded(l) => Some(l.clone()),
+            _ => None,
+        })
+        .expect("the operator view is told");
+    assert_eq!(announced.sections[0].seconds, Some(12));
+
+    ok(service_request(
+        &mut h,
+        ServiceRequest::SetLiveLoop {
+            header: order[0],
+            seconds: None,
+        },
+    ));
+    let saved = match ok(service_request(&mut h, ServiceRequest::Get(service.id))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        saved.items[&order[0]].loop_seconds,
+        Some(8),
+        "the saved service is not changed by what happens on air"
+    );
+
+    // Another service forgets it.
+    let other = create_service(&mut h, "Evening");
+    open_service(&mut h, &other);
+    let again = open_service(&mut h, &service);
+    assert_eq!(again.sections[0].seconds, Some(8));
+}
+
+#[test]
+fn the_estimate_counts_slides_and_flags_what_has_no_fixed_length() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let service = create_service(&mut h, "Sunday");
+    insert(&mut h, &service, header("Pre-service"));
+    let s = insert(
+        &mut h,
+        &service,
+        ItemKind::Countdown {
+            target: CountdownTarget::At(Timestamp(1_800_000_000_000)),
+            label: "Starts".into(),
+        },
+    );
+    let order: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
+    let estimates = match ok(service_request(
+        &mut h,
+        ServiceRequest::Estimate(service.id),
+    )) {
+        Response::Estimate(list) => list,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(estimates.len(), 1, "headers have nothing on screen");
+    assert_eq!(estimates[0].item, order[1]);
+    assert!(estimates[0].open_ended);
+    assert_eq!(estimates[0].stills, 0);
+}

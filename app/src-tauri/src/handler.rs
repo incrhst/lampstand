@@ -34,9 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
-    BrowserSourceStatus, Event, LibraryRequest, LoadedItemView, LoadedService, OutputRequest,
-    Request, Response, ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase,
-    SongHit,
+    BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
+    OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
+    SlideView, SongDatabase, SongHit,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -164,6 +164,10 @@ pub struct App {
     sent: HashMap<OutputId, Sent>,
     told_ui: Option<LiveState>,
     loaded: Option<Loaded>,
+    /// Loops changed on air, by section header, for the open service only.
+    loop_overrides: HashMap<ItemId, Option<u16>>,
+    /// Video lengths already read, by blob, in milliseconds.
+    video_lengths: HashMap<BlobHash, Option<u32>>,
     /// Parsed decks by the blob they were parsed from, for the decks in
     /// the open service.
     parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
@@ -221,6 +225,8 @@ impl App {
             sent: HashMap::new(),
             told_ui: None,
             loaded: None,
+            loop_overrides: HashMap::new(),
+            video_lengths: HashMap::new(),
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
@@ -575,7 +581,35 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
-            ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
+            ServiceRequest::Open(id) => {
+                if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
+                    self.loop_overrides.clear();
+                }
+                Response::Loaded(self.load_service(id)?)
+            }
+            ServiceRequest::SetMediaLooped {
+                service,
+                item,
+                looped,
+            } => {
+                let mut s = get(service)?;
+                match s.items.get_mut(&item).map(|i| &mut i.kind) {
+                    Some(ItemKind::Media { looped: l, .. }) => *l = looped,
+                    _ => return Err("that item is not a media file".into()),
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::SetLiveLoop { header, seconds } => {
+                let Some(service) = self.loaded.as_ref().map(|l| l.view.service) else {
+                    return Err("no service is open for live".into());
+                };
+                self.loop_overrides.insert(header, seconds);
+                self.load_service(service)?;
+                Response::Ok
+            }
+            ServiceRequest::Estimate(service) => Response::Estimate(self.estimate(service)?),
             ServiceRequest::SlideThumbnail { .. } => {
                 // It needs a GPU, so the shell draws it from `slide_scene`.
                 return Err("thumbnails are drawn by the app shell".into());
@@ -684,12 +718,75 @@ impl App {
 
     // ---- Live --------------------------------------------------------
 
+    /// A video's length in milliseconds, read once from its file.
+    fn video_length(&mut self, blob: &BlobHash) -> Option<u32> {
+        if let Some(known) = self.video_lengths.get(blob) {
+            return *known;
+        }
+        let length = self
+            .library
+            .repo()
+            .blobs()
+            .path(blob)
+            .and_then(|path| lampstand_media::duration(&path))
+            .map(|seconds| (seconds * 1000.0).round() as u32);
+        // A file that has not reached this device may yet; do not remember that.
+        if length.is_some() || self.library.repo().blobs().path(blob).is_some() {
+            self.video_lengths.insert(*blob, length);
+        }
+        length
+    }
+
+    /// What every item of `service` puts on screen in a loop.
+    fn estimate(&mut self, service: ServiceId) -> Result<Vec<ItemEstimate>> {
+        let service = self
+            .library
+            .service(service)
+            .map_err(err)?
+            .ok_or("no such service")?;
+        let theme = self.theme(service.theme);
+        let primary = self.primary_output();
+        let mut out = Vec::new();
+        for (id, item) in service.ordered() {
+            if matches!(item.kind, ItemKind::Header { .. }) {
+                continue;
+            }
+            let loaded = self.load_item(id, &item.kind, &theme, &primary)?;
+            let mut e = ItemEstimate {
+                item: id,
+                stills: 0,
+                click_slides: 0,
+                video_ms: None,
+                self_loop: false,
+                open_ended: false,
+            };
+            for slide in &loaded.slides {
+                match &slide.content {
+                    Content::Video { blob, looped } => {
+                        e.self_loop |= *looped;
+                        e.video_ms = Some(self.video_length(blob).unwrap_or(0));
+                    }
+                    Content::Countdown { .. } => e.open_ended = true,
+                    _ => {
+                        e.stills += 1;
+                        if slide.steps > 0 {
+                            e.click_slides += 1;
+                        }
+                    }
+                }
+            }
+            out.push(e);
+        }
+        Ok(out)
+    }
+
     /// Takes `service` off air and unloads it, if it is the open one.
     fn close_service(&mut self, service: ServiceId) {
         if self.loaded.as_ref().map(|l| l.view.service) != Some(service) {
             return;
         }
         self.loaded = None;
+        self.loop_overrides.clear();
         let events = self.live.apply(Command::EndService);
         self.live.load(Vec::new());
         self.after_live(events);
@@ -722,11 +819,25 @@ impl App {
         let mut obs_scenes = HashMap::new();
         // The section a header's loop covers, until the next header.
         let mut section: Option<LoopGroup> = None;
+        let mut sections: Vec<SectionView> = Vec::new();
         for (item_id, item) in service.ordered() {
             if let ItemKind::Header { .. } = item.kind {
-                section = item.loop_seconds.filter(|n| *n > 0).map(|n| LoopGroup {
+                let seconds = match self.loop_overrides.get(&item_id) {
+                    Some(over) => *over,
+                    None => item.loop_seconds,
+                };
+                section = seconds.filter(|n| *n > 0).map(|n| LoopGroup {
                     id: item_id,
                     interval_ms: u32::from(n) * 1000,
+                });
+                sections.push(SectionView {
+                    header: item_id,
+                    title: match &item.kind {
+                        ItemKind::Header { title } => title.clone(),
+                        _ => String::new(),
+                    },
+                    seconds: seconds.filter(|n| *n > 0),
+                    items: Vec::new(),
                 });
             }
             if let Some(scene) = item.obs_scene.as_ref().filter(|s| !s.trim().is_empty()) {
@@ -734,7 +845,22 @@ impl App {
             }
             let mut loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
             if !matches!(item.kind, ItemKind::Header { .. }) {
+                if let Some(open) = sections.last_mut() {
+                    open.items.push(item_id);
+                }
                 loaded.loop_group = section;
+                if section.is_some() {
+                    // A video plays through once, then the loop moves on.
+                    for slide in &mut loaded.slides {
+                        if let Content::Video {
+                            blob,
+                            looped: false,
+                        } = &slide.content
+                        {
+                            slide.dwell_ms = self.video_length(blob);
+                        }
+                    }
+                }
                 if let Some(n) = item.loop_seconds.filter(|n| *n > 0) {
                     loaded.auto_advance_ms = Some(u32::from(n) * 1000);
                 }
@@ -772,6 +898,7 @@ impl App {
             service: id,
             title: service.title.clone(),
             items: views,
+            sections,
         };
         // Parsed decks no service uses any more are let go.
         self.parsed.retain(|blob, _| blobs.contains(blob));
@@ -807,7 +934,11 @@ impl App {
             auto_advance_ms: None,
             loop_group: None,
         };
-        let text = |content: Content| LoadedSlide { content, steps: 0 };
+        let text = |content: Content| LoadedSlide {
+            content,
+            steps: 0,
+            dwell_ms: None,
+        };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
@@ -869,6 +1000,7 @@ impl App {
                                     notes: slide.notes.clone(),
                                 },
                                 steps: slide.builds.len(),
+                                dwell_ms: None,
                             })
                             .collect();
                         item(d.title.clone(), slides)
