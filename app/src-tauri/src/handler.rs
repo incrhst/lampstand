@@ -51,7 +51,7 @@ use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
 };
 use lampstand_library::{starter_theme, starter_theme_id, Library};
-use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide};
+use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide, LoopGroup};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
@@ -516,6 +516,18 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetLoop {
+                service,
+                item,
+                seconds,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                entry.loop_seconds = seconds.filter(|n| *n > 0);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
             ServiceRequest::SlideThumbnail { .. } => {
                 // It needs a GPU, so the shell draws it from `slide_scene`.
@@ -650,11 +662,25 @@ impl App {
         let mut blobs = Vec::new();
         let mut parsed_decks = HashMap::new();
         let mut obs_scenes = HashMap::new();
+        // The section a header's loop covers, until the next header.
+        let mut section: Option<LoopGroup> = None;
         for (item_id, item) in service.ordered() {
+            if let ItemKind::Header { .. } = item.kind {
+                section = item.loop_seconds.filter(|n| *n > 0).map(|n| LoopGroup {
+                    id: item_id,
+                    interval_ms: u32::from(n) * 1000,
+                });
+            }
             if let Some(scene) = item.obs_scene.as_ref().filter(|s| !s.trim().is_empty()) {
                 obs_scenes.insert(item_id, scene.clone());
             }
-            let loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            let mut loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            if !matches!(item.kind, ItemKind::Header { .. }) {
+                loaded.loop_group = section;
+                if let Some(n) = item.loop_seconds.filter(|n| *n > 0) {
+                    loaded.auto_advance_ms = Some(u32::from(n) * 1000);
+                }
+            }
             if let ItemKind::Deck { deck } = &item.kind {
                 decks.push(*deck);
                 let parsed = self
@@ -721,6 +747,7 @@ impl App {
             theme: None,
             song: None,
             auto_advance_ms: None,
+            loop_group: None,
         };
         let text = |content: Content| LoadedSlide { content, steps: 0 };
         Ok(match kind {
