@@ -469,6 +469,27 @@ impl App {
                 lib.put_service(&s).map_err(err)?;
                 Response::Service(s)
             }
+            ServiceRequest::Rename { service, title } => {
+                let title = title.trim();
+                if title.is_empty() {
+                    return Err("a service needs a name".into());
+                }
+                let mut s = get(service)?;
+                s.title = title.to_string();
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::Delete(service) => {
+                get(service)?;
+                self.close_service(service);
+                self.library.delete_service(service).map_err(err)?;
+                Response::Ok
+            }
+            ServiceRequest::Close(service) => {
+                self.close_service(service);
+                Response::Ok
+            }
             ServiceRequest::InsertItem {
                 service,
                 index,
@@ -662,6 +683,17 @@ impl App {
     }
 
     // ---- Live --------------------------------------------------------
+
+    /// Takes `service` off air and unloads it, if it is the open one.
+    fn close_service(&mut self, service: ServiceId) {
+        if self.loaded.as_ref().map(|l| l.view.service) != Some(service) {
+            return;
+        }
+        self.loaded = None;
+        let events = self.live.apply(Command::EndService);
+        self.live.load(Vec::new());
+        self.after_live(events);
+    }
 
     fn reload_if_open(&mut self, service: ServiceId) -> Result<()> {
         if self.loaded.as_ref().map(|l| l.view.service) == Some(service) {
