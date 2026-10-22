@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Questions and answers · Lampstand</title>
+  <meta name="description" content="Plain answers about Lampstand, the free open-source church projection app: what it costs, what it runs on, PowerPoint and Google Slides, OBS, importing songs, and whether it is ready for Sunday.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="canonical" href="https://lampstand.dbain.com/faq.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lampstand">
+  <meta property="og:title" content="Lampstand questions and answers">
+  <meta property="og:description" content="Plain answers about the free, open-source church projection app.">
+  <meta property="og:image" content="https://lampstand.dbain.com/media/og.jpg">
+  <meta property="og:url" content="https://lampstand.dbain.com/faq.html">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="style.css">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "url": "https://lampstand.dbain.com/faq.html",
+  "dateModified": "2026-10-22",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is Lampstand?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Lampstand is a free, open-source church projection app for Windows, macOS and Linux. One laptop runs a whole service: songs, scripture, PowerPoint and Google Slides, and graphics for the live stream. It is an early preview that churches can try now."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Lampstand free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Lampstand is free and open source under the GPL-3.0 licence, with no paid tier and no account. It collects no personal data. Your songs and services stay on your own computers."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What computers does Lampstand run on?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Windows 10 or 11 (64-bit), macOS 11 or later (Apple silicon and Intel), and 64-bit Linux with a Vulkan graphics driver (AppImage or .deb). The Windows installer is not signed yet, so Windows asks you to confirm before installing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Lampstand work without the internet?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. A whole service runs offline from one laptop. You only need the internet to download or update the app, to fetch songs with Get songs, and to bring in Google Slides."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Lampstand play PowerPoint without PowerPoint installed?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Lampstand reads PowerPoint decks directly, so PowerPoint does not need to be installed on the projection laptop. It aims to keep animation steps, transitions, video and speaker notes, and shows a fidelity report listing anything it could not reproduce. This is an early version, so check an important deck before Sunday."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Lampstand work with Google Slides?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. You connect a Google account and pick a presentation, and Lampstand brings it in as a deck. It asks only for permission to open the files you choose, and you can disconnect at any time."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I move my songs from OpenSong, FreeShow, ProPresenter or OpenLP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, mostly. Lampstand detects and imports OpenSong, OpenLyrics, SongSelect, FreeShow and ProPresenter song files. For OpenLP, export your songs as OpenLyrics first and import that. Tell us if a file does not come across and we will fix the importer."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Lampstand work with OBS for live streaming?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Lampstand does not replace OBS; it feeds and drives it. Lyrics and lower thirds go to OBS as a transparent browser source with no plugin, and over the OBS WebSocket (OBS 28 and later) Lampstand can switch scenes with your service and show streaming status."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Lampstand a free alternative to ProPresenter, EasyWorship, OpenSong or FreeShow?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is meant to be a free, open-source option for churches that want one app for songs, scripture, slides and the stream. It is an early preview, and it does not yet do everything the paid tools do. CCLI usage reports, NDI output, MIDI and lighting triggers, and Planning Center sync are planned but not in the app today."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a volunteer run it?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, that is the design goal: a volunteer should be able to run a service after about ten minutes of training. Space goes live and moves on, the left arrow goes back, and a full stop blanks the screen. A Welcome service is included so you can practise first."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I control it from a phone or tablet?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The Present screen shows a QR code. Scan it on a device on the same Wi-Fi, enter the PIN, and that device controls the service. Nothing is installed on the phone or tablet."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is it safe to use on a Sunday?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Run it beside your current setup for a few Sundays first, and keep your current tool ready as the fallback until you trust it. Lampstand is built to work offline and to recover after a crash, but it is an early preview. If you would like hands-on help, see the design-partner page."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Who makes Lampstand?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Lampstand is made by David Bain and built in the open on GitHub, where anyone can read the code, report a problem or contribute."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where do I get help or report a problem?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask questions in GitHub Discussions and report problems or ideas as GitHub issues. In the app, Setup then About has buttons that open the right page with your version filled in."
+      }
+    }
+  ]
+}
+  </script>
+</head>
+<body>
+  <main class="sheet">
+    <section class="panel" style="max-width: 42rem; margin: 0 auto; padding: 2rem var(--gutter);">
+      <p class="typed small-note"><a href="/">&larr; Lampstand</a></p>
+      <h1 class="masthead">Questions</h1>
+      <hr class="rule rule--double">
+      <p class="offer">Plain answers about Lampstand, a free, open-source church projection app. It is an early preview, and these answers say what it does today.</p>
+      <h2>What is Lampstand?</h2>
+      <p>Lampstand is a free, open-source church projection app for Windows, macOS and Linux. One laptop runs a whole service: songs, scripture, PowerPoint and Google Slides, and graphics for the live stream. It is an early preview that churches can try now.</p>
+      <h2>Is Lampstand free?</h2>
+      <p>Yes. Lampstand is free and open source under the <a href="https://github.com/incrhst/lampstand/blob/main/LICENSE">GPL-3.0 licence</a>, with no paid tier and no account. It collects no personal data (see the <a href="privacy.html">privacy page</a>). Your songs and services stay on your own computers.</p>
+      <h2>What computers does Lampstand run on?</h2>
+      <p>Windows 10 or 11 (64-bit), macOS 11 or later (Apple silicon and Intel), and 64-bit Linux with a Vulkan graphics driver (AppImage or .deb). The Windows installer is not signed yet, so Windows asks you to confirm before installing. Steps are in the <a href="docs/getting-started.html#install">install guide</a>.</p>
+      <h2>Does Lampstand work without the internet?</h2>
+      <p>Yes. A whole service runs offline from one laptop. You only need the internet to download or update the app, to fetch songs with Get songs, and to bring in Google Slides.</p>
+      <h2>Can Lampstand play PowerPoint without PowerPoint installed?</h2>
+      <p>Yes. Lampstand reads PowerPoint decks directly, so PowerPoint does not need to be installed on the projection laptop. It aims to keep animation steps, transitions, video and speaker notes, and shows a fidelity report listing anything it could not reproduce. This is an early version, so check an important deck before Sunday.</p>
+      <h2>Does Lampstand work with Google Slides?</h2>
+      <p>Yes. You connect a Google account and pick a presentation, and Lampstand brings it in as a deck. It asks only for permission to open the files you choose, and you can disconnect at any time.</p>
+      <h2>Can I move my songs from OpenSong, FreeShow, ProPresenter or OpenLP?</h2>
+      <p>Yes, mostly. Lampstand detects and imports OpenSong, OpenLyrics, SongSelect, FreeShow and ProPresenter song files. For OpenLP, export your songs as OpenLyrics first and import that. If a file does not come across, <a href="https://github.com/incrhst/lampstand/issues/new/choose">tell us</a> and we will fix the importer.</p>
+      <h2>Does Lampstand work with OBS for live streaming?</h2>
+      <p>Yes. Lampstand does not replace OBS; it feeds and drives it. Lyrics and lower thirds go to OBS as a transparent browser source with no plugin, and over the OBS WebSocket (OBS 28 and later) Lampstand can switch scenes with your service and show streaming status.</p>
+      <h2>Is Lampstand a free alternative to ProPresenter, EasyWorship, OpenSong or FreeShow?</h2>
+      <p>It is meant to be a free, open-source option for churches that want one app for songs, scripture, slides and the stream. It is an early preview, and it does not yet do everything the paid tools do. CCLI usage reports, NDI output, MIDI and lighting triggers, and Planning Center sync are planned but not in the app today.</p>
+      <h2>Can a volunteer run it?</h2>
+      <p>Yes, that is the design goal: a volunteer should be able to run a service after about ten minutes of training. Space goes live and moves on, the left arrow goes back, and a full stop blanks the screen. A Welcome service is included so you can practise first.</p>
+      <h2>Can I control it from a phone or tablet?</h2>
+      <p>Yes. The Present screen shows a QR code. Scan it on a device on the same Wi-Fi, enter the PIN, and that device controls the service. Nothing is installed on the phone or tablet.</p>
+      <h2>Is it safe to use on a Sunday?</h2>
+      <p>Run it beside your current setup for a few Sundays first, and keep your current tool ready as the fallback until you trust it. Lampstand is built to work offline and to recover after a crash, but it is an early preview. If you would like hands-on help, see <a href="partners.html">Try it with us</a>.</p>
+      <h2>Who makes Lampstand?</h2>
+      <p>Lampstand is made by <a href="https://dbain.com">David Bain</a> and built in the open on <a href="https://github.com/incrhst/lampstand">GitHub</a>, where anyone can read the code, report a problem or contribute.</p>
+      <h2>Where do I get help or report a problem?</h2>
+      <p>Ask questions in <a href="https://github.com/incrhst/lampstand/discussions">GitHub Discussions</a> and report problems or ideas as <a href="https://github.com/incrhst/lampstand/issues/new/choose">GitHub issues</a>. In the app, Setup then About has buttons that open the right page with your version filled in.</p>
+      <p class="typed small-note">Last updated 2026-10-22. More in the <a href="docs/">documentation</a>, or <a href="https://github.com/incrhst/lampstand/discussions">ask a question</a>.</p>
+    </section>
+  </main>
+</body>
+</html>

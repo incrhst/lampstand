@@ -35,9 +35,9 @@ The app is used live in services, on old laptops with several screens, often by 
 
 ## Capabilities and Constraints
 
-- **Status: pre-release, in active development.** There are no downloads or installers yet. Built so far: the core model, live engine, layout, the wgpu renderer with output windows and calibration, encrypted LAN sync, song and Bible importers, the PPTX parser, the OBS browser source server, and the Tauri app scaffold.
+- **Status: early preview, in active development.** Installers are published on GitHub Releases for macOS (signed and notarised), Windows (not signed yet, so SmartScreen warns) and Linux (AppImage and .deb), and installed copies update themselves. The landing page offers them as "an early version for churches willing to try it". Check the latest release and docs/TICKETS.md before describing a specific feature as shipped.
 - **Requirements** are in docs/PRD.md; the plan is docs/ARCHITECTURE.md and docs/TICKETS.md.
-- **Do not claim** that features are shipped, or give availability dates, download counts or user numbers.
+- **Do not claim** features that are not in a published release, or give availability dates, download counts or user numbers.
 
 ## Brand Commitments
 
@@ -46,7 +46,7 @@ The app is used live in services, on old laptops with several screens, often by 
 
 ## Evidence on Hand
 
-- **On hand:** the promo video and its rendered frames, the PRD's market scan, and the GitHub repository (github.com/incrhst/lampstand).
+- **On hand:** the 45-second promo film and 72-second tour (both on the site), the PRD's market scan, the GitHub repository (github.com/incrhst/lampstand), and the go-to-market plan in LeanOn ("Lampstand GTM").
 - **Absent, never to be fabricated:** no testimonials, church users, press, benchmarks or download counts.
 
 ## Product Principles
@@ -62,4 +62,8 @@ The product's operator UI targets WCAG 2.2 AA. The landing page should meet the 
 
 ## Primary call to action (landing page)
 
-Star and follow the project on GitHub.
+Download Lampstand and try the Welcome service. Secondary, for churches: "Tell us about your church" and the design-partner page (`site/partners.html`). For developers: star and follow the project on GitHub.
+
+## Go-to-market
+
+The plan lives in LeanOn ("Lampstand GTM"). In short: earn trust with about ten hand-picked design-partner churches first, with a shadow Sunday beside their current tool, then launch publicly in January once five churches have each run four clean services and the Windows installer is signed. Avoid asking churches to switch in Advent or Lent and Easter.
