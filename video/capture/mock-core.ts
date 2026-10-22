@@ -135,6 +135,7 @@ function api(req: any): any {
         case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
         case "SetLoop": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].loop_seconds = arg.seconds; return { type: "Service", data: s }; }
         case "SetMediaLooped": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].kind.Media.looped = arg.looped; return { type: "Service", data: s }; }
+        case "Close": { state.loaded = null; state.live = null; state.preview = null; state.loopOverrides = {}; pushLive(); return ok; }
         case "SetObsScene": case "Reschedule": return ok;
         case "SetLiveLoop": {
           state.loopOverrides[arg.header] = arg.seconds;
