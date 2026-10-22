@@ -7,6 +7,7 @@
   import {
     request,
     type Deck,
+    type ItemEstimate,
     type ItemKind,
     type MediaFile,
     type Service,
@@ -28,6 +29,8 @@
   import ObsScenePicker from "./ObsScenePicker.svelte";
   import SongOrder from "./SongOrder.svelte";
   import LoopPicker from "./LoopPicker.svelte";
+  import LoopPanel from "./LoopPanel.svelte";
+  import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
@@ -501,6 +504,89 @@
 
   let items = $derived(selected ? ordered(selected) : []);
 
+  /** The order as sections see it: which rows are headers. */
+  let rows: Row[] = $derived(items.map(([id, item]) => ({ id, header: "Header" in item.kind, title: itemTitle(item) })));
+
+  /** The card whose options are open, and the header whose loop panel is. */
+  let openCard: string | null = $state(null);
+  let loopOpen: string | null = $state(null);
+  /** The gap a new header is being named in, by the index it would take. */
+  let naming: number | null = $state(null);
+  let headerName = $state("");
+
+  /** What each item puts on screen in a loop, for working out a pass. */
+  let estimates: Record<string, ItemEstimate> = $state({});
+  let estimating = 0;
+
+  /** Names offered for a new header. */
+  const commonHeaders = [
+    "Pre-service",
+    "Greeting",
+    "Announcements",
+    "Praise and Worship",
+    "Communion",
+    "Offering",
+    "Sermon",
+    "Post-service",
+  ];
+
+  async function loadEstimates(service: Service) {
+    const ticket = ++estimating;
+    try {
+      const list = await request({ area: "Service", request: { Estimate: service.id } }, "Estimate");
+      if (ticket !== estimating) return;
+      estimates = Object.fromEntries(list.map((e) => [e.item, e]));
+    } catch {
+      // Without an estimate the loop panel shows no lengths.
+    }
+  }
+
+  /** One pass of the section that the header at `index` starts. */
+  function passOf(index: number, seconds: number) {
+    return estimatePass(rows.slice(index + 1, sectionEnd(rows, index)), estimates, seconds);
+  }
+
+  function openNaming(at: number) {
+    naming = at;
+    headerName = "";
+  }
+
+  async function addHeader() {
+    const title = headerName.trim();
+    const at = naming;
+    if (!title || at === null || !selected) return;
+    const before = new Set(Object.keys(selected.items));
+    naming = null;
+    if (!(await addItem({ Header: { title } }, at)) || !selected) return;
+    const made = Object.keys(selected.items).find((id) => !before.has(id));
+    // Pre- and post-service sections nearly always loop, so ask at once.
+    if (made && /pre|post/i.test(title)) loopOpen = made;
+  }
+
+  /** A video that repeats by itself holds a loop for good: play it once. */
+  async function playOnce(item: string) {
+    if (!selected) return;
+    try {
+      const entry = selected.items[item];
+      if (entry && "Media" in entry.kind) {
+        selected = await request(
+          { area: "Service", request: { SetMediaLooped: { service: selected.id, item, looped: false } } },
+          "Service",
+        );
+      }
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** What the section being dragged over would cover, for the drop hint. */
+  let dragHint = $derived.by(() => {
+    if (!dragging || dropAt === null || !rows[dragging.from]?.header) return "";
+    const rest = rows.filter((_, i) => i !== dragging!.from);
+    const covered = coveredAt(rest, dropAt);
+    return `Section starts here · covers ${covered} ${covered === 1 ? "card" : "cards"}`;
+  });
+
   // Reordering: drag a row by its handle, or focus the handle and press
   // the up and down arrows. Pointer events rather than HTML drag and drop,
   // which the webview's own file-drop handling can swallow. Library rows
@@ -585,6 +671,15 @@
     if (service) untrack(() => lookUpSongs(service));
   });
 
+  // Read what the items put on screen when the order changes, but only for
+  // a service that has a header to loop.
+  $effect(() => {
+    const service = selected;
+    if (service && Object.values(service.items).some((i) => i && "Header" in i.kind)) {
+      untrack(() => loadEstimates(service));
+    }
+  });
+
   // Refetch decks when one is added or synced in.
   $effect(() => {
     void live.decksVersion;
@@ -594,6 +689,37 @@
   refresh();
   if (live.planning) select(live.planning);
 </script>
+
+{#snippet namingRow(at: number)}
+  <li class="naming">
+    <div class="naming-head">
+      <span class="eyebrow gold">New header</span>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        aria-label="Header name"
+        placeholder="Name this section"
+        bind:value={headerName}
+        onkeydown={onKeys(addHeader, () => (naming = null))}
+        autofocus
+      />
+      <Button variant="primary" size="small" onclick={addHeader} disabled={!headerName.trim()}>Add</Button>
+      <Button variant="ghost" size="small" icon="x" label="Cancel" onclick={() => (naming = null)} />
+    </div>
+    <div class="chips" role="group" aria-label="Common headers">
+      <span class="muted">Common headers</span>
+      {#each commonHeaders as name (name)}
+        <button type="button" class="chip" onclick={() => (headerName = name)}>{name}</button>
+      {/each}
+    </div>
+    <p class="muted covers">
+      {#if coveredAt(rows, at) === 0}
+        Nothing follows yet, so this section starts empty.
+      {:else}
+        The {coveredAt(rows, at)} {coveredAt(rows, at) === 1 ? "card" : "cards"} below, up to the next header, will sit under this header.
+      {/if}
+    </p>
+  </li>
+{/snippet}
 
 {#snippet zonePicker(when: When)}
   <select class="zone" aria-label="Time zone" title="The time zone this service's time is in" bind:value={when.zone}>
@@ -729,63 +855,153 @@
         {:else}
           <ol class="plain items" bind:this={list} aria-label="Service order">
             {#each items as [id, item], i (id)}
-              <li data-row class="item" class:dragging={dragging?.id === id} class:line-before={lineBefore(i)}>
-                <button
-                  type="button"
-                  class="grip"
-                  aria-label="Move {itemTitle(item)}. Drag, or use the up and down arrows."
-                  onpointerdown={(e) => startDrag(e, id, i)}
-                  onpointermove={dragMove}
-                  onpointerup={endDrag}
-                  onpointercancel={endDrag}
-                  onkeydown={(e) => handleKey(e, id, i)}
+              {#if naming === i}
+                {@render namingRow(i)}
+              {:else if !dragging}
+                <li class="slot"><button type="button" class="slot-add" aria-label="Add a header here" onclick={() => openNaming(i)}>+ Header here</button></li>
+              {/if}
+              {#if "Header" in item.kind}
+                {@const header = item.kind.Header}
+                {@const inLoop = item.loop_seconds != null}
+                <li data-row class="header" class:dragging={dragging?.id === id} class:line-before={lineBefore(i)}>
+                  {#if lineBefore(i) && dragHint}<span class="drop-hint">{dragHint}</span>{/if}
+                  <button
+                    type="button"
+                    class="grip"
+                    aria-label="Move {header.title}. Drag, or use the up and down arrows."
+                    onpointerdown={(e) => startDrag(e, id, i)}
+                    onpointermove={dragMove}
+                    onpointerup={endDrag}
+                    onpointercancel={endDrag}
+                    onkeydown={(e) => handleKey(e, id, i)}
+                  >
+                    <Icon name="grip" />
+                  </button>
+                  <span class="header-title">{header.title}</span>
+                  <span class="muted header-count">{sectionSize(rows, i)} {sectionSize(rows, i) === 1 ? "item" : "items"}</span>
+                  <span class="header-rule"></span>
+                  {#if inLoop}
+                    <button type="button" class="loop-tag" aria-expanded={loopOpen === id} onclick={() => (loopOpen = loopOpen === id ? null : id)}>
+                      Loops · {item.loop_seconds} s · {passLabel(passOf(i, item.loop_seconds ?? 0))}
+                    </button>
+                  {:else}
+                    <button type="button" class="link" aria-expanded={loopOpen === id} onclick={() => (loopOpen = loopOpen === id ? null : id)}>Loop section</button>
+                  {/if}
+                  <Button variant="ghost" size="small" icon="trash" label="Remove {header.title}" onclick={() => remove(id)} />
+                </li>
+                {#if loopOpen === id}
+                  <li class="panel-row">
+                    <LoopPanel
+                      title={header.title}
+                      seconds={item.loop_seconds}
+                      pass={item.loop_seconds ? passOf(i, item.loop_seconds) : null}
+                      onchange={(seconds) => setLoop(id, seconds)}
+                      onplayonce={playOnce}
+                    />
+                  </li>
+                {/if}
+              {:else}
+                {@const owner = sectionOf(rows, i)}
+                {@const looping = owner >= 0 && items[owner][1].loop_seconds != null}
+                {@const isOpen = openCard === id}
+                {@const loops = (item.loop_seconds ?? 0) > 0}
+                <li
+                  data-row
+                  class="item"
+                  class:grouped={owner >= 0}
+                  class:looping
+                  class:dragging={dragging?.id === id}
+                  class:line-before={lineBefore(i)}
                 >
-                  <Icon name="grip" />
-                </button>
-                <span class="index num">{i + 1}</span>
-                {#if "Media" in item.kind}
-                  <MediaThumb blob={item.kind.Media.blob} name={item.kind.Media.name} icon={kindIcon[kindName(item.kind)]} />
-                {:else if "Deck" in item.kind}
-                  <DeckThumb deck={item.kind.Deck.deck} version={deckVersion(item.kind.Deck.deck)} />
-                {:else}
-                  <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
-                {/if}
-                <span class="text">
-                  <span class="title">{itemTitle(item)}</span>
-                  <span class="subtitle">{itemSubtitle(item)}</span>
-                </span>
-                {#if "Song" in item.kind && songInfo[item.kind.Song.song]?.sections}
-                  {@const songId = item.kind.Song.song}
-                  <SongOrder
-                    sections={songInfo[songId].sections ?? []}
-                    songOrder={songInfo[songId].order ?? []}
-                    value={item.kind.Song.arrangement}
-                    label="Order for {itemTitle(item)}"
-                    onchange={(order) => setOrder(id, order)}
-                    onsave={(order) => saveSongOrder(id, songId, order)}
-                  />
-                {/if}
-                <!-- Only where OBS matters; a scene already set always shows. -->
-                {#if !("Header" in item.kind) && (live.obs?.relevant || item.obs_scene)}
-                  <ObsScenePicker
-                    value={item.obs_scene}
-                    scenes={live.obs?.scenes ?? []}
-                    label="OBS scene for {itemTitle(item)}"
-                    onchange={(scene) => setObsScene(id, scene)}
-                  />
-                {/if}
-                <LoopPicker
-                  value={item.loop_seconds}
-                  section={"Header" in item.kind}
-                  label="Loop {itemTitle(item)}"
-                  onchange={(seconds) => setLoop(id, seconds)}
-                />
-                <span class="remove">
-                  <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />
-                </span>
-              </li>
+                  <div class="card" class:open={isOpen}>
+                    <div class="card-main">
+                      <button
+                        type="button"
+                        class="grip"
+                        aria-label="Move {itemTitle(item)}. Drag, or use the up and down arrows."
+                        onpointerdown={(e) => startDrag(e, id, i)}
+                        onpointermove={dragMove}
+                        onpointerup={endDrag}
+                        onpointercancel={endDrag}
+                        onkeydown={(e) => handleKey(e, id, i)}
+                      >
+                        <Icon name="grip" />
+                      </button>
+                      {#if "Media" in item.kind}
+                        <MediaThumb blob={item.kind.Media.blob} name={item.kind.Media.name} icon={kindIcon[kindName(item.kind)]} />
+                      {:else if "Deck" in item.kind}
+                        <DeckThumb deck={item.kind.Deck.deck} version={deckVersion(item.kind.Deck.deck)} />
+                      {:else}
+                        <span class="kind"><Icon name={kindIcon[kindName(item.kind)]} label={kindLabel[kindName(item.kind)]} /></span>
+                      {/if}
+                      <button type="button" class="text card-toggle" aria-expanded={isOpen} onclick={() => (openCard = isOpen ? null : id)}>
+                        <span class="title">{itemTitle(item)}</span>
+                        <span class="subtitle">{itemSubtitle(item)}</span>
+                      </button>
+                      {#if looping && "Media" in item.kind && item.kind.Media.looped}
+                        <span class="tag warn">Loops by itself</span>
+                      {/if}
+                      {#if "Song" in item.kind && item.kind.Song.arrangement}<span class="tag">Custom order</span>{/if}
+                      {#if loops}<span class="tag">Loops {item.loop_seconds} s</span>{/if}
+                      {#if item.obs_scene}<span class="tag">OBS: {item.obs_scene}</span>{/if}
+                      <button
+                        type="button"
+                        class="chevron"
+                        class:turned={isOpen}
+                        aria-label="{isOpen ? 'Hide' : 'Show'} options for {itemTitle(item)}"
+                        aria-expanded={isOpen}
+                        onclick={() => (openCard = isOpen ? null : id)}
+                      >
+                        <Icon name="next" size={14} />
+                      </button>
+                    </div>
+                    {#if isOpen}
+                      <div class="options">
+                        {#if "Song" in item.kind && songInfo[item.kind.Song.song]?.sections}
+                          {@const songId = item.kind.Song.song}
+                          <div class="option">
+                            <span class="eyebrow">Sequence for this service</span>
+                            <SongOrder
+                              sections={songInfo[songId].sections ?? []}
+                              songOrder={songInfo[songId].order ?? []}
+                              value={item.kind.Song.arrangement}
+                              label="Order for {itemTitle(item)}"
+                              onchange={(order) => setOrder(id, order)}
+                              onsave={(order) => saveSongOrder(id, songId, order)}
+                            />
+                          </div>
+                        {/if}
+                        <div class="option row-options">
+                          <LoopPicker
+                            value={item.loop_seconds}
+                            section={false}
+                            label="Loop {itemTitle(item)}"
+                            onchange={(seconds) => setLoop(id, seconds)}
+                          />
+                          <!-- Only where OBS matters; a scene already set always shows. -->
+                          {#if live.obs?.relevant || item.obs_scene}
+                            <ObsScenePicker
+                              value={item.obs_scene}
+                              scenes={live.obs?.scenes ?? []}
+                              label="OBS scene for {itemTitle(item)}"
+                              onchange={(scene) => setObsScene(id, scene)}
+                            />
+                          {/if}
+                          <span class="spacer"></span>
+                          <Button variant="ghost" size="small" icon="trash" onclick={() => remove(id)}>Remove from service</Button>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                </li>
+              {/if}
             {/each}
-            {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true"></li>{/if}
+            {#if naming === items.length}
+              {@render namingRow(items.length)}
+            {:else if !dragging}
+              <li class="slot"><button type="button" class="slot-add" aria-label="Add a header at the end" onclick={() => openNaming(items.length)}>+ Header here</button></li>
+            {/if}
+            {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true">{#if dragHint}<span class="drop-hint">{dragHint}</span>{/if}</li>{/if}
           </ol>
         {/if}
       </div>
@@ -933,16 +1149,249 @@
     overflow-y: auto;
     padding: 1rem 2rem 2rem;
   }
+  .items {
+    display: flex;
+    flex-direction: column;
+  }
   .item {
+    position: relative;
+    margin: 0.2rem 0;
+  }
+  /* Items under a header sit inset on a rail; a looping section's is gold. */
+  .item.grouped {
+    margin-left: 0.9rem;
+    padding-left: 1.1rem;
+    border-left: 2px solid var(--line-strong);
+  }
+  .item.grouped.looping {
+    border-left-color: var(--gold);
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .card.open {
+    border-color: var(--gold);
+  }
+  .card-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem 0.6rem 0.5rem;
+  }
+  .card-toggle {
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0.2rem 0;
+    cursor: pointer;
+  }
+  .tag {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--gold);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    white-space: nowrap;
+  }
+  .tag.warn {
+    color: var(--warn);
+  }
+  .chevron {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transform: rotate(90deg);
+  }
+  .chevron.turned {
+    transform: rotate(-90deg);
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 0.9rem 1rem 1rem 5.25rem;
+    border-top: 1px solid var(--line);
+    background: var(--canvas);
+  }
+  .option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .row-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .eyebrow {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .eyebrow.gold {
+    color: var(--gold);
+  }
+
+  /* A header is a slim label, not a card. */
+  .header {
     position: relative;
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem 0.5rem;
-    border-bottom: 1px solid var(--line);
+    margin-top: 0.9rem;
+    padding: 0.2rem 0.25rem 0.2rem 0;
   }
-  .item:last-of-type {
-    border-bottom: none;
+  .header-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .header-count {
+    font-size: 0.75rem;
+  }
+  .header-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .loop-tag {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gold);
+    background: var(--gold-soft);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0.15rem 0.75rem;
+    cursor: pointer;
+  }
+  .link {
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .panel-row {
+    margin: 0.25rem 0 0.5rem 0.9rem;
+  }
+
+  /* The gap between two cards: a gold line and "+ Header here" on hover. */
+  .slot {
+    position: relative;
+    height: 0.6rem;
+    display: flex;
+    align-items: center;
+  }
+  .slot::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 2px;
+    background: var(--gold);
+    opacity: 0;
+  }
+  .slot-add {
+    position: relative;
+    margin-left: 0.5rem;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gold);
+    background: var(--canvas);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    padding: 0.05rem 0.75rem;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .slot:hover::before,
+  .slot:hover .slot-add,
+  .slot:focus-within::before,
+  .slot:focus-within .slot-add {
+    opacity: 1;
+  }
+  .naming {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0.4rem 0;
+    padding: 0.9rem 1rem;
+    background: var(--panel);
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-lg);
+  }
+  .naming-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .naming-head input {
+    flex: 1;
+    min-width: 0;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+  }
+  .chip {
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0.15rem 0.75rem;
+    cursor: pointer;
+  }
+  .chip:hover {
+    border-color: var(--gold);
+  }
+  .covers {
+    font-size: 0.8125rem;
+  }
+  .drop-hint {
+    position: absolute;
+    left: 0.5rem;
+    top: -1.5rem;
+    z-index: 1;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--on-gold);
+    background: var(--gold);
+    border-radius: 999px;
+    padding: 0.05rem 0.7rem;
   }
   .item.dragging {
     opacity: 0.5;
@@ -981,12 +1430,6 @@
   .grip:active {
     cursor: grabbing;
   }
-  .index {
-    width: 1.25rem;
-    text-align: right;
-    font-size: 0.75rem;
-    color: var(--faint);
-  }
   .kind {
     width: var(--tile-width);
     height: var(--tile-height);
@@ -1014,14 +1457,6 @@
   .subtitle {
     font-size: 0.75rem;
     color: var(--muted);
-  }
-  .remove {
-    opacity: 0;
-    transition: opacity 150ms var(--ease);
-  }
-  .item:hover .remove,
-  .remove:focus-within {
-    opacity: 1;
   }
   .empty-order {
     border: 1px dashed var(--line-strong);

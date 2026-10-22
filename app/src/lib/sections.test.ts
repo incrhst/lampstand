@@ -10,6 +10,7 @@ const slide = (label: string) => ({ label, lines: [label], steps: 0, notes: "" }
 const service: LoadedService = {
   service: "s",
   title: "Sunday",
+  sections: [],
   items: [
     { id: "header", title: "Worship", slides: [] },
     {
