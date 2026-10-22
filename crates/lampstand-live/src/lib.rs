@@ -34,6 +34,11 @@
 //!   its full time. A late tick (the machine slept) advances once, not once
 //!   per missed interval. Loops step by slide, never by build step, and a
 //!   loop of one slide does nothing.
+//! - A section can loop as a whole (`loop_group`): its slides, across all of
+//!   its items, advance in order on one interval and wrap from the last
+//!   slide of the last item to the first slide of the first. An item's own
+//!   loop takes precedence while it is live. Everything below about
+//!   operator control and clearing applies to both.
 //! - Operator control wins over the loop. `Next`, `Previous`, `Show` and
 //!   `GoLive` move as usual and restart the interval. `Next` at the last
 //!   slide leaves the loop for the next item; only `tick` wraps. Black and
@@ -75,6 +80,18 @@ pub struct LoadedItem {
     /// Announcement loops: advance by themselves every this many
     /// milliseconds, wrapping to the first slide (driven by `tick`).
     pub auto_advance_ms: Option<u32>,
+    /// Set when the item is in a section that loops: all of the section's
+    /// slides, across its items, advance by themselves in turn and wrap.
+    pub loop_group: Option<LoopGroup>,
+}
+
+/// A looping section of the running order (a header with a loop set, and
+/// the items after it up to the next header).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoopGroup {
+    /// The header that starts the section.
+    pub id: ItemId,
+    pub interval_ms: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -327,14 +344,9 @@ impl LiveEngine {
         let (Some(live), false) = (self.live, self.loop_halted) else {
             return;
         };
-        let Some(item) = &self.live_item else { return };
-        let Some(interval) = item.auto_advance_ms.filter(|ms| *ms > 0) else {
+        let Some((interval, next)) = self.loop_step(live) else {
             return;
         };
-        let slides = item.slides.len();
-        if slides < 2 {
-            return;
-        }
         // A clock that went backwards starts the interval again.
         let anchor = match self.loop_anchor {
             Some(anchor) if anchor <= now => anchor,
@@ -343,16 +355,10 @@ impl LiveEngine {
                 return;
             }
         };
-        let interval = i64::from(interval);
         let elapsed = now.0 - anchor.0;
         if elapsed < interval {
             return;
         }
-        let next = Cursor {
-            item: live.item,
-            slide: (live.slide + 1) % slides,
-            step: 0,
-        };
         self.go_live(next, events);
         // Keep the cadence unless badly late, then start over from now.
         self.loop_anchor = Some(if elapsed >= 2 * interval {
@@ -360,6 +366,60 @@ impl LiveEngine {
         } else {
             Timestamp(anchor.0 + interval)
         });
+    }
+
+    /// How often the live slide advances by itself and where it goes next:
+    /// the item's own loop wraps its own slides; failing that, a looping
+    /// section wraps across all of its items. `None` when nothing loops.
+    fn loop_step(&self, live: Cursor) -> Option<(i64, Cursor)> {
+        let item = self.live_item.as_ref()?;
+        if let Some(ms) = item.auto_advance_ms.filter(|ms| *ms > 0) {
+            let slides = item.slides.len();
+            if slides < 2 {
+                return None;
+            }
+            let next = Cursor {
+                item: live.item,
+                slide: (live.slide + 1) % slides,
+                step: 0,
+            };
+            return Some((i64::from(ms), next));
+        }
+        let group = item.loop_group.filter(|g| g.interval_ms > 0)?;
+        let mut slides: Vec<(ItemId, usize)> = Vec::new();
+        for i in self
+            .items
+            .iter()
+            .filter(|i| i.loop_group.map(|g| g.id) == Some(group.id))
+        {
+            // The live item keeps the slides it was loaded with.
+            let count = if i.id == live.item {
+                item.slides.len()
+            } else {
+                i.slides.len()
+            };
+            slides.extend((0..count).map(|slide| (i.id, slide)));
+        }
+        if !self.items.iter().any(|i| i.id == live.item) {
+            // The live item was deleted by a reload: it is still on air, but
+            // the section has moved on without it.
+            return None;
+        }
+        if slides.len() < 2 {
+            return None;
+        }
+        let at = slides
+            .iter()
+            .position(|&(i, s)| i == live.item && s == live.slide)?;
+        let (item, slide) = slides[(at + 1) % slides.len()];
+        Some((
+            i64::from(group.interval_ms),
+            Cursor {
+                item,
+                slide,
+                step: 0,
+            },
+        ))
     }
 
     fn tick_countdown(&mut self, now: Timestamp, events: &mut Vec<Event>) {
@@ -635,6 +695,7 @@ mod tests {
             theme: None,
             song: None,
             auto_advance_ms: None,
+            loop_group: None,
         }
     }
 
@@ -1033,6 +1094,7 @@ mod tests {
     fn looping(ms: u32, slides: &[&str]) -> LoadedItem {
         LoadedItem {
             auto_advance_ms: Some(ms),
+            loop_group: None,
             ..item("Announcements", slides.iter().map(|s| text(s)).collect())
         }
     }
@@ -1074,6 +1136,87 @@ mod tests {
         e.tick(at(15_000));
         assert_eq!(on_air(&e).as_deref(), Some("l1"), "wrapped");
         assert_eq!(e.live().map(|c| c.step), Some(0));
+    }
+
+    fn grouped(ms: u32) -> Vec<LoadedItem> {
+        let group = Some(LoopGroup {
+            id: ItemId::generate(),
+            interval_ms: ms,
+        });
+        let member = |title: &str, slides: &[&str]| LoadedItem {
+            loop_group: group,
+            ..item(title, slides.iter().map(|s| text(s)).collect())
+        };
+        vec![
+            item("Welcome", vec![text("w")]),
+            member("One", &["a1", "a2"]),
+            member("Two", &["b1"]),
+            item("After", vec![text("z")]),
+        ]
+    }
+
+    #[test]
+    fn a_looping_section_advances_across_its_items_and_wraps() {
+        let mut e = LiveEngine::new();
+        let items = grouped(3000);
+        let first = items[1].id;
+        e.load(items);
+        e.tick(at(0));
+        e.apply(Command::Show(Cursor {
+            item: first,
+            slide: 0,
+            step: 0,
+        }));
+        e.tick(at(0));
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+        e.tick(at(3000));
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+        e.tick(at(6000));
+        assert_eq!(on_air(&e).as_deref(), Some("b1"), "into the next item");
+        e.tick(at(9000));
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("a1"),
+            "wrapped, never to Welcome or After"
+        );
+    }
+
+    #[test]
+    fn next_leaves_a_looping_section_and_items_outside_it_do_not_loop() {
+        let mut e = LiveEngine::new();
+        let items = grouped(3000);
+        let last = items[2].id;
+        e.load(items);
+        e.tick(at(0));
+        e.apply(Command::Show(Cursor {
+            item: last,
+            slide: 0,
+            step: 0,
+        }));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("z"));
+        e.tick(at(0));
+        assert!(e.tick(at(60_000)).is_empty());
+    }
+
+    #[test]
+    fn an_items_own_loop_wins_over_its_sections() {
+        let mut items = grouped(3000);
+        items[1].auto_advance_ms = Some(1000);
+        let first = items[1].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.tick(at(0));
+        e.apply(Command::Show(Cursor {
+            item: first,
+            slide: 0,
+            step: 0,
+        }));
+        e.tick(at(0));
+        e.tick(at(1000));
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+        e.tick(at(2000));
+        assert_eq!(on_air(&e).as_deref(), Some("a1"), "stays in its own item");
     }
 
     #[test]

@@ -242,6 +242,14 @@ pub enum ServiceRequest {
         item: ItemId,
         arrangement: Option<Vec<String>>,
     },
+    /// Loop an item or section (pre- and post-service): seconds per slide,
+    /// or `None` for no loop. On a header it loops the items after it up to
+    /// the next header. Answers `Response::Service`.
+    SetLoop {
+        service: ServiceId,
+        item: ItemId,
+        seconds: Option<u16>,
+    },
     /// Load into the live engine (and start pre-service caching). Answers
     /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),

@@ -12,4 +12,11 @@ notes: string,
  * by name; `None` leaves OBS as it is. Items saved before this field
  * existed lack the key and read as `None`.
  */
-obs_scene: string | null, };
+obs_scene: string | null, 
+/**
+ * Loop, for pre- and post-service: seconds each slide stays up. On a
+ * header it loops that section (the items up to the next header); on
+ * any other item it loops that item's own slides. `None` is no loop.
+ * Items saved before this field existed read as `None`.
+ */
+loop_seconds: number | null, };
