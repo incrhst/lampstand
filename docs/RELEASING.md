@@ -102,7 +102,11 @@ bundle settings.
 3. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
 4. Wait for the three builds. Open the draft release, check it has the
    `.dmg`, `.AppImage`, `.deb` and the Windows `.exe`, and write the notes
-   (what is new, known problems).
+   (what is new, known problems). Put what an operator should expect from the
+   update under a line that starts `**What's new in 0.1.0**`, as a short list in
+   plain words. Publishing copies that section into `latest.json` (the Release
+   notes workflow), and installed copies show it under Setup, About before the
+   operator installs. A release without that heading shows no notes.
 5. Publish. Installed copies are offered it from then on. Update the landing
    page's download link.
 
