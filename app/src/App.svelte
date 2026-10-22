@@ -15,6 +15,7 @@
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
+  import Logo from "./lib/kit/Logo.svelte";
   import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
@@ -158,7 +159,7 @@
 
 <div class="shell">
   <header>
-    <span class="brand"><Icon name="lamp" size={18} />Lampstand</span>
+    <span class="brand"><Logo size={22} />Lampstand</span>
     <nav aria-label="Screens">
       {#each screens as s}
         <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} onclick={() => (screen = s.id)}>

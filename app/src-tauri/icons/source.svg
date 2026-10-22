@@ -1,8 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- The lamp used in the app's header (app/src/lib/kit/icons.ts), gold on dark, on the macOS icon grid. -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="#15131c"/>
-  <g transform="translate(512 512) scale(30) translate(-12 -12)" fill="none" stroke="#f2c452" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 3c-2 3-3 4.5-3 6.5a3 3 0 0 0 6 0C15 7.5 14 6 12 3z"/>
-    <path d="M12 13v5M8 21h8M9.5 18h5"/>
+  <!-- A lit lamp on dark navy, on the macOS icon grid. The app header's lamp (app/src/lib/kit/Logo.svelte) is the same drawing. -->
+  <defs>
+    <radialGradient id="glow" cx="512" cy="440" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2a83a" stop-opacity="0.5"/>
+      <stop offset="0.55" stop-color="#f2a83a" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#f2a83a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd978"/>
+      <stop offset="1" stop-color="#f08a24"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#10141f"/>
+  <g transform="translate(0 20)">
+    <circle cx="512" cy="440" r="300" fill="url(#glow)"/>
+    <path d="M512 235C468 320 436 372 436 430a76 76 0 0 0 152 0C588 372 556 320 512 235Z" fill="url(#flame)"/>
+    <path d="M512 350C494 387 482 410 482 434a30 30 0 0 0 60 0C542 410 530 387 512 350Z" fill="#fff1bd"/>
+    <rect x="446" y="522" width="132" height="24" rx="12" fill="#f4f1ea"/>
+    <rect x="498" y="546" width="28" height="170" fill="#f4f1ea"/>
+    <rect x="416" y="716" width="192" height="28" rx="14" fill="#f4f1ea"/>
   </g>
 </svg>
