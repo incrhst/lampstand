@@ -82,3 +82,16 @@ passwords or OBS Browser source addresses (they contain a key).
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+## Code signing policy
+
+Free code signing for Windows provided by [SignPath.io](https://signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+- Windows installers are built from this repository by the GitHub Actions
+  workflow in `.github/workflows/release.yml`, then submitted for signing.
+- Signing requests are approved by the project maintainer, David Bain
+  ([@incrhst](https://github.com/incrhst)). Only builds of tagged releases
+  from this repository are signed.
+- Privacy: Lampstand collects no personal data. See the
+  [privacy policy](https://lampstand.dbain.com/privacy.html).
