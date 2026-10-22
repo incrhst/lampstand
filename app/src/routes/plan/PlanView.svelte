@@ -778,7 +778,7 @@
             />
           </li>
         {:else}
-          <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)}>
+          <ListRow title={s.title} subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`} active={selected?.id === s.id} onclick={() => select(s.id)}>
             {#snippet details()}
               {#if live.loaded?.service === s.id}
                 <span class="row-status"><span class="live-dot"></span>Open for live</span>
