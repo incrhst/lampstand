@@ -192,6 +192,12 @@ impl Outputs {
         })
     }
 
+    /// Lets `output` play the sound of its videos. Off unless set; the
+    /// shell sets it for rehearsal windows only.
+    pub fn set_audible(&self, output: OutputId, audible: bool) {
+        let _ = self.post(Msg::Audible { output, audible });
+    }
+
     /// The window was resized (physical pixels). Any transition in progress
     /// on it jumps to its end.
     pub fn resize(&self, output: OutputId, width: u32, height: u32) {

@@ -963,6 +963,8 @@ impl TauriWindows {
                 Background::Opaque,
             )
             .map_err(|e| format!("{e:?}"))?;
+        self.outputs
+            .set_audible(output, matches!(placement, Placement::Window { .. }));
         let _ = self
             .tx
             .send(Internal::Resized(output, size.width, size.height));

@@ -170,7 +170,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 
 **T26. Calibration.** Draw `CalibrationPattern` as a scene: numbered edges at 1% steps, corner markers and a bright outline of the current margins. Add a safe-area overlay for previews. Done when golden tests pass. Do T62 (the full TS-1 design ported from PR #5) in the same session.
 
-**T27. Video.** Done, with DeckCraft's pure-Rust decoders (`deckcraft-media`) instead of GStreamer. That choice and its numbers are in ARCHITECTURE.md ("Media"). Covered: looping, seeking (by clock), Play build steps, and outputs that show the same file staying in step. Video nodes upload frames to a texture, and thumbnails show the first frame. `media/tests/play.rs` plays a bundled 2-second clip to the end and counts its frames. Left for a follow-up: audio (muting means nothing until then).
+**T27. Video.** Done, with DeckCraft's pure-Rust decoders (`deckcraft-media`) instead of GStreamer. That choice and its numbers are in ARCHITECTURE.md ("Media"). Covered: looping, seeking (by clock), Play build steps, and outputs that show the same file staying in step. Video nodes upload frames to a texture, and thumbnails show the first frame. `media/tests/play.rs` plays a bundled 2-second clip to the end and counts its frames. Audio followed in 0.2.0 (rehearsal window only).
 
 **T30. Builds and transitions.** Map `p:timing` (click, with and after previous; delays) and `p:transition` to `BuildStep`s and `Transition`s, covering the effect set in `scene::Effect` and approximating the rest. Implement `DeckSlide::scene_at_step`. Done when synthetic decks with each effect produce the expected steps.
 

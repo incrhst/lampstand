@@ -18,7 +18,12 @@
 //! display frame, and never waits. Looping and seeking are a function of
 //! that time (`media_time`).
 //!
-//! Not yet: audio. Videos play silently whatever `VideoNode::muted` says.
+//! Sound is separate: `Sound` decodes a file's audio track and plays it on
+//! the default output device from a given point. The caller starts it only
+//! where it should be heard.
+
+mod sound;
+pub use sound::Sound;
 
 use std::path::Path;
 use std::sync::Arc;
