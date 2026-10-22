@@ -224,6 +224,26 @@ pub enum ServiceRequest {
     /// Takes the open service off air: a clean screen and nothing loaded.
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
+    /// Plays a media item once or on repeat. A video that repeats by itself
+    /// holds a looping section on it for good. Answers `Response::Service`.
+    SetMediaLooped {
+        service: ServiceId,
+        item: ItemId,
+        looped: bool,
+    },
+    /// Changes how long a looping section leaves each still slide up, for
+    /// the service that is open for live and only until it is closed or
+    /// another is opened; `None` turns the section's loop off. `header` is
+    /// the section's header. The saved service is not touched. Answers
+    /// `Response::Ok`.
+    SetLiveLoop {
+        header: ItemId,
+        seconds: Option<u16>,
+    },
+    /// What each item of a service puts on screen when it loops, for
+    /// working out how long a pass of a section takes. Answers
+    /// `Response::Estimate`.
+    Estimate(ServiceId),
     InsertItem {
         service: ServiceId,
         index: usize,
@@ -588,6 +608,7 @@ pub enum Response {
     BrowserSources(Vec<BrowserSourceStatus>),
     /// The service now in the live engine, split into slides.
     Loaded(LoadedService),
+    Estimate(Vec<ItemEstimate>),
     SongDatabases(Vec<SongDatabase>),
     Text(String),
     Team(TeamStatus),
@@ -630,6 +651,40 @@ pub struct LoadedService {
     pub service: ServiceId,
     pub title: String,
     pub items: Vec<LoadedItemView>,
+    /// Every header and the items under it, with the loop each has now
+    /// (a change made on air included).
+    pub sections: Vec<SectionView>,
+}
+
+/// A header and the items up to the next header.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SectionView {
+    pub header: ItemId,
+    pub title: String,
+    /// Seconds each still slide stays up while the section loops; `None`
+    /// when it does not loop.
+    pub seconds: Option<u16>,
+    pub items: Vec<ItemId>,
+}
+
+/// What one item puts on screen in a loop. The interval is not in here,
+/// so a change of interval needs no new request.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemEstimate {
+    pub item: ItemId,
+    /// Slides that stay up for the interval (images, text, deck slides).
+    pub stills: u32,
+    /// Of those, deck slides that build on click: a loop shows them finished.
+    pub click_slides: u32,
+    /// The length of a video that plays through; `None` when there is no
+    /// video, or its length could not be read.
+    pub video_ms: Option<u32>,
+    /// A video that repeats by itself, so a loop never leaves it.
+    pub self_loop: bool,
+    /// Something with no fixed length, such as a countdown.
+    pub open_ended: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

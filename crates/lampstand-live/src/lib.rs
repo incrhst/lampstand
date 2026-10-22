@@ -36,7 +36,9 @@
 //!   loop of one slide does nothing.
 //! - A section can loop as a whole (`loop_group`): its slides, across all of
 //!   its items, advance in order on one interval and wrap from the last
-//!   slide of the last item to the first slide of the first. An item's own
+//!   slide of the last item to the first slide of the first. A slide with
+//!   a `dwell_ms` of its own (a video) stays up that long instead, and a
+//!   slide that builds on click comes up with every build shown. An item's own
 //!   loop takes precedence while it is live. Everything below about
 //!   operator control and clearing applies to both.
 //! - Operator control wins over the loop. `Next`, `Previous`, `Show` and
@@ -99,6 +101,10 @@ pub struct LoadedSlide {
     pub content: Content,
     /// Build steps (clicks) after the slide appears. 0 for text slides.
     pub steps: usize,
+    /// How long a looping section leaves this slide up, when the slide has
+    /// a length of its own (a video that plays through once). `None` uses
+    /// the section's interval.
+    pub dwell_ms: Option<u32>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -412,13 +418,24 @@ impl LiveEngine {
             .iter()
             .position(|&(i, s)| i == live.item && s == live.slide)?;
         let (item, slide) = slides[(at + 1) % slides.len()];
+        // A slide with a length of its own (a video) is left when it ends.
+        let own = self
+            .live_item
+            .as_ref()
+            .and_then(|i| i.slides.get(live.slide))
+            .and_then(|s| s.dwell_ms)
+            .filter(|ms| *ms > 0);
+        // Nobody clicks in an unattended loop, so a slide that builds on
+        // click comes up finished.
+        let step = self
+            .items
+            .iter()
+            .find(|i| i.id == item)
+            .and_then(|i| i.slides.get(slide))
+            .map_or(0, |s| s.steps);
         Some((
-            i64::from(group.interval_ms),
-            Cursor {
-                item,
-                slide,
-                step: 0,
-            },
+            i64::from(own.unwrap_or(group.interval_ms)),
+            Cursor { item, slide, step },
         ))
     }
 
@@ -663,6 +680,7 @@ mod tests {
                 },
             },
             steps: 0,
+            dwell_ms: None,
         }
     }
 
@@ -681,6 +699,7 @@ mod tests {
                 notes: String::new(),
             },
             steps,
+            dwell_ms: None,
         }
     }
 
@@ -1108,6 +1127,7 @@ mod tests {
                     label: "Starts".into(),
                 },
                 steps: 0,
+                dwell_ms: None,
             }],
         )
     }
@@ -1153,6 +1173,66 @@ mod tests {
             member("Two", &["b1"]),
             item("After", vec![text("z")]),
         ]
+    }
+
+    #[test]
+    fn a_slide_with_its_own_length_stays_up_that_long_in_a_loop() {
+        let mut items = grouped(3000);
+        items[1].slides[0].dwell_ms = Some(10_000);
+        let first = items[1].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.tick(at(0));
+        e.apply(Command::Show(Cursor {
+            item: first,
+            slide: 0,
+            step: 0,
+        }));
+        e.tick(at(0));
+        assert!(e.tick(at(3000)).is_empty(), "the interval does not apply");
+        assert!(e.tick(at(9900)).is_empty());
+        e.tick(at(10_000));
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+        // The next slide has no length of its own, so the interval is back.
+        e.tick(at(13_000));
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn a_loop_brings_up_a_click_built_slide_finished() {
+        let group = Some(LoopGroup {
+            id: ItemId::generate(),
+            interval_ms: 2000,
+        });
+        let member = |title: &str, slides: Vec<LoadedSlide>| LoadedItem {
+            loop_group: group,
+            ..item(title, slides)
+        };
+        let items = vec![
+            member("One", vec![text("a")]),
+            member("Deck", vec![deck_slide(3)]),
+        ];
+        let first = items[0].id;
+        let deck = items[1].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.tick(at(0));
+        e.apply(Command::Show(Cursor {
+            item: first,
+            slide: 0,
+            step: 0,
+        }));
+        e.tick(at(0));
+        e.tick(at(2000));
+        assert_eq!(
+            e.live(),
+            Some(Cursor {
+                item: deck,
+                slide: 0,
+                step: 3
+            }),
+            "every build shown"
+        );
     }
 
     #[test]
