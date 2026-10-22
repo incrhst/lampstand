@@ -333,7 +333,7 @@
     try {
       selected = await request(
         { area: "Service", request: { SetItemArrangement: { service: selected.id, item, arrangement } } },
-"Service",
+        "Service",
       );
     } catch (e) {
       report(e);
