@@ -10,6 +10,7 @@
   import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
+  import { modLabel, screenForKey } from "./lib/shortcuts";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
@@ -22,13 +23,22 @@
 
   // The operator view keeps its T47 name in code; volunteers call it Present.
   const screens = [
-    { id: "plan", label: "Plan" },
-    { id: "operate", label: "Present" },
+    { id: "plan", label: "Plan", key: "1" },
+    { id: "operate", label: "Present", key: "2" },
   ] as const;
   type Screen = (typeof screens)[number]["id"] | "setup";
 
   let screen: Screen = $state("plan");
   let setupTab: SetupTab = $state("screens");
+
+  // Mod+1 Plan, Mod+2 Present, Mod+\ the other of the two.
+  const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
+  function onkeydown(e: KeyboardEvent) {
+    const next = screenForKey(e, screen);
+    if (!next) return;
+    e.preventDefault();
+    screen = next;
+  }
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -157,18 +167,21 @@
   refreshObs();
 </script>
 
+<svelte:window {onkeydown} />
+
 <div class="shell">
   <header>
     <span class="brand"><Logo size={22} />Lampstand</span>
     <nav aria-label="Screens">
       {#each screens as s}
-        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} onclick={() => (screen = s.id)}>
+        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
           {s.label}
         </button>
       {/each}
     </nav>
     <div class="right">
-      {#if live.loaded}
+      <!-- Present's own bar already names the service, so it is not said twice there. -->
+      {#if live.loaded && screen !== "operate"}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
