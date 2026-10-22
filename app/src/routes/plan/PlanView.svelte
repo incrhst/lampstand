@@ -72,6 +72,72 @@
     }
   }
 
+  /** The row being renamed, and the row whose delete awaits a second click. */
+  let renaming: string | null = $state(null);
+  let renameTitle = $state("");
+  let confirmDelete: string | null = $state(null);
+  let showOlder = $state(false);
+
+  /** A service that started before today is "older" and stays out of the list. */
+  const startOfToday = () => new Date().setHours(0, 0, 0, 0);
+  const isOlder = (s: ServiceSummary) => s.starts_at != null && s.starts_at < startOfToday();
+  let olderCount = $derived(services.filter((s) => isOlder(s) && s.id !== selected?.id).length);
+  let shown = $derived(
+    showOlder ? services : services.filter((s) => !isOlder(s) || s.id === selected?.id),
+  );
+
+  function startRename(s: ServiceSummary) {
+    confirmDelete = null;
+    renaming = s.id;
+    renameTitle = s.title;
+  }
+
+  async function saveRename() {
+    const id = renaming;
+    if (!id) return;
+    renaming = null;
+    if (!renameTitle.trim()) return;
+    try {
+      const renamed = await request(
+        { area: "Service", request: { Rename: { service: id, title: renameTitle } } },
+        "Service",
+      );
+      if (selected?.id === id) selected = renamed;
+      if (live.loaded?.service === id) live.loaded = { ...live.loaded, title: renamed.title };
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function takeOffAir(id: string) {
+    try {
+      await request({ area: "Service", request: { Close: id } }, "Ok");
+      if (live.loaded?.service === id) live.loaded = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function deleteService(id: string) {
+    if (confirmDelete !== id) {
+      confirmDelete = id;
+      return;
+    }
+    confirmDelete = null;
+    try {
+      await request({ area: "Service", request: { Delete: id } }, "Ok");
+      if (live.loaded?.service === id) live.loaded = null;
+      if (selected?.id === id) {
+        selected = null;
+        live.planning = null;
+      }
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
   function toggleCreate() {
     creating = !creating;
     // Each new service starts on the coming Sunday unless the planner
@@ -562,17 +628,52 @@
       </form>
     {/if}
     <ul class="plain pane-body">
-      {#each services as s (s.id)}
-        <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)}>
-          {#snippet details()}
-            {#if live.loaded?.service === s.id}
-              <span class="row-status"><span class="live-dot"></span>Open for live</span>
-            {/if}
-          {/snippet}
-        </ListRow>
+      {#each shown as s (s.id)}
+        {#if renaming === s.id}
+          <li class="rename">
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              aria-label="Service name"
+              bind:value={renameTitle}
+              onkeydown={onKeys(saveRename, () => (renaming = null))}
+              onblur={saveRename}
+              autofocus
+            />
+          </li>
+        {:else}
+          <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)}>
+            {#snippet details()}
+              {#if live.loaded?.service === s.id}
+                <span class="row-status"><span class="live-dot"></span>Open for live</span>
+              {/if}
+            {/snippet}
+            {#snippet trailing()}
+              {#if selected?.id === s.id}
+                <span class="row-actions">
+                  <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
+                  {#if live.loaded?.service === s.id}
+                    <Button variant="ghost" size="small" onclick={() => takeOffAir(s.id)}>Off air</Button>
+                  {/if}
+                  {#if confirmDelete === s.id}
+                    <Button variant="danger" size="small" onclick={() => deleteService(s.id)}>Delete?</Button>
+                  {:else}
+                    <Button variant="ghost" size="small" icon="trash" label="Delete service" title="Delete service" onclick={() => deleteService(s.id)} />
+                  {/if}
+                </span>
+              {/if}
+            {/snippet}
+          </ListRow>
+        {/if}
       {:else}
         <li class="empty muted">No services yet.</li>
       {/each}
+      {#if olderCount > 0 || showOlder}
+        <li class="older">
+          <Button variant="ghost" size="small" onclick={() => (showOlder = !showOlder)}>
+            {showOlder ? "Hide older services" : `Show ${olderCount} older`}
+          </Button>
+        </li>
+      {/if}
     </ul>
   </aside>
 
@@ -746,6 +847,19 @@
   }
   .create > :global(button) {
     align-self: flex-end;
+  }
+  .row-actions {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .rename {
+    padding: 0.5rem 0.75rem;
+  }
+  .rename input {
+    width: 100%;
+  }
+  .older {
+    padding: 0.5rem 0.75rem;
   }
   .row-status {
     display: flex;

@@ -213,6 +213,17 @@ pub enum ServiceRequest {
         starts_at: Option<Timestamp>,
         time_zone: Option<String>,
     },
+    /// Renames a service. Answers `Response::Service`.
+    Rename {
+        service: ServiceId,
+        title: String,
+    },
+    /// Deletes a service for good. One that is open for live goes off air
+    /// first. Answers `Response::Ok`.
+    Delete(ServiceId),
+    /// Takes the open service off air: a clean screen and nothing loaded.
+    /// Answers `Response::Ok`; a service that is not open is left alone.
+    Close(ServiceId),
     InsertItem {
         service: ServiceId,
         index: usize,
