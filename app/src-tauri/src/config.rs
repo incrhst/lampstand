@@ -251,7 +251,12 @@ mod tests {
         let path = dir.path().join("settings.json");
         let mut store = SettingsStore::load(path.clone()).unwrap();
         assert!(!store.get().clicker_mode);
-        store.put(DeviceSettings { clicker_mode: true }).unwrap();
+        store
+            .put(DeviceSettings {
+                clicker_mode: true,
+                ..DeviceSettings::default()
+            })
+            .unwrap();
         assert!(SettingsStore::load(path).unwrap().get().clicker_mode);
     }
 

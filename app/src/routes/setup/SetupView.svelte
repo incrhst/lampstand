@@ -4,7 +4,7 @@
      OBS is where pictures are sent to OBS and where OBS is controlled (T89).
      Themes (T51) and Team (T54) join them here. -->
 <script module lang="ts">
-  export type SetupTab = "screens" | "devices" | "obs" | "about";
+  export type SetupTab = "screens" | "scripture" | "devices" | "obs" | "about";
 </script>
 
 <script lang="ts">
@@ -13,12 +13,14 @@
   import OutputsView from "../outputs/OutputsView.svelte";
   import DevicesView from "../devices/DevicesView.svelte";
   import ObsSetup from "./ObsSetup.svelte";
+  import ScriptureSetup from "./ScriptureSetup.svelte";
   import AboutSetup from "./AboutSetup.svelte";
 
   let { tab, onchange }: { tab: SetupTab; onchange: (tab: SetupTab) => void } = $props();
 
   const tabs = [
     { id: "screens", label: "Screens", subtitle: "Projectors, TVs and windows", icon: "monitor" },
+    { id: "scripture", label: "Scripture", subtitle: "Bible versions and the default", icon: "scripture" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
     { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
     { id: "about", label: "About", subtitle: "Version and updates", icon: "info" },
@@ -42,6 +44,8 @@
       <OutputsView onobs={() => onchange("obs")} />
     {:else if tab === "obs"}
       <ObsSetup />
+    {:else if tab === "scripture"}
+      <ScriptureSetup />
     {:else if tab === "about"}
       <AboutSetup />
     {:else}

@@ -7,7 +7,9 @@
   import { onMount } from "svelte";
   import { request, type ItemKind, type SongHit, type Translation } from "../../lib/api";
   import { mightBeReference } from "../../lib/library";
-  import { formatPassage, parseReference } from "../../lib/passage";
+  import { formatPassage, parseReferenceVersioned } from "../../lib/passage";
+  import { chooseTranslation } from "../../lib/bibles";
+  import { loadDefaultTranslation, saveDefaultTranslation } from "../../lib/bibleSetting";
   import { entryAction, insertionIndex, newItemId } from "../../lib/quickAdd";
   import { report } from "../../lib/state.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -39,7 +41,6 @@
     item: ItemKind | null;
   }
 
-  const TRANSLATION_KEY = "lampstand.library.translation";
   let query = $state("");
   let highlight = $state(0);
   let busy = $state(false);
@@ -47,32 +48,22 @@
 
   let songs: SongHit[] = $state([]);
   let translations: Translation[] = $state([]);
-  let translation = $state(load());
+  let translation = $state("");
   let passage: Row | null = $state(null);
   let trimmed = $derived(query.trim());
 
-  function load(): string {
-    try {
-      return JSON.parse(localStorage.getItem(TRANSLATION_KEY) ?? '""') as string;
-    } catch {
-      return "";
-    }
-  }
-  function remember(id: string) {
-    try {
-      localStorage.setItem(TRANSLATION_KEY, JSON.stringify(id));
-    } catch {
-      // Not remembered this time.
-    }
-  }
+  const labelOf = (id: string) => {
+    const t = translations.find((t) => t.id === id);
+    return t?.abbreviation || t?.name || "";
+  };
   let abbreviation = $derived(translations.find((t) => t.id === translation)?.abbreviation || translations.find((t) => t.id === translation)?.name || "");
 
   onMount(() => {
     input?.focus();
-    request({ area: "Library", request: "ListTranslations" }, "Translations")
-      .then((all) => {
+    Promise.all([request({ area: "Library", request: "ListTranslations" }, "Translations"), loadDefaultTranslation()])
+      .then(([all, preferred]) => {
         translations = [...all].sort((a, b) => a.name.localeCompare(b.name));
-        if (!translations.some((t) => t.id === translation)) translation = translations[0]?.id ?? "";
+        translation = chooseTranslation(translations, preferred, translation);
       })
       .catch(report);
     const previous = document.activeElement as HTMLElement | null;
@@ -98,14 +89,14 @@
 
   let lookupSeq = 0;
   $effect(() => {
-    const ref = mightBeReference(trimmed) ? parseReference(trimmed) : null;
+    const typed = mightBeReference(trimmed) ? parseReferenceVersioned(trimmed) : null;
     const t = translation;
     const seq = ++lookupSeq;
-    if (!ref) {
+    if (!typed) {
       passage = null;
       return;
     }
-    const title = formatPassage(ref);
+    const title = formatPassage(typed.passage);
     if (!t) {
       passage = { key: "p", kind: "scripture", title, subtitle: "No Bible on this device yet. Import one in Plan.", item: null };
       return;
@@ -118,8 +109,8 @@
           key: "p",
           kind: "scripture",
           title: found.display,
-          subtitle: `${abbreviation} · ${found.verses[0]?.[2] ?? ""}`,
-          item: { Scripture: { passage: found.passage, translation: t } },
+          subtitle: `${labelOf(found.translation)} · ${found.verses[0]?.[2] ?? ""}`,
+          item: { Scripture: { passage: found.passage, translation: found.translation } },
         };
       })
       .catch((e) => {
@@ -181,7 +172,8 @@
       e.preventDefault();
       const at = translations.findIndex((t) => t.id === translation);
       translation = translations[(at + 1) % translations.length].id;
-      remember(translation);
+      // The last Bible chosen is the default for the next reference.
+      saveDefaultTranslation(translation).catch(report);
     }
   }
 </script>

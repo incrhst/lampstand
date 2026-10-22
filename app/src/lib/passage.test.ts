@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { END_OF_CHAPTER as END, formatPassage, parseReference } from "./passage.ts";
+import { END_OF_CHAPTER as END, formatPassage, parseReference, parseReferenceVersioned } from "./passage.ts";
 
 const p = (book: number, [c1, v1]: [number, number], [c2, v2]: [number, number]) => ({
   book,
@@ -56,4 +56,27 @@ test("song titles and bad references are not references", () => {
   for (const input of ["", "Hezekiah 1:1", "J 3:16", "John 3:18-16", "John three", "Amazing grace", "10,000 Reasons", "How great", "I am 3"]) {
     assert.equal(ref(input), null, input);
   }
+});
+
+test("a version after the reference is read apart from it", () => {
+  const james = p(59, [3, 11], [3, 11]);
+  const cases: [string, string | null][] = [
+    ["james 3:11", null],
+    ["james 3:11 esv", "esv"],
+    ["James 3:11 ESV", "ESV"],
+    ["James 3:11 (ESV)", "ESV"],
+    ["James 3:11  NIV84 ", "NIV84"],
+    ["James 3:11 English Standard Version", "English Standard Version"],
+  ];
+  for (const [input, version] of cases) assert.deepEqual(parseReferenceVersioned(input), { passage: james, version }, input);
+  assert.deepEqual(parseReferenceVersioned("Jude 3-5 kjv"), { passage: p(65, [1, 3], [1, 5]), version: "kjv" });
+  assert.deepEqual(parseReferenceVersioned("Psalm 23 web"), { passage: p(19, [23, 1], [23, END]), version: "web" });
+  assert.deepEqual(parseReferenceVersioned("1 John 4:8 niv"), { passage: p(62, [4, 8], [4, 8]), version: "niv" });
+});
+
+test("a version needs a space, and a plain parse takes none", () => {
+  for (const input of ["James 3:11esv", "John 3:16a", "James esv 3:11", "James 3:18-11 esv"]) {
+    assert.equal(parseReferenceVersioned(input), null, input);
+  }
+  assert.equal(parseReference("James 3:11 esv"), null);
 });

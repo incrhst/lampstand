@@ -128,7 +128,7 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| BI-1 | Type a reference ("Jn 3:16-18") and go live. Split long passages across slides automatically. | P0 |
+| BI-1 | Type a reference ("Jn 3:16-18") and go live. Split long passages across slides automatically. Type a version after it ("James 3:11 ESV") to read from that version if the church has it; a version that is not on the device is reported as unrecognised, with the versions that are. A reference with no version is read from a default version, set in Setup. | P0 |
 | BI-2 | Import translations in OSIS, USFM, Zefania XML, OpenSong and OpenLP formats. The church holds the licence for what it imports; we bundle public domain texts only (for example KJV, WEB). Imported texts sync between the church's own devices but are left out of service packages. | P0 |
 | BI-3 | Show two translations side by side. | P1 |
 

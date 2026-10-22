@@ -17,7 +17,7 @@ use lampstand_core::output::{
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Direction, Effect, Node, NodeKind, Scene, Transition, TransitionKind};
-use lampstand_core::scripture::Translation;
+use lampstand_core::scripture::{Translation, TranslationId};
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
@@ -251,6 +251,112 @@ fn a_fresh_library_has_the_bundled_bibles_once() {
     drop(h);
     let mut h = open(dir.path());
     assert_eq!(list_translations(&mut h).len(), 1);
+}
+
+/// Looks `reference` up in `translation`, the default for a reference that
+/// names no version.
+fn lookup(h: &mut Harness, reference: &str, translation: TranslationId) -> Response {
+    h.app
+        .handle(Request::Library(LibraryRequest::LookupPassage {
+            reference: reference.into(),
+            translation,
+        }))
+}
+
+#[test]
+fn a_version_typed_after_the_reference_picks_the_translation() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let translations = list_translations(&mut h);
+    let id = |abbreviation: &str| {
+        translations
+            .iter()
+            .find(|t| t.abbreviation == abbreviation)
+            .unwrap()
+            .id
+    };
+    let (kjv, web) = (id("KJV"), id("WEB"));
+    let text = |response: Response| match response {
+        Response::Passage {
+            translation,
+            display,
+            verses,
+            ..
+        } => (translation, display, verses[0].2.clone()),
+        other => panic!("{other:?}"),
+    };
+
+    // No version typed: the default asked for.
+    let (used, display, plain) = text(lookup(&mut h, "James 3:11", web));
+    assert_eq!((used, display.as_str()), (web, "James 3:11"));
+    // A version typed wins, however it is cased or bracketed.
+    for typed in [
+        "James 3:11 kjv",
+        "james 3:11 KJV",
+        "James 3:11 (King James Version)",
+    ] {
+        let (used, _, verse) = text(lookup(&mut h, typed, web));
+        assert_eq!(used, kjv, "{typed}");
+        assert!(verse.contains("fountain"), "{typed}: {verse}");
+    }
+    assert!(plain.contains("spring"), "{plain}");
+    let (used, ..) = text(lookup(&mut h, "James 3:11 web", kjv));
+    assert_eq!(used, web);
+}
+
+#[test]
+fn an_unrecognised_version_lists_the_ones_there_are() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let web = list_translations(&mut h)
+        .iter()
+        .find(|t| t.abbreviation == "WEB")
+        .unwrap()
+        .id;
+    // The ESV is licensed, so it is not bundled: until a church imports it,
+    // it is a version that is not there.
+    for typed in ["James 3:11 xyz", "James 3:11 ESV"] {
+        match lookup(&mut h, typed, web) {
+            Response::Error { message } => {
+                let version = typed.rsplit(' ').next().unwrap();
+                assert_eq!(
+                    message,
+                    format!("Unrecognised version “{version}”. Available versions: KJV, WEB.")
+                );
+            }
+            other => panic!("{typed}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn the_default_version_is_a_device_setting_that_stays_across_restarts() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let settings = |h: &mut Harness, request| match ok(h.app.handle(Request::Settings(request))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        settings(&mut h, SettingsRequest::Get).default_translation,
+        None
+    );
+    let kjv = list_translations(&mut h)
+        .iter()
+        .find(|t| t.abbreviation == "KJV")
+        .unwrap()
+        .id;
+    let chosen = DeviceSettings {
+        default_translation: Some(kjv),
+        ..DeviceSettings::default()
+    };
+    assert_eq!(
+        settings(&mut h, SettingsRequest::Put(chosen.clone())),
+        chosen
+    );
+    drop(h);
+    let mut h = open(dir.path());
+    assert_eq!(settings(&mut h, SettingsRequest::Get), chosen);
 }
 
 fn list_translations(h: &mut Harness) -> Vec<Translation> {
@@ -1366,7 +1472,10 @@ fn clicker_mode_is_a_device_setting_and_takes_keys_only_once_a_service_is_open()
         other => panic!("{other:?}"),
     };
     assert!(!settings(&mut h, SettingsRequest::Get).clicker_mode);
-    let on = DeviceSettings { clicker_mode: true };
+    let on = DeviceSettings {
+        clicker_mode: true,
+        ..DeviceSettings::default()
+    };
     assert_eq!(settings(&mut h, SettingsRequest::Put(on.clone())), on);
     let state = h.app.key_state();
     assert!(state.clicker_mode && !state.live);
