@@ -1,6 +1,6 @@
 <!-- Operator panel: the running order on the left, what is on air and
      the slides of the item in view in the middle, Next and notes on the
-     right. While a deck is on air the middle is its presenter view
+     right (only when the item has notes). While a deck is on air the middle is its presenter view
      (current slide at its build step, next click, speaker notes, timer).
      Where OBS matters, the bar has one OBS control (the scene on air and
      the next item's scene) that opens the OBS drawer (T91); OBS's
@@ -9,14 +9,13 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
-  import { isCalibrated, live, mainOutput, pictures, refreshPictures, report } from "../../lib/state.svelte";
+  import { live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { neighbourItem, nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
@@ -27,11 +26,13 @@
   import QuickAdd from "./QuickAdd.svelte";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
   import ObsNotice from "./ObsNotice.svelte";
-  import { isConnected, isPicture, isScreen, obsPill, pictureStatus, upcomingScene } from "../../lib/obs";
+  import { isConnected, isScreen, obsPill, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
   import { steppedDown, windowToDemote } from "../../lib/primary";
+  import { modLabel } from "../../lib/shortcuts";
+  import MoreMenu from "./MoreMenu.svelte";
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
   let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
@@ -78,17 +79,7 @@
   // Screens are windows and displays. A picture sent to OBS is not one: it
   // never reaches the projector, so it does not count as "a screen is on".
   let screensOn = $derived(live.outputs.filter((o) => o.enabled && isScreen(o)).length);
-  let screens = $derived(live.outputs.filter(isScreen));
-  let sentToObs = $derived(live.outputs.filter(isPicture));
-
-  // Whether OBS has loaded each picture, checked every few seconds while
-  // there is one.
-  $effect(() => {
-    if (sentToObs.length === 0) return;
-    refreshPictures();
-    const timer = setInterval(refreshPictures, 3000);
-    return () => clearInterval(timer);
-  });
+  const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
 
   // With no screen on, the prompt offers to turn one on: screens set up and
   // left off, and connected displays that are not a screen yet.
@@ -454,16 +445,13 @@
         <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
-      <span class="close">
-        {#if confirmClose}
-          <span class="close-ask">Something is on air. Close it?</span>
+      {#if confirmClose}
+        <span class="close">
+          <span class="close-ask">Something is on air. Close the service?</span>
           <Button size="small" variant="danger" onclick={closeService}>Close service</Button>
           <Button size="small" variant="ghost" onclick={() => (confirmClose = false)}>Keep open</Button>
-        {:else}
-          <Button size="small" onclick={askClose} title="Take this service off air and put it away. It stays in Plan.">Close service</Button>
-        {/if}
-      </span>
-      <Placeholder ticket="T36">Readiness</Placeholder>
+        </span>
+      {/if}
       {#if pill}
         <!-- The OBS controller: what OBS has on air and what the next item
              switches to. Opens the drawer of scenes, preview and mutes. The
@@ -487,11 +475,19 @@
           <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
         </button>
       {/if}
-      <span class="keys faint"><Icon name="keyboard" size={14} />← → or Space to advance · . blank · 1–9 verse · C B P T I E sections · ⇧↑ ⇧↓ choose an item, Enter starts it · / quick add{pill ? " · O control OBS" : ""}</span>
-      <Button size="small" icon="safeArea" pressed={showGuide} onclick={() => (showGuide = !showGuide)}>Safe area</Button>
-      <Button size="small" icon="keyboard" pressed={clicker} title="Clicker mode: Page Up, Page Down, B (blank) and full stop work in any app while this service is open" onclick={toggleClicker}>Clicker</Button>
+      <span class="spacer"></span>
       <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
-      <Button size="small" onclick={() => command("ClearText")} title="Take the words off, keep the background">Clear text</Button>
+      <MoreMenu
+        guide={showGuide}
+        {clicker}
+        obs={!!pill}
+        {mod}
+        onguide={() => (showGuide = !showGuide)}
+        onclicker={toggleClicker}
+        onclearText={() => command("ClearText")}
+        onclearAll={() => command("ClearAll")}
+        onclose={askClose}
+      />
     </div>
 
     <!-- While a deck is on air the presenter view takes the right column
@@ -583,14 +579,12 @@
             <Button icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
             <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
             <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
-            <Button variant="ghost" onclick={() => command("ClearAll")} title="Clear text, background and overlay">Clear all</Button>
           </div>
           {/if}
 
           {#if viewed}
             <div class="slides-head">
               <h2 class="title">{viewed.title}</h2>
-              <span class="faint">Click a slide to take it live</span>
             </div>
             {#if viewed.slides.length === 0}
               <p class="muted nothing">Nothing to show.</p>
@@ -638,43 +632,10 @@
             </div>
           </section>
 
-          <section>
-            <h2 class="title">Notes</h2>
-            {#if notes}
-              <p class="notes">{notes}</p>
-            {:else}
-              <p class="faint small">No planner notes on this item.</p>
-            {/if}
-          </section>
-
-          <section>
-            <h2 class="title">Screens</h2>
-            <ul class="plain outputs">
-              {#each screens as o (o.id)}
-                <li>
-                  <Dot tone={o.enabled && live.overlay === "None" && live.live ? "live" : "neutral"} />
-                  <span class="name">{o.name}{#if !isCalibrated(o)}<span class="warn"> · not calibrated</span>{/if}</span>
-                  <span class="muted small">{!o.enabled ? "Off" : live.overlay === "None" && !live.live ? "Nothing on air" : outputState[live.overlay]}</span>
-                </li>
-              {:else}
-                <li class="faint small">No screens. Add one in Setup › Screens.</li>
-              {/each}
-            </ul>
-          </section>
-
-          {#if sentToObs.length > 0}
+          {#if notes}
             <section>
-              <h2 class="title">Sent to OBS</h2>
-              <ul class="plain outputs">
-                {#each sentToObs as o (o.id)}
-                  {@const status = pictureStatus(o.enabled, pictures.clients[o.id] ?? 0)}
-                  <li title={status.title}>
-                    <Icon name="broadcast" size={14} />
-                    <span class="name">{o.name}</span>
-                    <span class="muted small status-{status.tone}">{status.text}</span>
-                  </li>
-                {/each}
-              </ul>
+              <h2 class="title">Notes</h2>
+              <p class="notes">{notes}</p>
             </section>
           {/if}
         </aside>
@@ -791,9 +752,6 @@
     .bar {
       flex-wrap: wrap;
     }
-    .keys {
-      display: none;
-    }
   }
   /* A long title truncates and the date keeps its width, so the controls
      stay on one row in the same place whatever the service is called. */
@@ -824,20 +782,8 @@
     flex-shrink: 0;
     color: var(--muted);
   }
-  /* The hint gives way first: it takes the room left over and is cut
-     from the end with an ellipsis. */
-  .keys {
+  .spacer {
     flex: 1 1 0;
-    min-width: 0;
-    text-align: right;
-    font-size: 0.75rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .keys :global(.icon) {
-    vertical-align: -2px;
-    margin-right: 0.4rem;
   }
   .grid {
     position: relative;
@@ -1025,39 +971,5 @@
     font-size: 0.95rem;
     line-height: 1.6;
     white-space: pre-wrap;
-  }
-  .small {
-    font-size: 0.8rem;
-    margin-top: 0.5rem;
-  }
-  .outputs {
-    margin-top: 0.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .outputs li {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-  }
-  .outputs .status-ready {
-    color: var(--ready, var(--text));
-  }
-  .outputs .status-warn {
-    color: var(--gold);
-  }
-  .outputs .small {
-    margin: 0 0 0 auto;
-  }
-  .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .warn {
-    color: var(--warn);
-    font-size: 0.75rem;
   }
 </style>
