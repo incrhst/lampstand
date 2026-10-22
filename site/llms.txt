@@ -1,0 +1,24 @@
+# Lampstand
+
+> Lampstand is a free, open-source (GPL-3.0) church projection app for Windows, macOS and Linux. One laptop runs a whole service: songs, scripture, PowerPoint and Google Slides, stage displays and graphics for the live stream through OBS, working offline on Sunday morning. It is an early preview made by David Bain and built in the open.
+
+Status: early preview. Installers are published on GitHub Releases. The Windows installer is not signed yet. CCLI usage reports, NDI output, MIDI and lighting triggers, and Planning Center sync are planned but not in the app today.
+
+## Start here
+
+- [Questions and answers](https://lampstand.dbain.com/faq.html): cost, platforms, offline use, PowerPoint, Google Slides, OBS, importing songs, readiness for Sunday
+- [Getting started](https://lampstand.dbain.com/docs/getting-started.html): download, install and run a first service in about ten minutes
+- [Using Lampstand](https://lampstand.dbain.com/docs/using.html): Plan, Present and Setup, keyboard shortcuts, imports, OBS, phone and tablet remote
+- [Try it with us](https://lampstand.dbain.com/partners.html): a hands-on programme for about ten churches to run it beside their current setup
+
+## How it works and why
+
+- [How it works](https://lampstand.dbain.com/docs/how-it-works.html): the Rust crates, the render path, sync and OBS
+- [Decisions](https://lampstand.dbain.com/docs/decisions.html): why PPTX reading, sync, encryption, OBS and the remote work as they do
+- [Privacy](https://lampstand.dbain.com/privacy.html): Lampstand collects no personal data
+
+## Source and downloads
+
+- [GitHub repository](https://github.com/incrhst/lampstand): source code, issues and Discussions
+- [Latest release](https://github.com/incrhst/lampstand/releases/latest): installers for macOS, Windows and Linux
+- [Product requirements](https://github.com/incrhst/lampstand/blob/main/docs/PRD.md): users, goals, non-goals and the market scan
