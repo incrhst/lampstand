@@ -115,6 +115,9 @@ pub enum Command {
     ClearBackground,
     /// Text, background and overlays off: a clean screen.
     ClearAll,
+    /// Take the service off air: a clean screen and no live item, so the
+    /// engine is idle again and an update may install.
+    EndService,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -287,6 +290,22 @@ impl LiveEngine {
                 self.program.background = None;
                 self.program.overlay = Overlay::None;
                 if changed {
+                    events.push(Event::ProgramChanged);
+                }
+            }
+            Command::EndService => {
+                let on_air = !self.is_idle();
+                self.live = None;
+                self.live_item = None;
+                self.orphan_slot = None;
+                self.loop_anchor = None;
+                self.loop_halted = false;
+                self.countdown_shown = None;
+                self.program.content = None;
+                self.program.background = None;
+                self.program.overlay = Overlay::None;
+                self.program.next = None;
+                if on_air {
                     events.push(Event::ProgramChanged);
                 }
             }
@@ -790,6 +809,33 @@ mod tests {
         assert_eq!(e.program().background, None);
         assert_eq!(e.program().overlay, Overlay::None);
         assert!(!e.is_idle(), "an item is still live: no update mid-service");
+    }
+
+    #[test]
+    fn end_service_takes_everything_off_air_and_is_idle() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleLogo);
+        assert!(!e.is_idle());
+        let events = e.apply(Command::EndService);
+        assert!(events.contains(&Event::ProgramChanged));
+        assert!(e.is_idle());
+        assert_eq!(e.live(), None);
+        assert_eq!(e.program().next, None);
+        // Nothing to report when it is already off air.
+        assert!(e.apply(Command::EndService).is_empty());
+        // The next Next starts the service again from the top.
+        e.apply(Command::Next);
+        assert!(e.live().is_some());
+    }
+
+    #[test]
+    fn end_service_stops_a_running_loop() {
+        let mut e = loop_engine(1000);
+        assert!(!e.is_idle());
+        e.apply(Command::EndService);
+        assert!(e.is_idle());
+        assert!(e.tick(at(5000)).is_empty());
     }
 
     #[test]

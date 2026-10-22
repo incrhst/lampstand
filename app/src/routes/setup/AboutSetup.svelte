@@ -3,7 +3,7 @@
      startup and every few hours), and installed from here when nothing is on
      air and no service is about to start, so an update never interrupts one. -->
 <script lang="ts">
-  import { request } from "../../lib/api";
+  import { request, send } from "../../lib/api";
   import { checkForUpdate, installUpdate, live, refreshUpdate, report } from "../../lib/state.svelte";
   import { availableVersion, canInstall, updateSummary } from "../../lib/updates";
   import Button from "../../lib/kit/Button.svelte";
@@ -21,6 +21,16 @@
     checking = false;
   }
 
+  /** Takes the service off air, so an update may install. */
+  async function endService() {
+    try {
+      await send({ area: "Live", request: "EndService" });
+      await refreshUpdate();
+    } catch (e) {
+      report(e);
+    }
+  }
+
   /** Opens the project's issue form in the browser, with the version filled in. */
   async function tell(what: "AskForHelp" | "ReportProblem" | "SuggestIdea" | "TellUs") {
     try {
@@ -34,6 +44,7 @@
   let summary = $derived(updateSummary(status));
   let version = $derived(status ? availableVersion(status.state) : null);
   let notes = $derived(status && typeof status.state === "object" && "Available" in status.state ? status.state.Available.notes : null);
+  let onAir = $derived(!!live.live || live.overlay !== "None");
   let installing = $derived(status?.state === "Installing");
 </script>
 
@@ -57,6 +68,12 @@
         <Button variant="ghost" onclick={check} disabled={checking || installing}>Check again</Button>
       </div>
       {#if status?.blocked}<p class="warn">{status.blocked}</p>{/if}
+      {#if onAir}
+        <div class="buttons">
+          <Button onclick={endService}>End service now</Button>
+        </div>
+        <p class="muted small">This clears the screen and takes the service off air. Your running order stays as it is.</p>
+      {/if}
       <p class="muted small">Your services, songs and settings stay as they are. The app closes and opens again when it is installed.</p>
     {:else}
       <div class="buttons">
