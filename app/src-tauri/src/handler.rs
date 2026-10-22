@@ -516,6 +516,32 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetItemArrangement {
+                service,
+                item,
+                arrangement,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                let ItemKind::Song {
+                    arrangement: slot, ..
+                } = &mut entry.kind
+                else {
+                    return Err("only a song has an order".into());
+                };
+                *slot = arrangement
+                    .map(|labels| {
+                        labels
+                            .into_iter()
+                            .map(|l| l.trim().to_string())
+                            .filter(|l| !l.is_empty())
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|labels| !labels.is_empty());
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::Open(id) => Response::Loaded(self.load_service(id)?),
             ServiceRequest::SlideThumbnail { .. } => {
                 // It needs a GPU, so the shell draws it from `slide_scene`.

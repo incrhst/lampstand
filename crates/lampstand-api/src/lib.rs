@@ -234,6 +234,14 @@ pub enum ServiceRequest {
         item: ItemId,
         scene: Option<String>,
     },
+    /// The order a song item sings its sections in for this service,
+    /// overriding the song's own; `None` (or an empty list) goes back to the
+    /// song's order. Labels match ignoring case. Answers `Response::Service`.
+    SetItemArrangement {
+        service: ServiceId,
+        item: ItemId,
+        arrangement: Option<Vec<String>>,
+    },
     /// Load into the live engine (and start pre-service caching). Answers
     /// `Response::Loaded` with the slides the operator can show.
     Open(ServiceId),

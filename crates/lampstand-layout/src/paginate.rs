@@ -26,17 +26,15 @@ pub const FOOTER_SCALE: f32 = 0.5;
 /// per-service override); an empty one means the order the sections are
 /// written in. A label that names no section is skipped rather than
 /// reported: one stale label in a saved arrangement should not stop a song
-/// going live. Sections with no lines produce no slides.
+/// going live. Labels match ignoring case. If none of the labels match, the
+/// song falls back to the order it is written in rather than going blank.
+/// Sections with no lines produce no slides.
 pub fn paginate_song(song: &Song, arrangement: Option<&[String]>, theme: &Theme) -> Vec<SlideText> {
     let order = arrangement.unwrap_or(&song.arrangement);
-    let sections: Vec<&Section> = if order.is_empty() {
-        song.sections.iter().collect()
-    } else {
-        order
-            .iter()
-            .filter_map(|label| song.sections.iter().find(|s| &s.label == label))
-            .collect()
-    };
+    let mut sections: Vec<&Section> = order.iter().filter_map(|l| song.section(l)).collect();
+    if sections.is_empty() {
+        sections = song.sections.iter().collect();
+    }
 
     let max_lines = usize::from(theme.max_lines).max(1);
     let mut slides = Vec::new();
@@ -329,6 +327,7 @@ mod tests {
     use lampstand_core::output::{BackgroundMode, OutputRole};
     use lampstand_core::safe_area::SafeArea;
     use lampstand_core::scene::{HAlign, Transition, VAlign};
+    use lampstand_core::song::parse_order;
     use lampstand_core::theme::Background;
 
     fn raw_theme(max_lines: u8, show_copyright: bool) -> Theme {
@@ -521,6 +520,36 @@ mod tests {
         let mut song = song(&[("V1", &["a"]), ("C", &["b"])]);
         song.arrangement = ["V1", "Z9", "C"].map(String::from).to_vec();
         let slides = paginate_song(&song, None, &theme(4, false));
+        assert_eq!(labels(&slides), ["V1", "C"]);
+    }
+
+    #[test]
+    fn typed_order_repeats_and_leaves_out_sections() {
+        let song = song(&[
+            ("V1", &["a"]),
+            ("C", &["b"]),
+            ("V2", &["c"]),
+            ("V3", &["d"]),
+        ]);
+        let order = parse_order("v1 v1 c v2 v1");
+        let slides = paginate_song(&song, Some(&order), &theme(4, false));
+        assert_eq!(labels(&slides), ["V1", "V1", "C", "V2", "V1"]);
+        assert!(slides.iter().all(|s| s.lines != ["d"]));
+    }
+
+    #[test]
+    fn labels_match_ignoring_case() {
+        let song = song(&[("V1", &["a"]), ("C", &["b"])]);
+        let order = ["c".to_string(), "v1".to_string()];
+        let slides = paginate_song(&song, Some(&order), &theme(4, false));
+        assert_eq!(labels(&slides), ["C", "V1"]);
+    }
+
+    #[test]
+    fn an_order_matching_nothing_falls_back_to_written_order() {
+        let song = song(&[("V1", &["a"]), ("C", &["b"])]);
+        let order = ["x".to_string(), "y".to_string()];
+        let slides = paginate_song(&song, Some(&order), &theme(4, false));
         assert_eq!(labels(&slides), ["V1", "C"]);
     }
 

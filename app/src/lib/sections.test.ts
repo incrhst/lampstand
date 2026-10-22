@@ -1,7 +1,7 @@
 // node --test --experimental-strip-types (npm test)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseLabel, sectionCursor } from "./sections.ts";
+import { parseLabel, parseOrder, sectionCursor, unknownLabels } from "./sections.ts";
 import type { LoadedService } from "./api";
 
 const slide = (label: string) => ({ label, lines: [label], steps: 0, notes: "" });
@@ -46,4 +46,14 @@ test("C finds the next chorus after the live slide, wrapping", () => {
 test("other keys are not section keys", () => {
   assert.equal(sectionCursor(service, null, "x"), null);
   assert.equal(sectionCursor(service, null, "0"), null);
+});
+
+test("a typed order splits on spaces and commas", () => {
+  assert.deepEqual(parseOrder("v1 v1, c  v2,v1"), ["v1", "v1", "c", "v2", "v1"]);
+  assert.deepEqual(parseOrder(" , "), []);
+});
+
+test("labels that match no section are listed, ignoring case", () => {
+  assert.deepEqual(unknownLabels(["v1", "C", "b", "V9"], ["V1", "C", "V2"]), ["b", "V9"]);
+  assert.deepEqual(unknownLabels([], ["V1"]), []);
 });

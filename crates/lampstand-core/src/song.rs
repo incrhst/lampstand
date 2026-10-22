@@ -120,13 +120,40 @@ impl Song {
         arrangement
             .iter()
             .map(|label| {
-                self.sections
-                    .iter()
-                    .find(|s| &s.label == label)
+                self.section(label)
                     .ok_or_else(|| SongError::UnknownSection(label.clone()))
             })
             .collect()
     }
+
+    /// The section a label names: an exact match first, then ignoring case
+    /// and surrounding space, so "v1" finds "V1".
+    pub fn section(&self, label: &str) -> Option<&Section> {
+        self.sections.iter().find(|s| s.label == label).or_else(|| {
+            let want = label.trim();
+            self.sections
+                .iter()
+                .find(|s| s.label.trim().eq_ignore_ascii_case(want))
+        })
+    }
+
+    /// The labels in `arrangement` that name no section, in the order given.
+    pub fn unknown_labels<'a>(&self, arrangement: &'a [String]) -> Vec<&'a str> {
+        arrangement
+            .iter()
+            .map(String::as_str)
+            .filter(|label| self.section(label).is_none())
+            .collect()
+    }
+}
+
+/// Reads a typed sung order such as `"v1 v1, c v2"`: labels separated by
+/// spaces and/or commas. Case is kept; lookup ignores it.
+pub fn parse_order(text: &str) -> Vec<String> {
+    text.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|label| !label.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 /// A ChordPro line with its chords removed and spacing tidied:
@@ -224,6 +251,32 @@ mod tests {
             song(&["V1", "B"]).arranged(),
             Err(SongError::UnknownSection("B".into()))
         );
+    }
+
+    #[test]
+    fn typed_order_is_read_from_spaces_and_commas() {
+        assert_eq!(parse_order("v1 v1 c, v2,v1"), ["v1", "v1", "c", "v2", "v1"]);
+        assert_eq!(parse_order("  ,  "), Vec::<String>::new());
+    }
+
+    #[test]
+    fn typed_order_repeats_and_omits_sections() {
+        let mut s = song(&[]);
+        s.sections.push(section("V3"));
+        s.arrangement = parse_order("v1 v1 c v2 v1");
+        assert_eq!(labels(&s), ["V1", "V1", "C", "V2", "V1"]);
+    }
+
+    #[test]
+    fn labels_match_ignoring_case() {
+        assert_eq!(labels(&song(&["v1", "c"])), ["V1", "C"]);
+    }
+
+    #[test]
+    fn unknown_labels_are_listed() {
+        let s = song(&[]);
+        let order = parse_order("v1 b v9 c");
+        assert_eq!(s.unknown_labels(&order), ["b", "v9"]);
     }
 
     #[test]

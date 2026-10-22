@@ -79,3 +79,17 @@ export function sectionCursor(loaded: LoadedService, live: Cursor | null, key: s
   const slide = starts.find((s) => s > current) ?? starts[0];
   return { item: item.id, slide, step: 0 };
 }
+
+/**
+ * A typed order ("v1 v1, c v2") as labels: split on spaces and commas, case
+ * kept. Reads the same as `parse_order` in lampstand-core.
+ */
+export function parseOrder(text: string): string[] {
+  return text.split(/[\s,]+/).filter((l) => l !== "");
+}
+
+/** The labels in `order` that name none of `sections`, ignoring case. */
+export function unknownLabels(order: string[], sections: string[]): string[] {
+  const have = new Set(sections.map((s) => s.trim().toLowerCase()));
+  return order.filter((l) => !have.has(l.trim().toLowerCase()));
+}

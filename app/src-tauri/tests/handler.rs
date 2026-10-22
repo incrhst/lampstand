@@ -1260,6 +1260,103 @@ fn setting_the_scene_of_an_unknown_item_is_an_error() {
     assert!(matches!(response, Response::Error { .. }), "{response:?}");
 }
 
+fn set_arrangement(
+    h: &mut Harness,
+    service: &Service,
+    item: ItemId,
+    arrangement: Option<Vec<String>>,
+) -> Response {
+    h.app
+        .handle(Request::Service(ServiceRequest::SetItemArrangement {
+            service: service.id,
+            item,
+            arrangement,
+        }))
+}
+
+/// The label of each slide of the first item of the open service.
+fn slide_labels(loaded: &LoadedService) -> Vec<String> {
+    loaded.items[0]
+        .slides
+        .iter()
+        .filter_map(|s| s.label.clone())
+        .collect()
+}
+
+#[test]
+fn a_service_items_order_is_set_applied_to_the_open_service_and_reset() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (song, _) = search(&mut h, "Amazing Grace")[0].clone();
+    let empty = create_service(&mut h, "Sunday");
+    let service = insert_song(&mut h, &empty, song);
+    let item = service.ordered()[0].0;
+    let sections = match ok(h
+        .app
+        .handle(Request::Library(LibraryRequest::GetSong(song))))
+    {
+        Response::Song(s) => s.sections,
+        other => panic!("{other:?}"),
+    };
+    let (a, b) = (sections[0].label.clone(), sections[1].label.clone());
+    let written = slide_labels(&open_service(&mut h, &service));
+
+    // Typed lower case, a repeat, and the rest left out.
+    let order = vec![
+        a.to_lowercase(),
+        a.to_lowercase(),
+        b.to_lowercase(),
+        a.to_lowercase(),
+    ];
+    let Response::Service(saved) = ok(set_arrangement(&mut h, &service, item, Some(order))) else {
+        panic!()
+    };
+    let ItemKind::Song { arrangement, .. } = &saved.items[&item].kind else {
+        panic!()
+    };
+    assert!(arrangement.is_some());
+    // The open service reloaded with the new order.
+    let loaded = open_service(&mut h, &service);
+    let got = slide_labels(&loaded);
+    let groups: Vec<&str> = {
+        let mut g = got.iter().map(String::as_str).collect::<Vec<_>>();
+        g.dedup();
+        g
+    };
+    assert!(groups.len() < written.len() || sections.len() <= 2);
+    assert_eq!(got.first(), Some(&a));
+    assert_eq!(got.last(), Some(&a));
+
+    // Blank goes back to the song's own order.
+    ok(set_arrangement(
+        &mut h,
+        &service,
+        item,
+        Some(vec![" ".into()]),
+    ));
+    assert_eq!(slide_labels(&open_service(&mut h, &service)), written);
+    ok(set_arrangement(&mut h, &service, item, None));
+}
+
+#[test]
+fn only_a_song_has_an_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let service = create_service(&mut h, "Sunday");
+    let s = insert(
+        &mut h,
+        &service,
+        ItemKind::Header {
+            title: "Worship".into(),
+        },
+    );
+    let item = s.ordered()[0].0;
+    let response = set_arrangement(&mut h, &service, item, Some(vec!["v1".into()]));
+    assert!(matches!(response, Response::Error { .. }), "{response:?}");
+    let response = set_arrangement(&mut h, &service, ItemId::generate(), None);
+    assert!(matches!(response, Response::Error { .. }), "{response:?}");
+}
+
 #[test]
 fn clicker_mode_is_a_device_setting_and_takes_keys_only_once_a_service_is_open() {
     let dir = tempfile::tempdir().unwrap();
