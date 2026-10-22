@@ -1,6 +1,6 @@
 # Functional requirements: service list, item cards and looping sections
 
-Status: draft. Companion to the [PRD](PRD.md) (planning PL, live operation LV, PowerPoint PS) and the [plan contract](plan-contract.md). The interactive mockups are in the [Plan view item cards](https://claude.ai/artifact/TBjFWUuHhUXmakfWHn6L1Q) canvas.
+Status: built in 0.5 (see 'What differs from this document' at the end). Companion to the [PRD](PRD.md) (planning PL, live operation LV, PowerPoint PS) and the [plan contract](plan-contract.md). The interactive mockups are in the [Plan view item cards](https://claude.ai/artifact/TBjFWUuHhUXmakfWHn6L1Q) canvas.
 
 ## 1. Purpose
 
@@ -129,7 +129,7 @@ The interval is a default for still slides. Content with its own timing keeps it
 | LE-2 | Estimate rules: image slides and deck slides are N × interval; automatic animations add their own length; videos add their duration; click-only builds add nothing. | P0 |
 | LE-3 | When any component has no fixed length (a countdown, a live source), the total reads "At least 1:27" and names that component. | P0 |
 | LE-4 | The estimate updates as items or the interval change, and when files are added to or removed from a folder slideshow. | P0 |
-| LE-5 | A video's duration is read from the file when it is added and stored with the media record, so the estimate needs no playback. An older file with no stored duration is read the first time it is needed. | P0 |
+| LE-5 | A video's duration is read from its file the first time it is needed and remembered while the app runs. It is not stored with the media record. | P0 |
 | LE-6 | If the estimate is for the pre-service section and the service has a start time, the panel shows whether whole passes fit before it ("3 passes finish at 9:58"). | P1 |
 
 ## 8. Presenting
@@ -150,7 +150,7 @@ The interval is a default for still slides. Content with its own timing keeps it
 
 - **Header and section:** no new fields. A section is derived (HS-1).
 - **Loop:** each item's existing `loop_seconds` is the section's interval when set on a header (already documented that way in `lampstand-core`). Live changes (PR-2) live in the live engine's state for this run only.
-- **Media duration (LE-5):** one new optional field on the media record. Existing records read as unknown and are filled in lazily.
+- **Media duration (LE-5):** read from the file with the media probe when first needed, and cached in memory by blob. No new stored field.
 - **Moving a header (HM-3):** changes only the header's position, so it merges as an ordinary move in the sync layer.
 - **Version:** items saved before any of this existed load unchanged.
 
@@ -181,3 +181,16 @@ The interval is a default for still slides. Content with its own timing keeps it
 3. For a deck with click-only builds, is "skip to final state" (LT-6) right for churches that design builds to run unattended, or should automatic mode be the default for decks that have timings set?
 4. Do common header names need to follow the church's language, as scripture translations do?
 5. Does a section's loop stop at the end of a pass when the service start time arrives, or at once?
+
+## 13. What differs from this document
+
+The first build follows the tables above, with these exceptions:
+
+- **Automatic animations (LT-5):** a deck's build steps are all treated as click-only, because the engine does not tell the two kinds apart. A loop shows every slide finished. Animations that start by themselves are not given extra time.
+- **Item loop inside a section (LS-6):** not built. An item with its own loop still holds the section on it.
+- **Estimate for decks:** a deck slide counts as one still, however many build steps it has.
+- **Slideshow transition and order (LT-10):** shown in the mockups only; not built.
+- **Dragging a header (HM-1 to HM-4):** uses the same drag as a card. The guidance line and the drop line show where the section starts and how many cards it will cover. Keyboard moves (HM-5) work through the grip's up and down keys, as for cards.
+- **Pass progress while presenting (PR-6):** the live panel shows the one-pass length but not the progress bar.
+- **Common header names (HC-7):** a fixed list.
+- **Saved interval versus on-air interval:** an on-air change is held by the app until the service is closed, taken off air or another service is opened. It is lost if the app restarts.

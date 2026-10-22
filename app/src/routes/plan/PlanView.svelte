@@ -513,6 +513,9 @@
   /** The gap a new header is being named in, by the index it would take. */
   let naming: number | null = $state(null);
   let headerName = $state("");
+  let nameInput: HTMLInputElement | undefined = $state();
+  /** Rows a header being named would cover: from its gap to the next header. */
+  let covering = $derived(naming === null ? 0 : coveredAt(rows, naming));
 
   /** What each item puts on screen in a loop, for working out a pass. */
   let estimates: Record<string, ItemEstimate> = $state({});
@@ -698,6 +701,7 @@
       <input
         aria-label="Header name"
         placeholder="Name this section"
+        bind:this={nameInput}
         bind:value={headerName}
         onkeydown={onKeys(addHeader, () => (naming = null))}
         autofocus
@@ -708,7 +712,14 @@
     <div class="chips" role="group" aria-label="Common headers">
       <span class="muted">Common headers</span>
       {#each commonHeaders as name (name)}
-        <button type="button" class="chip" onclick={() => (headerName = name)}>{name}</button>
+        <button
+          type="button"
+          class="chip"
+          onclick={() => {
+            headerName = name;
+            nameInput?.focus();
+          }}>{name}</button
+        >
       {/each}
     </div>
     <p class="muted covers">
@@ -910,6 +921,7 @@
                   class="item"
                   class:grouped={owner >= 0}
                   class:looping
+                  class:covered={naming !== null && i >= naming && i < naming + covering}
                   class:dragging={dragging?.id === id}
                   class:line-before={lineBefore(i)}
                 >
@@ -1174,6 +1186,15 @@
   }
   .card.open {
     border-color: var(--gold);
+  }
+  .item.covered .card {
+    background: var(--raised);
+    border-color: var(--line-strong);
+  }
+  .item.covered {
+    margin-left: 0.9rem;
+    padding-left: 1.1rem;
+    border-left: 2px solid var(--gold);
   }
   .card-main {
     display: flex;

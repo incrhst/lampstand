@@ -22,6 +22,7 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import LiveLoop from "./LiveLoop.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
@@ -256,6 +257,8 @@
   }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
+  /** The section on air, if the live item sits under a header. */
+  let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
   // A deck on air gets the presenter view, whose Next is the next click.
@@ -485,6 +488,9 @@
           <h2>Service order</h2>
           <Button size="small" icon="plus" shortcut="/" onclick={() => (quickAddOpen = true)} title="Quick add a song or scripture after what is on air">Quick add</Button>
         </div>
+        {#if live.loaded && liveSection}
+          <LiveLoop loaded={live.loaded} section={liveSection} />
+        {/if}
         <ol class="plain pane-body">
           {#each items as item, i (item.id)}
             {@const kind = kindOf(item.id)}
