@@ -256,6 +256,23 @@
     if (showNow && id) show({ item: id, slide: 0, step: 0 });
   }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
+  /** "Close service" asks first when something is on air. */
+  let confirmClose = $state(false);
+  function askClose() {
+    if (live.live || live.overlay !== "None") confirmClose = true;
+    else closeService();
+  }
+  async function closeService() {
+    const loaded = live.loaded;
+    confirmClose = false;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { Close: loaded.service } }, "Ok");
+      live.loaded = null;
+    } catch (e) {
+      report(e);
+    }
+  }
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   /** The section on air, if the live item sits under a header. */
   let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
@@ -437,6 +454,15 @@
         <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
+      <span class="close">
+        {#if confirmClose}
+          <span class="close-ask">Something is on air. Close it?</span>
+          <Button size="small" variant="danger" onclick={closeService}>Close service</Button>
+          <Button size="small" variant="ghost" onclick={() => (confirmClose = false)}>Keep open</Button>
+        {:else}
+          <Button size="small" onclick={askClose} title="Take this service off air and put it away. It stays in Plan.">Close service</Button>
+        {/if}
+      </span>
       <Placeholder ticket="T36">Readiness</Placeholder>
       {#if pill}
         <!-- The OBS controller: what OBS has on air and what the next item
@@ -771,6 +797,15 @@
   }
   /* A long title truncates and the date keeps its width, so the controls
      stay on one row in the same place whatever the service is called. */
+  .close {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .close-ask {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
   .service {
     display: flex;
     gap: 0.3rem;

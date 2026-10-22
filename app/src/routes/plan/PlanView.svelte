@@ -789,7 +789,7 @@
                 <span class="row-actions">
                   <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
                   {#if live.loaded?.service === s.id}
-                    <Button variant="ghost" size="small" onclick={() => takeOffAir(s.id)}>Off air</Button>
+                    <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => takeOffAir(s.id)}>Close</Button>
                   {/if}
                   {#if confirmDelete === s.id}
                     <Button variant="danger" size="small" onclick={() => deleteService(s.id)}>Delete?</Button>
