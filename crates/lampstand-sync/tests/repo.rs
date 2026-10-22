@@ -65,6 +65,7 @@ fn header(position: &str, title: &str) -> ServiceItem {
         },
         notes: String::new(),
         obs_scene: None,
+        loop_seconds: None,
     }
 }
 
@@ -199,6 +200,7 @@ fn every_item_kind() -> Service {
             kind,
             notes: format!("note {i}"),
             obs_scene: (i % 2 == 0).then(|| format!("Scene {i}")),
+            loop_seconds: None,
         };
         s.items.insert(ItemId::generate(), item);
     }

@@ -27,6 +27,7 @@
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
   import SongOrder from "./SongOrder.svelte";
+  import LoopPicker from "./LoopPicker.svelte";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
 
@@ -332,6 +333,19 @@
     try {
       selected = await request(
         { area: "Service", request: { SetItemArrangement: { service: selected.id, item, arrangement } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** Loop an item, or a header's section: seconds per slide, or null for none. */
+  async function setLoop(item: string, seconds: number | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetLoop: { service: selected.id, item, seconds } } },
         "Service",
       );
     } catch (e) {
@@ -659,6 +673,12 @@
                     onchange={(scene) => setObsScene(id, scene)}
                   />
                 {/if}
+                <LoopPicker
+                  value={item.loop_seconds}
+                  section={"Header" in item.kind}
+                  label="Loop {itemTitle(item)}"
+                  onchange={(seconds) => setLoop(id, seconds)}
+                />
                 <span class="remove">
                   <Button variant="ghost" size="small" icon="trash" label="Remove {itemTitle(item)}" onclick={() => remove(id)} />
                 </span>

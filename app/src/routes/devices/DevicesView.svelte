@@ -74,10 +74,10 @@
         <p class="muted">On the other device, open Devices and type:</p>
         <p class="code" aria-label="Pairing code">{spaced(status.pairing.code)}</p>
         <p class="muted">Valid for {minutes(status.pairing.expires_ms)}.</p>
-        <Button onclick={() => team("StopPairing")}>Cancel</Button>
+        <div class="actions"><Button onclick={() => team("StopPairing")}>Cancel</Button></div>
       {:else}
         <p class="muted">To let a planner's laptop or the office PC send changes here, show a pairing code.</p>
-        <Button variant="primary" onclick={() => team("StartPairing")}>Pair a device</Button>
+        <div class="actions"><Button variant="primary" onclick={() => team("StartPairing")}>Pair a device</Button></div>
       {/if}
     {/if}
   </Panel>
@@ -141,6 +141,9 @@
 </div>
 
 <style>
+  .actions {
+    margin-top: 1rem;
+  }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));

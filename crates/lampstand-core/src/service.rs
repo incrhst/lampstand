@@ -63,6 +63,13 @@ pub struct ServiceItem {
     #[serde(default)]
     #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
     pub obs_scene: Option<String>,
+    /// Loop, for pre- and post-service: seconds each slide stays up. On a
+    /// header it loops that section (the items up to the next header); on
+    /// any other item it loops that item's own slides. `None` is no loop.
+    /// Items saved before this field existed read as `None`.
+    #[serde(default)]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub loop_seconds: Option<u16>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -233,6 +240,7 @@ impl Service {
             kind,
             notes: String::new(),
             obs_scene: None,
+            loop_seconds: None,
         };
         self.items.insert(id, item);
         id
@@ -332,6 +340,7 @@ mod tests {
                 kind: header(title),
                 notes: String::new(),
                 obs_scene: None,
+                loop_seconds: None,
             };
             s.items.insert(ItemId::generate(), item);
         }
