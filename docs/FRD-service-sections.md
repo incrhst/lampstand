@@ -1,6 +1,6 @@
 # Functional requirements: service list, item cards and looping sections
 
-Status: built in 0.5 (see 'What differs from this document' at the end). Companion to the [PRD](PRD.md) (planning PL, live operation LV, PowerPoint PS) and the [plan contract](plan-contract.md). The interactive mockups are in the [Plan view item cards](https://claude.ai/artifact/TBjFWUuHhUXmakfWHn6L1Q) canvas.
+Status: built; section 13 lists what differs. Companion to the [PRD](PRD.md) (planning PL, live operation LV, PowerPoint PS) and the [plan contract](plan-contract.md). The interactive mockups are in the [Plan view item cards](https://claude.ai/artifact/TBjFWUuHhUXmakfWHn6L1Q) canvas.
 
 ## 1. Purpose
 
