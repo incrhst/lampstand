@@ -108,7 +108,11 @@ fn build<T: SizedSample + FromSample<f32> + Send + 'static>(
                     }
                     let live = position < total;
                     for (c, slot) in frame.iter_mut().enumerate() {
-                        *slot = T::from_sample(if live { sample(&pcm, position, c, channels) } else { 0.0 });
+                        *slot = T::from_sample(if live {
+                            sample(&pcm, position, c, channels)
+                        } else {
+                            0.0
+                        });
                     }
                     position += step;
                 }
@@ -129,7 +133,8 @@ fn sample(pcm: &Pcm, at: f64, c: usize, out_channels: usize) -> f32 {
         0
     } else if out_channels == 1 {
         // Folds stereo down.
-        return (pcm.at(i, 0) + pcm.at(i, 1)) * 0.5 * (1.0 - t) + (pcm.at(i + 1, 0) + pcm.at(i + 1, 1)) * 0.5 * t;
+        return (pcm.at(i, 0) + pcm.at(i, 1)) * 0.5 * (1.0 - t)
+            + (pcm.at(i + 1, 0) + pcm.at(i + 1, 1)) * 0.5 * t;
     } else {
         c
     };

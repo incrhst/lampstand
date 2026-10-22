@@ -242,7 +242,12 @@ impl Players {
     /// Plays the sound of the players in `audible` and silences the rest.
     /// A sound starts once its video has its first frame up, at the point
     /// the picture has reached.
-    pub fn sync_sound(&mut self, audible: &HashSet<PlayerKey>, blobs: &Arc<dyn BlobSource>, now: f64) {
+    pub fn sync_sound(
+        &mut self,
+        audible: &HashSet<PlayerKey>,
+        blobs: &Arc<dyn BlobSource>,
+        now: f64,
+    ) {
         for (key, player) in &mut self.players {
             let Player::Playing(p) = player else {
                 continue;
