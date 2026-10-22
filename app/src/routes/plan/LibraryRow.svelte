@@ -17,6 +17,7 @@
     onadd,
     onhover,
     onpointerdown,
+    onedit,
   }: {
     entry: Entry;
     id?: string;
@@ -28,13 +29,15 @@
     onadd: () => void;
     onhover: () => void;
     onpointerdown: (e: PointerEvent) => void;
+    /** For a song: open it in the editor. */
+    onedit?: () => void;
   } = $props();
 
   const icon = (e: Entry): IconName =>
     e.kind === "media" ? (isVideo(e.title) ? "media" : "announcements") : e.kind === "song" ? "song" : e.kind;
 </script>
 
-<li>
+<li class="item">
   <button
     type="button"
     {id}
@@ -65,9 +68,43 @@
       <span class="hint add"><Icon name="plus" size={14} />Add</span>
     {/if}
   </button>
+  {#if onedit}
+    <button type="button" class="edit" onclick={onedit} aria-label="Edit {entry.title}" title="Edit this song">
+      <Icon name="setup" size={14} />
+    </button>
+  {/if}
 </li>
 
 <style>
+  .item {
+    display: flex;
+    align-items: center;
+  }
+  .item .row {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+  .edit {
+    display: inline-flex;
+    flex-shrink: 0;
+    padding: 0.4rem;
+    margin-right: 0.3rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    opacity: 0;
+  }
+  .item:hover .edit,
+  .edit:focus-visible {
+    opacity: 1;
+  }
+  .edit:hover {
+    color: var(--text);
+    background: var(--line);
+  }
   .row {
     font: inherit;
     color: inherit;

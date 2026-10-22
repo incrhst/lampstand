@@ -39,6 +39,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
+  import SongEditor from "./SongEditor.svelte";
 
   type Item = NonNullable<Service["items"][string]>;
 
@@ -299,6 +300,9 @@
       }),
     ),
   );
+
+  /** The song open in the editor. */
+  let editing: string | null = $state(null);
 
   // --- Adding --------------------------------------------------------------
 
@@ -573,6 +577,10 @@
 
 <svelte:window onkeydown={onwindowkey} />
 
+{#if editing}
+  <SongEditor song={editing} onclose={() => (editing = null)} />
+{/if}
+
 {#snippet row(entry: Entry, i: number)}
   <LibraryRow
     {entry}
@@ -583,6 +591,7 @@
     onadd={() => click(entry)}
     onhover={() => (highlight = i)}
     onpointerdown={(e) => press(e, entry)}
+    onedit={entry.key.startsWith("song:") ? () => (editing = entry.key.slice(5)) : undefined}
   />
 {/snippet}
 

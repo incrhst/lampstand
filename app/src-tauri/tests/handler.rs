@@ -1386,3 +1386,41 @@ fn clicker_mode_is_a_device_setting_and_takes_keys_only_once_a_service_is_open()
     let h = open(dir.path());
     assert!(h.app.key_state().clicker_mode);
 }
+
+#[test]
+fn editing_a_song_in_an_open_service_changes_what_is_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let (id, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, id);
+    open_service(&mut h, &service);
+
+    // The editor loads the song, changes a line and puts it back.
+    let Response::Song(mut song) = ok(h.app.handle(Request::Library(LibraryRequest::GetSong(id))))
+    else {
+        panic!("expected a song");
+    };
+    let first = &mut song.sections[0].lines[0];
+    assert!(!first.contains("[G]"));
+    *first = "[G]Edited line [C]here".into();
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::PutSong(song))));
+    h.app.library_changed(&[lampstand_sync::DocChanged {
+        kind: lampstand_sync::DocKind::Song,
+        id: id.uuid(),
+        remote: false,
+    }]);
+    h.sink.take();
+
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let shown = shown_scenes(&h.sink);
+    assert_eq!(shown.len(), 1);
+    assert!(
+        scene_text(&shown[0].1).contains("Edited line here"),
+        "{}",
+        scene_text(&shown[0].1)
+    );
+}
