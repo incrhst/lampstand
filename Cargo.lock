@@ -3338,6 +3338,7 @@ dependencies = [
  "blake3",
  "proptest",
  "serde",
+ "serde_json",
  "ts-rs",
  "uuid",
 ]
@@ -3379,9 +3380,11 @@ dependencies = [
  "lampstand-sync",
  "postcard",
  "serde",
+ "serde_json",
  "tempfile",
  "unicode-normalization",
  "uuid",
+ "zip 9.0.5",
  "zstd",
 ]
 
