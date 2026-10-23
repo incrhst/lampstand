@@ -1,0 +1,1 @@
+Before the service, put your announcements in a group. Press Loop under the group's name, and its slides advance by themselves. A thin bar along the bottom shows the time left on each slide. Press Loop again to stop.

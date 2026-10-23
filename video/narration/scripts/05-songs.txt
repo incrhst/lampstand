@@ -1,0 +1,1 @@
+Drop your song files onto the library. Lampstand reads OpenLP, EasyWorship, ProPresenter, FreeShow, OpenSong, OpenLyrics and SongSelect. Anything that cannot come across is listed in a report, so you know before Sunday.

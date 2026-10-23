@@ -1,0 +1,1 @@
+On Sunday morning, the whole service runs from one laptop, offline. Changes are saved as you go, so Lampstand can pick up after a crash. Updates never install while something is on air. Back up your Lampstand folder, and you are covered.

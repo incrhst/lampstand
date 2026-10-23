@@ -1,0 +1,1 @@
+Download the installer for Mac, Windows or Linux from the releases page. On a Mac, drag Lampstand into Applications. On Windows, choose More info, then Run anyway, because the installer is not signed yet. Lampstand needs the internet only to download and to update.

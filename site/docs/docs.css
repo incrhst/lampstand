@@ -58,3 +58,40 @@ figure.clip figcaption {
   font-size: 0.875rem;
   opacity: 0.8;
 }
+
+/* Narrated clips (made by video/narration/build.mjs): click to play, with captions and a transcript. */
+figure.narrated {
+  margin: 1.2rem 0 2rem;
+}
+figure.narrated h3 {
+  margin: 0 0 0.5rem;
+}
+figure.narrated .len {
+  font-family: var(--typed);
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
+figure.narrated video {
+  display: block;
+  width: 100%;
+  max-width: 44rem;
+  height: auto;
+  aspect-ratio: 8 / 5;
+  background: #0b0e16;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+}
+figure.narrated figcaption {
+  margin-top: 0.5rem;
+  max-width: 44rem;
+  font-size: 0.95rem;
+}
+figure.narrated details {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+figure.narrated summary {
+  cursor: pointer;
+  font-family: var(--typed);
+}
