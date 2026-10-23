@@ -49,8 +49,26 @@ const welcome = {
   id: "welcome", title: "Welcome to Lampstand", starts_at: null, time_zone: null, theme: null,
   items: { w1: item({ Song: { song: "amazing-grace", arrangement: null } }), w2: item({ Scripture: { passage: { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } }, translation: "kjv" } }), w3: item({ Song: { song: "how-great-thou-art", arrangement: null } }) } as Record<string, any>,
 };
+const STARTER = "01920000-0000-7000-8000-6c616d707374";
+const themes: any[] = [{
+  id: STARTER, name: "Starter",
+  text: { font_family: "Noto Sans", size: 72, min_size: 36, weight: 400, italic: false, color: { r: 255, g: 255, b: 255, a: 255 }, align: "Center", valign: "Middle", line_spacing: 1.2, uppercase: false, shadow: null, outline: null },
+  background: { Color: { r: 0, g: 0, b: 0, a: 255 } }, text_area: { x: 0, y: 0, width: 1, height: 1 }, max_lines: 4, transition: { kind: "Cut", duration_ms: 0 }, show_copyright: true,
+}];
+let settings: any = { clicker_mode: false, default_translation: null, brand: null, brand_theme: null, default_theme: null, idle: null };
+const hex = (c: any) => "#" + [c.r, c.g, c.b].map((n: number) => n.toString(16).padStart(2, "0")).join("");
+// A stand-in for the picture the core draws of a theme: its colours and font on a 16:9 card.
+const themeThumb = (t: any, sample: string, w: number, h: number) => {
+  const lines = sample === "Verse" ? ["For God so loved the world, that he gave", "his only begotten Son"] : sample === "Text" ? ["Welcome", "Coffee after the service"] : ["Amazing grace! How sweet the sound", "That saved a wretch like me!"];
+  const bg = t.background?.Color ? hex(t.background.Color) : "#000";
+  const size = Math.round(h * (t.text.size / 1080));
+  const y0 = t.text_area.y * h + (t.text_area.height * h - lines.length * size * 1.2) / 2 + size;
+  const x = (t.text_area.x + t.text_area.width / 2) * w;
+  const t0 = lines.map((l, i) => `<text x='${x}' y='${y0 + i * size * 1.2}' fill='${hex(t.text.color)}' font-family='${t.text.font_family}, sans-serif' font-size='${size}' font-weight='${t.text.weight}' text-anchor='middle'>${l}</text>`).join("");
+  return "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'><rect width='${w}' height='${h}' fill='${bg}'/>${t0}</svg>`);
+};
 const state: any = { services: [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
-if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, enabled: true });
+if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, idle: null, enabled: true });
 (window as any).__mock = state;
 
 const ID = (n: string) => n;
@@ -81,7 +99,7 @@ function load(id: string) {
   }
   return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })), sections };
 }
-function pushLive() { emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: false, overlay: state.overlay } }); }
+function pushLive() { emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay } }); }
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
 function move(dir: number, byItem = false) {
   const f = flat(); if (!f.length) return;
@@ -102,7 +120,20 @@ function api(req: any): any {
       switch (key) {
         case "SearchSongs": { const q = (arg.query || "").toLowerCase(); return { type: "Songs", data: (state.scene === "fresh" ? songs.slice(0, 2) : songs).filter((s) => s.title.toLowerCase().includes(q)).slice(0, arg.limit).map((s) => ({ song: s.id, title: s.title, line: s.sections[0].lines[0] })) }; }
         case "GetSong": return { type: "Song", data: songs.find((s) => s.id === arg) };
-        case "ListThemes": return { type: "Themes", data: [] };
+        case "ListThemes": return { type: "Themes", data: themes };
+        case "PutTheme": { const i = themes.findIndex((t) => t.id === arg.id); if (i >= 0) themes[i] = arg; else themes.push(arg); emit({ type: "Changed", data: { kind: "theme", id: arg.id } }); return ok; }
+        case "DeleteTheme": {
+          if (arg === STARTER) return { type: "Error", data: { message: "The Starter theme can't be deleted: it is what every screen falls back to. Duplicate it to make your own." } };
+          const i = themes.findIndex((t) => t.id === arg); if (i >= 0) themes.splice(i, 1);
+          if (settings.default_theme === arg) settings = { ...settings, default_theme: null };
+          return ok;
+        }
+        case "RestoreStarterTheme": return ok;
+        case "ExportBrand": return { type: "Text", data: "Saved the brand: 1 theme and 1 picture or video file." };
+        case "InspectBrand": return { type: "BrandFile", data: { name: "Grace Chapel", has_logo: true, font_family: "Noto Serif", font_installed: true, missing_fonts: [], themes: ["Grace Chapel"], idle: null, has_brand: true } };
+        case "ImportBrand": return { type: "Text", data: "Imported the brand: 1 theme added, 0 replaced." };
+        case "ThemePreview": return { type: "Thumbnail", data: themeThumb(arg.theme, arg.sample, arg.thumb_width, Math.round(arg.thumb_width * arg.height / arg.width)) };
+        case "DeckSlidePicture": return { type: "DeckSlide", data: { thumbnail: svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } };
         case "ListTranslations": return { type: "Translations", data: [{ id: "kjv", name: "King James Version", abbreviation: "KJV", language: "en", licence: "PublicDomain", text: "kjv" }] };
         case "LookupPassage": { const ref = Object.keys(verses).find((k) => arg.reference.toLowerCase().startsWith(k.toLowerCase().split(":")[0].toLowerCase())) ?? "John 3:16"; return { type: "Passage", data: { passage: { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } }, display: ref, verses: verses[ref] } }; }
         case "ListSongDatabases": return { type: "SongDatabases", data: [{ code: "en", name: "English", source: "Free song database" }] };
@@ -138,6 +169,7 @@ function api(req: any): any {
         case "SetMediaLooped": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].kind.Media.looped = arg.looped; return { type: "Service", data: s }; }
         case "Close": { state.loaded = null; state.live = null; state.preview = null; state.loopOverrides = {}; pushLive(); return ok; }
         case "SetObsScene": case "Reschedule": return ok;
+        case "SetTheme": { const s = state.services.find((x: any) => x.id === arg.service); s.theme = arg.theme; return { type: "Service", data: s }; }
         case "SetLiveLoop": {
           state.loopOverrides[arg.header] = arg.seconds;
           if (state.loaded) { state.loaded = load(state.loaded.service); emit({ type: "Loaded", data: state.loaded }); }
@@ -183,7 +215,15 @@ function api(req: any): any {
         case "BrowserSourceUrl": return { type: "Text", data: "http://127.0.0.1:7340/source/lyrics?key=…" };
         default: return ok;
       }
-    case "Settings": return { type: "Settings", data: { clicker_mode: false } };
+    case "Settings":
+      if (key === "Put") settings = arg;
+      if (key === "SaveBrand") {
+        const id = settings.brand_theme ?? "brand-theme";
+        const t = { ...JSON.parse(JSON.stringify(themes[0])), id, name: arg.name || "Our church", background: { Color: arg.primary }, text: { ...themes[0].text, color: arg.text ?? { r: 255, g: 255, b: 255, a: 255 }, font_family: arg.font_family || "Noto Sans" } };
+        const i = themes.findIndex((x) => x.id === id); if (i >= 0) themes[i] = t; else themes.push(t);
+        settings = { ...settings, brand: arg, brand_theme: id, default_theme: id };
+      }
+      return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
     case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: [], nearby: [] } };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };

@@ -4,7 +4,7 @@ use cosmic_text::{Attrs, Buffer, Family, Metrics, Shaping, Style, Weight, Wrap};
 use lampstand_core::geom::{Color, Point, Rect, Transform};
 use lampstand_core::id::Timestamp;
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputRole};
-use lampstand_core::program::{Content, Overlay, Program, SlideText};
+use lampstand_core::program::{Content, Idle, Overlay, Program, SlideText};
 use lampstand_core::scene::{
     Fit, HAlign, ImageNode, Node, NodeId, NodeKind, Paint, Paragraph, PathCommand, PathNode, Scene,
     Stroke, TextBlock, TextRun, VAlign, VideoNode, COMPOSITOR_NODE_BASE,
@@ -51,9 +51,12 @@ pub enum FitWarning {
 ///
 /// Overlays: `Black` and `Logo` cover an audience output completely. The
 /// stage ignores them (the confidence monitor keeps its slides), and the
-/// stream shows nothing under them, staying transparent. The logo is a
-/// placeholder (a ring in the theme's text colour on black) until the
-/// contract has a logo asset.
+/// stream shows nothing under them, staying transparent. The logo screen is the
+/// church's logo on its brand colour, or a ring until it has set one.
+///
+/// Idle: when the program carries an `Idle` (an audience output with
+/// nothing on air), that picture, video or slide fills the screen in place
+/// of the theme background. Stage and stream outputs never show it.
 pub fn compose(
     program: &Program,
     output: &OutputConfig,
@@ -244,10 +247,17 @@ impl Compositor<'_> {
         match self.program.overlay {
             Overlay::Black => return nodes,
             Overlay::Logo => {
-                nodes.push(self.logo());
+                nodes.extend(self.logo_screen());
                 return nodes;
             }
             Overlay::None => {}
+        }
+
+        // Nothing on air: the screen's idle picture, video or slide, in
+        // place of the theme's background.
+        if let Some(idle) = self.program.idle.clone() {
+            nodes.extend(self.idle(&idle));
+            return nodes;
         }
 
         let bg_rect = match self.output.background {
@@ -335,8 +345,62 @@ impl Compositor<'_> {
         }
     }
 
-    /// Placeholder for the logo overlay: a ring in the text colour.
-    fn logo(&mut self) -> Node {
+    /// The Logo overlay: the church's logo contained in the safe area on
+    /// its background colour, or a ring in its accent colour until it has
+    /// one. Without a brand, the ring is in the theme's text colour on
+    /// black.
+    fn logo_screen(&mut self) -> Vec<Node> {
+        let (image, background, accent) = match &self.program.logo {
+            Some(logo) => (logo.image, logo.background, logo.accent),
+            None => (None, Color::BLACK, self.theme.text.color),
+        };
+        let mut nodes = Vec::new();
+        if background != Color::BLACK {
+            nodes.push(self.fill_rect(self.full(), background));
+        }
+        match image {
+            Some(blob) => {
+                let inset = Rect {
+                    x: self.safe.x + self.safe.width * 0.2,
+                    y: self.safe.y + self.safe.height * 0.2,
+                    width: self.safe.width * 0.6,
+                    height: self.safe.height * 0.6,
+                };
+                nodes.push(self.node(NodeKind::Image(ImageNode {
+                    blob,
+                    rect: inset,
+                    fit: Fit::Contain,
+                    crop: None,
+                })));
+            }
+            None => nodes.push(self.ring(accent)),
+        }
+        nodes
+    }
+
+    /// The idle screen, filling the whole output.
+    fn idle(&mut self, idle: &Idle) -> Vec<Node> {
+        let full = self.full();
+        match idle {
+            Idle::Image { blob } => vec![self.node(NodeKind::Image(ImageNode {
+                blob: *blob,
+                rect: full,
+                fit: Fit::Cover,
+                crop: None,
+            }))],
+            Idle::Video { blob } => vec![self.node(NodeKind::Video(VideoNode {
+                blob: *blob,
+                rect: full,
+                fit: Fit::Cover,
+                looped: true,
+                muted: true,
+                autoplay: true,
+            }))],
+            Idle::Deck { scene } => vec![self.deck_group(scene, full)],
+        }
+    }
+
+    fn ring(&mut self, color: Color) -> Node {
         let r = self.safe.width.min(self.safe.height) * 0.15;
         let c = Point {
             x: self.safe.x + self.safe.width / 2.0,
@@ -356,7 +420,7 @@ impl Compositor<'_> {
             PathCommand::Close,
         ];
         let stroke = Stroke {
-            paint: Paint::Solid(self.theme.text.color),
+            paint: Paint::Solid(color),
             width: r * 0.1,
             dash: None,
         };
@@ -810,6 +874,7 @@ mod tests {
             safe_area: safe,
             background: mode,
             theme: None,
+            idle: None,
             enabled: true,
         }
     }
@@ -907,6 +972,8 @@ mod tests {
                 slide: slide("Next", &["Announcements"], None),
             }),
             theme: None,
+            idle: None,
+            logo: None,
         }
     }
 
@@ -1188,6 +1255,103 @@ mod tests {
             &t,
         );
         assert_eq!(logo.scene.nodes.len(), 2);
+    }
+
+    fn blob(n: u8) -> lampstand_core::id::BlobHash {
+        lampstand_core::id::BlobHash::of(&[n])
+    }
+
+    fn kinds(scene: &Scene) -> Vec<&'static str> {
+        scene
+            .nodes
+            .iter()
+            .map(|n| match n.kind {
+                NodeKind::Image(_) => "image",
+                NodeKind::Video(_) => "video",
+                NodeKind::Group(_) => "group",
+                NodeKind::Path(_) => "path",
+                NodeKind::Text(_) => "text",
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_logo_screen_shows_the_church_logo_on_its_colour() {
+        use lampstand_core::program::Logo;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let mut p = program(None, Overlay::Logo);
+        p.logo = Some(Logo {
+            image: Some(blob(1)),
+            background: Color::rgb(20, 30, 90),
+            accent: Color::WHITE,
+        });
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "path", "image"]);
+        // No logo chosen yet: a ring in the accent colour.
+        p.logo.as_mut().unwrap().image = None;
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "path", "path"]);
+    }
+
+    #[test]
+    fn idle_fills_an_audience_screen_and_video_loops_muted() {
+        let t = theme(60.0, 30.0);
+        let audience = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Fit,
+            safe(),
+        );
+        let mut p = program(None, Overlay::None);
+        p.idle = Some(Idle::Image { blob: blob(2) });
+        let c = run(&p, &audience, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "image"]);
+        p.idle = Some(Idle::Video { blob: blob(3) });
+        let c = run(&p, &audience, 1920.0, 1080.0, &t);
+        let NodeKind::Video(v) = &c.scene.nodes[1].kind else {
+            panic!("expected a video");
+        };
+        assert!(v.looped && v.muted && v.autoplay);
+        assert_eq!(v.rect.width, 1920.0, "idle ignores the safe area");
+        p.idle = Some(Idle::Deck {
+            scene: deck_scene(),
+        });
+        let c = run(&p, &audience, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "group"]);
+    }
+
+    #[test]
+    fn black_and_logo_still_cover_the_idle_screen() {
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let mut p = program(None, Overlay::Black);
+        p.idle = Some(Idle::Image { blob: blob(2) });
+        assert_eq!(kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene), ["path"]);
+        p.overlay = Overlay::Logo;
+        assert_eq!(
+            kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene),
+            ["path", "path"]
+        );
+    }
+
+    #[test]
+    fn stage_and_stream_ignore_idle() {
+        let t = theme(60.0, 30.0);
+        let mut p = program(None, Overlay::None);
+        p.idle = Some(Idle::Image { blob: blob(2) });
+        for role in [OutputRole::Stage, OutputRole::Stream] {
+            let o = output(role, BackgroundMode::Bleed, safe());
+            let c = run(&p, &o, 1920.0, 1080.0, &t);
+            assert!(!kinds(&c.scene).contains(&"image"), "{role:?}");
+        }
     }
 
     #[test]

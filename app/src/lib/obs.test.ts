@@ -198,7 +198,7 @@ test("a picture sent to OBS is off, waiting for OBS, or on show there", () => {
 });
 
 test("a browser source is a picture sent to OBS and not a screen", () => {
-  const base = { id: "a", name: "a", role: "Stream", safe_area: { top: 0, right: 0, bottom: 0, left: 0 }, background: "Bleed", theme: null, enabled: true } as const;
+  const base = { id: "a", name: "a", role: "Stream", safe_area: { top: 0, right: 0, bottom: 0, left: 0 }, background: "Bleed", theme: null, idle: null, enabled: true } as const;
   const picture = { ...base, target: { BrowserSource: { width: 1920, height: 1080 } } };
   const window = { ...base, target: { Window: { width: 960, height: 540 } } };
   assert.equal(isPicture(picture), true);

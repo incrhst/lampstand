@@ -32,7 +32,7 @@
           {:else}
             <span class="num" aria-hidden="true">{i + 1}</span>
           {/if}
-          <span>{step.title}</span>
+          <span>{step.title}{#if step.optional && !step.done}{" "}<span class="optional">(optional)</span>{/if}</span>
         </button>
       </li>
     {/each}

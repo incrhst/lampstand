@@ -243,6 +243,19 @@ pub fn deck_thumbnail(
     fonts: &std::sync::Mutex<Option<lampstand_layout::Fonts>>,
     renderer: &lampstand_render::Renderer,
 ) -> Result<String, String> {
+    deck_slide_picture(library, deck, 0, width, fonts, renderer).map(|(picture, _)| picture)
+}
+
+/// `LibraryRequest::DeckSlidePicture`: slide `slide` (from 0, hidden slides
+/// left out) after its builds, and how many slides the deck has.
+pub fn deck_slide_picture(
+    library: &Library,
+    deck: DeckId,
+    slide: usize,
+    width: u32,
+    fonts: &std::sync::Mutex<Option<lampstand_layout::Fonts>>,
+    renderer: &lampstand_render::Renderer,
+) -> Result<(String, usize), String> {
     let deck = library
         .deck(deck)
         .map_err(|e| e.to_string())?
@@ -258,14 +271,18 @@ pub fn deck_thumbnail(
     };
     let scene = parsed
         .slides
-        .first()
+        .get(slide)
         .and_then(|slide| slide.scenes.last())
-        .ok_or("the deck has no slides")?;
+        .ok_or(if parsed.slides.is_empty() {
+            "the deck has no slides"
+        } else {
+            "the deck has no such slide"
+        })?;
     let (w, h) = thumbnail_size(scene, width);
     let image = renderer
         .render_offscreen(scene, w, h)
         .map_err(|e| format!("{e:?}"))?;
-    png_data_url(&image)
+    Ok((png_data_url(&image)?, parsed.slides.len()))
 }
 
 const VIDEO_EXTENSIONS: [&str; 5] = ["mp4", "mov", "m4v", "webm", "mkv"];

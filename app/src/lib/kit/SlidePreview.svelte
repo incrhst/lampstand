@@ -13,6 +13,8 @@
     size = "normal",
     empty = "",
     image = null,
+    idle = null,
+    brand = null,
   }: {
     lines?: readonly string[];
     overlay?: "None" | "Black" | "Logo";
@@ -24,6 +26,10 @@
     empty?: string;
     /** A rendered picture of the slide (a `data:` URL), drawn instead of lines. */
     image?: string | null;
+    /** A picture of the screen's idle screen, shown when there is nothing to show. */
+    idle?: string | null;
+    /** The church's logo screen, for the Logo overlay. */
+    brand?: { logo: string | null; background: string; accent: string } | null;
   } = $props();
 
   let box = $derived.by(() => {
@@ -34,8 +40,17 @@
 
 <div class="screen {size}">
   {#if overlay === "Logo"}
-    <!-- The ring the compositor draws until a church logo can be set. -->
-    <div class="cover"><span class="logo" aria-label="Logo"></span></div>
+    <!-- The church's logo on its colour; a ring until it has a logo, as the screens show. -->
+    <div class="cover" style={brand ? `background:${brand.background}` : ""}>
+      {#if brand?.logo}
+        <img class="mark" src={brand.logo} alt="Logo" />
+      {:else}
+        <span class="logo" aria-label="Logo" style={brand ? `border-color:${brand.accent}` : ""}></span>
+      {/if}
+    </div>
+  {:else if overlay === "None" && idle && lines.length === 0 && !image}
+    <img class="picture idle" src={idle} alt="Idle screen" />
+    <span class="idle-tag">Idle screen</span>
   {:else if overlay === "None" && image}
     <img class="picture" src={image} alt="" />
   {:else if overlay === "None"}
@@ -100,6 +115,24 @@
     aspect-ratio: 1;
     border-radius: 50%;
     border: max(2px, 1cqw) solid #fff;
+  }
+  .mark {
+    max-width: 60%;
+    max-height: 60%;
+    object-fit: contain;
+  }
+  .picture.idle {
+    object-fit: cover;
+  }
+  .idle-tag {
+    position: absolute;
+    left: 0.4rem;
+    bottom: 0.4rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    background: rgb(0 0 0 / 0.6);
+    color: #fff;
+    font-size: 0.7rem;
   }
   .picture {
     position: absolute;

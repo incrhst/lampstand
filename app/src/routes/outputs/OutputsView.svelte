@@ -3,7 +3,7 @@
      T50 replaces this with outputs setup and the calibration wizard. -->
 <script lang="ts">
   import { request, type DisplayMatch, type OutputConfig } from "../../lib/api";
-  import { isCalibrated, live, refreshOutputs, report } from "../../lib/state.svelte";
+  import { isCalibrated, live, refreshOutputs, refreshSettings, refreshThemes, report, saveSettings } from "../../lib/state.svelte";
   import { isScreen } from "../../lib/obs";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -14,6 +14,9 @@
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import CalibrateView from "./CalibrateView.svelte";
+  import ThemePicker from "../../lib/kit/ThemePicker.svelte";
+  import IdlePicker from "../../lib/kit/IdlePicker.svelte";
+  import Panel from "../../lib/kit/Panel.svelte";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
   let { onobs }: { onobs?: () => void } = $props();
@@ -85,6 +88,7 @@
       safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
       background: "Bleed",
       theme: null,
+      idle: null,
       enabled: false,
     });
   }
@@ -110,6 +114,8 @@
   }
 
   refresh();
+  refreshThemes();
+  refreshSettings();
 </script>
 
 {#if calibratingOutput}
@@ -146,6 +152,15 @@
       </div>
     {/if}
 
+    <div class="idle-default">
+      <Panel
+        title="When nothing is on air"
+        description="What every screen shows before the service, between items and after it. Press Logo or Blank in Present to cover it. A screen can choose its own below."
+      >
+        <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Blank"} onchange={(idle) => saveSettings({ idle: idle === "Blank" ? null : idle })} />
+      </Panel>
+    </div>
+
     <ul class="plain screens">
       {#each screens as o (o.id)}
         <li class="screen">
@@ -161,6 +176,21 @@
             {:else}
               <p class="calibration warn"><Icon name="alert" size={14} />Not calibrated: text may be cut off at the edges</p>
             {/if}
+          </div>
+          <div class="options">
+            <label class="option">
+              <span class="muted">Theme</span>
+              <ThemePicker
+                label="Theme for {o.name}"
+                value={o.theme}
+                inherit="Same as the service"
+                onchange={(theme) => put({ ...o, theme })}
+              />
+            </label>
+            <div class="option idle-option">
+              <span class="muted">When nothing is on air</span>
+              <IdlePicker label="Idle screen for {o.name}" allowInherit value={o.idle} onchange={(idle) => put({ ...o, idle })} />
+            </div>
           </div>
           <div class="controls">
             <Switch checked={o.enabled} onchange={(on) => put({ ...o, enabled: on })} label={o.enabled ? "On" : "Off"} />
@@ -243,9 +273,27 @@
   }
   .screen {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1.25rem;
     padding: 1.5rem 0;
+  }
+  .options {
+    flex-basis: 100%;
+    order: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    padding-left: 17.25rem;
+  }
+  .option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+  }
+  .idle-default {
+    margin-top: 1.5rem;
   }
   .screen + .screen {
     border-top: 1px solid var(--line);
