@@ -548,8 +548,8 @@
         onclicker={toggleClicker}
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
-        onclose={askClose}
       />
+      <Button size="small" variant="ghost" icon="x" onclick={askClose} title="Put the service away; it stays in Plan">Close service</Button>
     </div>
 
     <!-- While a deck is on air the presenter view takes the right column
@@ -667,6 +667,7 @@
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
+              footer={live.liveSlide?.footer ?? null}
               image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step, liveWidth) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
@@ -703,7 +704,7 @@
                     onclick={() => show({ item: viewed.id, slide: i, step: 0 })}
                     aria-current={isLive(viewed.id, i) ? "true" : undefined}
                   >
-                    <SlidePreview lines={slide.lines} image={builtThumb(viewed.id, i)} size="small" />
+                    <SlidePreview lines={slide.lines} footer={slide.footer} image={builtThumb(viewed.id, i)} size="small" />
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
@@ -728,6 +729,7 @@
               {#if upcoming}
                 <SlidePreview
                   lines={upcoming.slide.lines}
+                  footer={upcoming.slide.footer}
                   image={builtThumb(upcoming.cursor.item, upcoming.cursor.slide)}
                   safeArea={output?.safe_area}
                 />

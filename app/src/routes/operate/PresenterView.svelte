@@ -159,7 +159,7 @@
         </h2>
         <div class="next">
           {#if upcoming}
-            <SlidePreview lines={upcoming.slide.lines} image={nextImage} {safeArea} empty="" />
+            <SlidePreview lines={upcoming.slide.lines} footer={upcoming.slide.footer} image={nextImage} {safeArea} empty="" />
           {:else}
             <SlidePreview empty="End of service" />
           {/if}

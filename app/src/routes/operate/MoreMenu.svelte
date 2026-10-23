@@ -1,5 +1,5 @@
 <!-- Present's quiet corner: the controls that are not used every minute of a
-     service (safe area, clicker mode, clearing, closing) and the keys, so
+     service (safe area, clicker mode, clearing) and the keys, so
      the bar keeps only what is run live. Escape or a click outside closes it. -->
 <script lang="ts">
   import Button from "../../lib/kit/Button.svelte";
@@ -16,7 +16,6 @@
     onclicker,
     onclearText,
     onclearAll,
-    onclose,
   }: {
     /** The safe-area guide is drawn on the preview. */
     guide: boolean;
@@ -29,7 +28,6 @@
     onclicker: () => void;
     onclearText: () => void;
     onclearAll: () => void;
-    onclose: () => void;
   } = $props();
 
   let open = $state(false);
@@ -56,14 +54,13 @@
 <svelte:window onclick={onwindowclick} onkeydown={onwindowkey} />
 
 <span class="more" bind:this={root}>
-  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, clearing, closing the service and the keys">More</Button>
+  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, clearing and the keys">More</Button>
   {#if open}
     <div class="menu" role="menu" aria-label="More controls">
       {@render item("safeArea", "Safe area guide", guide ? "On" : "Off", then(onguide), guide)}
       {@render item("keyboard", "Clicker mode", clicker ? "On" : "Off", then(onclicker), clicker)}
       {@render item("x", "Clear text", "Keep the background", then(onclearText))}
       {@render item("x", "Clear all", "Text, background and overlay", then(onclearAll))}
-      {@render item("x", "Close service", "Put it away; it stays in Plan", then(onclose))}
       <h3>Keys</h3>
       <dl>
         {#each keys as [k, what]}

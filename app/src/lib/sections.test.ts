@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { parseLabel, parseOrder, sectionCursor, unknownLabels } from "./sections.ts";
 import type { LoadedService } from "./api";
 
-const slide = (label: string) => ({ label, lines: [label], steps: 0, notes: "" });
+const slide = (label: string) => ({ label, lines: [label], footer: null, steps: 0, notes: "" });
 
 // V1 C V2 C B C, with the first chorus split over two slides.
 const service: LoadedService = {

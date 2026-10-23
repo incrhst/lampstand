@@ -5,7 +5,7 @@
      Themes (T51) holds the library's themes and Church look (the brand
      quick start) makes a first one; Team (T54) joins them here. -->
 <script module lang="ts">
-  export type SetupTab = "screens" | "themes" | "brand" | "scripture" | "devices" | "obs";
+  export type SetupTab = "screens" | "themes" | "brand" | "idle" | "scripture" | "devices" | "obs";
 </script>
 
 <script lang="ts">
@@ -17,6 +17,7 @@
   import ScriptureSetup from "./ScriptureSetup.svelte";
   import ThemesSetup from "./ThemesSetup.svelte";
   import BrandSetup from "./BrandSetup.svelte";
+  import IdleSetup from "./IdleSetup.svelte";
 
   let { tab, onchange }: { tab: SetupTab; onchange: (tab: SetupTab) => void } = $props();
 
@@ -24,6 +25,7 @@
     { id: "screens", label: "Screens", subtitle: "Projectors, TVs and windows", icon: "monitor" },
     { id: "themes", label: "Themes", subtitle: "How songs and verses look", icon: "palette" },
     { id: "brand", label: "Church look", subtitle: "Name, logo, colours, font", icon: "image" },
+    { id: "idle", label: "Idle screen", subtitle: "What shows when nothing is on air", icon: "monitor" },
     { id: "scripture", label: "Scripture", subtitle: "Bible versions and the default", icon: "scripture" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
     { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
@@ -44,11 +46,13 @@
 
   <div class="content">
     {#if tab === "screens"}
-      <OutputsView onobs={() => onchange("obs")} />
+      <OutputsView onobs={() => onchange("obs")} onidle={() => onchange("idle")} />
     {:else if tab === "themes"}
       <ThemesSetup onbrand={() => onchange("brand")} />
     {:else if tab === "brand"}
       <BrandSetup onthemes={() => onchange("themes")} />
+    {:else if tab === "idle"}
+      <IdleSetup onscreens={() => onchange("screens")} />
     {:else if tab === "obs"}
       <ObsSetup />
     {:else if tab === "scripture"}
