@@ -215,6 +215,16 @@ pub enum ServiceRequest {
         starts_at: Option<Timestamp>,
         time_zone: Option<String>,
     },
+    /// A new service started from an existing one: the same items in the
+    /// same order with their notes, OBS scenes, loops and arrangements, all
+    /// with fresh IDs, under `title` and the given time. Answers
+    /// `Response::Service` with the copy.
+    Duplicate {
+        service: ServiceId,
+        title: String,
+        starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
+    },
     /// Moves a service to another time and zone, or clears its date with
     /// `starts_at: None`. Answers `Response::Service`.
     Reschedule {
