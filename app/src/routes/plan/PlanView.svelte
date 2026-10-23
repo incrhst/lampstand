@@ -1241,7 +1241,12 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
+    /* Wrap inside the pane rather than run on under the Library. */
+    max-width: 100%;
+    min-width: 0;
   }
   .banner {
     padding: 0 2rem;
