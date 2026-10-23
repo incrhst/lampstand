@@ -8,4 +8,8 @@ device: string, fingerprint: string, name: string, address: string | null, conne
 /**
  * It holds the presenter role.
  */
-presenting: boolean, };
+presenting: boolean, 
+/**
+ * Why the last attempt to reach it failed, when it is not connected.
+ */
+problem: string | null, };

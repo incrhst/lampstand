@@ -1,5 +1,5 @@
-<!-- Bare devices screen (T17): pair this device with another and see which
-     paired devices are connected. The presenting machine shows a code; the
+<!-- Devices screen (T17): pair this device with another, see which paired
+     devices are connected and when changes last moved. The presenting machine shows a code; the
      service device types it. Teams and roles (T18) replace pairing. -->
 <script lang="ts">
   import { onDestroy } from "svelte";
@@ -9,6 +9,7 @@
   import Panel from "../../lib/kit/Panel.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
+  import { ago, syncPill } from "../../lib/sync";
 
   let status: TeamStatus | null = $state(null);
   let code = $state("");
@@ -60,6 +61,8 @@
     clearInterval(clock);
   });
   refresh();
+
+  const pillOf = (s: TeamStatus | null) => syncPill(s?.sync ?? null);
 
   function spaced(c: string) {
     return `${c.slice(0, 3)} ${c.slice(3)}`;
@@ -161,6 +164,15 @@
     {#snippet actions()}
       <Button onclick={refresh}>Refresh</Button>
     {/snippet}
+    {#if status && status.sync.paired > 0}
+      <p class="summary" class:warn={pillOf(status).tone === "warn"}>
+        <strong>{pillOf(status).text}</strong>
+        {#if status.sync.reason}<br />{status.sync.reason}{/if}
+      </p>
+      <p class="muted">
+        Last change received: {ago(status.sync.last_in_ms, now)} · sent: {ago(status.sync.last_out_ms, now)}
+      </p>
+    {/if}
     <ul class="list">
       {#each status?.paired ?? [] as p (p.device)}
         <li>
@@ -168,7 +180,7 @@
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
             <small class="role" class:presenting={p.presenting}>{p.presenting ? "Presenting" : "Planning"}</small>
-            <small class="muted">{p.connected ? "connected" : "not connected"}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
+            <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>
           <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
         </li>
@@ -238,6 +250,12 @@
   }
   .role.presenting {
     color: var(--accent);
+  }
+  .summary {
+    margin: 0 0 0.3rem;
+  }
+  .summary.warn {
+    color: var(--warn);
   }
   .badge {
     color: var(--accent);

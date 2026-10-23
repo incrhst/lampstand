@@ -305,6 +305,82 @@ async fn paired_devices_push_changes_both_ways_at_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn status_shows_when_changes_arrived_and_went_out() {
+    let (presenter, office) = paired().await;
+    until(Duration::from_secs(5), "connected", || {
+        presenter.node.status().connected() == 1 && office.node.status().connected() == 1
+    })
+    .await;
+    let s = song("Status", "a change to count");
+    let before = Instant::now();
+    office.repo().put(&s).unwrap();
+    until(Duration::from_secs(5), "the song", || {
+        title(presenter.repo(), s.id).is_some()
+    })
+    .await;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let window = before.elapsed().as_millis() as i64 + 5_000;
+    let out = office.node.status().last_out_ms.expect("sent a change");
+    let arrived = presenter.node.status().last_in_ms.expect("got a change");
+    assert!(now - out < window && now - arrived < window);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_that_unpaired_this_one_shows_as_refused_not_just_offline() {
+    let (presenter, office) = paired().await;
+    until(Duration::from_secs(5), "connected", || {
+        office.node.status().connected() == 1
+    })
+    .await;
+    assert!(office.node.status().paired[0].problem.is_none());
+
+    presenter
+        .node
+        .unpair(office.node.device())
+        .expect("unpaired");
+    let status = loop {
+        let st = office.node.status();
+        if st.paired[0].refused {
+            break st;
+        }
+        assert!(
+            office.node.status().connected() <= 1,
+            "still counted as a peer"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    let p = &status.paired[0];
+    assert!(!p.connected);
+    assert!(
+        p.problem.as_deref().unwrap().contains("not paired"),
+        "{p:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cut_off_peer_is_offline_without_a_problem() {
+    let (presenter, office) = paired().await;
+    until(Duration::from_secs(5), "connected", || {
+        office.node.status().connected() == 1
+    })
+    .await;
+    presenter.cut();
+    until(Duration::from_secs(5), "disconnected", || {
+        office.node.status().connected() == 0
+    })
+    .await;
+    // The device is reachable by address but refusing connections: that
+    // is a reason to show, not a refusal.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let st = office.node.status();
+    assert!(!st.paired[0].refused);
+    assert!(st.paired[0].problem.is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_cut_off_peer_catches_up_after_reconnecting() {
     let (mut presenter, office) = paired().await;
     until(Duration::from_secs(5), "connected", || {

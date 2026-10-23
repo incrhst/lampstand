@@ -85,6 +85,8 @@ struct Shared {
     downloads: PathBuf,
     /// `None` when the local server could not start.
     sync: Option<Arc<Sync>>,
+    /// Why `sync` is `None`, for the status bar.
+    sync_error: Option<String>,
     /// OBS over its WebSocket (T89). Answers `Obs` requests without the
     /// `App` lock.
     obs: Arc<ObsControl>,
@@ -145,7 +147,10 @@ async fn api(
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {
-                message: "sync is off: the local server could not start".into(),
+                message: format!(
+                    "Sync is off: {}",
+                    state.sync_error.as_deref().unwrap_or("it did not start")
+                ),
             },
         }),
         Request::Library(LibraryRequest::ImportFiles { paths }) => {
@@ -503,14 +508,14 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         )),
         Err(e) => Err(e.to_string()),
     };
-    let sync = match sync {
+    let (sync, sync_error) = match sync {
         Ok(sync) => {
             lock(&app).set_server_address(sync.public_address());
-            Some(Arc::new(sync))
+            (Some(Arc::new(sync)), None)
         }
         Err(e) => {
             eprintln!("lampstand: sync is off: {e}");
-            None
+            (None, Some(e))
         }
     };
     let wake_tx = tx.clone();
@@ -536,6 +541,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
         downloads: data_dir.join("downloads"),
         sync,
+        sync_error,
         obs: obs_control,
         thumbnails,
         thumbnail_fonts: Arc::new(Mutex::new(None)),

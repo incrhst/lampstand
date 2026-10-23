@@ -3,6 +3,7 @@ import type { DeviceView } from "./DeviceView";
 import type { NearbyView } from "./NearbyView";
 import type { PairingView } from "./PairingView";
 import type { PresenterView } from "./PresenterView";
+import type { SyncSummary } from "./SyncSummary";
 
 /**
  * This device on the network, for the devices screen.
@@ -27,4 +28,4 @@ nearby: Array<NearbyView>,
 /**
  * Who may present, and what this device can do about it.
  */
-presenter: PresenterView, };
+presenter: PresenterView, sync: SyncSummary, };

@@ -3,6 +3,7 @@
 // choices the screens show.
 
 import type { PresenterView, TeamStatus } from "./api";
+import type { SyncPill } from "./sync";
 
 /** This device only plans: its screens stay dark and it cannot take a service live. */
 export function isPlanning(team: TeamStatus | null): boolean {
@@ -19,24 +20,30 @@ export function howLong(seconds: number): string {
   return h === 1 ? "1 hour" : `${h} hours`;
 }
 
-/** The sync item in the status bar: this device's part, then the others. */
-export function syncLabel(team: TeamStatus | null): string {
-  if (!team || team.paired.length === 0) return "This device only";
+/**
+ * The status bar's sync pill with this device's part in it: "Presenting ·
+ * Synced with 2 devices", "Planning · Mary's laptop is presenting". When
+ * sync has a problem the problem keeps the words.
+ */
+export function withRole(pill: SyncPill, team: TeamStatus | null): SyncPill {
+  if (!team || team.paired.length === 0) return pill;
   const p = team.presenter;
-  if (p.role === "Presenting") {
-    const synced = team.paired.filter((d) => d.connected).length;
-    if (synced === 0) return "Presenting · other devices offline";
-    return `Presenting · ${synced + 1} devices synced`;
-  }
+  if (p.role === "Presenting") return { ...pill, text: `Presenting · ${pill.text}` };
+  if (pill.tone === "warn") return { ...pill, text: `Planning · ${pill.text}` };
+  const who = p.holder_name || "another device";
+  let text: string;
   switch (p.standing) {
     case "Open":
-      return "Planning · nobody is presenting";
+      text = "nobody is presenting";
+      break;
     case "Wait":
     case "TakeOver":
-      return `Planning · ${p.holder_name} is offline`;
+      text = `${who} is offline`;
+      break;
     default:
-      return `Planning · ${p.holder_name} is presenting`;
+      text = `${who} is presenting`;
   }
+  return { ...pill, text: `Planning · ${text}`, title: `${pill.title}. This device is planning: it can't take a service live` };
 }
 
 /** What the one button for taking a service live does on this device. */

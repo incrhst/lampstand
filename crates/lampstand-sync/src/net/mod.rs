@@ -138,6 +138,10 @@ pub struct NodeStatus {
     pub paired: Vec<PeerStatus>,
     /// Lampstand devices seen by mDNS that are not paired with this one.
     pub nearby: Vec<Nearby>,
+    /// When sync messages last arrived from, and went out to, any paired
+    /// device (unix ms): what the status bar calls "syncing" while recent.
+    pub last_in_ms: Option<i64>,
+    pub last_out_ms: Option<i64>,
     pub presenter: PresenterStatus,
 }
 
@@ -171,6 +175,12 @@ pub struct PeerStatus {
     pub connected: bool,
     /// It holds the presenter lease.
     pub presenting: bool,
+    /// Why the last attempt to reach it failed, for people; cleared on
+    /// connecting.
+    pub problem: Option<String>,
+    /// The device answered and refused this one (it no longer has it
+    /// paired), so waiting will not help.
+    pub refused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +229,15 @@ struct Peers {
     dialling: HashSet<DeviceKey>,
     /// When each device was last heard from, once its session has run.
     last_contact: HashMap<DeviceKey, Instant>,
+    /// The last failed attempt to reach each paired device, with whether
+    /// it was refused.
+    problems: HashMap<DeviceKey, (String, bool)>,
+}
+
+#[derive(Default)]
+struct Activity {
+    last_in_ms: Option<i64>,
+    last_out_ms: Option<i64>,
 }
 
 /// This device on the network: its paired devices, its connections and
@@ -233,6 +252,7 @@ pub struct SyncNode {
     /// Held by the one pairing handshake allowed at a time.
     pairing: tokio::sync::Mutex<()>,
     peers: Mutex<Peers>,
+    activity: Mutex<Activity>,
     /// Bumped whenever the status changes or mDNS sees something.
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
@@ -304,6 +324,7 @@ impl SyncNode {
             trust: Mutex::new(trust),
             pairing: tokio::sync::Mutex::new(()),
             peers: Mutex::new(Peers::default()),
+            activity: Mutex::new(Activity::default()),
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
@@ -363,9 +384,17 @@ impl SyncNode {
                         .or_else(|| d.address.clone()),
                     connected: session.is_some(),
                     presenting: lease.holder == Some(d.device),
+                    problem: peers
+                        .problems
+                        .get(&d.device)
+                        .filter(|_| session.is_none())
+                        .map(|(why, _)| why.clone()),
+                    refused: session.is_none()
+                        && peers.problems.get(&d.device).is_some_and(|(_, r)| *r),
                 }
             })
             .collect();
+        let activity = lock(&self.activity);
         let mut nearby: Vec<Nearby> = peers
             .found
             .iter()
@@ -388,6 +417,8 @@ impl SyncNode {
             paired,
             nearby,
             presenter,
+            last_in_ms: activity.last_in_ms,
+            last_out_ms: activity.last_out_ms,
         }
     }
 
@@ -561,6 +592,8 @@ impl SyncNode {
                 address: None,
                 connected: false,
                 presenting: false,
+                problem: None,
+                refused: false,
             })
     }
 
@@ -647,6 +680,7 @@ impl SyncNode {
                                 done: Some(done),
                             },
                         );
+                        peers.problems.remove(&peer.device);
                         drop(peers);
                         self.bump();
                         let node = self.arc();
@@ -913,6 +947,31 @@ impl SyncNode {
         });
     }
 
+    /// Sync messages came in from a peer.
+    pub(crate) fn note_in(&self) {
+        lock(&self.activity).last_in_ms = Some(now_ms());
+        self.bump();
+    }
+
+    /// Sync messages went out to a peer.
+    pub(crate) fn note_out(&self) {
+        lock(&self.activity).last_out_ms = Some(now_ms());
+        self.bump();
+    }
+
+    fn set_problem(&self, device: DeviceKey, problem: Option<(String, bool)>) {
+        let changed = {
+            let mut peers = lock(&self.peers);
+            match problem {
+                Some(p) => peers.problems.insert(device, p.clone()) != Some(p),
+                None => peers.problems.remove(&device).is_some(),
+            }
+        };
+        if changed {
+            self.bump();
+        }
+    }
+
     pub(crate) fn found(&self, device: DeviceKey, found: Found) {
         if device == self.device() {
             return;
@@ -999,6 +1058,8 @@ impl SyncNode {
                 }
             }
             let mut lasted = Duration::ZERO;
+            let mut failure = None;
+            let tried = !addresses.is_empty();
             for address in addresses {
                 let started = tokio::time::Instant::now();
                 match self.dial(&address, None).await {
@@ -1009,8 +1070,15 @@ impl SyncNode {
                     }
                     // Another device answers there now.
                     Ok(_) => {}
-                    Err(_) => {}
+                    Err(e) => {
+                        let refused = matches!(e, NetError::Refused(_));
+                        failure = Some((e.to_string(), refused));
+                    }
                 }
+            }
+            if lasted == Duration::ZERO {
+                // Not found anywhere is not a failure: it is just away.
+                self.set_problem(device, failure.filter(|_| tried));
             }
             if lasted > Duration::from_secs(10) {
                 backoff = BACKOFF_START;
@@ -1031,6 +1099,12 @@ fn lease_frame(lease: &Lease) -> Frame {
         name: lease.name.clone(),
         epoch: lease.epoch,
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// `"10.0.0.5"` → `"10.0.0.5:7340"`; `"ws://host:1234/sync"` → `"host:1234"`.

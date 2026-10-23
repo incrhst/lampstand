@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use lampstand_api::{
     AskingView, DeviceView, Event, NearbyView, PairingView, PresentRequestView, PresenterRole,
-    PresenterStanding, PresenterView, Response, TeamRequest, TeamStatus,
+    PresenterStanding, PresenterView, Response, SyncState, SyncSummary, TeamRequest, TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -34,6 +34,10 @@ use lampstand_sync::presenter::{Notice, Role, Standing};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
 use crate::handler::EventSink;
+
+/// How long after a sync message the status reads "syncing". Once two
+/// devices agree they send nothing, so this is the length of a burst.
+const BUSY_MS: i64 = 1500;
 
 /// How sync starts.
 #[derive(Debug, Clone)]
@@ -167,7 +171,18 @@ impl Sync {
         on_role(presenting);
         tokio::spawn(async move {
             let mut last = None;
-            while changes.changed().await.is_ok() {
+            let mut busy = false;
+            loop {
+                if busy {
+                    // Say "synced" once the burst is over, though nothing
+                    // else has changed.
+                    tokio::select! {
+                        r = changes.changed() => if r.is_err() { break },
+                        _ = tokio::time::sleep(Duration::from_millis(BUSY_MS as u64 + 100)) => {}
+                    }
+                } else if changes.changed().await.is_err() {
+                    break;
+                }
                 // Changes come in bursts (a connection and its addresses).
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 changes.borrow_and_update();
@@ -180,11 +195,11 @@ impl Sync {
                     );
                     on_role(presenting);
                 }
-                let peers = watched.status().connected();
-                emit(Event::SyncStatus {
-                    peers,
-                    relay_connected: false,
-                });
+                let status = watched.status();
+                let sync = summarize(&status, now_ms());
+                busy = sync.state == SyncState::Syncing;
+                let peers = sync.connected;
+                emit(Event::SyncStatus { sync });
                 if last != Some(peers) {
                     eprintln!("lampstand: {peers} paired device(s) connected");
                     last = Some(peers);
@@ -275,11 +290,61 @@ impl Sync {
     }
 
     pub fn status(&self) -> TeamStatus {
-        view(&self.node.status(), self.local_addr().port())
+        view(&self.node.status(), self.local_addr().port(), now_ms())
     }
 }
 
-fn view(status: &NodeStatus, port: u16) -> TeamStatus {
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// The one honest state for the status bar, from what the node knows.
+/// Worst first: a paired device that refuses this one (`Error`), a paired
+/// device that is not connected (`Offline`), changes moving within
+/// [`BUSY_MS`] (`Syncing`), else `Synced`; with nothing paired, `DeviceOnly`.
+pub fn summarize(status: &NodeStatus, now_ms: i64) -> SyncSummary {
+    let paired = status.paired.len();
+    let connected = status.connected();
+    let refused = status.paired.iter().find(|p| p.refused);
+    let recent = [status.last_in_ms, status.last_out_ms]
+        .into_iter()
+        .flatten()
+        .max()
+        .is_some_and(|t| now_ms - t < BUSY_MS);
+    let (state, reason) = if paired == 0 {
+        (SyncState::DeviceOnly, None)
+    } else if let Some(p) = refused {
+        (
+            SyncState::Error,
+            Some(format!(
+                "{} no longer accepts this device. Unpair it on both devices and pair again.",
+                if p.name.is_empty() {
+                    "A paired device"
+                } else {
+                    &p.name
+                }
+            )),
+        )
+    } else if connected < paired {
+        (SyncState::Offline, None)
+    } else if recent {
+        (SyncState::Syncing, None)
+    } else {
+        (SyncState::Synced, None)
+    };
+    SyncSummary {
+        state,
+        paired,
+        connected,
+        reason,
+        last_in_ms: status.last_in_ms,
+        last_out_ms: status.last_out_ms,
+    }
+}
+
+fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
     TeamStatus {
         name: status.name.clone(),
         fingerprint: status.device.fingerprint(),
@@ -298,6 +363,7 @@ fn view(status: &NodeStatus, port: u16) -> TeamStatus {
                 address: p.address.clone(),
                 connected: p.connected,
                 presenting: p.presenting,
+                problem: p.problem.clone(),
             })
             .collect(),
         nearby: status
@@ -312,6 +378,7 @@ fn view(status: &NodeStatus, port: u16) -> TeamStatus {
             })
             .collect(),
         presenter: presenter_view(&status.presenter),
+        sync: summarize(status, now_ms),
     }
 }
 
@@ -355,5 +422,85 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
         replaced_by: p.notice.as_ref().map(|n| match n {
             Notice::Replaced { by } => by.clone(),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lampstand_sync::net::PeerStatus;
+
+    fn peer(name: &str, connected: bool, refused: bool) -> PeerStatus {
+        PeerStatus {
+            device: DeviceKeypair::generate().public(),
+            name: name.into(),
+            address: None,
+            connected,
+            presenting: false,
+            problem: refused.then(|| "refused".into()),
+            refused,
+        }
+    }
+
+    fn status(paired: Vec<PeerStatus>, last_in_ms: Option<i64>) -> NodeStatus {
+        NodeStatus {
+            device: DeviceKeypair::generate().public(),
+            name: "Sanctuary".into(),
+            port: Some(7340),
+            pairing: None,
+            paired,
+            nearby: Vec::new(),
+            presenter: PresenterStatus {
+                role: Role::Presenter,
+                standing: Standing::Presenting,
+                lease: Default::default(),
+                takeover_after: std::time::Duration::from_secs(120),
+                requests: Vec::new(),
+                asking: None,
+                notice: None,
+            },
+            last_in_ms,
+            last_out_ms: None,
+        }
+    }
+
+    #[test]
+    fn nothing_paired_is_this_device_only() {
+        let s = summarize(&status(vec![], None), 10_000);
+        assert_eq!(s.state, SyncState::DeviceOnly);
+        assert_eq!((s.paired, s.connected), (0, 0));
+    }
+
+    #[test]
+    fn connected_peers_are_counted_and_synced_when_quiet() {
+        let two = vec![peer("Office", true, false), peer("Laptop", true, false)];
+        let s = summarize(&status(two, Some(1_000)), 10_000);
+        assert_eq!(s.state, SyncState::Synced);
+        assert_eq!((s.paired, s.connected), (2, 2));
+        assert_eq!(s.last_in_ms, Some(1_000));
+    }
+
+    #[test]
+    fn recent_traffic_reads_as_syncing_then_settles() {
+        let one = || vec![peer("Office", true, false)];
+        let moving = summarize(&status(one(), Some(9_500)), 10_000);
+        assert_eq!(moving.state, SyncState::Syncing);
+        let settled = summarize(&status(one(), Some(9_500)), 9_500 + BUSY_MS);
+        assert_eq!(settled.state, SyncState::Synced);
+    }
+
+    #[test]
+    fn a_paired_device_not_found_is_offline() {
+        let mixed = vec![peer("Office", true, false), peer("Laptop", false, false)];
+        let s = summarize(&status(mixed, Some(9_900)), 10_000);
+        assert_eq!(s.state, SyncState::Offline, "offline outranks syncing");
+        assert_eq!((s.paired, s.connected), (2, 1));
+    }
+
+    #[test]
+    fn a_device_that_refuses_this_one_is_an_error_with_a_reason() {
+        let s = summarize(&status(vec![peer("Office", false, true)], None), 10_000);
+        assert_eq!(s.state, SyncState::Error);
+        assert!(s.reason.unwrap().contains("Office no longer accepts"));
     }
 }

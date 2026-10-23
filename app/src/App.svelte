@@ -8,11 +8,12 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshTeam, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
+  import { syncPill } from "./lib/sync";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
-  import { isPlanning, syncLabel } from "./lib/presenting";
+  import { isPlanning, withRole } from "./lib/presenting";
   import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
@@ -53,6 +54,8 @@
   }
   let obsStatus = $derived(obsPill(live.obs));
   let planningOnly = $derived(isPlanning(live.team));
+  let syncStatus = $derived(syncPill(live.sync));
+  let rolePill = $derived(withRole(syncStatus, live.team));
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -177,7 +180,7 @@
   refreshThemes();
   refreshSettings();
   refreshObs();
-  refreshTeam();
+  refreshSync();
 </script>
 
 <svelte:window {onkeydown} />
@@ -230,9 +233,9 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="Open Setup › Devices">
-        <Dot />
-        <span>{syncLabel(live.team)}</span>
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
+        <Dot tone={syncStatus.tone} />
+        <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
     {/snippet}
     {#snippet middle()}

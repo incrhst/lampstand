@@ -324,7 +324,7 @@ async fn a_remote_edit_reloads_the_service_but_never_changes_what_is_on_air() {
             .lock()
             .unwrap()
             .iter()
-            .any(|e| matches!(e, Event::SyncStatus { peers: 1, .. }))
+            .any(|e| matches!(e, Event::SyncStatus { sync } if sync.connected == 1))
             || presenter.sync.status().paired.iter().any(|p| p.connected)
     );
 }

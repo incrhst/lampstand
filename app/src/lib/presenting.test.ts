@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { PresenterView, TeamStatus } from "./api";
-import { howLong, isPlanning, presentChoice, replacedNotice, requestPrompt, syncLabel } from "./presenting.ts";
+import { howLong, isPlanning, presentChoice, replacedNotice, requestPrompt, withRole } from "./presenting.ts";
 
 const view = (over: Partial<PresenterView> = {}): PresenterView => ({
   role: "Planning",
@@ -22,9 +22,10 @@ const team = (presenter: PresenterView, connected = true): TeamStatus => ({
   fingerprint: "",
   addresses: [],
   pairing: null,
-  paired: [{ device: "aa", fingerprint: "", name: "Mary's laptop", address: null, connected, presenting: presenter.role === "Planning" }],
+  paired: [{ device: "aa", fingerprint: "", name: "Mary's laptop", address: null, connected, problem: null, presenting: presenter.role === "Planning" }],
   nearby: [],
   presenter,
+  sync: { state: "Synced", paired: 1, connected: connected ? 1 : 0, reason: null, last_in_ms: null, last_out_ms: null },
 });
 
 test("durations read plainly", () => {
@@ -35,20 +36,20 @@ test("durations read plainly", () => {
   assert.equal(howLong(7200), "2 hours");
 });
 
-test("a device with no one paired says so and never plans", () => {
-  const lone = team(view({ role: "Presenting", standing: "Presenting" }));
-  lone.paired = [];
-  assert.equal(syncLabel(lone), "This device only");
-  assert.equal(syncLabel(null), "This device only");
-  assert.equal(isPlanning(lone), false);
-});
+const pill = { tone: "ready" as const, text: "Synced with 1 device", title: "Shared" };
 
 test("the status bar names the role and who presents", () => {
-  assert.equal(syncLabel(team(view({ role: "Presenting", standing: "Presenting" }))), "Presenting · 2 devices synced");
-  assert.equal(syncLabel(team(view({ role: "Presenting", standing: "Presenting" }), false)), "Presenting · other devices offline");
-  assert.equal(syncLabel(team(view())), "Planning · Mary's laptop is presenting");
-  assert.equal(syncLabel(team(view({ standing: "Open" }))), "Planning · nobody is presenting");
-  assert.equal(syncLabel(team(view({ standing: "Wait" }), false)), "Planning · Mary's laptop is offline");
+  const lone = team(view({ role: "Presenting", standing: "Presenting" }));
+  lone.paired = [];
+  assert.deepEqual(withRole(pill, lone), pill, "no one paired: unchanged");
+  assert.deepEqual(withRole(pill, null), pill);
+  assert.equal(isPlanning(lone), false);
+  assert.equal(withRole(pill, team(view({ role: "Presenting", standing: "Presenting" }))).text, "Presenting · Synced with 1 device");
+  assert.equal(withRole(pill, team(view())).text, "Planning · Mary's laptop is presenting");
+  assert.equal(withRole(pill, team(view({ standing: "Open" }))).text, "Planning · nobody is presenting");
+  assert.equal(withRole(pill, team(view({ standing: "Wait" }), false)).text, "Planning · Mary's laptop is offline");
+  const warn = { tone: "warn" as const, text: "Offline: 1 device not reachable", title: "x" };
+  assert.equal(withRole(warn, team(view())).text, "Planning · Offline: 1 device not reachable");
   assert.equal(isPlanning(team(view())), true);
 });
 

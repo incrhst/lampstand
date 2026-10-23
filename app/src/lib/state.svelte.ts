@@ -13,12 +13,14 @@ import {
   type SlideView,
   type TeamRequest,
   type TeamStatus,
+  type SyncSummary,
   type DeviceSettings,
   type Theme,
   type UpdateStatus,
 } from "./api";
 import { loadSettings, updateSettings } from "./settings";
 import { sortThemes } from "./themes";
+import { syncFailed } from "./sync";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -39,6 +41,8 @@ class LiveState {
   decksVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** Where sync with the paired devices stands; null until first asked. */
+  sync: SyncSummary | null = $state(null);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
@@ -94,11 +98,13 @@ onEvent((event) => {
     case "Obs":
       live.obs = event.data;
       break;
+    case "SyncStatus":
+      live.sync = event.data.sync;
+      // The summary is in the event; who presents and who asks is not.
+      refreshTeam();
+      break;
     case "DisplaysChanged":
       live.displaysVersion++;
-      break;
-    case "SyncStatus":
-      refreshTeam();
       break;
   }
 });
@@ -144,13 +150,15 @@ export async function refreshTeam() {
   try {
     const was = live.team?.presenter.role;
     live.team = await request({ area: "Team", request: "Status" }, "Team");
+    live.sync = live.team.sync;
     if (was === "Presenting" && live.team.presenter.role === "Planning") {
       live.loaded = null;
       live.live = null;
       live.preview = null;
     }
-  } catch {
+  } catch (e) {
     // Sync may be off (the local server could not start): this device presents.
+    live.sync = syncFailed(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -251,6 +259,9 @@ export async function obs(req: ObsRequest): Promise<ObsView> {
   live.obs = view;
   return view;
 }
+
+/** Asks sync where it stands; a sync engine that is not running shows as an error. */
+export const refreshSync = refreshTeam;
 
 /** Refetches OBS's state, reporting a failure in the status bar. */
 export async function refreshObs() {

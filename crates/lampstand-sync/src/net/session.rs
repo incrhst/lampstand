@@ -171,6 +171,9 @@ impl State {
     }
 
     fn send_all(&self, messages: Vec<SyncMessage>) {
+        if !messages.is_empty() {
+            self.node.note_out();
+        }
         for m in messages {
             self.send(Frame::Sync {
                 kind: m.kind.as_str().to_string(),
@@ -234,6 +237,7 @@ impl State {
         if batch.is_empty() {
             return;
         }
+        self.node.note_in();
         let repo = self.node.repo.clone();
         let peer = self.peer;
         let replies = blocking(move || {
