@@ -41,7 +41,10 @@ const pill = { tone: "ready" as const, text: "Synced with 1 device", title: "Sha
 test("the status bar names the role and who presents", () => {
   const lone = team(view({ role: "Presenting", standing: "Presenting" }));
   lone.paired = [];
-  assert.deepEqual(withRole(pill, lone), pill, "no one paired: unchanged");
+  const alone = { tone: "neutral" as const, text: "This device only", title: "Nothing is paired" };
+  const shown = withRole(alone, lone);
+  assert.equal(shown.text, "Presenting · This device only");
+  assert.match(shown.title, /has to ask first/);
   assert.deepEqual(withRole(pill, null), pill);
   assert.equal(isPlanning(lone), false);
   assert.equal(withRole(pill, team(view({ role: "Presenting", standing: "Presenting" }))).text, "Presenting · Synced with 1 device");

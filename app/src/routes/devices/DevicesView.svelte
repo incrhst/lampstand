@@ -129,7 +129,7 @@
     {/if}
   </Panel>
 
-  {#if status && status.paired.length > 0 && presenter}
+  {#if status && presenter}
     <Panel title="Presenting" description="One device at a time drives the screens and takes a service live. Every device can still plan and sync.">
       <p>
         <strong>This device: {presenter.role === "Presenting" ? "Presenting" : "Planning"}</strong>
@@ -140,6 +140,8 @@
           {PLANNING_SCREENS}
         </p>
         <div class="actions"><PresentAction present="Make this device the presenter" /></div>
+      {:else if status.paired.length === 0}
+        <p class="muted">This device is the presenter: it is the only one. Once you pair a second device, a device that wants to present has to ask this one first.</p>
       {:else}
         <p class="muted">Screens turned on here show the service. Another device can ask to present; you will be asked to allow it.</p>
       {/if}
