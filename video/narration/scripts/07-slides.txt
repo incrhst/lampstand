@@ -1,0 +1,1 @@
+Bring in your PowerPoint files, or paste a Google Slides link. Lampstand reads the deck itself, so PowerPoint does not have to be installed on the projection laptop. If something cannot be reproduced, a fidelity report tells you what.

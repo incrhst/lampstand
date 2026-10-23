@@ -1,0 +1,1 @@
+Lampstand does not replace OBS. It feeds it. Add the lyrics to OBS as a browser source, with no plugin. Then Present shows whether OBS is connected, and whether you are streaming or recording.
