@@ -18,6 +18,7 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
+  import { useLiveLook } from "../../lib/liveLook.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
@@ -341,6 +342,7 @@
     });
   });
   let output = $derived(mainOutput(live.outputs));
+  const look = useLiveLook(() => output);
   let showGuide = $state(true);
 
   // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
@@ -574,6 +576,8 @@
               safeArea={output?.safe_area}
               {showGuide}
               size="large"
+              idle={live.idle ? look.idle : null}
+              brand={look.brand}
               empty="Nothing on air. Press Space to start."
             />
           </div>

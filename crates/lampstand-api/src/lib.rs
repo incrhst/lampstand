@@ -7,16 +7,17 @@
 //! Requests are grouped by area. Each returns `Response::Ok`, a typed
 //! payload, or `Response::Error`.
 
+use lampstand_core::brand::Brand;
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::OutputId;
-use lampstand_core::output::{DisplayMatch, OutputConfig};
+use lampstand_core::output::{DisplayMatch, IdleScreen, OutputConfig};
 use lampstand_core::program::Overlay;
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scripture::{Passage, Translation, TranslationId};
 use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::song::{Song, SongId};
-use lampstand_core::theme::Theme;
+use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_live::{Command, Cursor};
 use serde::{Deserialize, Serialize};
 
@@ -103,6 +104,11 @@ pub enum SettingsRequest {
     Get,
     /// Saves them and answers `Response::Settings`.
     Put(DeviceSettings),
+    /// Saves the church's brand and makes a theme from it, the quick start
+    /// in Get started: the theme made last time is updated, or a new one
+    /// added if it is gone, and it becomes the default theme. Answers
+    /// `Response::Settings`.
+    SaveBrand(Brand),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -119,6 +125,65 @@ pub struct DeviceSettings {
     /// longer on this device, means the first version by name.
     #[serde(default)]
     pub default_translation: Option<TranslationId>,
+    /// The church's name, logo, colours and font (the quick start). The
+    /// logo is what the Logo overlay shows.
+    #[serde(default)]
+    pub brand: Option<Brand>,
+    /// The theme made from `brand`, so saving the brand again updates it.
+    #[serde(default)]
+    pub brand_theme: Option<ThemeId>,
+    /// The theme used where neither the screen nor the service names one.
+    /// Unset means the Starter theme.
+    #[serde(default)]
+    pub default_theme: Option<ThemeId>,
+    /// What screens show when nothing is on air, unless a screen has its
+    /// own. Unset means the theme's plain background.
+    #[serde(default)]
+    pub idle: Option<IdleScreen>,
+}
+
+/// What opening a brand file does to the themes already here.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BrandImportMode {
+    /// Adds the file's themes beside the ones here, renaming any with the
+    /// same name. The saved brand and idle screen are only filled in if
+    /// there are none.
+    AddAlongside,
+    /// A theme replaces the one with the same name (never the Starter
+    /// theme) and is added if there is none. The saved brand and idle
+    /// screen are replaced.
+    Replace,
+}
+
+/// What a brand file holds, for the "Import brand" dialog.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrandContents {
+    /// The church's name, if the file has a brand.
+    pub name: Option<String>,
+    pub has_logo: bool,
+    /// The brand's font, by name only.
+    pub font_family: Option<String>,
+    /// That font is installed or bundled on this computer.
+    pub font_installed: bool,
+    /// Every font the themes use that this computer lacks, by name.
+    pub missing_fonts: Vec<String>,
+    pub themes: Vec<String>,
+    /// "Picture: Welcome.png" or "Looping video: Loop.mp4"; none if unset.
+    pub idle: Option<String>,
+    /// There is a brand here, so saving it replaces the one saved now.
+    pub has_brand: bool,
+}
+
+/// The sample text a theme preview is drawn with.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeSample {
+    Lyrics,
+    Verse,
+    /// A text slide: a heading and a few lines, as announcements use.
+    Text,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -132,6 +197,40 @@ pub enum LibraryRequest {
     PutSong(Song),
     ListThemes,
     PutTheme(Theme),
+    /// Deletes a theme. Refused for the last one and for the Starter
+    /// theme, with a message for people. Answers `Response::Ok`.
+    DeleteTheme(ThemeId),
+    /// Puts the Starter theme back as it was made. Answers `Response::Ok`.
+    RestoreStarterTheme,
+    /// Saves the church's brand, its themes and its idle screen, with the
+    /// logo and every picture and video they use, as one file at `path`
+    /// (`.lampstand-brand`). Answers `Response::Text` saying what went in
+    /// and what was left out (a video that is too large).
+    ExportBrand {
+        path: String,
+    },
+    /// Reads a brand file without changing anything, to show what it
+    /// holds before asking. Answers `Response::BrandFile`; a file from a
+    /// newer version is an error that says so.
+    InspectBrand {
+        path: String,
+    },
+    /// Adds or replaces what a brand file holds. Every theme gets a new ID.
+    /// Answers `Response::Text` with a summary.
+    ImportBrand {
+        path: String,
+        mode: BrandImportMode,
+    },
+    /// A picture of `theme` as `sample` looks on a screen `width` by
+    /// `height` pixels in shape, `thumb_width` pixels wide, drawn by the
+    /// same layout and renderer as the screens. Answers `Response::Thumbnail`.
+    ThemePreview {
+        theme: Theme,
+        sample: ThemeSample,
+        width: u32,
+        height: u32,
+        thumb_width: u32,
+    },
     ListTranslations,
     /// "Jn 3:16" in a translation, for the scripture panel (BI-1). A version
     /// typed after the reference ("Jn 3:16 ESV") wins over `translation`,
@@ -196,6 +295,15 @@ pub enum LibraryRequest {
         deck: DeckId,
         width: u32,
     },
+    /// One slide of a deck (counted from 0, hidden slides left out) as it
+    /// looks once its builds have played, `width` pixels wide, and how many
+    /// slides the deck has, for choosing the slide a screen shows when
+    /// nothing is on air. Answers `Response::DeckSlide`.
+    DeckSlidePicture {
+        deck: DeckId,
+        slide: usize,
+        width: u32,
+    },
     /// Every image and video used in a service, once each, by name, as
     /// `Response::MediaFiles`. Media has no document of its own; the
     /// services are its library.
@@ -226,6 +334,12 @@ pub enum ServiceRequest {
     Rename {
         service: ServiceId,
         title: String,
+    },
+    /// The theme this service is shown in; `None` uses the default theme.
+    /// A screen's own theme still wins. Answers `Response::Service`.
+    SetTheme {
+        service: ServiceId,
+        theme: Option<ThemeId>,
     },
     /// Deletes a service for good. One that is open for live goes off air
     /// first. Answers `Response::Ok`.
@@ -626,6 +740,11 @@ pub enum Response {
     Team(TeamStatus),
     /// A PNG as a `data:` URL, for an `<img>`.
     Thumbnail(String),
+    DeckSlide {
+        thumbnail: String,
+        slides: usize,
+    },
+    BrandFile(BrandContents),
     Obs(ObsView),
     Settings(DeviceSettings),
     Update(UpdateStatus),

@@ -114,6 +114,7 @@ fn window_output() -> OutputConfig {
         safe_area: SafeArea::default(),
         background: BackgroundMode::Bleed,
         theme: None,
+        idle: None,
         enabled: true,
     }
 }
@@ -1681,4 +1682,448 @@ fn the_estimate_counts_slides_and_flags_what_has_no_fixed_length() {
     assert_eq!(estimates[0].item, order[1]);
     assert!(estimates[0].open_ended);
     assert_eq!(estimates[0].stills, 0);
+}
+
+fn put_theme(h: &mut Harness, theme: lampstand_core::theme::Theme) {
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::PutTheme(theme))));
+}
+
+fn list_themes(h: &mut Harness) -> Vec<lampstand_core::theme::Theme> {
+    match ok(h.app.handle(Request::Library(LibraryRequest::ListThemes))) {
+        Response::Themes(t) => t,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn error_message(response: Response) -> String {
+    match response {
+        Response::Error { message } => message,
+        other => panic!("expected an error, got {other:?}"),
+    }
+}
+
+fn bg(theme: &lampstand_core::theme::Theme) -> lampstand_core::geom::Color {
+    match theme.background {
+        lampstand_core::theme::Background::Color(c) => c,
+        _ => unreachable!(),
+    }
+}
+
+fn colored_theme(name: &str, color: lampstand_core::geom::Color) -> lampstand_core::theme::Theme {
+    let mut theme = lampstand_library::starter_theme();
+    theme.id = lampstand_core::theme::ThemeId::generate();
+    theme.name = name.into();
+    theme.background = lampstand_core::theme::Background::Color(color);
+    theme
+}
+
+/// The colour of the first solid fill after the black base: the theme's
+/// background.
+fn background_color(scene: &Scene) -> lampstand_core::geom::Color {
+    use lampstand_core::scene::Paint;
+    scene
+        .nodes
+        .iter()
+        .skip(1)
+        .find_map(|n| match &n.kind {
+            NodeKind::Path(p) => match &p.fill {
+                Some(Paint::Solid(c)) => Some(*c),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("a background fill")
+}
+
+#[test]
+fn themes_are_listed_saved_and_deleted_but_never_the_starter_or_the_last() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let starter = list_themes(&mut h);
+    assert_eq!(starter.len(), 1);
+    let mine = colored_theme("Mine", lampstand_core::geom::Color::rgb(0, 0, 90));
+    put_theme(&mut h, mine.clone());
+    assert_eq!(list_themes(&mut h).len(), 2);
+
+    let delete = |h: &mut Harness, id| {
+        h.app
+            .handle(Request::Library(LibraryRequest::DeleteTheme(id)))
+    };
+    let message = error_message(delete(&mut h, starter[0].id));
+    assert!(message.contains("Starter"), "{message}");
+    ok(delete(&mut h, mine.id));
+    assert_eq!(list_themes(&mut h), starter);
+    // A theme that is already gone, with only the starter left.
+    assert!(matches!(delete(&mut h, mine.id), Response::Error { .. }));
+
+    // Editing the starter and restoring it.
+    let mut edited = starter[0].clone();
+    edited.text.size = 12.0;
+    put_theme(&mut h, edited);
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::RestoreStarterTheme)));
+    assert_eq!(list_themes(&mut h), starter);
+}
+
+#[test]
+fn a_screens_theme_beats_the_services_which_beats_the_default() {
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (red, green, blue) = (
+        colored_theme("Red", Color::rgb(200, 0, 0)),
+        colored_theme("Green", Color::rgb(0, 200, 0)),
+        colored_theme("Blue", Color::rgb(0, 0, 200)),
+    );
+    for t in [&red, &green, &blue] {
+        put_theme(&mut h, t.clone());
+    }
+    let mut output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let mut service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    let on_air = |h: &mut Harness| {
+        h.sink.take();
+        ok(h.app.handle(Request::Live(Command::Next)));
+        let shown = shown_scenes(&h.sink);
+        let c = background_color(&shown.last().unwrap().1);
+        ok(h.app.handle(Request::Live(Command::ClearAll)));
+        c
+    };
+    // Nothing chosen anywhere: the starter's black.
+    assert_eq!(on_air(&mut h), Color::BLACK);
+
+    // The device default.
+    let settings = DeviceSettings {
+        default_theme: Some(blue.id),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    assert_eq!(on_air(&mut h), bg(&blue));
+
+    // The service's own theme beats the default.
+    service.theme = Some(green.id);
+    let library = h.app.library().clone();
+    library.put_service(&service).unwrap();
+    h.app.library_changed(&[lampstand_sync::DocChanged {
+        kind: lampstand_sync::DocKind::Service,
+        id: service.id.uuid(),
+        remote: false,
+    }]);
+    assert_eq!(on_air(&mut h), bg(&green));
+
+    // The screen's beats the service's.
+    output.theme = Some(red.id);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    assert_eq!(on_air(&mut h), bg(&red));
+}
+
+#[test]
+fn songs_are_split_with_the_main_screens_theme() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let mut two_lines = colored_theme("Two lines", lampstand_core::geom::Color::BLACK);
+    two_lines.max_lines = 1;
+    put_theme(&mut h, two_lines.clone());
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    let lines = |loaded: &LoadedService| -> usize {
+        loaded.items[0]
+            .slides
+            .iter()
+            .map(|s| s.lines.len())
+            .max()
+            .unwrap()
+    };
+    let before = lines(&open_service(&mut h, &service));
+    assert!(before > 1);
+
+    let mut output = window_output();
+    output.theme = Some(two_lines.id);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    assert_eq!(lines(&open_service(&mut h, &service)), 1);
+}
+
+fn blob_with(h: &Harness, bytes: &[u8]) -> lampstand_core::id::BlobHash {
+    h.app.library().repo().blobs().put(bytes).unwrap()
+}
+
+fn count_kind(scene: &Scene, wanted: &str) -> usize {
+    fn walk(nodes: &[Node], wanted: &str) -> usize {
+        nodes
+            .iter()
+            .map(|n| {
+                let here = match (&n.kind, wanted) {
+                    (NodeKind::Image(_), "image") | (NodeKind::Video(_), "video") => 1,
+                    _ => 0,
+                };
+                here + match &n.kind {
+                    NodeKind::Group(c) => walk(c, wanted),
+                    _ => 0,
+                }
+            })
+            .sum()
+    }
+    walk(&scene.nodes, wanted)
+}
+
+#[test]
+fn idle_shows_until_something_goes_on_air_and_black_and_logo_cover_it() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let image = blob_with(&h, b"a picture");
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Image {
+            blob: image,
+            name: "Welcome.png".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was sent").1;
+    assert_eq!(count_kind(&last(&h), "image"), 1, "idle is up at the start");
+
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    h.sink.take();
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(count_kind(&last(&h), "image"), 0, "a slide replaces it");
+
+    ok(h.app.handle(Request::Live(Command::EndService)));
+    assert_eq!(count_kind(&last(&h), "image"), 1, "and it returns");
+
+    // Black and Logo are one key away and cover it.
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert_eq!(count_kind(&last(&h), "image"), 0);
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert_eq!(count_kind(&last(&h), "image"), 1);
+    ok(h.app.handle(Request::Live(Command::ToggleLogo)));
+    assert_eq!(count_kind(&last(&h), "image"), 0);
+}
+
+#[test]
+fn a_screens_own_idle_beats_the_default_and_blank_turns_it_off() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let default = blob_with(&h, b"default");
+    let own = blob_with(&h, b"own");
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Video {
+            blob: default,
+            name: "Loop.mp4".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let mut output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was sent").1;
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (1, 0)
+    );
+
+    output.idle = Some(IdleScreen::Image {
+        blob: own,
+        name: "Own.png".into(),
+    });
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (0, 1)
+    );
+
+    output.idle = Some(IdleScreen::Blank);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (0, 0)
+    );
+}
+
+#[test]
+fn an_idle_file_that_is_not_on_this_device_shows_the_plain_background() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Image {
+            blob: lampstand_core::id::BlobHash::of(b"never arrived"),
+            name: "Gone.png".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let scene = shown_scenes(&h.sink).pop().unwrap().1;
+    assert_eq!(count_kind(&scene, "image"), 0);
+}
+
+#[test]
+fn saving_the_brand_makes_the_default_theme_and_saving_again_updates_it() {
+    use lampstand_core::brand::Brand;
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let brand = |name: &str, primary| Brand {
+        name: name.into(),
+        logo: None,
+        primary,
+        text: None,
+        accent: Color::rgb(240, 190, 60),
+        font_family: "Noto Serif".into(),
+    };
+    let saved = |h: &mut Harness, b: Brand| match ok(h
+        .app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(b))))
+    {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let first = saved(&mut h, brand("Grace Chapel", Color::rgb(20, 30, 90)));
+    let id = first.default_theme.expect("it becomes the default");
+    assert_eq!(first.brand_theme, Some(id));
+    let themes = list_themes(&mut h);
+    assert_eq!(themes.len(), 2);
+    assert!(themes
+        .iter()
+        .any(|t| t.id == id && t.name == "Grace Chapel"));
+
+    let second = saved(&mut h, brand("Grace Church", Color::rgb(90, 20, 30)));
+    assert_eq!(second.default_theme, Some(id), "the same theme is updated");
+    let themes = list_themes(&mut h);
+    assert_eq!(themes.len(), 2);
+    assert!(themes
+        .iter()
+        .any(|t| t.id == id && t.name == "Grace Church"));
+
+    // Deleting it clears the settings that named it.
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::DeleteTheme(id))));
+    let after = match ok(h.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!((after.default_theme, after.brand_theme), (None, None));
+    assert!(after.brand.is_some());
+}
+
+#[test]
+fn a_brand_file_carries_the_church_look_to_another_computer() {
+    use lampstand_api::BrandImportMode;
+    use lampstand_core::brand::Brand;
+    use lampstand_core::geom::Color;
+    use lampstand_core::output::IdleScreen;
+    let (a_dir, b_dir, files) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut a = open(a_dir.path());
+    let logo = blob_with(&a, b"logo");
+    let video = blob_with(&a, b"video");
+    ok(a.app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(Brand {
+            name: "Grace Chapel".into(),
+            logo: Some(logo),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Some Font Nobody Has".into(),
+        }))));
+    let mut settings = match ok(a.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    settings.idle = Some(IdleScreen::Video {
+        blob: video,
+        name: "Loop.mp4".into(),
+    });
+    ok(a.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let path = files
+        .path()
+        .join("grace.lampstand-brand")
+        .to_string_lossy()
+        .into_owned();
+    let said = match ok(a.app.handle(Request::Library(LibraryRequest::ExportBrand {
+        path: path.clone(),
+    }))) {
+        Response::Text(t) => t,
+        other => panic!("{other:?}"),
+    };
+    assert!(
+        said.contains("1 theme") && said.contains("2 picture or video files"),
+        "{said}"
+    );
+
+    let mut b = open(b_dir.path());
+    let contents = match ok(b.app.handle(Request::Library(LibraryRequest::InspectBrand {
+        path: path.clone(),
+    }))) {
+        Response::BrandFile(c) => c,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(contents.name.as_deref(), Some("Grace Chapel"));
+    assert_eq!(contents.themes, ["Grace Chapel"]);
+    assert!(contents.has_logo && !contents.font_installed);
+    assert_eq!(contents.missing_fonts, ["Some Font Nobody Has"]);
+    assert_eq!(contents.idle.as_deref(), Some("Looping video: Loop.mp4"));
+    assert_eq!(list_themes(&mut b).len(), 1, "inspecting changes nothing");
+
+    for _ in 0..2 {
+        ok(b.app.handle(Request::Library(LibraryRequest::ImportBrand {
+            path: path.clone(),
+            mode: BrandImportMode::Replace,
+        })));
+    }
+    assert_eq!(
+        list_themes(&mut b).len(),
+        2,
+        "a second import does not duplicate"
+    );
+    let got = match ok(b.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(got.brand.as_ref().unwrap().name, "Grace Chapel");
+    assert!(got.default_theme.is_some() && got.default_theme == got.brand_theme);
+    assert!(matches!(got.idle, Some(IdleScreen::Video { .. })));
+    assert!(b
+        .app
+        .library()
+        .repo()
+        .blobs()
+        .path(&got.brand.unwrap().logo.unwrap())
+        .is_some());
+
+    // Not a brand file.
+    let junk = files.path().join("junk.lampstand-brand");
+    std::fs::write(&junk, b"nope").unwrap();
+    let msg = error_message(b.app.handle(Request::Library(LibraryRequest::InspectBrand {
+        path: junk.to_string_lossy().into_owned(),
+    })));
+    assert!(msg.contains("not a Lampstand brand file"), "{msg}");
 }

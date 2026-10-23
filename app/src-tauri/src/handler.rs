@@ -40,8 +40,10 @@ use lampstand_api::{
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
-use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
-use lampstand_core::program::{Content, Overlay, Program, SlideText};
+use lampstand_core::output::{
+    idle_for, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
+};
+use lampstand_core::program::{Content, Idle, Logo, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::scripture::{
@@ -52,7 +54,7 @@ use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
 };
-use lampstand_library::{starter_theme, starter_theme_id, Library};
+use lampstand_library::Library;
 use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide, LoopGroup};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
@@ -302,11 +304,8 @@ impl App {
             Request::Settings(SettingsRequest::Get) => {
                 Ok(Response::Settings(self.settings.get().clone()))
             }
-            Request::Settings(SettingsRequest::Put(settings)) => self
-                .settings
-                .put(settings)
-                .map(|()| Response::Settings(self.settings.get().clone()))
-                .map_err(err),
+            Request::Settings(SettingsRequest::Put(settings)) => self.put_settings(settings),
+            Request::Settings(SettingsRequest::SaveBrand(brand)) => self.save_brand(brand),
             Request::Obs(_) => Err("OBS control is not running".into()),
             // The shell answers updates: it owns the updater.
             Request::Update(_) => Err("updates are not available here".into()),
@@ -358,6 +357,27 @@ impl App {
             LibraryRequest::PutTheme(theme) => {
                 lib.put_theme(&theme).map_err(err)?;
                 Response::Ok
+            }
+            LibraryRequest::DeleteTheme(id) => {
+                lib.remove_theme(id).map_err(err)?;
+                // Anything that named it now falls back.
+                self.settings_forget_theme(id)?;
+                Response::Ok
+            }
+            LibraryRequest::RestoreStarterTheme => {
+                lib.restore_starter_theme().map_err(err)?;
+                Response::Ok
+            }
+            LibraryRequest::ExportBrand { path } => Response::Text(self.export_brand(&path)?),
+            LibraryRequest::InspectBrand { path } => {
+                Response::BrandFile(self.inspect_brand(&path)?)
+            }
+            LibraryRequest::ImportBrand { path, mode } => {
+                Response::Text(self.import_brand(&path, mode)?)
+            }
+            LibraryRequest::ThemePreview { .. } => {
+                // It needs the GPU, so the shell draws it.
+                return Err("theme previews are drawn by the app shell".into());
             }
             LibraryRequest::ListTranslations => {
                 Response::Translations(lib.translations().map_err(err)?)
@@ -430,6 +450,9 @@ impl App {
                 // Decoding a video takes a moment, so the shell runs it off
                 // the `App` lock; this is the same work, for callers without one.
                 Response::Thumbnail(decks::media_thumbnail(lib, &blob, &name, width)?)
+            }
+            LibraryRequest::DeckSlidePicture { .. } => {
+                return Err("deck pictures are drawn by the app shell".into());
             }
             LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
@@ -540,6 +563,14 @@ impl App {
                 }
                 lib.put_service(&s).map_err(err)?;
                 self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::SetTheme { service, theme } => {
+                let mut s = get(service)?;
+                s.theme = theme;
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                self.present();
                 Response::Service(s)
             }
             ServiceRequest::SetObsScene {
@@ -757,8 +788,8 @@ impl App {
             .service(service)
             .map_err(err)?
             .ok_or("no such service")?;
-        let theme = self.theme(service.theme);
         let primary = self.primary_output();
+        let theme = self.pagination_theme(service.theme, &primary);
         let mut out = Vec::new();
         for (id, item) in service.ordered() {
             if matches!(item.kind, ItemKind::Header { .. }) {
@@ -820,8 +851,8 @@ impl App {
             .service(id)
             .map_err(err)?
             .ok_or("no such service")?;
-        let theme = self.theme(service.theme);
         let primary = self.primary_output();
+        let theme = self.pagination_theme(service.theme, &primary);
         let mut items = Vec::new();
         let mut views = Vec::new();
         let mut builds = HashMap::new();
@@ -1167,6 +1198,8 @@ impl App {
     fn present_with(&mut self, now: Timestamp, build: Option<(usize, Vec<Animation>)>) {
         let program = self.stepped(self.live.program().clone());
         let service_theme = self.loaded_theme();
+        let idle = self.live.is_idle();
+        let logo = self.logo();
         let ids: Vec<(OutputId, (u32, u32))> = self
             .sizes
             .iter()
@@ -1177,9 +1210,17 @@ impl App {
             let Some(config) = self.outputs.get(id).cloned() else {
                 continue;
             };
-            let theme = self.theme(config.theme.or(program.theme).or(service_theme));
+            let theme = self.resolve_theme(config.theme.or(program.theme).or(service_theme));
+            // Nothing on air: an audience screen shows its idle screen.
+            // Black and Logo are overlays, so `is_idle` is false under
+            // them and they cover it. Stage and stream never show it.
+            let mut shown_program = program.clone();
+            shown_program.logo = logo.clone();
+            if idle && matches!(config.role, OutputRole::Audience { .. }) {
+                shown_program.idle = self.idle_content(&config);
+            }
             let sent = Sent {
-                program: program.clone(),
+                program: shown_program,
                 size,
                 theme,
                 config,
@@ -1302,6 +1343,40 @@ impl App {
         self.loaded.as_ref()?.slides.get(deck)?.slide(*index)
     }
 
+    /// The logo screen from the church's brand, if it has set one.
+    fn logo(&self) -> Option<Logo> {
+        let brand = self.settings.get().brand.as_ref()?;
+        Some(Logo {
+            image: brand.logo,
+            background: brand.primary,
+            accent: brand.accent,
+        })
+    }
+
+    /// What `config` shows while nothing is on air: its own idle screen,
+    /// else the device default. A file or deck that has not reached this
+    /// device yet, or that is gone, shows the plain theme background
+    /// rather than a hole.
+    fn idle_content(&mut self, config: &OutputConfig) -> Option<Idle> {
+        let default = self.settings.get().idle.clone();
+        let present = |lib: &Library, blob: &BlobHash| lib.repo().blobs().path(blob).is_some();
+        match idle_for(config, default.as_ref())?.clone() {
+            IdleScreen::Blank => None,
+            IdleScreen::Image { blob, .. } => {
+                present(&self.library, &blob).then_some(Idle::Image { blob })
+            }
+            IdleScreen::Video { blob, .. } => {
+                present(&self.library, &blob).then_some(Idle::Video { blob })
+            }
+            IdleScreen::DeckSlide { deck, slide } => {
+                let deck = self.library.deck(deck).ok().flatten()?;
+                let parsed = self.parsed_deck(&deck).ok()?;
+                let scene = parsed.slides.get(slide)?.scenes.last()?.clone();
+                Some(Idle::Deck { scene })
+            }
+        }
+    }
+
     fn loaded_theme(&self) -> Option<ThemeId> {
         let id = self.loaded.as_ref()?.view.service;
         self.library.service(id).ok().flatten()?.theme
@@ -1310,11 +1385,171 @@ impl App {
     /// The theme with this ID, else the starter theme, else any theme. If
     /// a synced delete removed them all, the built-in starter theme, so a
     /// delete on another device never takes the output down.
-    fn theme(&self, id: Option<ThemeId>) -> Theme {
-        id.and_then(|id| self.library.theme(id).ok().flatten())
-            .or_else(|| self.library.theme(starter_theme_id()).ok().flatten())
-            .or_else(|| self.library.themes().ok()?.into_iter().next())
-            .unwrap_or_else(starter_theme)
+    fn resolve_theme(&self, id: Option<ThemeId>) -> Theme {
+        self.library
+            .resolve_theme(&[id, self.settings.get().default_theme])
+    }
+
+    /// The theme songs and scripture are split with: the one the main
+    /// screen draws them in, else the service's, else the default, so what
+    /// is paginated is what is shown.
+    fn pagination_theme(&self, service: Option<ThemeId>, primary: &OutputConfig) -> Theme {
+        self.library
+            .resolve_theme(&[primary.theme, service, self.settings.get().default_theme])
+    }
+
+    fn put_settings(&mut self, settings: lampstand_api::DeviceSettings) -> Result<Response> {
+        self.settings.put(settings).map_err(err)?;
+        // The default theme, the idle screen and the logo change what the
+        // outputs show.
+        self.sent.clear();
+        self.present();
+        Ok(Response::Settings(self.settings.get().clone()))
+    }
+
+    /// Takes a deleted theme out of the settings that name it.
+    fn settings_forget_theme(&mut self, id: ThemeId) -> Result<()> {
+        let mut settings = self.settings.get().clone();
+        if settings.default_theme == Some(id) {
+            settings.default_theme = None;
+        }
+        if settings.brand_theme == Some(id) {
+            settings.brand_theme = None;
+        }
+        if &settings != self.settings.get() {
+            self.settings.put(settings).map_err(err)?;
+        }
+        self.present();
+        Ok(())
+    }
+
+    /// `ExportBrand`: the brand, its themes and its idle screen in one file.
+    fn export_brand(&self, path: &str) -> Result<String> {
+        use lampstand_library::brand_package::{export, BrandSource};
+        let settings = self.settings.get();
+        let source = BrandSource {
+            brand: settings.brand.clone(),
+            idle: settings.idle.clone(),
+            brand_theme: settings.brand_theme,
+        };
+        let file = std::fs::File::create(path).map_err(err)?;
+        let report = export(&self.library, &source, std::io::BufWriter::new(file)).map_err(err)?;
+        let mut message = format!(
+            "Saved the brand: {} theme{} and {} picture or video file{}.",
+            report.themes,
+            if report.themes == 1 { "" } else { "s" },
+            report.files,
+            if report.files == 1 { "" } else { "s" },
+        );
+        if settings.brand.is_none() {
+            message
+                .push_str(" No church name or logo has been set up yet, so only themes went in.");
+        }
+        for skipped in report.skipped {
+            message.push(' ');
+            message.push_str(&skipped);
+        }
+        Ok(message)
+    }
+
+    /// `InspectBrand`: what a file holds, and which of its fonts are missing here.
+    fn inspect_brand(&self, path: &str) -> Result<lampstand_api::BrandContents> {
+        use lampstand_core::FontLookup;
+        let file = std::fs::File::open(path).map_err(err)?;
+        let file = lampstand_library::brand_package::inspect(std::io::BufReader::new(file))
+            .map_err(err)?;
+        let installed = |family: &str| {
+            family.trim().is_empty()
+                || self.fonts.lookup(family) == lampstand_core::FontMatch::Exact
+        };
+        let mut missing: Vec<String> = Vec::new();
+        for family in file
+            .brand
+            .iter()
+            .map(|b| b.font_family.clone())
+            .chain(file.themes.iter().map(|t| t.text.font_family.clone()))
+        {
+            if !installed(&family) && !missing.contains(&family) {
+                missing.push(family);
+            }
+        }
+        let font = file
+            .brand
+            .as_ref()
+            .map(|b| b.font_family.clone())
+            .filter(|f| !f.trim().is_empty());
+        Ok(lampstand_api::BrandContents {
+            name: file.brand.as_ref().map(|b| b.name.clone()),
+            has_logo: file.brand.as_ref().is_some_and(|b| b.logo.is_some()),
+            font_installed: font.as_deref().is_none_or(installed),
+            font_family: font,
+            missing_fonts: missing,
+            themes: file.themes.iter().map(|t| t.name.clone()).collect(),
+            idle: match &file.idle {
+                Some(IdleScreen::Image { name, .. }) => Some(format!("Picture: {name}")),
+                Some(IdleScreen::Video { name, .. }) => Some(format!("Looping video: {name}")),
+                _ => None,
+            },
+            has_brand: file.brand.is_some(),
+        })
+    }
+
+    /// `ImportBrand`: puts the files and themes in the library and the
+    /// brand, default theme and idle screen in the settings.
+    fn import_brand(&mut self, path: &str, mode: lampstand_api::BrandImportMode) -> Result<String> {
+        use lampstand_api::BrandImportMode;
+        use lampstand_library::brand_package::{import, ImportMode};
+        let file = std::fs::File::open(path).map_err(err)?;
+        let got = import(
+            &self.library,
+            std::io::BufReader::new(file),
+            match mode {
+                BrandImportMode::AddAlongside => ImportMode::AddAlongside,
+                BrandImportMode::Replace => ImportMode::Replace,
+            },
+        )
+        .map_err(err)?;
+        let replace = mode == BrandImportMode::Replace;
+        let mut settings = self.settings.get().clone();
+        if got.brand.is_some() && (replace || settings.brand.is_none()) {
+            settings.brand = got.brand.clone();
+            if let Some(id) = got.brand_theme {
+                settings.brand_theme = Some(id);
+                settings.default_theme = Some(id);
+            }
+        }
+        if got.idle.is_some() && (replace || settings.idle.is_none()) {
+            settings.idle = got.idle.clone();
+        }
+        self.settings.put(settings).map_err(err)?;
+        self.sent.clear();
+        self.present();
+        Ok(format!(
+            "Imported the brand: {} theme{} added, {} replaced.",
+            got.themes_added,
+            if got.themes_added == 1 { "" } else { "s" },
+            got.themes_replaced
+        ))
+    }
+
+    /// The quick start: keeps the brand, makes (or updates) its theme and
+    /// makes that the default theme.
+    fn save_brand(&mut self, brand: lampstand_core::brand::Brand) -> Result<Response> {
+        let mut settings = self.settings.get().clone();
+        let existing = settings
+            .brand_theme
+            .filter(|id| self.library.theme(*id).ok().flatten().is_some());
+        let id = existing.unwrap_or_else(ThemeId::generate);
+        self.library
+            .put_theme(&lampstand_library::theme_from_brand(&brand, id))
+            .map_err(err)?;
+        settings.brand = Some(brand);
+        settings.brand_theme = Some(id);
+        settings.default_theme = Some(id);
+        self.settings.put(settings).map_err(err)?;
+        self.sent.clear();
+        self.present();
+        Ok(Response::Settings(self.settings.get().clone()))
     }
 
     /// The audience output scripture is split against: the primary one,
@@ -1339,6 +1574,7 @@ impl App {
                 safe_area: SafeArea::default(),
                 background: lampstand_core::output::BackgroundMode::Bleed,
                 theme: None,
+                idle: None,
                 enabled: true,
             })
     }
@@ -1647,6 +1883,12 @@ impl App {
                     id: change.id.to_string(),
                 });
             }
+        }
+        if changes
+            .iter()
+            .any(|c| c.kind == lampstand_sync::DocKind::Theme)
+        {
+            self.present();
         }
         let Some(loaded) = &self.loaded else {
             return;

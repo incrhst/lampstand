@@ -11,8 +11,12 @@ import {
   type OutputConfig,
   type Overlay,
   type SlideView,
+  type DeviceSettings,
+  type Theme,
   type UpdateStatus,
 } from "./api";
+import { loadSettings, updateSettings } from "./settings";
+import { sortThemes } from "./themes";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -40,6 +44,13 @@ class LiveState {
   /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
   displaysVersion: number = $state(0);
 
+  /** The library's themes, Starter first. Kept current by `refreshThemes`. */
+  themes: Theme[] = $state([]);
+  /** This device's settings: default theme, idle screen, church brand. */
+  settings: DeviceSettings | null = $state(null);
+  /** The engine has nothing on air and no service under way: screens show their idle screen. */
+  idle: boolean = $state(true);
+
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
 }
@@ -58,6 +69,7 @@ onEvent((event) => {
       live.live = event.data.live;
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;
+      live.idle = event.data.idle;
       break;
     case "Loaded":
       live.loaded = event.data;
@@ -73,6 +85,7 @@ onEvent((event) => {
       break;
     case "Changed":
       if (event.data.kind === "deck") live.decksVersion++;
+      if (event.data.kind === "theme") refreshThemes();
       break;
     case "Obs":
       live.obs = event.data;
@@ -86,6 +99,33 @@ onEvent((event) => {
 /** Shows an error from a failed request in the status bar. */
 export function report(error: unknown) {
   live.status = error instanceof Error ? error.message : String(error);
+}
+
+/** Refetches the library's themes into `live.themes`. */
+export async function refreshThemes() {
+  try {
+    live.themes = sortThemes(await request({ area: "Library", request: "ListThemes" }, "Themes"));
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Refetches this device's settings into `live.settings`. */
+export async function refreshSettings() {
+  try {
+    live.settings = await loadSettings();
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Saves a change to this device's settings and keeps `live.settings` current. */
+export async function saveSettings(change: Partial<DeviceSettings>) {
+  try {
+    live.settings = await updateSettings(change);
+  } catch (e) {
+    report(e);
+  }
 }
 
 /** Refetches this device's outputs into `live.outputs`. */
