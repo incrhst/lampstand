@@ -11,12 +11,14 @@ import {
   type OutputConfig,
   type Overlay,
   type SlideView,
+  type SyncSummary,
   type DeviceSettings,
   type Theme,
   type UpdateStatus,
 } from "./api";
 import { loadSettings, updateSettings } from "./settings";
 import { sortThemes } from "./themes";
+import { syncFailed } from "./sync";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -37,6 +39,8 @@ class LiveState {
   decksVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** Where sync with the paired devices stands; null until first asked. */
+  sync: SyncSummary | null = $state(null);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
@@ -89,6 +93,9 @@ onEvent((event) => {
       break;
     case "Obs":
       live.obs = event.data;
+      break;
+    case "SyncStatus":
+      live.sync = event.data.sync;
       break;
     case "DisplaysChanged":
       live.displaysVersion++;
@@ -213,6 +220,15 @@ export async function obs(req: ObsRequest): Promise<ObsView> {
   const view = await request({ area: "Obs", request: req }, "Obs");
   live.obs = view;
   return view;
+}
+
+/** Asks sync where it stands; a sync engine that is not running shows as an error. */
+export async function refreshSync() {
+  try {
+    live.sync = (await request({ area: "Team", request: "Status" }, "Team")).sync;
+  } catch (e) {
+    live.sync = syncFailed(e instanceof Error ? e.message : String(e));
+  }
 }
 
 /** Refetches OBS's state, reporting a failure in the status bar. */

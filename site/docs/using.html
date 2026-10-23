@@ -27,7 +27,7 @@
   <tr><th>Area</th><th>What it is for</th></tr>
   <tr><td>Plan</td><td>Build the service: songs, scripture, slides and media in order. <b>Open for live</b> hands it to Present. A new service can start as a copy of an earlier one.</td></tr>
   <tr><td>Present</td><td>Run the service: next, previous, black, jump to a verse. Also where OBS status, scene buttons and the tablet remote QR code appear.</td></tr>
-  <tr><td>Setup</td><td><b>Screens</b> (the windows Lampstand draws on, each with its own safe area, theme and idle screen), <b>Themes</b>, <b>Church look</b> (name, logo, colours and font), <b>Scripture</b>, <b>Devices</b> and <b>OBS</b>. Team is planned to join them.</td></tr>
+  <tr><td>Setup</td><td><b>Screens</b> (the windows Lampstand draws on, each with its own safe area, theme and idle screen), <b>Themes</b>, <b>Church look</b> (name, logo, colours and font), <b>Scripture</b>, <b>Devices</b> and <b>OBS</b>. Team (people and roles) is planned to join them.</td></tr>
   <tr><td>Help</td><td><b>Quick tips</b>, the <b>Keys</b>, <b>Help and feedback</b> (the docs, asking a question, reporting a problem, suggesting an idea) and <b>About</b> (the version, and updating it).</td></tr>
 </table>
 <figure class="clip"><video src="clips/plan-to-present.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Choose a service in Plan and press Open for live to hand it to Present."></video><figcaption>Choose a service in Plan and press Open for live to hand it to Present.</figcaption></figure>
@@ -110,6 +110,16 @@
 <p>Present shows a QR code for a page on the local server (<code>http://&lt;laptop-ip&gt;:7340/remote</code> by default). Scan it on a device on the same Wi-Fi, enter the PIN, and it controls the service. Nothing is installed on the tablet. Rationale: <a href="decisions.html#d0006">decision 0006</a>.</p>
 <h2 id="offline">Offline and recovery</h2>
 <p>A whole service runs offline from one laptop. Changes are journaled so the app can recover after a crash. Several computers can share a library through local-first sync; see <a href="how-it-works.html#sync">Sync</a>.</p>
+<h2 id="devices">Sync between devices</h2>
+<p>The bar at the bottom of the window always says where sync with your other computers stands. Click it to open Setup &rsaquo; Devices.</p>
+<table>
+  <tr><td><b>This device only</b></td><td>Nothing is paired, so changes stay on this computer.</td></tr>
+  <tr><td><b>Synced with 2 devices</b></td><td>Every paired device is connected and has your latest changes.</td></tr>
+  <tr><td><b>Syncing&hellip;</b></td><td>Changes are moving to or from a paired device right now.</td></tr>
+  <tr><td><b>Offline: 1 device not reachable</b> (amber)</td><td>A paired device is off, asleep or on another network. Changes wait and sync when it is back.</td></tr>
+  <tr><td><b>Sync problem</b> (amber)</td><td>Sync is not working. Hover over it for the reason, for example that a paired device no longer accepts this one (unpair it on both and pair again), or that the local server could not start.</td></tr>
+</table>
+<p>To pair, open Setup &rsaquo; Devices on the presenting computer and choose <b>Pair a device</b>. On the planning laptop, type the six-digit code in <b>Join another device</b>. If the other computer is not found automatically, also type its address (shown under <b>This device</b>). Devices must be on the same network. The Devices page shows each paired device, why one is not connected, and when a change last arrived and last went out.</p>
         <nav class="pager" aria-label="Pages"><span>&larr; <a href="getting-started.html">Getting started</a></span><span><a href="how-it-works.html">How it works</a> &rarr;</span></nav>
       </article>
     </div>

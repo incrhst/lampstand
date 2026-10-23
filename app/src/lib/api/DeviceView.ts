@@ -4,4 +4,8 @@ export type DeviceView = {
 /**
  * The device key in hex, for `Unpair`.
  */
-device: string, fingerprint: string, name: string, address: string | null, connected: boolean, };
+device: string, fingerprint: string, name: string, address: string | null, connected: boolean, 
+/**
+ * Why the last attempt to reach it failed, when it is not connected.
+ */
+problem: string | null, };

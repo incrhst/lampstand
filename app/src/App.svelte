@@ -8,8 +8,9 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
+  import { syncPill } from "./lib/sync";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
@@ -18,7 +19,6 @@
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Logo from "./lib/kit/Logo.svelte";
-  import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -51,6 +51,7 @@
     screen = "help";
   }
   let obsStatus = $derived(obsPill(live.obs));
+  let syncStatus = $derived(syncPill(live.sync));
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -175,6 +176,7 @@
   refreshThemes();
   refreshSettings();
   refreshObs();
+  refreshSync();
 </script>
 
 <svelte:window {onkeydown} />
@@ -225,11 +227,10 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="Open Setup › Devices">
-        <Dot />
-        <span>This device only</span>
+      <button class="status-link" onclick={() => openSetup("devices")} title="{syncStatus.title}. Open Setup › Devices">
+        <Dot tone={syncStatus.tone} />
+        <span class:warn={syncStatus.tone === "warn"}>{syncStatus.text}</span>
       </button>
-      <Placeholder ticket="T18">Sync</Placeholder>
     {/snippet}
     {#snippet middle()}
       {#if live.progress}
