@@ -16,12 +16,14 @@
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use lampstand_api::{
-    AskingView, DeviceView, Event, NearbyView, PairingView, PresentRequestView, PresenterRole,
-    PresenterStanding, PresenterView, Response, SyncState, SyncSummary, TeamRequest, TeamStatus,
+    AskingView, DeviceView, DriveAskingView, DriveView, DriverView, DrivingView, Event,
+    LoadedService, NearbyView, ObsRequest, PairingView, PresentRequestView, PresenterRole,
+    PresenterStanding, PresenterView, Request, Response, ServiceRequest, SyncState, SyncSummary,
+    TeamRequest, TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -29,7 +31,10 @@ use lampstand_core::scene::Scene;
 use lampstand_library::Library;
 use lampstand_render::Renderer;
 use lampstand_server::{Backend, SceneHub, Server};
-use lampstand_sync::net::{local_addresses, NodeConfig, NodeStatus, PresenterStatus, SyncNode};
+use lampstand_sync::driver::{Asking, Notice as DriveNotice};
+use lampstand_sync::net::{
+    local_addresses, DriveHooks, DriveStatus, NodeConfig, NodeStatus, PresenterStatus, SyncNode,
+};
 use lampstand_sync::presenter::{Notice, Role, Standing};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
@@ -75,6 +80,75 @@ impl SyncConfig {
 /// must not wait for the `App` lock.
 pub type RoleSink = Arc<dyn Fn(bool) + Send + std::marker::Sync>;
 
+/// What the presenting device does with driving, supplied by the shell:
+/// both run on sync tasks and must not block.
+pub struct DriveSinks {
+    /// The active driver sent a request this device may carry out.
+    pub command: Arc<dyn Fn(Request) + Send + std::marker::Sync>,
+    /// A device started (`true`) or stopped driving this one.
+    pub driver: Arc<dyn Fn(bool) + Send + std::marker::Sync>,
+    /// Filled with the sync node once it exists, for the event sink made by
+    /// [`mirroring`].
+    pub cell: NodeCell,
+}
+
+impl Default for DriveSinks {
+    /// Nothing to do: for a device that nobody drives (tests).
+    fn default() -> Self {
+        Self {
+            command: Arc::new(|_| {}),
+            driver: Arc::new(|_| {}),
+            cell: NodeCell::default(),
+        }
+    }
+}
+
+/// Lets the event sink reach the sync node, which is made after it: the
+/// presenting device mirrors its live events to the driver through it.
+pub type NodeCell = Arc<OnceLock<Arc<SyncNode>>>;
+
+/// `emit` plus, on a device that someone is driving, a copy of the events
+/// the driver's screen mirrors: what is on air, the loaded service and OBS.
+pub fn mirroring(emit: EventSink, node: NodeCell) -> EventSink {
+    Arc::new(move |event: Event| {
+        if matches!(event, Event::Live { .. } | Event::Loaded(_) | Event::Obs(_)) {
+            if let Some(node) = node.get().filter(|n| n.driven()) {
+                if let Ok(json) = serde_json::to_vec(&event) {
+                    node.drive_live(json);
+                }
+            }
+        }
+        emit(event);
+    })
+}
+
+/// Whether a driver may ask the presenting device to carry this request
+/// out: the live commands, opening and closing the service on air, a loop
+/// change on air and OBS scene and mute choices. Everything else (editing a
+/// service, settings, screens) stays on the device it belongs to.
+pub fn driveable(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Live(_)
+            | Request::Service(
+                ServiceRequest::Open(_)
+                    | ServiceRequest::Close(_)
+                    | ServiceRequest::SetLiveLoop { .. }
+            )
+            | Request::Obs(
+                ObsRequest::SetScene { .. } | ObsRequest::Resume | ObsRequest::SetMute { .. }
+            )
+    )
+}
+
+/// What the driver last heard of the loaded service, so opening one from
+/// the driver can answer with it.
+#[derive(Default)]
+struct Mirrored {
+    loaded: Mutex<Option<LoadedService>>,
+    changed: tokio::sync::Notify,
+}
+
 /// What the local server's OBS routes read: the app's browser-source keys
 /// and scenes, and a renderer for deck frames.
 #[derive(Clone)]
@@ -89,6 +163,7 @@ pub struct Obs {
 pub struct Sync {
     node: Arc<SyncNode>,
     server: Server,
+    mirrored: Arc<Mirrored>,
 }
 
 struct AppBackend {
@@ -153,6 +228,7 @@ impl Sync {
     /// `paired.json` in `data_dir`, and emits `Event::SyncStatus` whenever
     /// connections or nearby devices change. The server's OBS routes read
     /// `obs`. Call inside the Tokio runtime.
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(
         library: &Arc<Library>,
         key: DeviceKeypair,
@@ -161,6 +237,7 @@ impl Sync {
         obs: Obs,
         emit: EventSink,
         on_role: RoleSink,
+        drive: DriveSinks,
     ) -> Result<Self, String> {
         let node = SyncNode::new(
             library.shared_repo(),
@@ -191,6 +268,34 @@ impl Sync {
             Err(e) => return Err(format!("cannot start the local server: {e}")),
         };
         let port = server.local_addr().port();
+        let mirrored = Arc::new(Mirrored::default());
+        let (command, driver, cell) = (drive.command, drive.driver, drive.cell);
+        let (live_emit, live_mirror) = (emit.clone(), mirrored.clone());
+        node.set_drive_hooks(DriveHooks {
+            command: Box::new(move |from, payload| {
+                match serde_json::from_slice::<Request>(&payload) {
+                    Ok(request) if driveable(&request) => command(request),
+                    Ok(request) => eprintln!(
+                        "lampstand: {} asked for something a driver may not do: {request:?}",
+                        from.fingerprint()
+                    ),
+                    Err(e) => eprintln!("lampstand: unreadable request from a driver: {e}"),
+                }
+            }),
+            live: Box::new(move |payload| match serde_json::from_slice::<Event>(&payload) {
+                Ok(event) => {
+                    if let Event::Loaded(loaded) = &event {
+                        *live_mirror.loaded.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(loaded.clone());
+                        live_mirror.changed.notify_waiters();
+                    }
+                    live_emit(event);
+                }
+                Err(e) => eprintln!("lampstand: unreadable state from the presenter: {e}"),
+            }),
+            driver: Box::new(move |on| driver(on)),
+        });
+        let _ = cell.set(node.clone());
         node.start(port, config.mdns);
         eprintln!(
             "lampstand: syncing as {:?} ({}) on port {port}",
@@ -238,7 +343,11 @@ impl Sync {
                 }
             }
         });
-        Ok(Self { node, server })
+        Ok(Self {
+            node,
+            server,
+            mirrored,
+        })
     }
 
     /// What the handler needs of the node, for the settings shared with
@@ -263,6 +372,63 @@ impl Sync {
             .into_iter()
             .next()
             .unwrap_or_else(|| format!("127.0.0.1:{port}"))
+    }
+
+    /// On a device driving another: carries `request` to the presenting
+    /// device and answers for it. `None` when this device is not driving or
+    /// the request is not one a driver may make: the caller handles it
+    /// itself. Live state comes back as events, so a live command answers
+    /// `Ok` at once; opening a service answers with the slides it loads.
+    pub async fn forward(&self, request: &Request) -> Option<Response> {
+        if !driveable(request) {
+            return None;
+        }
+        let driving = self.node.driving()?;
+        let error = |message: String| Some(Response::Error { message });
+        if !driving.online {
+            return error(format!(
+                "{} is not connected. Controls wait until it is back.",
+                driving.name
+            ));
+        }
+        let payload = match serde_json::to_vec(request) {
+            Ok(p) => p,
+            Err(e) => return error(e.to_string()),
+        };
+        let open = match request {
+            Request::Service(ServiceRequest::Open(id)) => Some(*id),
+            _ => None,
+        };
+        // Look before sending, so a load that arrives at once is not missed.
+        let waiting = self.mirrored.changed.notified();
+        tokio::pin!(waiting);
+        waiting.as_mut().enable();
+        if let Err(e) = self.node.drive_send(payload) {
+            return error(e);
+        }
+        let Some(id) = open else {
+            return Some(Response::Ok);
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let loaded = self
+                .mirrored
+                .loaded
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(loaded) = loaded.filter(|l| l.service == id) {
+                return Some(Response::Loaded(loaded));
+            }
+            if tokio::time::timeout_at(deadline, waiting.as_mut())
+                .await
+                .is_err()
+            {
+                return error(format!("{} did not open the service", driving.name));
+            }
+            waiting.set(self.mirrored.changed.notified());
+            waiting.as_mut().enable();
+        }
     }
 
     pub async fn handle(&self, request: TeamRequest) -> Response {
@@ -318,6 +484,34 @@ impl Sync {
                     .set_takeover_after(Duration::from_secs(u64::from(seconds)));
                 Ok(())
             }
+            TeamRequest::DriveAsk => self.node.drive_ask(),
+            TeamRequest::DriveCancel => {
+                self.node.drive_cancel();
+                Ok(())
+            }
+            TeamRequest::DriveDismiss => {
+                self.node.drive_dismiss();
+                Ok(())
+            }
+            TeamRequest::DriveAllow { device, always } => match DeviceKey::from_hex(&device) {
+                Some(key) => self.node.drive_allow(key, always),
+                None => Err("not a device key".into()),
+            },
+            TeamRequest::DriveDecline { device } => match DeviceKey::from_hex(&device) {
+                Some(key) => {
+                    self.node.drive_decline(key);
+                    Ok(())
+                }
+                None => Err("not a device key".into()),
+            },
+            TeamRequest::DriveTakeBack => {
+                self.node.drive_take_back();
+                Ok(())
+            }
+            TeamRequest::DriveAlways { device, always } => match DeviceKey::from_hex(&device) {
+                Some(key) => self.node.drive_set_always(key, always),
+                None => Err("not a device key".into()),
+            },
             TeamRequest::CreateInvite { .. } => Err("team invites arrive with T18".into()),
             TeamRequest::SetRelay { .. } => Err("the relay arrives with T19".into()),
         };
@@ -460,6 +654,40 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
         replaced_by: p.notice.as_ref().map(|n| match n {
             Notice::Replaced { by } => by.clone(),
         }),
+        drive: Box::new(drive_view(&p.drive)),
+    }
+}
+
+fn drive_view(d: &DriveStatus) -> DriveView {
+    let named = |n: &lampstand_sync::driver::Named| DriverView {
+        device: n.device.to_hex(),
+        name: n.name.clone(),
+    };
+    DriveView {
+        driving: d.driving.as_ref().map(|g| DrivingView {
+            presenter: g.presenter.to_hex(),
+            name: g.name.clone(),
+            online: g.online,
+        }),
+        active: d.active.as_ref().map(named),
+        requests: d
+            .requests
+            .iter()
+            .map(|r| PresentRequestView {
+                device: r.device.to_hex(),
+                name: r.name.clone(),
+            })
+            .collect(),
+        asking: d.asking.as_ref().map(|a| match a {
+            Asking::Waiting => DriveAskingView::Waiting,
+            Asking::Declined => DriveAskingView::Declined,
+            Asking::Busy { by } => DriveAskingView::Busy { by: by.clone() },
+        }),
+        can_drive: d.can_drive,
+        always: d.always.iter().map(named).collect(),
+        taken_back_by: d.notice.as_ref().map(|n| match n {
+            DriveNotice::TakenBack { by } => by.clone(),
+        }),
     }
 }
 
@@ -496,6 +724,7 @@ mod tests {
                 requests: Vec::new(),
                 asking: None,
                 notice: None,
+                drive: Default::default(),
             },
             last_in_ms,
             last_out_ms: None,

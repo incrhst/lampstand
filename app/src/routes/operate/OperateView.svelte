@@ -38,10 +38,14 @@
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import DriveAction from "../../lib/kit/DriveAction.svelte";
   import { isPlanning } from "../../lib/presenting";
+  import { driverOffline, isDriving } from "../../lib/driving";
 
-  /** This device only plans: it cannot take a service live until it presents. */
-  let planningOnly = $derived(isPlanning(live.team));
+  /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
+  let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
+  /** Driving a presenter that is not connected: the controls wait. */
+  let paused = $derived(driverOffline(live.team));
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen, `ondevices` where devices are paired. */
   let { onsetup, onobs, onplan, ontips, onidle, ondevices }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void; ondevices?: () => void } = $props();
@@ -505,8 +509,9 @@
       {#if planningOnly}
         <div class="pick-foot gate">
           <Banner tone="neutral" icon="monitor">
-            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter.</span>
+            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter, or drive it from this device.</span>
             <PresentAction />
+            <DriveAction />
           </Banner>
         </div>
       {/if}
@@ -543,7 +548,7 @@
     </div>
   </div>
 {:else}
-  <div class="operate">
+  <div class="operate" inert={paused} class:paused>
     <div class="bar">
       <p class="service">
         <strong title={live.loaded.title}>{live.loaded.title}</strong>
@@ -890,6 +895,9 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+  }
+  .operate.paused {
+    opacity: 0.55;
   }
   .bar > :global(*) {
     flex-shrink: 0;

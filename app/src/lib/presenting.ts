@@ -4,6 +4,7 @@
 
 import type { PresenterView, TeamStatus } from "./api";
 import type { SyncPill } from "./sync";
+import { drivenBy, drivingFrom } from "./driving.ts";
 
 /** This device only plans: its screens stay dark and it cannot take a service live. */
 export function isPlanning(team: TeamStatus | null): boolean {
@@ -35,7 +36,13 @@ export function withRole(pill: SyncPill, team: TeamStatus | null): SyncPill {
     };
   }
   const p = team.presenter;
-  if (p.role === "Presenting") return { ...pill, text: `Presenting · ${pill.text}` };
+  const by = drivenBy(team);
+  if (p.role === "Presenting") return { ...pill, text: `Presenting${by ? ` · driven from ${by}` : ""} · ${pill.text}` };
+  const driving = drivingFrom(team);
+  if (driving) {
+    const text = driving.online ? `Driving ${driving.name} · ${pill.text}` : `Driving ${driving.name} · offline, controls paused`;
+    return { ...pill, tone: driving.online ? pill.tone : "warn", text, title: `${pill.title}. This device operates ${driving.name}; the screens stay there` };
+  }
   if (pill.tone === "warn") return { ...pill, text: `Planning · ${pill.text}` };
   const who = p.holder_name || "another device";
   let text: string;
