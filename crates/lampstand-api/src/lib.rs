@@ -672,6 +672,42 @@ pub struct TeamStatus {
     pub paired: Vec<DeviceView>,
     /// Lampstand devices seen on the network that are not paired.
     pub nearby: Vec<NearbyView>,
+    pub sync: SyncSummary,
+}
+
+/// Where sync with the paired devices stands, in one value for the status
+/// bar.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SyncSummary {
+    pub state: SyncState,
+    /// Devices this one is paired with.
+    pub paired: usize,
+    /// Of those, how many are connected now.
+    pub connected: usize,
+    /// For `Error`: what went wrong, in words for the operator.
+    pub reason: Option<String>,
+    /// When changes last arrived from, and went out to, another device
+    /// (unix ms); `None` since this app started.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_in_ms: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_out_ms: Option<i64>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SyncState {
+    /// Nothing is paired.
+    DeviceOnly,
+    /// Every paired device is connected and no changes are moving.
+    Synced,
+    /// Changes are moving to or from a paired device now.
+    Syncing,
+    /// A paired device is not connected (off, asleep or not found).
+    Offline,
+    /// Sync is not working; `reason` says why.
+    Error,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -692,6 +728,8 @@ pub struct DeviceView {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
+    /// Why the last attempt to reach it failed, when it is not connected.
+    pub problem: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -890,11 +928,10 @@ pub enum Event {
         kind: String,
         id: String,
     },
-    /// Connections or nearby devices changed: `peers` paired devices are
-    /// connected now. Refetch `TeamRequest::Status` for the details.
+    /// Connections, nearby devices or sync traffic changed. Refetch
+    /// `TeamRequest::Status` for the devices themselves.
     SyncStatus {
-        peers: usize,
-        relay_connected: bool,
+        sync: SyncSummary,
     },
     Readiness {
         service: ServiceId,

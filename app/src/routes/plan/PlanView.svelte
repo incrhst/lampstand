@@ -16,12 +16,10 @@
     type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
-  import Banner from "../../lib/kit/Banner.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
   import MediaThumb from "../../lib/kit/MediaThumb.svelte";
@@ -862,15 +860,6 @@
         </div>
       </div>
 
-      {#if items.length > 0}
-        <div class="banner">
-          <Banner>
-            <span>Nothing has checked that every item is on this device yet.</span>
-            <Placeholder ticket="T36">Readiness</Placeholder>
-          </Banner>
-        </div>
-      {/if}
-
       <div class="order-body" bind:this={orderBody}>
         {#if items.length === 0}
           <div class="empty-order" class:target={carryAt !== null}>
@@ -1175,9 +1164,6 @@
   .actions {
     display: flex;
     gap: 0.5rem;
-  }
-  .banner {
-    padding: 0 2rem;
   }
   .order-body {
     flex: 1;

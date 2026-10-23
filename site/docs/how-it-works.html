@@ -46,7 +46,7 @@
 <h2 id="render">Rendering</h2>
 <p>Outputs render natively on one render thread using wgpu, with text laid out by cosmic-text everywhere so measurement and drawing agree. A journal records state so a crash restores the service.</p>
 <h2 id="sync">Sync</h2>
-<p>Each thing (a service, a song) is its own Automerge document, with large files held as blobs beside them. Devices pair with a six-digit code, membership is signed, and some things stay per-device. See decisions <a href="decisions.html#d0002">0002</a> and <a href="decisions.html#d0004">0004</a>.</p>
+<p>Each thing (a service, a song) is its own Automerge document, with large files held as blobs beside them. Devices pair with a six-digit code and sync over the church network while paired (signed team membership and roles are planned), and some things stay per-device. The status bar shows the state: this device only, synced, syncing, offline or a problem. See decisions <a href="decisions.html#d0002">0002</a> and <a href="decisions.html#d0004">0004</a>.</p>
 <h2 id="server">Local server</h2>
 <p><code>lampstand-server</code> listens on the laptop (port 7340 by default) and serves the OBS browser source, the tablet remote and peer sync.</p>
 <h2 id="testing">Testing</h2>

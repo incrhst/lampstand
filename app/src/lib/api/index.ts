@@ -69,6 +69,8 @@ export * from "./SlideView";
 export * from "./Song";
 export * from "./SongDatabase";
 export * from "./SongHit";
+export * from "./SyncState";
+export * from "./SyncSummary";
 export * from "./TeamRequest";
 export * from "./TeamStatus";
 export * from "./TextStyle";
