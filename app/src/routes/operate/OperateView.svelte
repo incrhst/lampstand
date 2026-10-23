@@ -23,7 +23,7 @@
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
   import TipCard from "../../lib/kit/TipCard.svelte";
-  import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed } from "../../lib/tips";
+  import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
@@ -44,7 +44,7 @@
   let planningOnly = $derived(isPlanning(live.team));
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
-  let { onsetup, onobs, onplan, ontips }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void } = $props();
+  let { onsetup, onobs, onplan, ontips, ondevices }: { ondevices?: () => void; onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void } = $props();
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
@@ -298,6 +298,17 @@
   function dismissTip(id: string) {
     dismissedTips = new Set([...dismissedTips, id]);
     saveDismissed(dismissedTips);
+    live.tipsVersion++;
+  }
+  let snoozedTips = $state(loadSnoozed());
+  /** "Not now": the tip comes back after its snooze, if it still applies. */
+  function snoozeTip(t: Tip) {
+    snoozedTips = snooze(snoozedTips, t.id, t.snoozeDays ?? 7);
+    saveSnoozed(snoozedTips);
+    live.tipsVersion++;
+  }
+  function tipAction(t: Tip) {
+    if (t.action?.go === "devices") ondevices?.();
   }
   /** The order as groups: each header with the items under it. Items before
    *  the first header form a group with no header. */
@@ -328,8 +339,10 @@
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let tip = $derived(
     nextTip(
-      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo },
+      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo, paired: live.team?.paired.length, realUse: live.realUse },
       new Set([...dismissedTips, ...usedTips]),
+      undefined,
+      snoozedTips,
     ),
   );
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
@@ -608,7 +621,7 @@
           <LiveLoop loaded={live.loaded} section={liveSection} />
         {/if}
         {#if tip}
-          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} />
+          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
         {/if}
         <div class="pane-body groups">
           {#each groups as group (group.section?.header ?? "ungrouped")}

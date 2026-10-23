@@ -11,6 +11,8 @@
   import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { syncPill } from "./lib/sync";
+  import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
+  import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning, withRole } from "./lib/presenting";
@@ -56,6 +58,15 @@
   let planningOnly = $derived(isPlanning(live.team));
   let syncStatus = $derived(syncPill(live.sync));
   let rolePill = $derived(withRole(syncStatus, live.team));
+  // The quiet "Connect another device" line beside the sync pill, until a device is paired or it is put off.
+  let connectLine = $derived.by(() => {
+    void live.tipsVersion;
+    return connectDue({ paired: live.team?.paired.length, realUse: live.realUse }, loadDismissed(), loadSnoozed());
+  });
+  // Pairing a device ends the prompt for good, even if it is unpaired later.
+  $effect(() => {
+    if (live.team && live.team.paired.length > 0) dismissForGood(CONNECT_DEVICE);
+  });
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -130,6 +141,9 @@
       tried = true;
       setFlag("lampstand.getstarted.tried");
     }
+  });
+  $effect(() => {
+    live.realUse = tried || serviceList.some((s) => s.title !== WELCOME_TITLE && s.items > 0);
   });
   let started = $derived(getStartedSteps({ screensOn: enabled, songs: songCount, services: serviceList, triedService: tried, brandSet: !!live.settings?.brand }));
   let showStrip = $derived(!hidden && !allDone(started));
@@ -223,7 +237,7 @@
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
+      <OperateView ondevices={() => openSetup("devices")} onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
     {:else if screen === "help"}
       <HelpView tab={helpTab} onchange={(tab) => (helpTab = tab)} />
     {:else}
@@ -237,6 +251,11 @@
         <Dot tone={syncStatus.tone} />
         <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
+      {#if connectLine}
+        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
+          Connect another device
+        </button>
+      {/if}
     {/snippet}
     {#snippet middle()}
       {#if live.progress}
@@ -405,6 +424,11 @@
   }
   .warn {
     color: var(--warn);
+  }
+  .status-link.quiet {
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 2px;
   }
   .status-link:hover {
     background: var(--raised);

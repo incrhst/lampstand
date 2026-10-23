@@ -4,7 +4,15 @@
   import Icon from "./Icon.svelte";
   import type { Tip } from "../tips";
 
-  let { tip, ondismiss, onall }: { tip: Tip; ondismiss: () => void; onall: () => void } = $props();
+  // A tip with an action also has "Not now" (put off) and "Don't ask again" (dismiss for good).
+  let {
+    tip,
+    ondismiss,
+    onall,
+    onaction,
+    onsnooze,
+  }: { tip: Tip; ondismiss: () => void; onall: () => void; onaction?: () => void; onsnooze?: () => void } = $props();
+  let acts = $derived(!!tip.action && !!onaction);
 </script>
 
 <aside class="tip" aria-label="Did you know?">
@@ -12,8 +20,14 @@
   <strong>{tip.title}</strong>
   <p>{tip.body}</p>
   <div class="actions">
-    <Button size="small" onclick={ondismiss}>Got it</Button>
-    <button type="button" class="link" onclick={onall}>All quick tips</button>
+    {#if acts && tip.action}
+      <Button size="small" variant="primary" onclick={() => onaction?.()}>{tip.action.label}</Button>
+      {#if tip.snoozeDays && onsnooze}<Button size="small" onclick={() => onsnooze?.()}>Not now</Button>{/if}
+      <button type="button" class="link" onclick={ondismiss}>Don't ask again</button>
+    {:else}
+      <Button size="small" onclick={ondismiss}>Got it</Button>
+      <button type="button" class="link" onclick={onall}>All quick tips</button>
+    {/if}
   </div>
 </aside>
 
@@ -48,6 +62,7 @@
     align-items: center;
     gap: 0.75rem;
     margin-top: 0.25rem;
+    flex-wrap: wrap;
   }
   .link {
     font: inherit;

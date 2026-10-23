@@ -13,9 +13,21 @@ export interface TipFacts {
   liveSlides?: number;
   /** The church has set a logo (Setup › Church look). */
   hasLogo?: boolean;
+  /** Devices paired with this one; undefined until sync has been asked. */
+  paired?: number;
+  /** The church uses Lampstand for real: a planned service, or one opened for live. */
+  realUse?: boolean;
 }
 
 export type TipArea = "Present" | "Plan";
+
+/** Where a tip's action goes. The view that shows the tip knows how to get there. */
+export type TipGo = "devices";
+
+export interface TipAction {
+  label: string;
+  go: TipGo;
+}
 
 export interface Tip {
   id: string;
@@ -24,6 +36,10 @@ export interface Tip {
   body: string;
   /** A short looping clip under app/public/tips (recorded with video/capture/tips.mjs). */
   clip?: string;
+  /** A button that takes the operator to where the tip's feature lives. */
+  action?: TipAction;
+  /** "Not now" hides the tip for this many days instead of for good. */
+  snoozeDays?: number;
   /** The feature is in front of the operator now. */
   relevant: (f: TipFacts) => boolean;
   /** They have already used it, so the tip has nothing left to teach. */
@@ -32,6 +48,8 @@ export interface Tip {
 
 const sections = (f: TipFacts) => f.loaded?.sections ?? [];
 const anyLoops = (f: TipFacts) => sections(f).some((s) => s.seconds !== null);
+
+export const CONNECT_DEVICE = "connect-device";
 
 const onAir = (f: TipFacts) => f.liveItem !== null;
 const never = () => false;
@@ -108,15 +126,71 @@ export const TIPS: Tip[] = [
     relevant: onAir,
     used: never,
   },
+  {
+    id: CONNECT_DEVICE,
+    area: "Present",
+    title: "Connect another device",
+    body: "Planning on one computer and presenting on another? Connect another device to keep them in step.",
+    action: { label: "Connect a device", go: "devices" },
+    snoozeDays: 7,
+    // Only once the church is using Lampstand for real, and never over the live screen.
+    relevant: (f) => f.paired === 0 && f.realUse === true && !onAir(f),
+    used: (f) => (f.paired ?? 0) > 0,
+  },
 ];
 
-/** The tip to offer now: relevant, not used, not dismissed; the first in catalogue order. */
-export function nextTip(f: TipFacts, dismissed: ReadonlySet<string>, tips: Tip[] = TIPS): Tip | null {
-  return tips.find((t) => !dismissed.has(t.id) && t.relevant(f) && !t.used(f)) ?? null;
+/** Tips put off with "Not now", by id: when each comes back, in ms since the epoch. */
+export type Snoozed = Record<string, number>;
+
+const DAY_MS = 86_400_000;
+
+/** `id` put off for `days` from `now`. */
+export const snooze = (s: Snoozed, id: string, days: number, now = Date.now()): Snoozed => ({ ...s, [id]: now + days * DAY_MS });
+
+/**
+ * The tip to offer now: relevant, not used, not dismissed, not snoozed; the
+ * first in catalogue order.
+ */
+export function nextTip(f: TipFacts, dismissed: ReadonlySet<string>, tips: Tip[] = TIPS, snoozed: Snoozed = {}, now = Date.now()): Tip | null {
+  return tips.find((t) => !dismissed.has(t.id) && (snoozed[t.id] ?? 0) <= now && t.relevant(f) && !t.used(f)) ?? null;
+}
+
+/** Whether the quiet "connect a device" line is due outside the card (the status bar). */
+export function connectDue(f: Pick<TipFacts, "paired" | "realUse">, dismissed: ReadonlySet<string>, snoozed: Snoozed, now = Date.now()): boolean {
+  const tip = TIPS.find((t) => t.id === CONNECT_DEVICE);
+  return !!tip && nextTip({ loaded: null, liveItem: null, ...f }, dismissed, [tip], snoozed, now) !== null;
 }
 
 const KEY = "lampstand.tips.dismissed";
 const USED_KEY = "lampstand.tips.used";
+const SNOOZE_KEY = "lampstand.tips.snoozed";
+
+/** Tips put off on this device. Never throws. */
+export function loadSnoozed(): Snoozed {
+  try {
+    const raw = JSON.parse(globalThis.localStorage?.getItem(SNOOZE_KEY) ?? "{}");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === "number")) as Snoozed;
+  } catch {
+    return {};
+  }
+}
+
+export function saveSnoozed(s: Snoozed) {
+  try {
+    globalThis.localStorage?.setItem(SNOOZE_KEY, JSON.stringify(s));
+  } catch {
+    // Not remembered: the tip may come back sooner.
+  }
+}
+
+/** Hides a tip for good on this device (it is still listed under Help › Quick tips). */
+export function dismissForGood(id: string) {
+  const ids = loadDismissed();
+  if (ids.has(id)) return;
+  ids.add(id);
+  saveDismissed(ids);
+}
 
 /** Tips dismissed on this device. Browser storage can be unavailable, so this never throws. */
 export const loadDismissed = () => loadSet(KEY);

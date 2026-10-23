@@ -255,7 +255,7 @@ function api(req: any): any {
       }
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
-    case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: [], nearby: [] } };
+    case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: state.paired ?? [], nearby: [] } };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
   }
@@ -263,6 +263,11 @@ function api(req: any): any {
 }
 const obsOff = () => ({ host: "127.0.0.1", port: 4455, has_password: false, connection: { Disconnected: { reason: "not running" } }, problem: null, relevant: true, stream: null, record: null, scenes: [], program_scene: null, held: false, scene_problem: null, audio: [] });
 export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_version: "30.2", websocket_version: "5.5" } }, stream: { active: true, reconnecting: false, timecode: "00:12:41", skipped_frames: 0, total_frames: 45678 }, record: null, scenes: ["Wide", "Speaker", "Lyrics"], program_scene: "Lyrics", audio: [{ name: "Mic", muted: false }] });
+// Pretends a device was paired: the "connect another device" prompt goes away.
+(window as any).__pairDevice = () => {
+  state.paired = [{ device: "bb", fingerprint: "a1b2 c3d4", name: "Office PC", address: "192.168.1.30:7340", connected: true, problem: null, presenting: false }];
+  emit({ type: "SyncStatus", data: { sync: { state: "Synced", paired: 1, connected: 1, reason: null, last_in_ms: null, last_out_ms: null } } });
+};
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {
