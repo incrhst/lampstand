@@ -8,17 +8,18 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshTeam, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
+  import { isPlanning, syncLabel } from "./lib/presenting";
+  import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Logo from "./lib/kit/Logo.svelte";
-  import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -51,6 +52,7 @@
     screen = "help";
   }
   let obsStatus = $derived(obsPill(live.obs));
+  let planningOnly = $derived(isPlanning(live.team));
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -175,6 +177,7 @@
   refreshThemes();
   refreshSettings();
   refreshObs();
+  refreshTeam();
 </script>
 
 <svelte:window {onkeydown} />
@@ -209,6 +212,8 @@
     </div>
   </header>
 
+  <PresenterNotices />
+
   {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
   <main>
@@ -227,9 +232,8 @@
     {#snippet start()}
       <button class="status-link" onclick={() => openSetup("devices")} title="Open Setup › Devices">
         <Dot />
-        <span>This device only</span>
+        <span>{syncLabel(live.team)}</span>
       </button>
-      <Placeholder ticket="T18">Sync</Placeholder>
     {/snippet}
     {#snippet middle()}
       {#if live.progress}
@@ -263,7 +267,7 @@
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
-        {#if screenOutputs.length > 0}<span>· {enabled} on</span>{/if}
+        {#if screenOutputs.length > 0}<span>· {enabled} on{planningOnly && enabled > 0 ? ", dark while planning" : ""}</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}

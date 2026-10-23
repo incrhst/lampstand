@@ -18,7 +18,8 @@ use super::secure::SessionKeys;
 /// Bumped when frames change incompatibly. A peer speaking another version
 /// is refused with a message saying which side should update. 2: hellos
 /// carry an X25519 key and frames after the handshake are encrypted (T75).
-pub(crate) const PROTOCOL: u32 = 2;
+/// 3: presenter lease, ask and heartbeat frames.
+pub(crate) const PROTOCOL: u32 = 3;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -53,6 +54,24 @@ pub(crate) enum Frame {
     BlobMissing {
         hash: [u8; 32],
     },
+    /// The sender's presenter lease ([`crate::presenter::Lease`]): sent
+    /// when a session opens and whenever it changes. The newer one wins.
+    Lease {
+        holder: Option<[u8; 32]>,
+        name: String,
+        epoch: u64,
+    },
+    /// The sender asks the receiver, the presenter, to hand over.
+    Ask,
+    /// The sender withdraws its ask.
+    Cancel,
+    /// The presenter says not now to an ask made at this lease epoch.
+    Declined {
+        epoch: u64,
+    },
+    /// Proof of life, every few seconds, so a silent connection is told
+    /// from a quiet one.
+    Beat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

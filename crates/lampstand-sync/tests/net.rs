@@ -634,3 +634,210 @@ async fn a_capture_of_a_sync_shows_no_plaintext() {
         );
     }
 }
+
+// ---- The presenter lease --------------------------------------------------
+
+use lampstand_sync::net::PresenterStatus;
+use lampstand_sync::presenter::{Denied, Notice, Role, Standing};
+
+fn presenter_of(p: &Peer) -> PresenterStatus {
+    p.node.status().presenter
+}
+
+/// Paired and connected, and both know that Sanctuary presents.
+async fn paired_and_leased() -> (Peer, Peer) {
+    let (sanctuary, office) = paired().await;
+    until(Duration::from_secs(5), "both know who presents", || {
+        presenter_of(&office).lease.name == "Sanctuary"
+            && sanctuary.node.status().connected() == 1
+            && office.node.status().connected() == 1
+    })
+    .await;
+    (sanctuary, office)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lone_device_is_its_own_presenter() {
+    let lone = peer("Sanctuary").await;
+    assert_eq!(lone.node.role(), Role::Presenter);
+    assert_eq!(presenter_of(&lone).standing, Standing::Presenting);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_device_that_showed_the_code_presents_and_the_other_plans() {
+    let (sanctuary, office) = paired_and_leased().await;
+    assert_eq!(sanctuary.node.role(), Role::Presenter);
+    assert_eq!(office.node.role(), Role::Planning);
+    let status = office.node.status();
+    assert_eq!(status.presenter.standing, Standing::Ask);
+    assert_eq!(status.presenter.lease.epoch, 1);
+    assert!(
+        status.paired[0].presenting,
+        "Sanctuary is marked as presenting"
+    );
+    assert!(!sanctuary.node.status().paired[0].presenting);
+
+    // A planning device cannot just take over while the presenter is here.
+    assert_eq!(office.node.claim_presenter(), Err(Denied::MustAsk));
+    assert_eq!(office.node.role(), Role::Planning);
+    // Editing and syncing are unaffected.
+    let s = song("Planned", "from the office");
+    office.repo().put(&s).unwrap();
+    until(Duration::from_secs(5), "the song", || {
+        title(sanctuary.repo(), s.id).is_some()
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_shows_a_prompt_and_allowing_hands_the_role_over() {
+    let (sanctuary, office) = paired_and_leased().await;
+    office.node.ask_to_present().unwrap();
+    assert!(!office.node.status().presenter.asking.unwrap().declined);
+    until(Duration::from_secs(5), "the prompt", || {
+        !presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    let request = presenter_of(&sanctuary).requests[0].clone();
+    assert_eq!(request.name, "Office PC");
+    assert_eq!(request.device, office.node.device());
+
+    sanctuary.node.allow_presenter(request.device).unwrap();
+    assert_eq!(
+        sanctuary.node.role(),
+        Role::Planning,
+        "at once, on the old presenter"
+    );
+    until(Duration::from_secs(5), "the office PC to present", || {
+        office.node.role() == Role::Presenter
+    })
+    .await;
+    let status = office.node.status().presenter;
+    assert_eq!(status.lease.name, "Office PC");
+    assert_eq!(status.lease.epoch, 2);
+    assert_eq!(status.asking, None);
+    assert!(presenter_of(&sanctuary).requests.is_empty());
+    // Handing over was the old presenter's choice: no notice.
+    assert_eq!(presenter_of(&sanctuary).notice, None);
+    until(Duration::from_secs(5), "the old presenter to know", || {
+        presenter_of(&sanctuary).lease.name == "Office PC"
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn declining_keeps_the_presenter_and_tells_the_asker() {
+    let (sanctuary, office) = paired_and_leased().await;
+    office.node.ask_to_present().unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        !presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary.node.decline_presenter(office.node.device());
+    until(Duration::from_secs(5), "the answer", || {
+        presenter_of(&office).asking.is_some_and(|a| a.declined)
+    })
+    .await;
+    assert_eq!(sanctuary.node.role(), Role::Presenter);
+    assert_eq!(office.node.role(), Role::Planning);
+    assert!(presenter_of(&sanctuary).requests.is_empty());
+
+    // Asking again after "not now" works, and can be withdrawn.
+    office.node.ask_to_present().unwrap();
+    until(Duration::from_secs(5), "the prompt again", || {
+        !presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    office.node.cancel_ask();
+    until(Duration::from_secs(5), "the prompt to go", || {
+        presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    assert_eq!(presenter_of(&office).asking, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return() {
+    let (mut sanctuary, office) = paired_and_leased().await;
+    office.node.set_takeover_after(Duration::from_secs(2));
+
+    sanctuary.cut();
+    until(Duration::from_secs(5), "disconnected", || {
+        office.node.status().connected() == 0
+    })
+    .await;
+    // Just offline: not yet.
+    match office.node.claim_presenter() {
+        Err(Denied::TooSoon { .. }) => {}
+        other => panic!("expected TooSoon, got {other:?}"),
+    }
+    assert!(matches!(
+        presenter_of(&office).standing,
+        Standing::Wait { .. }
+    ));
+    assert_eq!(office.node.ask_to_present(), Err(Denied::NobodyToAsk));
+    assert_eq!(office.node.role(), Role::Planning);
+
+    until(Duration::from_secs(10), "takeover to open", || {
+        matches!(presenter_of(&office).standing, Standing::TakeOver { .. })
+    })
+    .await;
+    office.node.claim_presenter().unwrap();
+    assert_eq!(office.node.role(), Role::Presenter);
+    assert_eq!(presenter_of(&office).lease.epoch, 2);
+
+    // The old presenter, still believing it presents, comes back.
+    assert_eq!(sanctuary.node.role(), Role::Presenter);
+    sanctuary.restore().await;
+    until(
+        Duration::from_secs(15),
+        "the old presenter to yield",
+        || sanctuary.node.role() == Role::Planning,
+    )
+    .await;
+    assert_eq!(
+        presenter_of(&sanctuary).notice,
+        Some(Notice::Replaced {
+            by: "Office PC".into()
+        })
+    );
+    sanctuary.node.dismiss_presenter_notice();
+    assert_eq!(presenter_of(&sanctuary).notice, None);
+    assert_eq!(office.node.role(), Role::Presenter, "it never resumes");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_lease_survives_a_restart() {
+    let (sanctuary, office) = paired_and_leased().await;
+    office.node.ask_to_present().unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        !presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary
+        .node
+        .allow_presenter(office.node.device())
+        .unwrap();
+    until(Duration::from_secs(5), "the office PC to present", || {
+        office.node.role() == Role::Presenter
+    })
+    .await;
+    let dir = office._dir.path().join("sync");
+    until(Duration::from_secs(5), "the lease to be saved", || {
+        std::fs::read_to_string(dir.join("presenter.json"))
+            .is_ok_and(|j| j.contains("\"epoch\": 2"))
+    })
+    .await;
+    // A node started afresh from the same files still knows.
+    let again = SyncNode::new(
+        office.node.repo().clone(),
+        key_in(office._dir.path()),
+        NodeConfig {
+            name: "Office PC".into(),
+            dir,
+        },
+    )
+    .unwrap();
+    assert_eq!(again.role(), Role::Presenter);
+    assert_eq!(again.status().presenter.lease.epoch, 2);
+}

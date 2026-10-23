@@ -25,6 +25,14 @@
 //!   it was last reached at, and wakes at once when mDNS sees it again.
 //!   On disconnect the peer's sync state is dropped ([`Repo::forget_peer`]),
 //!   so the next connection resumes with a fresh sync handshake.
+//! - **Presenter lease.** One paired device at a time may drive the
+//!   screens ([`presenter`](crate::presenter)). Each side sends its lease
+//!   when a session opens and whenever it changes; the newer one wins.
+//!   `Ask` / `Declined` frames carry a request to present. Every session
+//!   also sends a `Beat` every few seconds and ends if it hears nothing
+//!   for half a minute, so "offline" means a connection that is really
+//!   gone, and the time since the presenter was last heard from is what
+//!   lets another device take over.
 //! - **Blobs** are fetched by hash on request ([`SyncNode::fetch_blob`]),
 //!   in 256 KiB chunks, and verified on arrival ([`BlobStore::put_verified`]).
 //!
@@ -43,7 +51,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use lampstand_core::id::BlobHash;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -52,11 +60,16 @@ use uuid::Uuid;
 pub use trust::{PairedDevice, PairingCode, PAIRING_TTL};
 pub use wire::Link;
 
+use crate::presenter::{
+    Asking, Denied, Holder, Lease, Notice, Presenter, Request as PresentRequest, Role, Standing,
+    DEFAULT_TAKEOVER,
+};
 use crate::team::{DeviceKey, DeviceKeypair};
 use crate::Repo;
 use discovery::Discovery;
 use handshake::{Me, Peer};
 use trust::Trust;
+use wire::Frame;
 
 /// The mDNS service type peers advertise.
 pub const SERVICE_TYPE: &str = "_lampstand._tcp.local.";
@@ -125,6 +138,23 @@ pub struct NodeStatus {
     pub paired: Vec<PeerStatus>,
     /// Lampstand devices seen by mDNS that are not paired with this one.
     pub nearby: Vec<Nearby>,
+    pub presenter: PresenterStatus,
+}
+
+/// Who may present, as the devices screen and the status bar show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenterStatus {
+    pub role: Role,
+    pub standing: Standing,
+    pub lease: Lease,
+    /// How long the presenter must be offline before another device may
+    /// take over without asking.
+    pub takeover_after: Duration,
+    /// Devices asking this one (the presenter) to hand over.
+    pub requests: Vec<PresentRequest>,
+    /// This device's own ask.
+    pub asking: Option<Asking>,
+    pub notice: Option<Notice>,
 }
 
 impl NodeStatus {
@@ -139,6 +169,8 @@ pub struct PeerStatus {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
+    /// It holds the presenter lease.
+    pub presenting: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +188,8 @@ pub(crate) enum Control {
     Changed(Arc<Vec<Uuid>>),
     /// Ask the peer for a blob, and say how it went.
     Want(BlobHash, oneshot::Sender<Result<(), NetError>>),
+    /// Send this frame as it is (the presenter lease and asks).
+    Frame(Frame),
 }
 
 struct Session {
@@ -183,6 +217,8 @@ struct Peers {
     next_id: u64,
     found: HashMap<DeviceKey, Found>,
     dialling: HashSet<DeviceKey>,
+    /// When each device was last heard from, once its session has run.
+    last_contact: HashMap<DeviceKey, Instant>,
 }
 
 /// This device on the network: its paired devices, its connections and
@@ -201,7 +237,41 @@ pub struct SyncNode {
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
     discovery: Mutex<Option<Discovery>>,
+    presenter: Mutex<Presenter>,
+    /// When this node was made: how long a never-seen presenter has been
+    /// silent.
+    started: Instant,
     me: Weak<SyncNode>,
+}
+
+/// What survives a restart of the presenter lease: `presenter.json`.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PresenterFile {
+    lease: Lease,
+    takeover_secs: u64,
+}
+
+/// A snapshot of who is paired, connected and for how long silent.
+struct Reach {
+    paired: HashSet<DeviceKey>,
+    connected: HashSet<DeviceKey>,
+    silent: HashMap<DeviceKey, Duration>,
+}
+
+impl Reach {
+    fn has_peers(&self) -> bool {
+        !self.paired.is_empty()
+    }
+
+    fn holder(&self, device: DeviceKey) -> Holder {
+        if !self.paired.contains(&device) {
+            Holder::Gone
+        } else if self.connected.contains(&device) {
+            Holder::Online
+        } else {
+            Holder::Offline(self.silent.get(&device).copied().unwrap_or_default())
+        }
+    }
 }
 
 impl SyncNode {
@@ -215,6 +285,17 @@ impl SyncNode {
         );
         std::fs::create_dir_all(&config.dir)?;
         let trust = Trust::load(config.dir.join("paired.json"))?;
+        let saved: Option<PresenterFile> = std::fs::read(config.dir.join("presenter.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        let presenter = Presenter::new(
+            key.public(),
+            config.name.clone(),
+            saved.as_ref().map(|f| f.lease.clone()).unwrap_or_default(),
+            saved
+                .map(|f| Duration::from_secs(f.takeover_secs))
+                .unwrap_or(DEFAULT_TAKEOVER),
+        );
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -226,6 +307,8 @@ impl SyncNode {
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
+            presenter: Mutex::new(presenter),
+            started: Instant::now(),
             me: me.clone(),
         }))
     }
@@ -235,6 +318,7 @@ impl SyncNode {
     pub fn start(self: &Arc<Self>, port: u16, advertise: bool) {
         *lock(&self.port) = Some(port);
         self.start_pusher();
+        self.start_clock();
         let paired: Vec<DeviceKey> = lock(&self.trust)
             .devices()
             .iter()
@@ -262,6 +346,8 @@ impl SyncNode {
 
     pub fn status(&self) -> NodeStatus {
         let pairing = lock(&self.trust).pairing();
+        let presenter = self.presenter_status();
+        let lease = presenter.lease.clone();
         let trust = lock(&self.trust);
         let peers = lock(&self.peers);
         let paired = trust
@@ -276,6 +362,7 @@ impl SyncNode {
                         .and_then(|s| s.address.clone())
                         .or_else(|| d.address.clone()),
                     connected: session.is_some(),
+                    presenting: lease.holder == Some(d.device),
                 }
             })
             .collect();
@@ -300,6 +387,7 @@ impl SyncNode {
             pairing,
             paired,
             nearby,
+            presenter,
         }
     }
 
@@ -439,6 +527,11 @@ impl SyncNode {
         if peer.paired_now {
             self.bump();
             self.ensure_dialler(peer.device);
+            // The device that showed the code is the presenting machine.
+            let claimed = lock(&self.presenter).claim_if_unclaimed();
+            if let Some(lease) = claimed {
+                self.lease_changed(&lease);
+            }
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
         let link = link.encrypt(keys);
@@ -467,6 +560,7 @@ impl SyncNode {
                 name: String::new(),
                 address: None,
                 connected: false,
+                presenting: false,
             })
     }
 
@@ -584,12 +678,239 @@ impl SyncNode {
         let mut peers = lock(&self.peers);
         if peers.sessions.get(&device).is_some_and(|s| s.id == id) {
             peers.sessions.remove(&device);
+            peers.last_contact.insert(device, Instant::now());
             // Under the peers lock, so a new session cannot start before
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
+            lock(&self.presenter).receive_cancel(device);
             self.bump();
         }
+    }
+
+    // ---- Presenter lease -----------------------------------------------
+
+    fn reach(&self) -> Reach {
+        let paired: HashSet<DeviceKey> = lock(&self.trust)
+            .devices()
+            .iter()
+            .map(|d| d.device)
+            .collect();
+        let peers = lock(&self.peers);
+        let connected: HashSet<DeviceKey> = peers.sessions.keys().copied().collect();
+        let silent = paired
+            .iter()
+            .filter(|d| !connected.contains(d))
+            .map(|d| {
+                let since = peers.last_contact.get(d).copied().unwrap_or(self.started);
+                (*d, since.elapsed())
+            })
+            .collect();
+        Reach {
+            paired,
+            connected,
+            silent,
+        }
+    }
+
+    pub fn presenter_status(&self) -> PresenterStatus {
+        let reach = self.reach();
+        let p = lock(&self.presenter);
+        let holder = p.holder_of(|d| reach.holder(d));
+        PresenterStatus {
+            role: p.role(reach.has_peers()),
+            standing: p.standing(reach.has_peers(), holder),
+            lease: p.lease().clone(),
+            takeover_after: p.takeover_after(),
+            requests: p.requests().to_vec(),
+            asking: p.asking(),
+            notice: p.notice().cloned(),
+        }
+    }
+
+    /// Whether this device may drive the screens now.
+    pub fn role(&self) -> Role {
+        let has_peers = !lock(&self.trust).devices().is_empty();
+        lock(&self.presenter).role(has_peers)
+    }
+
+    /// Takes the presenter role when nobody needs to allow it: nobody
+    /// holds it, or the presenter has been offline past the timeout.
+    pub fn claim_presenter(&self) -> Result<(), Denied> {
+        let reach = self.reach();
+        let lease = {
+            let mut p = lock(&self.presenter);
+            let holder = p.holder_of(|d| reach.holder(d));
+            p.claim(reach.has_peers(), holder)?
+        };
+        self.lease_changed(&lease);
+        Ok(())
+    }
+
+    /// Asks the presenter to hand over; it sees a prompt.
+    pub fn ask_to_present(&self) -> Result<(), Denied> {
+        let reach = self.reach();
+        let holder = {
+            let mut p = lock(&self.presenter);
+            let holder = p.holder_of(|d| reach.holder(d));
+            p.ask(reach.has_peers(), holder)?;
+            p.lease().holder
+        };
+        if let Some(holder) = holder {
+            self.send_to(holder, Frame::Ask);
+        }
+        self.bump();
+        Ok(())
+    }
+
+    /// Withdraws this device's ask, or clears the "not now" it was shown.
+    pub fn cancel_ask(&self) {
+        let (open, holder) = {
+            let mut p = lock(&self.presenter);
+            (p.cancel_ask(), p.lease().holder)
+        };
+        if let (true, Some(holder)) = (open, holder) {
+            self.send_to(holder, Frame::Cancel);
+        }
+        self.bump();
+    }
+
+    /// Hands the presenter role to a device that asked. This device
+    /// becomes Planning; the app clears its screens when it sees that.
+    pub fn allow_presenter(&self, device: DeviceKey) -> Result<(), String> {
+        if !lock(&self.peers).sessions.contains_key(&device) {
+            return Err("that device is no longer connected".into());
+        }
+        let lease = lock(&self.presenter)
+            .allow(device)
+            .ok_or("that device is not asking, or this device is not presenting")?;
+        self.lease_changed(&lease);
+        Ok(())
+    }
+
+    /// Says not now to a device that asked.
+    pub fn decline_presenter(&self, device: DeviceKey) {
+        let (was_asking, epoch) = {
+            let mut p = lock(&self.presenter);
+            (p.decline(device), p.lease().epoch)
+        };
+        if was_asking {
+            self.send_to(device, Frame::Declined { epoch });
+        }
+        self.bump();
+    }
+
+    pub fn dismiss_presenter_notice(&self) {
+        lock(&self.presenter).dismiss_notice();
+        self.bump();
+    }
+
+    /// How long the presenter may be offline before another device may
+    /// take over without asking. Kept on this device.
+    pub fn set_takeover_after(&self, after: Duration) {
+        lock(&self.presenter).set_takeover_after(after);
+        self.save_presenter();
+        self.bump();
+    }
+
+    /// This device's lease changed: keep it, tell every device, show it.
+    fn lease_changed(&self, lease: &Lease) {
+        self.save_presenter();
+        let frame = lease_frame(lease);
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(Control::Frame(frame.clone()));
+        }
+        self.bump();
+    }
+
+    fn save_presenter(&self) {
+        let file = {
+            let p = lock(&self.presenter);
+            PresenterFile {
+                lease: p.lease().clone(),
+                takeover_secs: p.takeover_after().as_secs().max(1),
+            }
+        };
+        let path = self.dir.join("presenter.json");
+        let tmp = self.dir.join("presenter.json.tmp");
+        let saved = serde_json::to_vec_pretty(&file)
+            .map_err(io::Error::other)
+            .and_then(|json| std::fs::write(&tmp, json))
+            .and_then(|_| std::fs::rename(&tmp, &path));
+        if let Err(e) = saved {
+            eprintln!("lampstand: cannot save the presenter lease: {e}");
+        }
+    }
+
+    fn send_to(&self, device: DeviceKey, frame: Frame) {
+        if let Some(s) = lock(&self.peers).sessions.get(&device) {
+            let _ = s.control.send(Control::Frame(frame));
+        }
+    }
+
+    /// This device's lease, as a frame, for a session that opens.
+    pub(crate) fn lease_frame(&self) -> Frame {
+        lease_frame(lock(&self.presenter).lease())
+    }
+
+    /// A device sent its lease: the newer of the two stands.
+    pub(crate) fn lease_received(&self, lease: Lease) {
+        let known = lease
+            .holder
+            .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
+        let merged = lock(&self.presenter).merge(&lease, known);
+        if merged.changed {
+            self.lease_changed(&lease);
+        }
+    }
+
+    pub(crate) fn ask_received(&self, from: DeviceKey) {
+        let name = lock(&self.trust)
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        if lock(&self.presenter).receive_ask(from, name) {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn cancel_received(&self, from: DeviceKey) {
+        if lock(&self.presenter).receive_cancel(from) {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn declined_received(&self, from: DeviceKey, epoch: u64) {
+        lock(&self.presenter).receive_declined(from, epoch);
+        self.bump();
+    }
+
+    /// Notes that `device` was just heard from.
+    pub(crate) fn heard(&self, device: DeviceKey) {
+        lock(&self.peers)
+            .last_contact
+            .insert(device, Instant::now());
+    }
+
+    /// While the presenter is offline, the time since it was heard from
+    /// changes the answer; wake the status every few seconds.
+    fn start_clock(&self) {
+        let node = self.me.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                let Some(node) = node.upgrade() else {
+                    return;
+                };
+                if matches!(
+                    node.presenter_status().standing,
+                    Standing::Wait { .. } | Standing::TakeOver { .. }
+                ) {
+                    node.bump();
+                }
+            }
+        });
     }
 
     pub(crate) fn found(&self, device: DeviceKey, found: Found) {
@@ -701,6 +1022,14 @@ impl SyncNode {
             }
             backoff = (backoff * 2).min(BACKOFF_MAX);
         }
+    }
+}
+
+fn lease_frame(lease: &Lease) -> Frame {
+    Frame::Lease {
+        holder: lease.holder.map(|h| h.0),
+        name: lease.name.clone(),
+        epoch: lease.epoch,
     }
 }
 

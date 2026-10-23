@@ -2,6 +2,7 @@
      order in the middle, the song, scripture, deck and media library on the right.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
@@ -858,7 +859,7 @@
           </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
-          <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
+          <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
 

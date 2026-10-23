@@ -72,6 +72,8 @@ enum Internal {
     Key(Key),
     /// An output window gained or lost focus.
     Focused(OutputId, bool),
+    /// Sync says whether this device presents (`true`) or only plans.
+    Presenting(bool),
 }
 
 struct Shared {
@@ -486,6 +488,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     });
     lock(&app).set_obs_cues(obs_control.cues());
 
+    let role_tx = tx.clone();
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(
             &library,
@@ -494,6 +497,9 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             SyncConfig::from_env(),
             obs,
             emit.clone(),
+            Arc::new(move |presenting| {
+                let _ = role_tx.send(Internal::Presenting(presenting));
+            }),
         )),
         Err(e) => Err(e.to_string()),
     };
@@ -682,6 +688,7 @@ fn app_step(
                 lock(app).output_closed(id)
             }
             Ok(Internal::LibraryChanged) => {}
+            Ok(Internal::Presenting(presenting)) => lock(app).set_presenting(presenting),
             Ok(Internal::Key(key)) => {
                 if let Response::Error { message } = lock(app).handle(Request::Live(key.command()))
                 {

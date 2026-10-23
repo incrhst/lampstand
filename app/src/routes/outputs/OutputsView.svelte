@@ -17,6 +17,8 @@
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import IdlePicker from "../../lib/kit/IdlePicker.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import { isPlanning, PLANNING_SCREENS } from "../../lib/presenting";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
   let { onobs }: { onobs?: () => void } = $props();
@@ -142,6 +144,15 @@
         </Button>
       </div>
     </div>
+
+    {#if isPlanning(live.team)}
+      <div class="saved">
+        <Banner tone="warn" icon="monitor">
+          <span>{PLANNING_SCREENS}</span>
+          <PresentAction present="Present from here" />
+        </Banner>
+      </div>
+    {/if}
 
     {#if savedOutput}
       <div class="saved">

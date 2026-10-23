@@ -4,4 +4,8 @@ export type DeviceView = {
 /**
  * The device key in hex, for `Unpair`.
  */
-device: string, fingerprint: string, name: string, address: string | null, connected: boolean, };
+device: string, fingerprint: string, name: string, address: string | null, connected: boolean, 
+/**
+ * It holds the presenter role.
+ */
+presenting: boolean, };

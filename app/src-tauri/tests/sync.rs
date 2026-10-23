@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use lampstand_api::{
-    Event, LibraryRequest, LoadedService, OutputRequest, Request, Response, ServiceRequest,
-    TeamRequest,
+    Event, LibraryRequest, LoadedService, OutputRequest, PresenterRole, Request, Response,
+    ServiceRequest, TeamRequest,
 };
 use lampstand_app::config::device_key;
 use lampstand_app::handler::{App, Placement, WindowHost};
@@ -45,6 +45,9 @@ struct Device {
     sync: Sync,
     events: Arc<Mutex<Vec<Event>>>,
     changes: std::sync::mpsc::Receiver<DocChanged>,
+    /// Role changes sync has reported, for `pump` to hand to the app as
+    /// the shell's app thread does.
+    roles: Arc<Mutex<Vec<bool>>>,
     _dir: tempfile::TempDir,
 }
 
@@ -63,6 +66,8 @@ async fn device(name: &str) -> Device {
     )
     .unwrap();
     let changes = app.library().subscribe();
+    let roles = Arc::new(Mutex::new(Vec::new()));
+    let told = roles.clone();
     let sync = Sync::start(
         app.library(),
         device_key(dir.path()).unwrap(),
@@ -77,6 +82,7 @@ async fn device(name: &str) -> Device {
             renderer: None,
         },
         emit,
+        Arc::new(move |presenting| told.lock().unwrap().push(presenting)),
     )
     .await
     .unwrap();
@@ -85,6 +91,7 @@ async fn device(name: &str) -> Device {
         sync,
         events,
         changes,
+        roles,
         _dir: dir,
     }
 }
@@ -99,6 +106,9 @@ impl Device {
 
     /// What the app thread does: hands library changes to the app.
     fn pump(&mut self) {
+        for presenting in std::mem::take(&mut *self.roles.lock().unwrap()) {
+            self.app.set_presenting(presenting);
+        }
         let batch: Vec<DocChanged> = self.changes.try_iter().collect();
         if !batch.is_empty() {
             self.app.library_changed(&batch);
@@ -334,4 +344,107 @@ async fn an_unpaired_device_gets_nothing() {
     stranger.pump();
     assert!(stranger.app.library().song(mine.id).unwrap().is_none());
     assert!(presenter.sync.status().paired.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_to_present_moves_the_screens_from_one_app_to_the_other() {
+    let mut sanctuary = device("Sanctuary").await;
+    let mut laptop = device("Mary's laptop").await;
+    let code = match sanctuary.sync.handle(TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    laptop
+        .sync
+        .handle(TeamRequest::Join {
+            invite: code,
+            address: Some(sanctuary.address()),
+        })
+        .await;
+    let status = |d: &Device| d.sync.status().presenter;
+    until(Duration::from_secs(5), "the roles to settle", || {
+        status(&laptop).role == PresenterRole::Planning
+            && status(&sanctuary).role == PresenterRole::Presenting
+            && laptop.sync.status().paired.iter().any(|p| p.connected)
+    })
+    .await;
+    laptop.pump();
+
+    // The sanctuary is live; the laptop can plan but not present.
+    let grace = song_id(&mut sanctuary, "Amazing Grace");
+    let service = match sanctuary.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    sanctuary.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    sanctuary.request(Request::Service(ServiceRequest::Open(service.id)));
+    sanctuary.request(Request::Live(Command::Next));
+    assert!(!sanctuary.on_air().is_empty());
+    until(Duration::from_secs(5), "the service on the laptop", || {
+        laptop.pump();
+        laptop.app.library().service(service.id).unwrap().is_some()
+    })
+    .await;
+    assert!(matches!(
+        laptop
+            .app
+            .handle(Request::Service(ServiceRequest::Open(service.id))),
+        Response::Error { .. }
+    ));
+
+    // It asks; the sanctuary is shown the prompt and allows.
+    assert!(matches!(
+        laptop.sync.handle(TeamRequest::PresenterAsk).await,
+        Response::Team(_)
+    ));
+    until(Duration::from_secs(5), "the prompt", || {
+        !status(&sanctuary).requests.is_empty()
+    })
+    .await;
+    let asker = sanctuary.sync.status().presenter.requests[0].device.clone();
+    sanctuary
+        .sync
+        .handle(TeamRequest::PresenterAllow { device: asker })
+        .await;
+    until(Duration::from_secs(5), "the laptop to present", || {
+        laptop.pump();
+        sanctuary.pump();
+        status(&laptop).role == PresenterRole::Presenting
+    })
+    .await;
+
+    // The sanctuary is off air and refuses live control; the laptop opens
+    // the service itself.
+    until(Duration::from_secs(5), "the hand-over to clear it", || {
+        sanctuary.pump();
+        sanctuary.on_air().is_empty()
+    })
+    .await;
+    assert!(matches!(
+        sanctuary.app.handle(Request::Live(Command::Next)),
+        Response::Error { .. }
+    ));
+    until(Duration::from_secs(5), "the laptop app to be told", || {
+        laptop.pump();
+        matches!(
+            laptop
+                .app
+                .handle(Request::Service(ServiceRequest::Open(service.id))),
+            Response::Loaded(_)
+        )
+    })
+    .await;
+    laptop.request(Request::Live(Command::Next));
+    assert!(!laptop.on_air().is_empty());
 }

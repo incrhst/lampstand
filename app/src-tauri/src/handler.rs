@@ -182,7 +182,15 @@ pub struct App {
     /// Set from `open` until the journal is restored, so the windows
     /// being placed and the half-restored state do not overwrite it.
     restoring: bool,
+    /// This device may drive the screens: it is the presenter, or has no
+    /// paired devices. Set by the shell as sync reports it; a Planning
+    /// device refuses live control and keeps its screens dark.
+    presenting: bool,
 }
+
+/// Why a Planning device refuses live control.
+pub const PLANNING_ONLY: &str =
+    "This device is planning. Ask the presenting device to hand over, then take the service live.";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -237,6 +245,7 @@ impl App {
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
+            presenting: true,
         };
         app.place_windows();
         app.restore();
@@ -285,6 +294,28 @@ impl App {
         self.obs_cues = Some(cues);
     }
 
+    /// Sync says whether this device may drive the screens now. Becoming
+    /// Planning takes the service off air and closes the output windows:
+    /// they stay dark (the outputs keep their settings) until this device
+    /// presents again.
+    pub fn set_presenting(&mut self, presenting: bool) {
+        if self.presenting == presenting {
+            return;
+        }
+        self.presenting = presenting;
+        if !presenting {
+            self.loaded = None;
+            self.loop_overrides.clear();
+            let events = self.live.apply(Command::EndService);
+            self.live.load(Vec::new());
+            self.after_live(events);
+        }
+        self.place_windows();
+        if !presenting {
+            self.journal.clear();
+        }
+    }
+
     /// Where the local server listens (`host:port`), for the URLs
     /// `BrowserSourceUrl` gives.
     pub fn set_server_address(&mut self, address: String) {
@@ -296,6 +327,12 @@ impl App {
             Request::Library(r) => self.library_request(r),
             Request::Service(r) => self.service_request(r),
             Request::Live(command) => {
+                // Putting a slide on the preview pane changes nothing on air.
+                if !self.presenting && !matches!(command, Command::Preview(_)) {
+                    return Response::Error {
+                        message: PLANNING_ONLY.into(),
+                    };
+                }
                 let events = self.live.apply(command);
                 self.after_live(events);
                 Ok(Response::Ok)
@@ -629,6 +666,7 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::Open(_) if !self.presenting => return Err(PLANNING_ONLY.into()),
             ServiceRequest::Open(id) => {
                 if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
                     self.loop_overrides.clear();
@@ -1648,7 +1686,7 @@ impl App {
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match &o.target {
                 OutputTarget::Display(m) => Some((o.id, m.clone())),
                 _ => None,
@@ -1656,7 +1694,12 @@ impl App {
             .collect();
         let assigned = assign_displays(&wanted, &displays);
         let mut placements = HashMap::new();
-        for o in self.outputs.all().iter().filter(|o| o.enabled) {
+        for o in self
+            .outputs
+            .all()
+            .iter()
+            .filter(|o| o.enabled && self.presenting)
+        {
             let placement = match &o.target {
                 OutputTarget::Window { width, height } => Placement::Window {
                     width: *width,
@@ -1714,7 +1757,7 @@ impl App {
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match o.target {
                 OutputTarget::BrowserSource { width, height } => {
                     Some((o.id, (width.max(1), height.max(1))))
