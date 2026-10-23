@@ -45,6 +45,10 @@ class LiveState {
   obs: ObsView | null = $state(null);
   /** Where sync with the paired devices stands; null until first asked. */
   sync: SyncSummary | null = $state(null);
+  /** The church plans or presents for real, not just the Welcome service (see tips.ts). */
+  realUse = $state(false);
+  /** Bumped when a quick tip is put off or dismissed, so the status bar looks again. */
+  tipsVersion = $state(0);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
