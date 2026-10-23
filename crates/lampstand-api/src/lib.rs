@@ -7,7 +7,7 @@
 //! Requests are grouped by area. Each returns `Response::Ok`, a typed
 //! payload, or `Response::Error`.
 
-use lampstand_core::brand::Brand;
+use lampstand_core::brand::{Brand, LogoBug};
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::OutputId;
@@ -111,6 +111,9 @@ pub enum SettingsRequest {
     /// added if it is gone, and it becomes the default theme. Answers
     /// `Response::Settings`.
     SaveBrand(Brand),
+    /// Turns the logo bug on or off, or changes its corner, size or
+    /// opacity, keeping the rest of the brand. Answers `Response::Settings`.
+    SetLogoBug(LogoBug),
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

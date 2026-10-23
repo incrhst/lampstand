@@ -1,6 +1,7 @@
 //! Composing what is on air into one output's scene (T23).
 
 use cosmic_text::{Attrs, Buffer, Family, Metrics, Shaping, Style, Weight, Wrap};
+use lampstand_core::brand::bug_rect;
 use lampstand_core::geom::{Color, Point, Rect, Transform};
 use lampstand_core::id::Timestamp;
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputRole};
@@ -54,6 +55,12 @@ pub enum FitWarning {
 /// stream shows nothing under them, staying transparent. The logo screen is the
 /// church's logo on its brand colour, or a ring until it has set one.
 ///
+/// Logo bug: audience and stream outputs draw the church's logo small in a
+/// lower corner of the safe area, last so it is over the slide and media. It
+/// is not drawn under `Black` or `Logo`, nor on an idle screen that is the
+/// logo itself, and the stage never has it. It has no animation of its own,
+/// so it stays put across slide changes.
+///
 /// Idle: when the program carries an `Idle` (an audience output with
 /// nothing on air), that picture, video or slide fills the screen in place
 /// of the theme background. Stage and stream outputs never show it.
@@ -95,9 +102,15 @@ pub fn compose_at(
         safe: output.safe_area.rect(size.width, size.height),
     };
     let nodes = match output.role {
-        OutputRole::Audience { .. } => c.audience(),
+        OutputRole::Audience { .. } => {
+            let nodes = c.audience();
+            c.with_bug(nodes)
+        }
         OutputRole::Stage => c.stage(),
-        OutputRole::Stream => c.stream(),
+        OutputRole::Stream => {
+            let nodes = c.stream();
+            c.with_bug(nodes)
+        }
     };
     Composed {
         scene: Scene {
@@ -398,6 +411,40 @@ impl Compositor<'_> {
             }))],
             Idle::Deck { scene } => vec![self.deck_group(scene, full)],
         }
+    }
+
+    /// `nodes` with the logo bug on top, when this output shows one.
+    fn with_bug(&mut self, mut nodes: Vec<Node>) -> Vec<Node> {
+        nodes.extend(self.bug());
+        nodes
+    }
+
+    /// The logo bug: the logo tight to its corner of the safe area.
+    fn bug(&mut self) -> Option<Node> {
+        let bug = self.program.logo.as_ref()?.bug.as_ref()?;
+        if self.program.overlay != Overlay::None {
+            return None;
+        }
+        // The idle screen is already the logo, large.
+        if matches!(&self.program.idle, Some(Idle::Image { blob }) if *blob == bug.image) {
+            return None;
+        }
+        let rect = bug_rect(
+            self.safe,
+            self.size.height,
+            bug.aspect,
+            bug.corner,
+            bug.size,
+        );
+        let (blob, opacity) = (bug.image, bug.opacity);
+        let mut node = self.node(NodeKind::Image(ImageNode {
+            blob,
+            rect,
+            fit: Fit::Contain,
+            crop: None,
+        }));
+        node.opacity = opacity.clamp(0.0, 1.0);
+        Some(node)
     }
 
     fn ring(&mut self, color: Color) -> Node {
@@ -1289,6 +1336,7 @@ mod tests {
             image: Some(blob(1)),
             background: Color::rgb(20, 30, 90),
             accent: Color::WHITE,
+            bug: None,
         });
         let c = run(&p, &o, 1920.0, 1080.0, &t);
         assert_eq!(kinds(&c.scene), ["path", "path", "image"]);
@@ -1296,6 +1344,142 @@ mod tests {
         p.logo.as_mut().unwrap().image = None;
         let c = run(&p, &o, 1920.0, 1080.0, &t);
         assert_eq!(kinds(&c.scene), ["path", "path", "path"]);
+    }
+
+    fn with_bug(mut p: Program, corner: lampstand_core::brand::BugCorner) -> Program {
+        use lampstand_core::brand::BugSize;
+        use lampstand_core::program::{Bug, Logo};
+        p.logo = Some(Logo {
+            image: Some(blob(1)),
+            background: Color::rgb(20, 30, 90),
+            accent: Color::WHITE,
+            bug: Some(Bug {
+                image: blob(1),
+                aspect: 2.0,
+                corner,
+                size: BugSize::Medium,
+                opacity: 0.6,
+            }),
+        });
+        p
+    }
+
+    fn bug_of(c: &Composed) -> Option<&Node> {
+        c.scene
+            .nodes
+            .last()
+            .filter(|n| matches!(&n.kind, NodeKind::Image(i) if i.blob == blob(1)))
+    }
+
+    #[test]
+    fn the_bug_is_drawn_last_in_the_safe_area_corner_of_audience_and_stream() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        for (role, mode) in [
+            (
+                OutputRole::Audience { primary: true },
+                BackgroundMode::Bleed,
+            ),
+            (OutputRole::Audience { primary: true }, BackgroundMode::Fit),
+            (OutputRole::Stream, BackgroundMode::Bleed),
+        ] {
+            let o = output(role, mode, safe());
+            for (w, h) in [(1920.0, 1080.0), (1280.0, 1024.0), (1024.0, 768.0)] {
+                let safe_rect = o.safe_area.rect(w, h);
+                for corner in [BugCorner::LowerLeft, BugCorner::LowerRight] {
+                    let p = with_bug(program(Some(lyrics()), Overlay::None), corner);
+                    let c = run(&p, &o, w, h, &t);
+                    let node = bug_of(&c).expect("the bug is on top");
+                    let NodeKind::Image(img) = &node.kind else {
+                        unreachable!()
+                    };
+                    assert!((node.opacity - 0.6).abs() < 1e-6);
+                    assert!(img.rect.x >= safe_rect.x && img.rect.y >= safe_rect.y);
+                    assert!(img.rect.x + img.rect.width <= safe_rect.x + safe_rect.width + 0.01);
+                    assert!(img.rect.y + img.rect.height <= safe_rect.y + safe_rect.height + 0.01);
+                    let centre = img.rect.x + img.rect.width / 2.0;
+                    let lower_right = centre > safe_rect.x + safe_rect.width / 2.0;
+                    assert_eq!(lower_right, corner == BugCorner::LowerRight);
+                    assert!(img.rect.y > safe_rect.y + safe_rect.height / 2.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_bug_stays_over_media_deck_slides_and_an_empty_screen() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        for content in [
+            None,
+            Some(Content::Image { blob: blob(5) }),
+            Some(deck()),
+            Some(lyrics()),
+        ] {
+            let p = with_bug(program(content, Overlay::None), BugCorner::LowerRight);
+            assert!(bug_of(&run(&p, &o, 1920.0, 1080.0, &t)).is_some());
+        }
+        // The same slide on the next frame: only the slide changes.
+        let a = with_bug(
+            program(Some(lyrics()), Overlay::None),
+            BugCorner::LowerRight,
+        );
+        let b = with_bug(program(None, Overlay::None), BugCorner::LowerRight);
+        assert_eq!(
+            bug_of(&run(&a, &o, 1920.0, 1080.0, &t)).map(|n| n.kind.clone()),
+            bug_of(&run(&b, &o, 1920.0, 1080.0, &t)).map(|n| n.kind.clone())
+        );
+    }
+
+    #[test]
+    fn the_bug_is_hidden_under_black_and_logo_and_on_the_stage() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        let audience = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        for overlay in [Overlay::Black, Overlay::Logo] {
+            let p = with_bug(program(Some(lyrics()), overlay), BugCorner::LowerRight);
+            let c = run(&p, &audience, 1920.0, 1080.0, &t);
+            // Logo's own full-screen picture is not the bug.
+            assert!(c.scene.nodes.iter().all(|n| match &n.kind {
+                NodeKind::Image(i) => i.rect.width > 1000.0,
+                _ => true,
+            }));
+            let stream = output(OutputRole::Stream, BackgroundMode::Bleed, safe());
+            assert!(run(&p, &stream, 1920.0, 1080.0, &t).scene.nodes.is_empty());
+        }
+        let stage = output(OutputRole::Stage, BackgroundMode::Bleed, safe());
+        let p = with_bug(
+            program(Some(lyrics()), Overlay::None),
+            BugCorner::LowerRight,
+        );
+        assert!(bug_of(&run(&p, &stage, 1920.0, 1080.0, &t)).is_none());
+    }
+
+    #[test]
+    fn the_bug_is_hidden_when_the_idle_screen_is_the_logo_but_not_other_idle_pictures() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let mut p = with_bug(program(None, Overlay::None), BugCorner::LowerRight);
+        p.idle = Some(Idle::Image { blob: blob(1) });
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "image"]);
+        p.idle = Some(Idle::Image { blob: blob(2) });
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "image", "image"]);
     }
 
     #[test]

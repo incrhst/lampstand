@@ -249,6 +249,10 @@ function api(req: any): any {
         const i = themes.findIndex((x) => x.id === id); if (i >= 0) themes[i] = t; else themes.push(t);
         settings = { ...settings, brand: arg, brand_theme: id, default_theme: id };
       }
+      if (key === "SetLogoBug") {
+        if (!settings.brand) return { type: "Error", data: { message: "Add your church's logo in Setup first." } };
+        settings = { ...settings, brand: { ...settings.brand, bug: arg } };
+      }
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
     case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: [], nearby: [] } };

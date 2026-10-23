@@ -2,7 +2,7 @@
 // screen, as pictures for Present's live preview. Call from a component:
 // it keeps itself current with the settings and the screen.
 
-import type { OutputConfig } from "./api";
+import type { LogoBug, OutputConfig } from "./api";
 import { effectiveIdle } from "./idle";
 import { loadIdlePicture, loadLogoPicture } from "./idleThumb";
 import { live } from "./state.svelte";
@@ -12,7 +12,7 @@ export interface LiveLook {
   /** A picture of the idle screen; null for the plain background. */
   idle: string | null;
   /** The Logo screen's picture (null until a logo is chosen), background and ring colour; null with no brand. */
-  brand: { logo: string | null; background: string; accent: string } | null;
+  brand: { logo: string | null; background: string; accent: string; bug?: LogoBug } | null;
 }
 
 export function useLiveLook(output: () => OutputConfig | null, width = 640): LiveLook {
@@ -37,7 +37,7 @@ export function useLiveLook(output: () => OutputConfig | null, width = 640): Liv
     }
     let current = true;
     loadLogoPicture(brand.logo, width).then((logo) => {
-      if (current) look.brand = { logo, background: toHex(brand.primary), accent: toHex(brand.accent) };
+      if (current) look.brand = { logo, background: toHex(brand.primary), accent: toHex(brand.accent), bug: brand.bug };
     });
     return () => {
       current = false;

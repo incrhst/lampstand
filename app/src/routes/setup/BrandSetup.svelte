@@ -4,7 +4,7 @@
      logo is also what the Logo button in Present puts on the screens. -->
 <script lang="ts">
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
-  import { request, type Brand } from "../../lib/api";
+  import { request, type Brand, type BugCorner, type BugSize } from "../../lib/api";
   import { imageExtensions, onePath } from "../../lib/media";
   import { live, refreshSettings, refreshThemes, report } from "../../lib/state.svelte";
   import { STARTER_THEME_ID, bundledFonts, fromHex, readableOn, themeFromBrand, toHex } from "../../lib/themes";
@@ -12,6 +12,9 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import ThemeSketch from "../../lib/kit/ThemeSketch.svelte";
+  import SlidePreview from "../../lib/kit/SlidePreview.svelte";
+  import Segmented from "../../lib/kit/Segmented.svelte";
+  import Switch from "../../lib/kit/Switch.svelte";
   import BrandFile from "../../lib/kit/BrandFile.svelte";
 
   let { onthemes }: { onthemes?: () => void } = $props();
@@ -23,7 +26,18 @@
     text: null,
     accent: { r: 240, g: 190, b: 60, a: 255 },
     font_family: "Noto Sans",
+    bug: { enabled: false, corner: "LowerRight", size: "Small", opacity: 80 },
   };
+
+  const corners: { id: BugCorner; label: string }[] = [
+    { id: "LowerLeft", label: "Lower left" },
+    { id: "LowerRight", label: "Lower right" },
+  ];
+  const sizes: { id: BugSize; label: string }[] = [
+    { id: "Small", label: "Small" },
+    { id: "Medium", label: "Medium" },
+    { id: "Large", label: "Large" },
+  ];
 
   let brand: Brand = $state(JSON.parse(JSON.stringify(live.settings?.brand ?? start)));
   let customText = $state(!!live.settings?.brand?.text);
@@ -118,6 +132,33 @@
         </div>
       </Panel>
 
+      <Panel title="Logo bug" description="Your logo, small in a lower corner of every screen and the stream, over songs, scripture, slides and media.">
+        {#if !brand.logo}
+          <p class="faint small">Add your logo above first. The bug uses the same picture.</p>
+        {/if}
+        <div class="bug-controls" class:off={!brand.logo}>
+          <Switch
+            label="Show the logo in a corner"
+            disabled={!brand.logo}
+            checked={brand.bug.enabled && !!brand.logo}
+            onchange={(on) => { brand.bug.enabled = on && !!brand.logo; done = false; }}
+          />
+          <div class="field">
+            <span>Corner</span>
+            <Segmented options={corners.map((c) => ({ ...c, disabled: brand.logo ? undefined : "Add a logo first" }))} value={brand.bug.corner} onchange={(id) => { brand.bug.corner = id; done = false; }} label="Corner" />
+          </div>
+          <div class="field">
+            <span>Size</span>
+            <Segmented options={sizes.map((c) => ({ ...c, disabled: brand.logo ? undefined : "Add a logo first" }))} value={brand.bug.size} onchange={(id) => { brand.bug.size = id; done = false; }} label="Size" />
+          </div>
+          <label class="field">
+            <span>Opacity: {brand.bug.opacity}%</span>
+            <input type="range" min="10" max="100" step="5" disabled={!brand.logo} bind:value={brand.bug.opacity} oninput={() => (done = false)} aria-label="Opacity" />
+          </label>
+          <span class="faint small">Black and the Logo screen cover it. It stays inside the safe area, and the stage display never shows it. Turn it on or off during a service from Present's More menu.</span>
+        </div>
+      </Panel>
+
       <Panel title="Colours and font">
         <div class="colours">
           <label class="field">
@@ -184,6 +225,13 @@
           <figcaption class="muted">Songs and scripture</figcaption>
         </figure>
       {/if}
+      <figure>
+        <SlidePreview
+          lines={["Amazing grace! How sweet the sound", "That saved a wretch like me!"]}
+          brand={{ logo: logoPicture, background: toHex(brand.primary), accent: toHex(brand.accent), bug: brand.bug }}
+        />
+        <figcaption class="muted">{brand.bug.enabled && brand.logo ? "Logo bug" : "Logo bug (off)"}</figcaption>
+      </figure>
       <figure>
         <div class="logo-screen" style="background:{toHex(brand.primary)}">
           {#if logoPicture}
@@ -267,6 +315,18 @@
     background: #2a303b;
     border-radius: var(--radius);
     padding: 0.2rem;
+  }
+  .bug-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.6rem;
+  }
+  .bug-controls.off {
+    opacity: 0.55;
+  }
+  input[type="range"] {
+    width: 14rem;
   }
   .save {
     display: flex;
