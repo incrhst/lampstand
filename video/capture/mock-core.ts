@@ -89,6 +89,16 @@ function slidesFor(kind: any) {
   if (kind.Song) { const s = songs.find((x) => x.id === kind.Song.song)!; return s.sections.map((sec) => ({ label: sec.label, lines: sec.lines, steps: 0, notes: "" })); }
   if (kind.Scripture) return [{ label: "John 3:16", lines: [verses["John 3:16"][0][2]], steps: 0, notes: "" }];
   if (kind.Deck) return deckSlides[kind.Deck.deck] ?? [];
+  if (kind.Text) {
+    const groups: string[][] = [];
+    let cur: string[] = [];
+    for (const raw of kind.Text.body.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line === "" || /^-{3,}$/.test(line)) { if (cur.length) groups.push(cur); cur = []; } else cur.push(line);
+    }
+    if (cur.length) groups.push(cur);
+    return groups.map((lines, i) => ({ label: groups.length > 1 ? `${i + 1}/${groups.length}` : "Text", lines, steps: 0, notes: "" }));
+  }
   return [];
 }
 function titleFor(kind: any) {
@@ -96,6 +106,7 @@ function titleFor(kind: any) {
   if (kind.Song) return songs.find((x) => x.id === kind.Song.song)!.title;
   if (kind.Scripture) return "John 3:16";
   if (kind.Deck) return decks.find((d) => d.id === kind.Deck.deck)!.title;
+  if (kind.Text) return kind.Text.title.trim() || "Text";
   return "Item";
 }
 function load(id: string) {
@@ -192,6 +203,13 @@ function api(req: any): any {
           return { type: "Service", data: s };
         }
         case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
+        case "SetItemText": {
+          const s = state.services.find((x: any) => x.id === arg.service);
+          const k = s.items[arg.item].kind.Text;
+          k.title = arg.title; k.body = arg.body; k.attribution = arg.attribution?.trim() || null;
+          if (state.loaded?.service === s.id) { state.loaded = load(s.id); emit({ type: "Loaded", data: state.loaded }); }
+          return { type: "Service", data: s };
+        }
         case "SetLoop": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].loop_seconds = arg.seconds; return { type: "Service", data: s }; }
         case "SetMediaLooped": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].kind.Media.looped = arg.looped; return { type: "Service", data: s }; }
         case "Close": { state.loaded = null; state.live = null; state.preview = null; state.loopOverrides = {}; pushLive(); return ok; }

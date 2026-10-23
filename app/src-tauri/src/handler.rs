@@ -50,6 +50,7 @@ use lampstand_core::scripture::{
     find_translation, parse_reference_versioned, unrecognised_version_message,
 };
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
@@ -629,6 +630,32 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetItemText {
+                service,
+                item,
+                title,
+                body,
+                attribution,
+            } => {
+                let mut s = get(service)?;
+                match s.items.get_mut(&item).map(|i| &mut i.kind) {
+                    Some(ItemKind::Text {
+                        title: t,
+                        body: b,
+                        attribution: a,
+                    }) => {
+                        *t = title;
+                        *b = body;
+                        *a = attribution
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty());
+                    }
+                    _ => return Err("that item is not a text slide".into()),
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::SetLoop {
                 service,
                 item,
@@ -1095,6 +1122,21 @@ impl App {
                     label: label.clone(),
                 };
                 item(label.clone(), vec![text(content)])
+            }
+            ItemKind::Text {
+                title,
+                body,
+                attribution,
+            } => {
+                let slides = text_slides(body, attribution.as_deref())
+                    .into_iter()
+                    .map(|slide| text(Content::Text { slide }))
+                    .collect();
+                let title = title.trim();
+                item(
+                    if title.is_empty() { "Text" } else { title }.to_string(),
+                    slides,
+                )
             }
             ItemKind::Announcements {
                 slides,

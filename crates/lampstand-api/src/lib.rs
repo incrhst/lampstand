@@ -408,6 +408,15 @@ pub enum ServiceRequest {
         item: ItemId,
         arrangement: Option<Vec<String>>,
     },
+    /// Rewrites a text slide item: its title, body and attribution (blank
+    /// clears it). Answers `Response::Service`.
+    SetItemText {
+        service: ServiceId,
+        item: ItemId,
+        title: String,
+        body: String,
+        attribution: Option<String>,
+    },
     /// Loop an item or section (pre- and post-service): seconds per slide,
     /// or `None` for no loop. On a header it loops the items after it up to
     /// the next header. Answers `Response::Service`.

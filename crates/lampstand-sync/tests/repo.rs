@@ -189,6 +189,16 @@ fn every_item_kind() -> Service {
             target: CountdownTarget::Seconds(300),
             label: String::new(),
         },
+        ItemKind::Text {
+            title: "Quote".into(),
+            body: "Line one\nline two\n\n---\nSecond slide".into(),
+            attribution: Some("C. S. Lewis".into()),
+        },
+        ItemKind::Text {
+            title: String::new(),
+            body: String::new(),
+            attribution: None,
+        },
         ItemKind::Announcements {
             slides: vec![blob, BlobHash::of(b"other")],
             seconds_each: 8,

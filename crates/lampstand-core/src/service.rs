@@ -104,6 +104,15 @@ pub enum ItemKind {
         target: CountdownTarget,
         label: String,
     },
+    /// Text the planner types straight in: a quote, a welcome, prayer
+    /// points. See [`crate::text::text_slides`] for how `body` splits.
+    Text {
+        /// Shown in the order list; never projected.
+        title: String,
+        body: String,
+        /// A line at the foot of every slide, for a quote's author.
+        attribution: Option<String>,
+    },
     /// Images shown in a loop, for example before the service.
     Announcements {
         slides: Vec<BlobHash>,
