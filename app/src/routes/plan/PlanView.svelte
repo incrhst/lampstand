@@ -17,6 +17,7 @@
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
+  import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
@@ -168,6 +169,15 @@
       live.planning = selected.id;
       creating = false;
       await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function setTheme(theme: string | null) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { SetTheme: { service: selected.id, theme } } }, "Service");
     } catch (e) {
       report(e);
     }
@@ -870,6 +880,10 @@
           {/if}
         </div>
         <div class="actions">
+          <label class="look" title="How songs, scripture and text look in this service. A screen's own theme still wins.">
+            <span class="muted">Theme</span>
+            <ThemePicker label="Theme for {selected.title}" value={selected.theme} onchange={setTheme} />
+          </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
           <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
@@ -1122,6 +1136,16 @@
   .row-actions {
     display: flex;
     gap: 0.25rem;
+  }
+  .look {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+  }
+  .look select {
+    max-width: 11rem;
+    padding: 0.3rem 0.5rem;
   }
   .rename {
     padding: 0.5rem 0.75rem;

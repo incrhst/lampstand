@@ -223,6 +223,7 @@ async fn a_remote_edit_reloads_the_service_but_never_changes_what_is_on_air() {
         safe_area: SafeArea::default(),
         background: BackgroundMode::Bleed,
         theme: None,
+        idle: None,
         enabled: true,
     })));
 

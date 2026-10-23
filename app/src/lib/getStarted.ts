@@ -14,9 +14,11 @@ export interface Facts {
   services: { id: string; title: string; items: number }[];
   /** The operator has opened a service for live at least once. */
   triedService: boolean;
+  /** The church has saved its name, logo, colours and font (Setup › Church look). */
+  brandSet?: boolean;
 }
 
-export type StepId = "try" | "screen" | "songs" | "plan";
+export type StepId = "try" | "screen" | "songs" | "plan" | "look";
 
 export interface Step {
   id: StepId;
@@ -24,6 +26,8 @@ export interface Step {
   /** One line on what it is for. */
   hint: string;
   done: boolean;
+  /** Worth doing, but the strip is finished without it. */
+  optional?: boolean;
 }
 
 /** The two hymns that come with the app: more than this means the church has added its own. */
@@ -58,8 +62,16 @@ export function steps(f: Facts): Step[] {
       hint: "Build Sunday's order from songs, verses, slides and video.",
       done: f.services.some((s) => s.title !== WELCOME_TITLE && s.items > 0),
     },
+    {
+      id: "look",
+      title: "Set your church's look",
+      hint: "Add your name, logo, colours and font. Lampstand makes a matching theme.",
+      done: f.brandSet === true,
+      optional: true,
+    },
   ];
 }
 
-export const allDone = (list: Step[]) => list.every((s) => s.done);
-export const remaining = (list: Step[]) => list.filter((s) => !s.done).length;
+/** Every required step is done; optional ones can be left. */
+export const allDone = (list: Step[]) => list.every((s) => s.done || s.optional);
+export const remaining = (list: Step[]) => list.filter((s) => !s.done && !s.optional).length;

@@ -21,6 +21,7 @@ pub mod obs_control;
 pub mod seed;
 mod shell;
 pub mod sync;
+pub mod theme_preview;
 pub mod update;
 
 pub use shell::run;

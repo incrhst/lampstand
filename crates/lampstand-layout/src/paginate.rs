@@ -382,6 +382,7 @@ mod tests {
             safe_area: SafeArea::default(),
             background: BackgroundMode::Bleed,
             theme: None,
+            idle: None,
             enabled: true,
         }
     }

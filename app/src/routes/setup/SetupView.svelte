@@ -2,9 +2,10 @@
      the weekly work in Plan and Present. Screens are the outputs this
      device drives; Devices pairs and syncs this machine with others.
      OBS is where pictures are sent to OBS and where OBS is controlled (T89).
-     Themes (T51) and Team (T54) join them here. -->
+     Themes (T51) holds the library's themes and Church look (the brand
+     quick start) makes a first one; Team (T54) joins them here. -->
 <script module lang="ts">
-  export type SetupTab = "screens" | "scripture" | "devices" | "obs" | "about";
+  export type SetupTab = "screens" | "themes" | "brand" | "scripture" | "devices" | "obs" | "about";
 </script>
 
 <script lang="ts">
@@ -14,12 +15,16 @@
   import DevicesView from "../devices/DevicesView.svelte";
   import ObsSetup from "./ObsSetup.svelte";
   import ScriptureSetup from "./ScriptureSetup.svelte";
+  import ThemesSetup from "./ThemesSetup.svelte";
+  import BrandSetup from "./BrandSetup.svelte";
   import AboutSetup from "./AboutSetup.svelte";
 
   let { tab, onchange }: { tab: SetupTab; onchange: (tab: SetupTab) => void } = $props();
 
   const tabs = [
     { id: "screens", label: "Screens", subtitle: "Projectors, TVs and windows", icon: "monitor" },
+    { id: "themes", label: "Themes", subtitle: "How songs and verses look", icon: "palette" },
+    { id: "brand", label: "Church look", subtitle: "Name, logo, colours, font", icon: "image" },
     { id: "scripture", label: "Scripture", subtitle: "Bible versions and the default", icon: "scripture" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
     { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
@@ -42,6 +47,10 @@
   <div class="content">
     {#if tab === "screens"}
       <OutputsView onobs={() => onchange("obs")} />
+    {:else if tab === "themes"}
+      <ThemesSetup onbrand={() => onchange("brand")} />
+    {:else if tab === "brand"}
+      <BrandSetup onthemes={() => onchange("themes")} />
     {:else if tab === "obs"}
       <ObsSetup />
     {:else if tab === "scripture"}

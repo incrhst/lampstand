@@ -4,6 +4,7 @@
 //!
 //! PRD: SL-1, SL-3, BI-2, CD-8, CD-10, PS-6, RP-1.
 
+pub mod brand_package;
 pub mod bundled;
 pub mod package;
 pub mod readiness;
@@ -15,6 +16,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use lampstand_core::brand::Brand;
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::geom::{Color, Rect};
 use lampstand_core::id::BlobHash;
@@ -183,6 +185,43 @@ impl Library {
         self.repo.delete(DocKind::Theme, id.uuid())
     }
 
+    /// Deletes a theme the way the Themes page does: never the last one,
+    /// and never the Starter theme, which is what everything falls back to
+    /// (use [`Library::delete_theme`] for a delete that arrives by sync).
+    pub fn remove_theme(&self, id: ThemeId) -> Result<(), ThemeDeleteError> {
+        if id == starter_theme_id() {
+            return Err(ThemeDeleteError::Starter);
+        }
+        if self.repo.list(DocKind::Theme).len() <= 1 {
+            return Err(ThemeDeleteError::Last);
+        }
+        self.repo.delete(DocKind::Theme, id.uuid())?;
+        Ok(())
+    }
+
+    /// Puts the Starter theme back as it was made, even if it was edited
+    /// or a synced delete removed it.
+    pub fn restore_starter_theme(&self) -> Result<Theme, SyncError> {
+        let theme = starter_theme();
+        self.repo.put(&theme)?;
+        Ok(theme)
+    }
+
+    /// The theme to draw with: the first of `candidates` (most specific
+    /// first: the output's, the service's, the device default) that still
+    /// exists, else the Starter theme, else any theme, else the built-in
+    /// starter, so that a delete on another device never takes an output
+    /// down.
+    pub fn resolve_theme(&self, candidates: &[Option<ThemeId>]) -> Theme {
+        candidates
+            .iter()
+            .flatten()
+            .find_map(|id| self.theme(*id).ok().flatten())
+            .or_else(|| self.theme(starter_theme_id()).ok().flatten())
+            .or_else(|| self.themes().ok()?.into_iter().next())
+            .unwrap_or_else(starter_theme)
+    }
+
     pub fn deck(&self, id: DeckId) -> Result<Option<Deck>, SyncError> {
         self.repo.get(id.uuid())
     }
@@ -256,6 +295,54 @@ fn all<T: Doc>(repo: &Repo) -> Result<Vec<T>, SyncError> {
         }
     }
     Ok(out)
+}
+
+/// Why a theme could not be deleted from the Themes page.
+#[derive(Debug)]
+pub enum ThemeDeleteError {
+    /// The Starter theme is what everything falls back to.
+    Starter,
+    /// There must always be a theme.
+    Last,
+    Sync(SyncError),
+}
+
+impl From<SyncError> for ThemeDeleteError {
+    fn from(e: SyncError) -> Self {
+        Self::Sync(e)
+    }
+}
+
+impl std::fmt::Display for ThemeDeleteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Starter => write!(
+                f,
+                "The Starter theme can't be deleted: it is what every screen falls back to. Duplicate it to make your own."
+            ),
+            Self::Last => write!(f, "This is the only theme, so it can't be deleted."),
+            Self::Sync(e) => e.fmt(f),
+        }
+    }
+}
+
+/// A theme made from a church's brand: the Starter theme with the brand's
+/// colours and font. Lyrics are readable on the brand colour (black or
+/// white unless the church chose a text colour).
+pub fn theme_from_brand(brand: &Brand, id: ThemeId) -> Theme {
+    let mut theme = starter_theme();
+    theme.id = id;
+    theme.name = if brand.name.trim().is_empty() {
+        "Our church".into()
+    } else {
+        brand.name.trim().into()
+    };
+    theme.background = Background::Color(brand.primary);
+    theme.text.color = brand.text_color();
+    if !brand.font_family.trim().is_empty() {
+        theme.text.font_family = brand.font_family.trim().into();
+    }
+    theme
 }
 
 /// White Noto Sans on black, full screen, four lines a slide. A fresh
@@ -521,5 +608,111 @@ mod tests {
         lib.put_theme(&t).unwrap();
         drop(lib);
         assert_eq!(open(dir.path()).themes().unwrap().len(), 1);
+    }
+
+    fn another_theme(lib: &Library, name: &str) -> Theme {
+        let mut t = starter_theme();
+        t.id = ThemeId::generate();
+        t.name = name.into();
+        lib.put_theme(&t).unwrap();
+        t
+    }
+
+    #[test]
+    fn the_starter_and_the_last_theme_cannot_be_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        assert!(matches!(
+            lib.remove_theme(starter_theme_id()),
+            Err(ThemeDeleteError::Starter)
+        ));
+        let mine = another_theme(&lib, "Mine");
+        lib.remove_theme(mine.id).unwrap();
+        assert_eq!(lib.themes().unwrap().len(), 1);
+        // Only the starter is left, and a synced delete had removed it
+        // from beside another theme: the one that is left stays.
+        let other = another_theme(&lib, "Other");
+        lib.delete_theme(starter_theme_id()).unwrap();
+        assert!(matches!(
+            lib.remove_theme(other.id),
+            Err(ThemeDeleteError::Last)
+        ));
+        assert_eq!(lib.themes().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_starter_theme_can_be_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let mut edited = lib.theme(starter_theme_id()).unwrap().unwrap();
+        edited.text.size = 20.0;
+        lib.put_theme(&edited).unwrap();
+        lib.restore_starter_theme().unwrap();
+        assert_eq!(
+            lib.theme(starter_theme_id()).unwrap(),
+            Some(starter_theme())
+        );
+        another_theme(&lib, "Other");
+        lib.delete_theme(starter_theme_id()).unwrap();
+        lib.restore_starter_theme().unwrap();
+        assert!(lib.theme(starter_theme_id()).unwrap().is_some());
+    }
+
+    #[test]
+    fn the_most_specific_theme_that_exists_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let output = another_theme(&lib, "Output");
+        let service = another_theme(&lib, "Service");
+        let default = another_theme(&lib, "Default");
+        let pick = |c: &[Option<ThemeId>]| lib.resolve_theme(c).name;
+        let all = [Some(output.id), Some(service.id), Some(default.id)];
+        assert_eq!(pick(&all), "Output");
+        assert_eq!(pick(&[None, Some(service.id), Some(default.id)]), "Service");
+        assert_eq!(pick(&[None, None, Some(default.id)]), "Default");
+        assert_eq!(pick(&[None, None, None]), "Starter");
+        // A theme deleted on another device falls through to the next.
+        lib.delete_theme(output.id).unwrap();
+        assert_eq!(pick(&all), "Service");
+    }
+
+    #[test]
+    fn with_every_theme_gone_the_built_in_starter_is_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        lib.delete_theme(starter_theme_id()).unwrap();
+        assert_eq!(
+            lib.resolve_theme(&[Some(ThemeId::generate())]),
+            starter_theme()
+        );
+    }
+
+    #[test]
+    fn a_brand_makes_a_theme_in_its_colours_and_font() {
+        use lampstand_core::brand::contrast;
+        let brand = Brand {
+            name: " Grace Chapel ".into(),
+            logo: None,
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+        };
+        let id = ThemeId::generate();
+        let t = theme_from_brand(&brand, id);
+        assert_eq!((t.id, t.name.as_str()), (id, "Grace Chapel"));
+        assert_eq!(t.background, Background::Color(brand.primary));
+        assert_eq!(t.text.font_family, "Noto Serif");
+        assert!(contrast(t.text.color, brand.primary) > 7.0);
+        let plain = Brand {
+            font_family: "".into(),
+            name: "".into(),
+            text: Some(Color::rgb(255, 230, 0)),
+            ..brand
+        };
+        let t = theme_from_brand(&plain, id);
+        assert_eq!(t.text.font_family, starter_theme().text.font_family);
+        assert_eq!(t.text.color, Color::rgb(255, 230, 0));
+        assert_eq!(t.name, "Our church");
     }
 }
