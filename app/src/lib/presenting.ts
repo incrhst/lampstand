@@ -26,7 +26,14 @@ export function howLong(seconds: number): string {
  * sync has a problem the problem keeps the words.
  */
 export function withRole(pill: SyncPill, team: TeamStatus | null): SyncPill {
-  if (!team || team.paired.length === 0) return pill;
+  if (!team) return pill;
+  if (team.paired.length === 0) {
+    return {
+      ...pill,
+      text: `Presenting · ${pill.text}`,
+      title: `${pill.title}. This device is the presenter. Once a second device is paired, a device that wants to present has to ask first`,
+    };
+  }
   const p = team.presenter;
   if (p.role === "Presenting") return { ...pill, text: `Presenting · ${pill.text}` };
   if (pill.tone === "warn") return { ...pill, text: `Planning · ${pill.text}` };
