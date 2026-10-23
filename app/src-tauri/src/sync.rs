@@ -32,7 +32,7 @@ use lampstand_server::{Backend, SceneHub, Server};
 use lampstand_sync::net::{local_addresses, NodeConfig, NodeStatus, SyncNode};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
-use crate::handler::EventSink;
+use crate::handler::{EventSink, SyncLink};
 
 /// How long after a sync message the status reads "syncing". Once two
 /// devices agree they send nothing, so this is the length of a burst.
@@ -89,6 +89,38 @@ struct AppBackend {
     node: Arc<SyncNode>,
     blobs: PathBuf,
     obs: Obs,
+}
+
+/// The app's view of the sync node (`SyncLink`): who is connected, and
+/// fetching files from them.
+struct NodeLink(Arc<SyncNode>);
+
+impl SyncLink for NodeLink {
+    fn device_name(&self) -> String {
+        self.0.status().name
+    }
+    fn device_key(&self) -> String {
+        self.0.device().to_hex()
+    }
+    fn connected(&self) -> Vec<String> {
+        self.0
+            .status()
+            .paired
+            .iter()
+            .filter(|p| p.connected)
+            .map(|p| p.device.to_hex())
+            .collect()
+    }
+    fn fetch(&self, hashes: Vec<BlobHash>) {
+        let node = self.0.clone();
+        tauri::async_runtime::spawn(async move {
+            for hash in hashes {
+                if let Err(e) = node.fetch_blob(hash).await {
+                    eprintln!("lampstand: could not fetch a file yet: {e}");
+                }
+            }
+        });
+    }
 }
 
 impl Backend for AppBackend {
@@ -189,6 +221,12 @@ impl Sync {
             }
         });
         Ok(Self { node, server })
+    }
+
+    /// What the handler needs of the node, for the settings shared with
+    /// the church's other devices.
+    pub fn link(&self) -> Arc<dyn SyncLink> {
+        Arc::new(NodeLink(self.node.clone()))
     }
 
     pub fn node(&self) -> &Arc<SyncNode> {

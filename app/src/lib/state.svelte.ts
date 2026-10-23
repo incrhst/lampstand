@@ -37,6 +37,8 @@ class LiveState {
   songsVersion: number = $state(0);
   /** Bumped when a deck is added or changes (here or synced in). */
   decksVersion: number = $state(0);
+  /** Bumped when the church's shared settings change here or on another device. */
+  churchVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
   /** Where sync with the paired devices stands; null until first asked. */
@@ -90,6 +92,10 @@ onEvent((event) => {
     case "Changed":
       if (event.data.kind === "deck") live.decksVersion++;
       if (event.data.kind === "theme") refreshThemes();
+      if (event.data.kind === "churchsettings" || event.data.kind === "church") {
+        live.churchVersion++;
+        refreshSettings();
+      }
       break;
     case "Obs":
       live.obs = event.data;

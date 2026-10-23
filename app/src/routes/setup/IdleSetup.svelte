@@ -7,6 +7,7 @@
   import { describeDefaultIdle, describeIdle } from "../../lib/idle";
   import { isScreen } from "../../lib/obs";
   import { live, refreshOutputs, refreshSettings, report, saveSettings } from "../../lib/state.svelte";
+  import ChurchShare from "../../lib/kit/ChurchShare.svelte";
   import IdlePicker from "../../lib/kit/IdlePicker.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
@@ -56,6 +57,7 @@
     </div>
     <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Default"} onchange={(idle) => saveSettings({ idle: idle === "Default" ? null : idle })} />
     <p class="muted in-effect">{inEffect}</p>
+    <ChurchShare only={["idle picture", "idle video", "idle slide"]} />
   </Panel>
 
   <h2>Each screen</h2>

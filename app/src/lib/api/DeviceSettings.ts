@@ -34,4 +34,11 @@ default_theme: string | null,
  * What screens show when nothing is on air, unless a screen has its
  * own. Unset means the theme's plain background.
  */
-idle: IdleScreen | null, };
+idle: IdleScreen | null, 
+/**
+ * Set by the app: `brand`, `brand_theme`, `default_theme` and `idle`
+ * are the church's, shared through the synced document, rather than
+ * this device's own. While false they are kept here, as before. A
+ * save from the UI cannot change this.
+ */
+church_synced: boolean, };

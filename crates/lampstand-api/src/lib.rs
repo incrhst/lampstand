@@ -97,8 +97,10 @@ pub enum UpdateState {
     },
 }
 
-/// This machine's settings that are not about one screen. They stay on the
-/// device, like the outputs.
+/// Settings. The clicker mode and the default Bible stay on this machine,
+/// like the outputs. The church's look, default theme and default idle
+/// screen follow the church to its other devices (`ChurchStatus`); they
+/// are read and saved here all the same.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SettingsRequest {
@@ -114,6 +116,56 @@ pub enum SettingsRequest {
     /// Turns the logo bug on or off, or changes its corner, size or
     /// opacity, keeping the rest of the brand. Answers `Response::Settings`.
     SetLogoBug(LogoBug),
+    /// How the church's shared settings stand: whether they are shared,
+    /// whether this device and another disagree, and the files still to
+    /// arrive. Answers `Response::Church`.
+    Church,
+    /// Settles a `ChurchStatus::conflict`, once. Answers `Response::Church`.
+    ResolveChurch(ChurchChoice),
+}
+
+/// Which of two different church looks to keep.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChurchChoice {
+    /// This device's look becomes the church's, on every device.
+    ThisDevice,
+    /// The look from the other device replaces this device's.
+    Shared,
+}
+
+/// The church look and idle settings follow the church across its paired
+/// devices (`lampstand_core::church`). This is how that stands on this one.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChurchStatus {
+    /// The settings live in the synced document. False on a device that
+    /// has never met another one with settings of its own, where they
+    /// still belong to this device only.
+    pub shared: bool,
+    /// This device and another each had a look of their own when they met.
+    pub conflict: Option<ChurchConflict>,
+    /// Files the settings point at that have not reached this device yet.
+    pub waiting: Vec<WaitingFile>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChurchConflict {
+    /// The device the other look came from: "Mary's laptop".
+    pub other_device: String,
+    /// What this device has, in a line: "Grace Chapel, logo, Picture: Welcome.png".
+    pub mine: String,
+    pub theirs: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitingFile {
+    /// "idle video", "idle picture" or "logo".
+    pub what: String,
+    /// The device that set it, or "your other devices".
+    pub from: String,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -145,6 +197,12 @@ pub struct DeviceSettings {
     /// own. Unset means the theme's plain background.
     #[serde(default)]
     pub idle: Option<IdleScreen>,
+    /// Set by the app: `brand`, `brand_theme`, `default_theme` and `idle`
+    /// are the church's, shared through the synced document, rather than
+    /// this device's own. While false they are kept here, as before. A
+    /// save from the UI cannot change this.
+    #[serde(default)]
+    pub church_synced: bool,
 }
 
 /// What opening a brand file does to the themes already here.
@@ -819,6 +877,7 @@ pub enum Response {
     BrandFile(BrandContents),
     Obs(ObsView),
     Settings(DeviceSettings),
+    Church(ChurchStatus),
     Update(UpdateStatus),
 }
 
