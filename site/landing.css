@@ -56,7 +56,7 @@ a { color: inherit; }
   color: var(--accent); border: 1px solid rgba(255, 185, 56, .35); background: rgba(255, 185, 56, .08);
   padding: 6px 14px; border-radius: 999px; margin-bottom: 22px;
 }
-h1 { font-size: clamp(38px, 6.4vw, 72px); line-height: 1.04; letter-spacing: -0.035em; margin: 0 auto 20px; max-width: 16ch; font-weight: 800; }
+h1 { font-size: clamp(38px, 6.4vw, 72px); line-height: 1.04; letter-spacing: -0.035em; margin: 0 auto 20px; max-width: 20ch; font-weight: 800; }
 h1 em { font-style: normal; color: var(--accent); }
 .lede { font-size: clamp(18px, 2vw, 21px); color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
 .cta { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-items: center; }
