@@ -15,6 +15,15 @@ const view = (over: Partial<PresenterView> = {}): PresenterView => ({
   requests: [],
   asking: null,
   replaced_by: null,
+  drive: {
+    driving: null,
+    active: null,
+    requests: [],
+    asking: null,
+    can_drive: false,
+    always: [],
+    taken_back_by: null,
+  },
   ...over,
 });
 const team = (presenter: PresenterView, connected = true): TeamStatus => ({

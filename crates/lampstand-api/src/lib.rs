@@ -530,6 +530,32 @@ pub enum TeamRequest {
     SetTakeover {
         seconds: u32,
     },
+    /// On a device that is not presenting: asks the presenting device to let
+    /// this one drive it (operate it from here). The presenter sees a prompt
+    /// unless it remembers this device.
+    DriveAsk,
+    /// Stops driving, or withdraws the ask to drive.
+    DriveCancel,
+    /// Clears a "not now", "busy" or "taken back" shown to the driver.
+    DriveDismiss,
+    /// On the presenting device: lets a device that asked drive (its key in
+    /// hex); with `always`, remembers it so it is not asked again.
+    DriveAllow {
+        device: String,
+        always: bool,
+    },
+    /// On the presenting device: says not now to a device that asked.
+    DriveDecline {
+        device: String,
+    },
+    /// On the presenting device: takes control back from the driver at once.
+    DriveTakeBack,
+    /// Remembers a paired device as always allowed to drive this one, or
+    /// stops (its key in hex).
+    DriveAlways {
+        device: String,
+        always: bool,
+    },
 }
 
 /// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
@@ -791,6 +817,64 @@ pub struct PresenterView {
     pub asking: Option<AskingView>,
     /// This device was presenting and another took over; shown once.
     pub replaced_by: Option<String>,
+    /// Driving: which device operates the presenter, and what this device
+    /// may do about it. The presenter is still the only device that owns
+    /// the screens.
+    pub drive: Box<DriveView>,
+}
+
+/// A device that drives, or may, named for people.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DriverView {
+    /// The device's key in hex.
+    pub device: String,
+    pub name: String,
+}
+
+/// Driving the presenting device from another one.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DriveView {
+    /// This device is driving the presenter: its Present screen mirrors the
+    /// presenter and its commands go there.
+    pub driving: Option<DrivingView>,
+    /// Who operates the presenting device now. On the presenter this is the
+    /// truth; elsewhere it is what the presenter last said.
+    pub active: Option<DriverView>,
+    /// On the presenter: devices asking to drive, waiting for an answer.
+    pub requests: Vec<PresentRequestView>,
+    /// This device's own ask to drive, while it is open or was refused.
+    pub asking: Option<DriveAskingView>,
+    /// `DriveAsk` would work now: the presenter is connected and nobody
+    /// has let this device drive yet.
+    pub can_drive: bool,
+    /// On the presenter: devices allowed without asking.
+    pub always: Vec<DriverView>,
+    /// The presenter took control back from this device; shown once.
+    pub taken_back_by: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrivingView {
+    /// The presenter's key in hex.
+    pub presenter: String,
+    /// "Sanctuary PC".
+    pub name: String,
+    /// The presenter is connected. While it is not, the controls wait.
+    pub online: bool,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DriveAskingView {
+    /// Waiting for the presenter to answer.
+    Waiting,
+    /// The presenter said not now.
+    Declined,
+    /// Another device is driving; `by` is its name.
+    Busy { by: String },
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

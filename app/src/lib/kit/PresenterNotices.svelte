@@ -7,6 +7,8 @@
   import Button from "./Button.svelte";
   import { live, presenterRequest } from "../state.svelte";
   import { replacedNotice, requestPrompt } from "../presenting";
+  import { drivePrompt, takenBackNotice } from "../driving";
+  import DriveBar from "./DriveBar.svelte";
 
   let p = $derived(live.team?.presenter ?? null);
   /** Something is on air here, so allowing takes it off. */
@@ -24,8 +26,24 @@
   });
 </script>
 
-{#if p && (p.requests.length > 0 || p.replaced_by || allowed || (p.asking && p.role === "Planning"))}
+<DriveBar />
+
+{#if p && (p.requests.length > 0 || p.drive.requests.length > 0 || p.drive.taken_back_by || p.replaced_by || allowed || (p.asking && p.role === "Planning"))}
   <div class="notices">
+    {#each p.drive.requests as r (r.device)}
+      <Banner tone="warn" icon="monitor">
+        <span>{drivePrompt(r.name)}</span>
+        <Button variant="primary" size="small" onclick={() => presenterRequest({ DriveAllow: { device: r.device, always: false } })}>Allow</Button>
+        <Button size="small" onclick={() => presenterRequest({ DriveAllow: { device: r.device, always: true } })} title="Remember this device, so it can drive without asking next time">Always allow this device</Button>
+        <Button variant="ghost" size="small" onclick={() => presenterRequest({ DriveDecline: { device: r.device } })}>Not now</Button>
+      </Banner>
+    {/each}
+    {#if p.drive.taken_back_by}
+      <Banner tone="warn">
+        <span>{takenBackNotice(p.drive.taken_back_by)}</span>
+        <Button size="small" onclick={() => presenterRequest("DriveDismiss")}>OK</Button>
+      </Banner>
+    {/if}
     {#each p.requests as r (r.device)}
       <Banner tone="warn" icon="monitor">
         <span>{requestPrompt(r.name, onAir)}</span>

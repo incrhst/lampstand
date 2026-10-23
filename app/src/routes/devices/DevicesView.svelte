@@ -8,6 +8,8 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import DriveAction from "../../lib/kit/DriveAction.svelte";
+  import { ownRoleLine, roleLine } from "../../lib/driving";
   import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
 
@@ -132,18 +134,30 @@
   {#if status && presenter}
     <Panel title="Presenting" description="One device at a time drives the screens and takes a service live. Every device can still plan and sync.">
       <p>
-        <strong>This device: {presenter.role === "Presenting" ? "Presenting" : "Planning"}</strong>
+        <strong>This device: {ownRoleLine(status)}</strong>
       </p>
       {#if presenter.role === "Planning"}
         <p class="muted">
           {#if presenter.holder}{presenter.holder_name} is the presenting device.{:else}Nobody is presenting yet.{/if}
           {PLANNING_SCREENS}
         </p>
-        <div class="actions"><PresentAction present="Make this device the presenter" /></div>
+        <div class="actions">
+          <PresentAction present="Make this device the presenter" />
+          <DriveAction />
+        </div>
+        {#if presenter.drive.driving}
+          <p class="muted">This device operates {presenter.drive.driving.name} from its own screen. Present is the place to do it. {presenter.drive.driving.name} keeps the screens and the sound.</p>
+        {/if}
       {:else if status.paired.length === 0}
         <p class="muted">This device is the presenter: it is the only one. Once you pair a second device, a device that wants to present has to ask this one first.</p>
       {:else}
-        <p class="muted">Screens turned on here show the service. Another device can ask to present; you will be asked to allow it.</p>
+        <p class="muted">Screens turned on here show the service. Another device can ask to present or to drive; you will be asked to allow it. Driving lets that device press Next and take items live from its own screen; the screens stay here.</p>
+        {#if presenter.drive.active}
+          <p>
+            {presenter.drive.active.name} is driving.
+            <Button size="small" variant="primary" onclick={() => team("DriveTakeBack")}>Take back control</Button>
+          </p>
+        {/if}
       {/if}
       <label class="takeover">
         Take over without asking after
@@ -181,10 +195,22 @@
           <span>
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
-            <small class="role" class:presenting={p.presenting}>{p.presenting ? "Presenting" : "Planning"}</small>
+            <small class="role" class:presenting={p.presenting}>{status ? roleLine(status, p) : ""}</small>
             <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>
-          <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
+          <span class="row">
+            {#if presenter?.role === "Presenting"}
+              <label class="always" title="This device can drive the presenting device without asking each time">
+                <input
+                  type="checkbox"
+                  checked={presenter.drive.always.some((d) => d.device === p.device)}
+                  onchange={(e) => team({ DriveAlways: { device: p.device, always: e.currentTarget.checked } })}
+                />
+                Always allow to drive
+              </label>
+            {/if}
+            <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
+          </span>
         </li>
       {:else}
         <li class="muted">No paired devices yet.</li>

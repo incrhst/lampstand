@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 use futures_util::{SinkExt, StreamExt};
 
 use lampstand_core::song::{Section, Song, SongId};
-use lampstand_sync::net::{Link, NetError, NodeConfig, SyncNode};
-use lampstand_sync::team::DeviceKeypair;
+use lampstand_sync::driver::{Asking as DriveAsking, Notice as DriveNotice};
+use lampstand_sync::net::{DriveHooks, DriveStatus, Link, NetError, NodeConfig, SyncNode};
+use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 use lampstand_sync::{DocKind, Repo};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -916,4 +917,286 @@ async fn the_lease_survives_a_restart() {
     .unwrap();
     assert_eq!(again.role(), Role::Presenter);
     assert_eq!(again.status().presenter.lease.epoch, 2);
+}
+
+// ---- Driving ------------------------------------------------------------
+
+/// What the presenter's hooks saw: requests from drivers, and whether
+/// someone drives.
+type Commands = Arc<Mutex<Vec<(DeviceKey, Vec<u8>)>>>;
+
+#[derive(Clone, Default)]
+struct Seen {
+    commands: Commands,
+    live: Arc<Mutex<Vec<Vec<u8>>>>,
+    driver: Arc<Mutex<Vec<bool>>>,
+}
+
+fn watch(p: &Peer) -> Seen {
+    let seen = Seen::default();
+    let (c, l, d) = (seen.commands.clone(), seen.live.clone(), seen.driver.clone());
+    p.node.set_drive_hooks(DriveHooks {
+        command: Box::new(move |from, payload| c.lock().unwrap().push((from, payload))),
+        live: Box::new(move |payload| l.lock().unwrap().push(payload)),
+        driver: Box::new(move |on| d.lock().unwrap().push(on)),
+    });
+    seen
+}
+
+fn drive_of(p: &Peer) -> DriveStatus {
+    presenter_of(p).drive
+}
+
+/// Sanctuary presents; the office PC asks to drive and is allowed.
+async fn driving_pair() -> (Peer, Peer, Seen, Seen) {
+    let (sanctuary, office) = paired_and_leased().await;
+    let on_sanctuary = watch(&sanctuary);
+    let on_office = watch(&office);
+    office.node.drive_ask().unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        !drive_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary
+        .node
+        .drive_allow(office.node.device(), false)
+        .unwrap();
+    until(Duration::from_secs(5), "the office PC to drive", || {
+        drive_of(&office).driving.is_some()
+    })
+    .await;
+    (sanctuary, office, on_sanctuary, on_office)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_shows_a_prompt_and_allowing_lets_the_device_drive() {
+    let (sanctuary, office) = paired_and_leased().await;
+    assert!(drive_of(&office).can_drive);
+    assert!(!drive_of(&sanctuary).can_drive, "the presenter does not ask");
+    assert!(office.node.drive_send(b"early".to_vec()).is_err());
+    office.node.drive_ask().unwrap();
+    assert_eq!(drive_of(&office).asking, Some(DriveAsking::Waiting));
+    until(Duration::from_secs(5), "the prompt", || {
+        !drive_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    let request = drive_of(&sanctuary).requests[0].clone();
+    assert_eq!((request.name.as_str(), request.device), ("Office PC", office.node.device()));
+    // Nothing is driven until the presenter says so.
+    assert!(drive_of(&sanctuary).active.is_none());
+
+    sanctuary.node.drive_allow(request.device, false).unwrap();
+    until(Duration::from_secs(5), "the office PC to drive", || {
+        drive_of(&office).driving.is_some()
+    })
+    .await;
+    let office_view = drive_of(&office);
+    let driving = office_view.driving.unwrap();
+    assert_eq!((driving.name.as_str(), driving.online), ("Sanctuary", true));
+    assert_eq!(office_view.asking, None);
+    assert_eq!(drive_of(&sanctuary).active.unwrap().name, "Office PC");
+    // Presenting did not move.
+    assert_eq!(sanctuary.node.role(), Role::Presenter);
+    assert_eq!(office.node.role(), Role::Planning);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn declining_tells_the_asker_and_drives_nothing() {
+    let (sanctuary, office) = paired_and_leased().await;
+    office.node.drive_ask().unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        !drive_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary.node.drive_decline(office.node.device());
+    until(Duration::from_secs(5), "the answer", || {
+        drive_of(&office).asking == Some(DriveAsking::Declined)
+    })
+    .await;
+    assert!(drive_of(&sanctuary).active.is_none());
+    assert!(drive_of(&office).driving.is_none());
+    office.node.drive_dismiss();
+    assert_eq!(drive_of(&office).asking, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_from_the_driver_reaches_the_presenter_and_live_state_comes_back() {
+    let (sanctuary, office, on_sanctuary, on_office) = driving_pair().await;
+    assert_eq!(*on_sanctuary.driver.lock().unwrap(), vec![true]);
+
+    let sent = Instant::now();
+    office.node.drive_send(b"{\"Live\":\"Next\"}".to_vec()).unwrap();
+    let took = until(Duration::from_secs(5), "the command", || {
+        !on_sanctuary.commands.lock().unwrap().is_empty()
+    })
+    .await;
+    eprintln!("a command crossed in {:?}", sent.elapsed());
+    assert!(took < Duration::from_millis(500), "took {took:?}");
+    assert_eq!(
+        on_sanctuary.commands.lock().unwrap()[0],
+        (office.node.device(), b"{\"Live\":\"Next\"}".to_vec())
+    );
+
+    sanctuary.node.drive_live(b"live".to_vec());
+    until(Duration::from_secs(5), "the live state", || {
+        !on_office.live.lock().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(on_office.live.lock().unwrap()[0], b"live".to_vec());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn always_allow_is_remembered_across_stops_and_restarts() {
+    let (sanctuary, office, ..) = driving_pair().await;
+    sanctuary.node.drive_take_back();
+    until(Duration::from_secs(5), "control to come back", || {
+        drive_of(&office).driving.is_none()
+    })
+    .await;
+    // Ask again, this time with "always allow".
+    office.node.drive_ask().unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        !drive_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary
+        .node
+        .drive_allow(office.node.device(), true)
+        .unwrap();
+    until(Duration::from_secs(5), "driving", || {
+        drive_of(&office).driving.is_some()
+    })
+    .await;
+    office.node.drive_cancel();
+    until(Duration::from_secs(5), "the presenter to be free", || {
+        drive_of(&sanctuary).active.is_none()
+    })
+    .await;
+    // No prompt this time.
+    office.node.drive_ask().unwrap();
+    until(Duration::from_secs(5), "driving without a prompt", || {
+        drive_of(&office).driving.is_some()
+    })
+    .await;
+    assert!(drive_of(&sanctuary).requests.is_empty());
+    assert_eq!(drive_of(&sanctuary).always.len(), 1);
+
+    // A node started afresh from the same files still remembers.
+    let again = SyncNode::new(
+        sanctuary.node.repo().clone(),
+        key_in(sanctuary._dir.path()),
+        NodeConfig {
+            name: "Sanctuary".into(),
+            dir: sanctuary._dir.path().join("sync"),
+        },
+    )
+    .unwrap();
+    let remembered = again.status().presenter.drive.always;
+    assert_eq!(remembered.len(), 1);
+    assert_eq!(remembered[0].device, office.node.device());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_device_is_refused_while_one_drives() {
+    let (sanctuary, office, ..) = driving_pair().await;
+    let tablet = peer("Sam's tablet").await;
+    let code = sanctuary.node.start_pairing();
+    tablet
+        .node
+        .pair(&code.code, Some(&sanctuary.address()))
+        .await
+        .unwrap();
+    until(Duration::from_secs(5), "the tablet to know who presents", || {
+        presenter_of(&tablet).lease.name == "Sanctuary" && tablet.node.status().connected() >= 1
+    })
+    .await;
+    tablet.node.drive_ask().unwrap();
+    until(Duration::from_secs(5), "to be told who drives", || {
+        drive_of(&tablet).asking
+            == Some(DriveAsking::Busy {
+                by: "Office PC".into(),
+            })
+    })
+    .await;
+    assert!(drive_of(&sanctuary).requests.is_empty(), "no queue");
+    assert_eq!(drive_of(&sanctuary).active.unwrap().device, office.node.device());
+    // The tablet also knows who drives, to say so.
+    until(Duration::from_secs(5), "the tablet to know", || {
+        drive_of(&tablet).active.as_ref().map(|a| a.name.as_str()) == Some("Office PC")
+    })
+    .await;
+    assert!(tablet.node.drive_send(b"x".to_vec()).is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_presenter_takes_control_back_at_once() {
+    let (sanctuary, office, on_sanctuary, _) = driving_pair().await;
+    sanctuary.node.drive_take_back();
+    assert!(drive_of(&sanctuary).active.is_none(), "at once, on the presenter");
+    assert_eq!(*on_sanctuary.driver.lock().unwrap(), vec![true, false]);
+    until(Duration::from_secs(5), "the driver to learn", || {
+        drive_of(&office).driving.is_none()
+    })
+    .await;
+    assert_eq!(
+        drive_of(&office).notice,
+        Some(DriveNotice::TakenBack {
+            by: "Sanctuary".into()
+        })
+    );
+    // What it sends now goes nowhere.
+    assert!(office.node.drive_send(b"late".to_vec()).is_err());
+    assert!(on_sanctuary.commands.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_presenter_going_offline_disables_driving_and_a_driver_going_offline_returns_control() {
+    let (mut sanctuary, office, ..) = driving_pair().await;
+    sanctuary.cut();
+    until(Duration::from_secs(10), "the presenter to be offline", || {
+        drive_of(&office).driving.is_some_and(|d| !d.online)
+    })
+    .await;
+    assert!(office.node.drive_send(b"x".to_vec()).is_err());
+    // On the presenter, the driver is gone and control is back.
+    until(Duration::from_secs(10), "the presenter to notice", || {
+        drive_of(&sanctuary).active.is_none()
+    })
+    .await;
+    assert!(!sanctuary.node.driven());
+    sanctuary.restore().await;
+    until(Duration::from_secs(15), "reconnecting", || {
+        sanctuary.node.status().connected() == 1 && office.node.status().connected() == 1
+    })
+    .await;
+    // The presenter forgot the driver while apart, and says so: this
+    // device is no longer driving and has to ask again.
+    until(Duration::from_secs(10), "the driver to be told", || {
+        drive_of(&office).driving.is_none()
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_a_presenting_device_decides_and_it_alone() {
+    let (sanctuary, office) = paired_and_leased().await;
+    // The planning device cannot allow anyone, nor take control back.
+    assert!(office.node.drive_allow(sanctuary.node.device(), false).is_err());
+    office.node.drive_take_back();
+    // A device with nothing to ask cannot ask.
+    assert!(sanctuary.node.drive_ask().is_err());
+    // Handing the lease over ends any driving.
+    let (sanctuary, office, ..) = driving_pair().await;
+    office.node.ask_to_present().unwrap();
+    until(Duration::from_secs(5), "the request", || {
+        !presenter_of(&sanctuary).requests.is_empty()
+    })
+    .await;
+    sanctuary.node.allow_presenter(office.node.device()).unwrap();
+    until(Duration::from_secs(5), "the hand-over", || {
+        office.node.role() == Role::Presenter
+    })
+    .await;
+    assert!(office.node.driving().is_none());
+    assert!(!sanctuary.node.driven());
 }

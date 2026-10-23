@@ -59,7 +59,7 @@ use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
-use crate::sync::{Obs, Sync, SyncConfig};
+use crate::sync::{mirroring, DriveSinks, NodeCell, Obs, Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -74,6 +74,10 @@ enum Internal {
     Focused(OutputId, bool),
     /// Sync says whether this device presents (`true`) or only plans.
     Presenting(bool),
+    /// The device driving this one sent a request.
+    Drive(Request),
+    /// A device started driving this one: tell it everything on air.
+    Announce,
 }
 
 struct Shared {
@@ -126,6 +130,12 @@ async fn api(
             .await
             .map_err(|e| e.to_string())
     };
+    // A device that is driving another sends what the operator does there.
+    if let Some(sync) = &state.sync {
+        if let Some(response) = sync.forward(&request).await {
+            return Ok(response);
+        }
+    }
     match request {
         Request::Obs(request) => Ok(state.obs.handle(request).await),
         Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
@@ -456,9 +466,14 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         tx: tx.clone(),
     };
     let emitter = handle.clone();
-    let emit = Arc::new(move |event: Event| {
-        let _ = emitter.emit("api-event", event);
-    });
+    // Events also go to a device driving this one, once there is one.
+    let node_cell = NodeCell::default();
+    let emit = mirroring(
+        Arc::new(move |event: Event| {
+            let _ = emitter.emit("api-event", event);
+        }),
+        node_cell.clone(),
+    );
     // A folder that has never been seeded is a brand-new install, which
     // starts with a welcome service. Known before `App::open` seeds it.
     let first_run = !data_dir.join("seeded").exists();
@@ -494,6 +509,32 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     lock(&app).set_obs_cues(obs_control.cues());
 
     let role_tx = tx.clone();
+    let drive_tx = tx.clone();
+    let announce_tx = tx.clone();
+    let drive_obs = obs_control.clone();
+    let announce_obs = obs_control.clone();
+    let announce_emit = emit.clone();
+    let drive = DriveSinks {
+        command: Arc::new(move |request| match request {
+            // OBS answers on the async runtime, without the `App` lock.
+            Request::Obs(request) => {
+                let obs = drive_obs.clone();
+                tauri::async_runtime::spawn(async move {
+                    obs.handle(request).await;
+                });
+            }
+            request => {
+                let _ = drive_tx.send(Internal::Drive(request));
+            }
+        }),
+        driver: Arc::new(move |on| {
+            if on {
+                let _ = announce_tx.send(Internal::Announce);
+                announce_emit(Event::Obs(Box::new(announce_obs.view())));
+            }
+        }),
+        cell: node_cell,
+    };
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(
             &library,
@@ -505,6 +546,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             Arc::new(move |presenting| {
                 let _ = role_tx.send(Internal::Presenting(presenting));
             }),
+            drive,
         )),
         Err(e) => Err(e.to_string()),
     };
@@ -695,6 +737,12 @@ fn app_step(
             }
             Ok(Internal::LibraryChanged) => {}
             Ok(Internal::Presenting(presenting)) => lock(app).set_presenting(presenting),
+            Ok(Internal::Drive(request)) => {
+                if let Response::Error { message } = lock(app).handle(request) {
+                    eprintln!("lampstand: a driver's request failed: {message}");
+                }
+            }
+            Ok(Internal::Announce) => lock(app).announce(),
             Ok(Internal::Key(key)) => {
                 if let Response::Error { message } = lock(app).handle(Request::Live(key.command()))
                 {

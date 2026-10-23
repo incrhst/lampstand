@@ -12,7 +12,7 @@ use lampstand_api::{
 };
 use lampstand_app::config::device_key;
 use lampstand_app::handler::{App, Placement, WindowHost};
-use lampstand_app::sync::{Obs, Sync, SyncConfig};
+use lampstand_app::sync::{mirroring, DriveSinks, NodeCell, Obs, Sync, SyncConfig};
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::service::{ItemKind, Service};
@@ -48,6 +48,10 @@ struct Device {
     /// Role changes sync has reported, for `pump` to hand to the app as
     /// the shell's app thread does.
     roles: Arc<Mutex<Vec<bool>>>,
+    /// Requests a driver sent and "a device started driving" notices, for
+    /// `pump` to hand to the app as the shell's app thread does.
+    driven: Arc<Mutex<Vec<Request>>>,
+    announce: Arc<std::sync::atomic::AtomicBool>,
     _dir: tempfile::TempDir,
 }
 
@@ -55,8 +59,11 @@ async fn device(name: &str) -> Device {
     let dir = tempfile::tempdir().unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     let recorded = events.clone();
-    let emit: lampstand_app::handler::EventSink =
-        Arc::new(move |e| recorded.lock().unwrap().push(e));
+    let cell = NodeCell::default();
+    let emit: lampstand_app::handler::EventSink = mirroring(
+        Arc::new(move |e| recorded.lock().unwrap().push(e)),
+        cell.clone(),
+    );
     let app = App::open(
         dir.path(),
         Fonts::bundled_only(),
@@ -68,6 +75,10 @@ async fn device(name: &str) -> Device {
     let changes = app.library().subscribe();
     let roles = Arc::new(Mutex::new(Vec::new()));
     let told = roles.clone();
+    let driven = Arc::new(Mutex::new(Vec::new()));
+    let queued = driven.clone();
+    let announce = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let started = announce.clone();
     let sync = Sync::start(
         app.library(),
         device_key(dir.path()).unwrap(),
@@ -83,6 +94,15 @@ async fn device(name: &str) -> Device {
         },
         emit,
         Arc::new(move |presenting| told.lock().unwrap().push(presenting)),
+        DriveSinks {
+            command: Arc::new(move |request| queued.lock().unwrap().push(request)),
+            driver: Arc::new(move |on| {
+                if on {
+                    started.store(true, std::sync::atomic::Ordering::SeqCst)
+                }
+            }),
+            cell,
+        },
     )
     .await
     .unwrap();
@@ -92,6 +112,8 @@ async fn device(name: &str) -> Device {
         events,
         changes,
         roles,
+        driven,
+        announce,
         _dir: dir,
     }
 }
@@ -109,10 +131,26 @@ impl Device {
         for presenting in std::mem::take(&mut *self.roles.lock().unwrap()) {
             self.app.set_presenting(presenting);
         }
+        for request in std::mem::take(&mut *self.driven.lock().unwrap()) {
+            if let Response::Error { message } = self.app.handle(request) {
+                panic!("a driver's request failed: {message}");
+            }
+        }
+        if self.announce.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            self.app.announce();
+        }
         let batch: Vec<DocChanged> = self.changes.try_iter().collect();
         if !batch.is_empty() {
             self.app.library_changed(&batch);
         }
+    }
+
+    /// The cursor the last `Event::Live` this device emitted put on air.
+    fn live_cursor(&self) -> Option<Cursor> {
+        self.events.lock().unwrap().iter().rev().find_map(|e| match e {
+            Event::Live { live, .. } => Some(*live),
+            _ => None,
+        })?
     }
 
     fn address(&self) -> String {
@@ -447,4 +485,151 @@ async fn asking_to_present_moves_the_screens_from_one_app_to_the_other() {
     .await;
     laptop.request(Request::Live(Command::Next));
     assert!(!laptop.on_air().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
+    let mut sanctuary = device("Sanctuary").await;
+    let mut laptop = device("Mary's laptop").await;
+    let code = match sanctuary.sync.handle(TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    laptop
+        .sync
+        .handle(TeamRequest::Join {
+            invite: code,
+            address: Some(sanctuary.address()),
+        })
+        .await;
+    let status = |d: &Device| d.sync.status().presenter;
+    until(Duration::from_secs(5), "the roles to settle", || {
+        status(&laptop).role == PresenterRole::Planning
+            && status(&sanctuary).role == PresenterRole::Presenting
+            && laptop.sync.status().paired.iter().any(|p| p.connected)
+    })
+    .await;
+    laptop.pump();
+
+    // The sanctuary has a service on air at verse 1.
+    let grace = song_id(&mut sanctuary, "Amazing Grace");
+    let service = match sanctuary.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    sanctuary.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    sanctuary.request(Request::Service(ServiceRequest::Open(service.id)));
+    sanctuary.request(Request::Live(Command::Next));
+    let verse1 = sanctuary.on_air();
+    assert!(!verse1.is_empty());
+
+    // Before it drives, the laptop's commands go nowhere: it only plans.
+    assert!(laptop.sync.forward(&Request::Live(Command::Next)).await.is_none());
+    until(Duration::from_secs(5), "the laptop app to be told", || {
+        laptop.pump();
+        matches!(
+            laptop.app.handle(Request::Live(Command::Next)),
+            Response::Error { .. }
+        )
+    })
+    .await;
+
+    // It asks to drive; the sanctuary shows the prompt and allows.
+    assert!(matches!(
+        laptop.sync.handle(TeamRequest::DriveAsk).await,
+        Response::Team(_)
+    ));
+    until(Duration::from_secs(5), "the prompt", || {
+        !status(&sanctuary).drive.requests.is_empty()
+    })
+    .await;
+    let asker = status(&sanctuary).drive.requests[0].device.clone();
+    sanctuary
+        .sync
+        .handle(TeamRequest::DriveAllow {
+            device: asker,
+            always: false,
+        })
+        .await;
+    until(Duration::from_secs(5), "the laptop to drive", || {
+        laptop.pump();
+        sanctuary.pump();
+        status(&laptop).drive.driving.is_some()
+    })
+    .await;
+    // Presenting did not move.
+    assert_eq!(status(&sanctuary).role, PresenterRole::Presenting);
+    assert_eq!(status(&laptop).role, PresenterRole::Planning);
+
+    // The laptop's Present screen is told what is on air and what is loaded.
+    until(Duration::from_secs(5), "the laptop to mirror the sanctuary", || {
+        sanctuary.pump();
+        laptop.last_loaded().is_some() && laptop.live_cursor().is_some()
+    })
+    .await;
+    assert_eq!(laptop.live_cursor(), sanctuary.live_cursor());
+
+    // Next on the laptop moves the sanctuary's screens, and the laptop's
+    // screen follows.
+    let sent = Instant::now();
+    assert_eq!(
+        laptop.sync.forward(&Request::Live(Command::Next)).await,
+        Some(Response::Ok)
+    );
+    until(Duration::from_secs(5), "the sanctuary to move", || {
+        sanctuary.pump();
+        sanctuary.on_air() != verse1
+    })
+    .await;
+    until(Duration::from_secs(5), "the laptop to follow", || {
+        laptop.live_cursor() == sanctuary.live_cursor()
+    })
+    .await;
+    eprintln!("Next crossed and came back in {:?}", sent.elapsed());
+    assert!(sent.elapsed() < Duration::from_millis(500));
+    // The laptop's own screens stay dark: it never put anything on air.
+    assert!(laptop.on_air().is_empty());
+
+    // Opening a service from the driver answers with its slides.
+    sanctuary.request(Request::Service(ServiceRequest::Close(service.id)));
+    let open = Request::Service(ServiceRequest::Open(service.id));
+    let opened = laptop.sync.forward(&open);
+    let pumping = async {
+        loop {
+            sanctuary.pump();
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    };
+    let opened = tokio::select! {
+        r = opened => r,
+        _ = pumping => unreachable!(),
+    };
+    match opened {
+        Some(Response::Loaded(l)) => assert_eq!(l.service, service.id),
+        other => panic!("{other:?}"),
+    }
+
+    // The presenter's own keys always work, and it takes control back.
+    sanctuary.request(Request::Live(Command::Next));
+    sanctuary.sync.handle(TeamRequest::DriveTakeBack).await;
+    until(Duration::from_secs(5), "control to come back", || {
+        status(&laptop).drive.driving.is_none()
+    })
+    .await;
+    assert!(laptop.sync.forward(&Request::Live(Command::Next)).await.is_none());
+    let before = sanctuary.on_air();
+    laptop.sync.forward(&Request::Live(Command::Next)).await;
+    sanctuary.pump();
+    assert_eq!(sanctuary.on_air(), before, "a former driver moves nothing");
 }
