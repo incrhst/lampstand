@@ -17,6 +17,7 @@
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import IdlePicker from "../../lib/kit/IdlePicker.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
+  import { describeDefaultIdle } from "../../lib/idle";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
   let { onobs }: { onobs?: () => void } = $props();
@@ -38,6 +39,14 @@
   }
 
   const hasMargins = isCalibrated;
+
+  /** One plain line on which idle screen is in effect for all screens. */
+  let inEffect = $derived.by(() => {
+    const idle = live.settings?.idle ?? "Default";
+    if (idle === "Default") return `In effect: Default. ${describeDefaultIdle(live.settings?.brand ?? null)}`;
+    if (idle === "Blank") return "In effect: Plain. Screens show the theme's background and nothing else.";
+    return "In effect: the idle screen you chose.";
+  });
 
   const sample = ["Amazing grace! How sweet the sound", "That saved a wretch like me!"];
 
@@ -157,7 +166,8 @@
         title="When nothing is on air"
         description="What every screen shows before the service, between items and after it. Press Logo or Blank in Present to cover it. A screen can choose its own below."
       >
-        <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Blank"} onchange={(idle) => saveSettings({ idle: idle === "Blank" ? null : idle })} />
+        <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Default"} onchange={(idle) => saveSettings({ idle: idle === "Default" ? null : idle })} />
+        <p class="muted small in-effect">{inEffect}</p>
       </Panel>
     </div>
 
@@ -294,6 +304,9 @@
   }
   .idle-default {
     margin-top: 1.5rem;
+  }
+  .in-effect {
+    margin: 0.6rem 0 0;
   }
   .screen + .screen {
     border-top: 1px solid var(--line);

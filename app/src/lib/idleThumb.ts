@@ -1,7 +1,7 @@
 // A picture of what an idle setting shows, for Setup and the live preview in
 // Present. A video or a picture is its poster, a deck is the chosen slide.
 
-import { request, type IdleScreen } from "./api";
+import { request, type Brand, type IdleScreen } from "./api";
 
 export interface IdlePicture {
   /** A `data:` URL. */
@@ -10,10 +10,16 @@ export interface IdlePicture {
   slides?: number;
 }
 
-/** Null for the plain background, or when the picture cannot be drawn (not on this device yet, no GPU). */
-export async function loadIdlePicture(idle: IdleScreen | null, width: number): Promise<IdlePicture | null> {
+/**
+ * Null for the plain background, or when the picture cannot be drawn (not on this device yet, no GPU).
+ * The default idle screen is drawn from `brand` (Lampstand's own with none) in the theme `theme`.
+ */
+export async function loadIdlePicture(idle: IdleScreen | null, width: number, brand: Brand | null = null, theme: string | null = null): Promise<IdlePicture | null> {
   if (idle === null || idle === "Blank") return null;
   try {
+    if (idle === "Default") {
+      return { picture: await request({ area: "Library", request: { IdlePreview: { brand, theme, width } } }, "Thumbnail") };
+    }
     if ("Image" in idle || "Video" in idle) {
       const { blob, name } = "Image" in idle ? idle.Image : idle.Video;
       return { picture: await request({ area: "Library", request: { MediaThumbnail: { blob, name, width } } }, "Thumbnail") };

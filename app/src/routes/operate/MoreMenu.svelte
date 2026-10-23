@@ -20,6 +20,7 @@
     onclearText,
     onclearAll,
     onclose,
+    onidle,
   }: {
     /** The safe-area guide is drawn on the preview. */
     guide: boolean;
@@ -38,6 +39,8 @@
     onclearText: () => void;
     onclearAll: () => void;
     onclose: () => void;
+    /** Opens where the idle screen is chosen. */
+    onidle?: () => void;
   } = $props();
 
   let open = $state(false);
@@ -70,6 +73,7 @@
       {@render item("safeArea", "Safe area guide", guide ? "On" : "Off", then(onguide), guide)}
       {@render item("keyboard", "Clicker mode", clicker ? "On" : "Off", then(onclicker), clicker)}
       {@render item("image", "Logo bug", bugReady ? (bug ? "On" : "Off") : "Add a logo in Setup", then(onbug), bugReady ? bug : undefined, !bugReady)}
+      {#if onidle}{@render item("image", "Change idle screen", "What shows when nothing is on air", then(onidle))}{/if}
       {@render item("x", "Clear text", "Keep the background", then(onclearText))}
       {@render item("x", "Clear all", "Text, background and overlay", then(onclearAll))}
       {@render item("x", "Close service", "Put it away; it stays in Plan", then(onclose))}

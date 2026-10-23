@@ -5,9 +5,9 @@ use lampstand_core::brand::bug_rect;
 use lampstand_core::geom::{Color, Point, Rect, Transform};
 use lampstand_core::id::Timestamp;
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputRole};
-use lampstand_core::program::{Content, Idle, Overlay, Program, SlideText};
+use lampstand_core::program::{Content, Idle, Mark, Overlay, Program, SlideText};
 use lampstand_core::scene::{
-    Fit, HAlign, ImageNode, Node, NodeId, NodeKind, Paint, Paragraph, PathCommand, PathNode, Scene,
+    Fit, GradientStop, HAlign, ImageNode, Node, NodeId, NodeKind, Paint, Paragraph, PathCommand, PathNode, Scene,
     Stroke, TextBlock, TextRun, VAlign, VideoNode, COMPOSITOR_NODE_BASE,
 };
 use lampstand_core::theme::{Background, TextStyle, Theme, REFERENCE_HEIGHT};
@@ -410,7 +410,189 @@ impl Compositor<'_> {
                 autoplay: true,
             }))],
             Idle::Deck { scene } => vec![self.deck_group(scene, full)],
+            Idle::Mark(mark) => self.mark(mark),
         }
+    }
+
+    /// The default idle screen: the logo centred on a plain background in
+    /// the safe area, the name quietly beneath. The Lampstand lamp is drawn
+    /// from paths, so it is sharp at any size.
+    fn mark(&mut self, mark: &Mark) -> Vec<Node> {
+        let layout = mark_layout(self.safe, !mark.name.is_empty());
+        let mut nodes = vec![self.fill_rect(self.full(), mark.background)];
+        match mark.logo {
+            Some(blob) => nodes.push(self.node(NodeKind::Image(ImageNode {
+                blob,
+                rect: layout.logo,
+                fit: Fit::Contain,
+                crop: None,
+            }))),
+            None => {
+                let lamp = contain(layout.logo, LAMP_ASPECT);
+                nodes.extend(self.lamp(lamp, mark.text));
+            }
+        }
+        if !mark.name.is_empty() {
+            let style = TextStyle {
+                color: mark.text,
+                align: HAlign::Center,
+                ..self.theme.text.clone()
+            };
+            let lines = [mark.name.clone()];
+            let fitted = fit_text(
+                &lines,
+                &style,
+                layout.text_size,
+                layout.text_size * 0.4,
+                layout.text.width,
+                layout.text.height,
+                self.fonts,
+            );
+            let block = text_block(layout.text, &lines, &style, fitted.size, VAlign::Top);
+            let mut node = self.node(NodeKind::Text(block));
+            node.opacity = 0.8;
+            nodes.push(node);
+        }
+        nodes
+    }
+
+    /// The Lampstand lamp (the app icon's flame, cup, stem and base) in
+    /// `rect`, with a soft glow behind the flame.
+    fn lamp(&mut self, rect: Rect, stand: Color) -> Vec<Node> {
+        // The icon is drawn in a 224 by 540 box starting at (400, 220).
+        let scale = rect.height / LAMP_HEIGHT;
+        let at = |x: f32, y: f32| Point {
+            x: rect.x + (x - 400.0) * scale,
+            y: rect.y + (y - 220.0) * scale,
+        };
+        let amber = |a: u8| Color {
+            r: 0xf2,
+            g: 0xa8,
+            b: 0x3a,
+            a,
+        };
+        let flame = Paint::Linear {
+            start: at(512.0, 235.0),
+            end: at(512.0, 505.0),
+            stops: vec![
+                GradientStop {
+                    offset: 0.0,
+                    color: Color::rgb(0xff, 0xd9, 0x78),
+                },
+                GradientStop {
+                    offset: 1.0,
+                    color: Color::rgb(0xf0, 0x8a, 0x24),
+                },
+            ],
+        };
+        let glow = Paint::Radial {
+            center: at(512.0, 430.0),
+            radius: 300.0 * scale,
+            stops: vec![
+                GradientStop {
+                    offset: 0.0,
+                    color: amber(128),
+                },
+                GradientStop {
+                    offset: 0.55,
+                    color: amber(41),
+                },
+                GradientStop {
+                    offset: 1.0,
+                    color: amber(0),
+                },
+            ],
+        };
+        let teardrop = |top: f32, shoulder: f32, side: f32, bottom: f32, half: f32| {
+            // A flame: a point at (512, top), curving out to a round bottom;
+            // `shoulder` and `side` are the heights of the curve's controls.
+            let k = 0.552_284_8 * half;
+            vec![
+                PathCommand::MoveTo(at(512.0, top)),
+                PathCommand::CubicTo(
+                    at(512.0 - half * 0.58, shoulder),
+                    at(512.0 - half, side),
+                    at(512.0 - half, bottom),
+                ),
+                PathCommand::CubicTo(
+                    at(512.0 - half, bottom + k),
+                    at(512.0 - k, bottom + half),
+                    at(512.0, bottom + half),
+                ),
+                PathCommand::CubicTo(
+                    at(512.0 + k, bottom + half),
+                    at(512.0 + half, bottom + k),
+                    at(512.0 + half, bottom),
+                ),
+                PathCommand::CubicTo(
+                    at(512.0 + half, side),
+                    at(512.0 + half * 0.58, shoulder),
+                    at(512.0, top),
+                ),
+                PathCommand::Close,
+            ]
+        };
+        let rounded = |x: f32, y: f32, w: f32, h: f32, r: f32| {
+            let k = 0.552_284_8 * r;
+            vec![
+                PathCommand::MoveTo(at(x + r, y)),
+                PathCommand::LineTo(at(x + w - r, y)),
+                PathCommand::CubicTo(at(x + w - r + k, y), at(x + w, y + r - k), at(x + w, y + r)),
+                PathCommand::LineTo(at(x + w, y + h - r)),
+                PathCommand::CubicTo(
+                    at(x + w, y + h - r + k),
+                    at(x + w - r + k, y + h),
+                    at(x + w - r, y + h),
+                ),
+                PathCommand::LineTo(at(x + r, y + h)),
+                PathCommand::CubicTo(at(x + r - k, y + h), at(x, y + h - r + k), at(x, y + h - r)),
+                PathCommand::LineTo(at(x, y + r)),
+                PathCommand::CubicTo(at(x, y + r - k), at(x + r - k, y), at(x + r, y)),
+                PathCommand::Close,
+            ]
+        };
+        let shapes: Vec<(Vec<PathCommand>, Paint)> = vec![
+            (
+                teardrop(235.0, 320.0, 372.0, 430.0, 76.0),
+                flame,
+            ),
+            (
+                teardrop(350.0, 387.0, 410.0, 434.0, 30.0),
+                Paint::Solid(Color::rgb(0xff, 0xf1, 0xbd)),
+            ),
+            (rounded(446.0, 522.0, 132.0, 24.0, 12.0), Paint::Solid(stand)),
+            (rounded(498.0, 546.0, 28.0, 170.0, 0.0), Paint::Solid(stand)),
+            (rounded(416.0, 716.0, 192.0, 28.0, 14.0), Paint::Solid(stand)),
+        ];
+        let mut nodes = Vec::new();
+        // The glow is a disc larger than the lamp, fading to nothing.
+        let radius = 300.0 * scale;
+        let c = at(512.0, 430.0);
+        let k = 0.552_284_8 * radius;
+        let p = |x: f32, y: f32| Point { x: c.x + x, y: c.y + y };
+        let disc = vec![
+            PathCommand::MoveTo(p(radius, 0.0)),
+            PathCommand::CubicTo(p(radius, k), p(k, radius), p(0.0, radius)),
+            PathCommand::CubicTo(p(-k, radius), p(-radius, k), p(-radius, 0.0)),
+            PathCommand::CubicTo(p(-radius, -k), p(-k, -radius), p(0.0, -radius)),
+            PathCommand::CubicTo(p(k, -radius), p(radius, -k), p(radius, 0.0)),
+            PathCommand::Close,
+        ];
+        nodes.push(self.node(NodeKind::Path(PathNode {
+            commands: disc,
+            fill: Some(glow),
+            stroke: None,
+            shadow: None,
+        })));
+        for (commands, paint) in shapes {
+            nodes.push(self.node(NodeKind::Path(PathNode {
+                commands,
+                fill: Some(paint),
+                stroke: None,
+                shadow: None,
+            })));
+        }
+        nodes
     }
 
     /// `nodes` with the logo bug on top, when this output shows one.
@@ -426,7 +608,9 @@ impl Compositor<'_> {
             return None;
         }
         // The idle screen is already the logo, large.
-        if matches!(&self.program.idle, Some(Idle::Image { blob }) if *blob == bug.image) {
+        if matches!(&self.program.idle, Some(Idle::Mark(_)))
+            || matches!(&self.program.idle, Some(Idle::Image { blob }) if *blob == bug.image)
+        {
             return None;
         }
         let rect = bug_rect(
@@ -797,6 +981,65 @@ fn inset(r: Rect, by: f32) -> Rect {
         y: r.y + by,
         width: (r.width - 2.0 * by).max(0.0),
         height: (r.height - 2.0 * by).max(0.0),
+    }
+}
+
+/// The Lampstand lamp's drawing box, from the app icon: 224 by 540.
+const LAMP_HEIGHT: f32 = 540.0;
+const LAMP_ASPECT: f32 = 224.0 / LAMP_HEIGHT;
+
+/// Where the default idle screen puts its logo and name.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MarkLayout {
+    /// The logo is contained in this box, centred in it.
+    logo: Rect,
+    /// The name is centred in this box, from its top, shrinking to fit.
+    text: Rect,
+    /// The name's size before it shrinks, in output pixels.
+    text_size: f32,
+}
+
+/// The logo box is 40% of the safe area's height and up to half its
+/// width; the name starts a twentieth of the height below it. Logo and name
+/// together are centred in the safe area, so they stay clear of the edges
+/// at any shape of screen.
+fn mark_layout(safe: Rect, named: bool) -> MarkLayout {
+    let logo_h = safe.height * 0.40;
+    let logo_w = (safe.width * 0.5).min(safe.width * 0.8);
+    let gap = safe.height * 0.05;
+    let text_h = if named { safe.height * 0.12 } else { 0.0 };
+    // A name set at 5% of the height takes about a 15th of it as one line.
+    let used = logo_h + if named { gap + safe.height * 0.07 } else { 0.0 };
+    let top = safe.y + (safe.height - used) / 2.0;
+    MarkLayout {
+        logo: Rect {
+            x: safe.x + (safe.width - logo_w) / 2.0,
+            y: top,
+            width: logo_w,
+            height: logo_h,
+        },
+        text: Rect {
+            x: safe.x + safe.width * 0.1,
+            y: top + logo_h + gap,
+            width: safe.width * 0.8,
+            height: text_h,
+        },
+        text_size: safe.height * 0.05,
+    }
+}
+
+/// The largest rect of shape `aspect` (width over height) centred in `rect`.
+fn contain(rect: Rect, aspect: f32) -> Rect {
+    let (mut width, mut height) = (rect.height * aspect, rect.height);
+    if width > rect.width {
+        width = rect.width;
+        height = width / aspect;
+    }
+    Rect {
+        x: rect.x + (rect.width - width) / 2.0,
+        y: rect.y + (rect.height - height) / 2.0,
+        width,
+        height,
     }
 }
 
@@ -1506,6 +1749,195 @@ mod tests {
         });
         let c = run(&p, &audience, 1920.0, 1080.0, &t);
         assert_eq!(kinds(&c.scene), ["path", "group"]);
+    }
+
+    fn lamp_mark() -> Idle {
+        Idle::mark(None)
+    }
+
+    fn bounds(scene: &Scene) -> (f32, f32, f32, f32) {
+        // The lamp's own shapes: every path after the base, background and glow.
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for n in scene.nodes.iter().skip(3) {
+            let NodeKind::Path(p) = &n.kind else { continue };
+            for c in &p.commands {
+                let pts: Vec<Point> = match c {
+                    PathCommand::MoveTo(a) | PathCommand::LineTo(a) => vec![*a],
+                    PathCommand::QuadTo(_, a) | PathCommand::CubicTo(_, _, a) => vec![*a],
+                    PathCommand::Close => vec![],
+                };
+                for a in pts {
+                    x0 = x0.min(a.x);
+                    y0 = y0.min(a.y);
+                    x1 = x1.max(a.x);
+                    y1 = y1.max(a.y);
+                }
+            }
+        }
+        (x0, y0, x1, y1)
+    }
+
+    #[test]
+    fn the_default_idle_screen_is_the_lamp_and_its_name_on_the_dark_background() {
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let mut p = program(None, Overlay::None);
+        p.idle = Some(lamp_mark());
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        // black base, background, glow, flame, inner flame, cup, stem,
+        // base, name
+        assert_eq!(
+            kinds(&c.scene),
+            ["path", "path", "path", "path", "path", "path", "path", "path", "text"]
+        );
+        let NodeKind::Path(bg) = &c.scene.nodes[1].kind else {
+            panic!()
+        };
+        assert_eq!(
+            bg.fill,
+            Some(Paint::Solid(lampstand_core::program::LAMPSTAND_BACKGROUND))
+        );
+        assert!(!c.warnings.iter().any(|_| true), "nothing to flag");
+    }
+
+    #[test]
+    fn a_church_logo_idle_screen_draws_its_picture_and_name() {
+        use lampstand_core::brand::Brand;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let brand = Brand {
+            name: "Grace Chapel".into(),
+            logo: Some(blob(9)),
+            primary: Color::rgb(20, 40, 90),
+            text: None,
+            accent: Color::WHITE,
+            font_family: String::new(),
+            bug: Default::default(),
+        };
+        let mut p = program(None, Overlay::None);
+        p.idle = Some(Idle::mark(Some(&brand)));
+        let c = run(&p, &o, 1920.0, 1080.0, &t);
+        assert_eq!(kinds(&c.scene), ["path", "path", "image", "text"]);
+        let NodeKind::Image(img) = &c.scene.nodes[2].kind else {
+            panic!()
+        };
+        assert_eq!(img.blob, blob(9));
+        assert_eq!(img.fit, Fit::Contain);
+    }
+
+    #[test]
+    fn the_logo_and_name_sit_centred_inside_the_safe_area_at_every_shape() {
+        for (w, h) in [
+            (1920.0, 1080.0),
+            (1280.0, 1024.0),
+            (1024.0, 768.0),
+            (2560.0, 1080.0),
+            (1080.0, 1920.0),
+            (800.0, 800.0),
+        ] {
+            let safe = Rect {
+                x: w * 0.04,
+                y: h * 0.05,
+                width: w * 0.90,
+                height: h * 0.87,
+            };
+            for named in [true, false] {
+                let l = mark_layout(safe, named);
+                let right = |r: Rect| r.x + r.width;
+                let bottom = |r: Rect| r.y + r.height;
+                for r in [l.logo, l.text] {
+                    assert!(r.x >= safe.x - 0.01 && right(r) <= right(safe) + 0.01, "{w}x{h}");
+                    assert!(r.y >= safe.y - 0.01 && bottom(r) <= bottom(safe) + 0.01, "{w}x{h}");
+                }
+                let cx = safe.x + safe.width / 2.0;
+                assert!((l.logo.x + l.logo.width / 2.0 - cx).abs() < 0.01, "{w}x{h}");
+                assert!((l.text.x + l.text.width / 2.0 - cx).abs() < 0.01, "{w}x{h}");
+                assert!(bottom(l.logo) <= l.text.y || !named, "name below logo, {w}x{h}");
+                // Logo and name together are centred top to bottom.
+                let used_bottom = if named { l.text.y + safe.height * 0.07 } else { bottom(l.logo) };
+                let above = l.logo.y - safe.y;
+                let below = bottom(safe) - used_bottom;
+                assert!((above - below).abs() < 0.01, "{w}x{h}: {above} vs {below}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_lamp_keeps_its_shape_and_fits_its_box_on_any_screen() {
+        let t = theme(60.0, 30.0);
+        for (w, h) in [(1920.0_f32, 1080.0_f32), (1024.0, 768.0), (2560.0, 1080.0), (1080.0, 1920.0)] {
+            let o = output(
+                OutputRole::Audience { primary: true },
+                BackgroundMode::Bleed,
+                SafeArea::default(),
+            );
+            let mut p = program(None, Overlay::None);
+            p.idle = Some(lamp_mark());
+            let c = run(&p, &o, w, h, &t);
+            let (x0, y0, x1, y1) = bounds(&c.scene);
+            let aspect = (x1 - x0) / (y1 - y0);
+            // The icon's drawing is 192 wide (the base) by 509 tall (flame top to base).
+            assert!((aspect - 192.0 / 509.0).abs() < 0.01, "{w}x{h}: {aspect}");
+            assert!(x0 > 0.0 && x1 < w && y0 > 0.0 && y1 < h * 0.8, "{w}x{h}");
+            let cx = (x0 + x1) / 2.0;
+            assert!((cx - w / 2.0).abs() < 1.0, "{w}x{h}: centred");
+        }
+    }
+
+    #[test]
+    fn contain_fits_the_shape_inside_the_box() {
+        let r = Rect { x: 10.0, y: 20.0, width: 100.0, height: 50.0 };
+        let wide = contain(r, 4.0);
+        assert_eq!((wide.width, wide.height), (100.0, 25.0));
+        assert_eq!((wide.x, wide.y), (10.0, 32.5));
+        let tall = contain(r, 0.5);
+        assert_eq!((tall.width, tall.height), (25.0, 50.0));
+        assert_eq!((tall.x, tall.y), (47.5, 20.0));
+    }
+
+    #[test]
+    fn the_default_idle_screen_is_covered_by_black_and_logo_and_hides_the_bug() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let mut p = with_bug(program(None, Overlay::Black), BugCorner::LowerRight);
+        p.idle = Some(lamp_mark());
+        assert_eq!(kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene), ["path"]);
+        p.overlay = Overlay::Logo;
+        assert_eq!(
+            kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene),
+            ["path", "path", "image"]
+        );
+        p.overlay = Overlay::None;
+        let kinds_now = kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene);
+        assert!(!kinds_now.contains(&"image"), "no corner bug over the default idle screen");
+    }
+
+    #[test]
+    fn stage_and_stream_ignore_the_default_idle_screen() {
+        let t = theme(60.0, 30.0);
+        let mut p = program(None, Overlay::None);
+        p.idle = Some(lamp_mark());
+        for role in [OutputRole::Stage, OutputRole::Stream] {
+            let o = output(role, BackgroundMode::Bleed, safe());
+            let with = run(&p, &o, 1920.0, 1080.0, &t);
+            p.idle = None;
+            let without = run(&p, &o, 1920.0, 1080.0, &t);
+            p.idle = Some(lamp_mark());
+            assert_eq!(kinds(&with.scene), kinds(&without.scene), "{role:?}");
+        }
     }
 
     #[test]

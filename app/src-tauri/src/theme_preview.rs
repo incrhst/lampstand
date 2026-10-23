@@ -3,9 +3,10 @@
 //! is what the congregation will see.
 
 use lampstand_api::ThemeSample;
+use lampstand_core::brand::Brand;
 use lampstand_core::id::Timestamp;
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
-use lampstand_core::program::{Content, Program, SlideText};
+use lampstand_core::program::{Content, Idle, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::song::SongId;
 use lampstand_core::theme::Theme;
@@ -87,6 +88,65 @@ pub fn preview(
     };
     let program = Program {
         content: Some(content(theme, sample)),
+        ..Program::default()
+    };
+    let composed = {
+        let mut fonts = fonts.lock().unwrap_or_else(|e| e.into_inner());
+        compose_at(
+            &program,
+            &output,
+            OutputSize {
+                width: width as f32,
+                height: height as f32,
+            },
+            theme,
+            fonts.get_or_insert_with(Fonts::load),
+            Timestamp(0),
+            0,
+        )
+    };
+    let (w, h) = decks::thumbnail_size(&composed.scene, thumb_width);
+    let image = renderer
+        .render_offscreen(&composed.scene, w, h)
+        .map_err(|e| format!("{e:?}"))?;
+    decks::png_data_url(&image)
+}
+
+/// The brand the default idle screen is drawn from: `brand` without its
+/// logo when that picture has not reached this device, so the screen shows
+/// the Lampstand lamp rather than a hole.
+pub fn brand_for_idle(library: &lampstand_library::Library, brand: Option<Brand>) -> Option<Brand> {
+    brand.map(|mut b| {
+        if b.logo.is_some_and(|l| library.repo().blobs().path(&l).is_none()) {
+            b.logo = None;
+        }
+        b
+    })
+}
+
+/// A PNG `data:` URL, `thumb_width` pixels wide and 16:9, of the default
+/// idle screen for `brand`.
+pub fn idle_preview(
+    brand: Option<&Brand>,
+    theme: &Theme,
+    thumb_width: u32,
+    fonts: &std::sync::Mutex<Option<Fonts>>,
+    renderer: &lampstand_render::Renderer,
+) -> Result<String, String> {
+    let (width, height) = (1920, 1080);
+    let output = OutputConfig {
+        id: OutputId::generate(),
+        name: "Preview".into(),
+        role: OutputRole::Audience { primary: true },
+        target: OutputTarget::Window { width, height },
+        safe_area: SafeArea::default(),
+        background: BackgroundMode::Bleed,
+        theme: None,
+        idle: None,
+        enabled: true,
+    };
+    let program = Program {
+        idle: Some(Idle::mark(brand)),
         ..Program::default()
     };
     let composed = {

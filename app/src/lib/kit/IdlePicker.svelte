@@ -1,5 +1,6 @@
-<!-- Chooses what a screen shows when nothing is on air: the theme's plain
-     background, a picture, a looping video (silent) or one slide of a deck.
+<!-- Chooses what a screen shows when nothing is on air: the default (your
+     logo and name, else the Lampstand lamp), the theme's plain background, a
+     picture, a looping video (silent) or one slide of a deck.
      Used for every screen at once, and for one screen, which can also say
      "same as the other screens". Black and Logo still cover it. -->
 <script lang="ts">
@@ -33,6 +34,7 @@
   let kind = $derived(idleKind(value));
   const options = $derived([
     ...(allowInherit ? [{ id: "Inherit", label: "Same as other screens" }] : []),
+    { id: "Default", label: "Default" },
     { id: "Blank", label: "Plain" },
     { id: "Image", label: "Picture" },
     { id: "Video", label: "Video" },
@@ -48,7 +50,7 @@
     const v = value;
     picture = null;
     let current = true;
-    loadIdlePicture(v, 480).then((r) => {
+    loadIdlePicture(v, 480, live.settings?.brand ?? null, live.settings?.default_theme ?? null).then((r) => {
       if (!current) return;
       picture = r?.picture ?? null;
       if (r?.slides !== undefined) slides = r.slides;
@@ -60,7 +62,7 @@
 
   async function choose(next: IdleKind) {
     if (next === "Inherit") return onchange(null);
-    if (next === "Blank") return onchange("Blank");
+    if (next === "Blank" || next === "Default") return onchange(next);
     if (next === "DeckSlide") {
       const deck = decks[0];
       if (!deck) {
@@ -112,7 +114,7 @@
       <img class="picture" src={picture} alt="" />
     {/if}
     <div class="text">
-      <p class="muted small">{describeIdle(value, decks)}</p>
+      <p class="muted small">{describeIdle(value, decks, undefined, live.settings?.brand ?? null)}</p>
       {#if value && typeof value === "object" && "Image" in value}
         <Button size="small" onclick={() => pick("Image")} disabled={busy}>Choose another picture…</Button>
       {:else if value && typeof value === "object" && "Video" in value}

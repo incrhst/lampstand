@@ -21,7 +21,7 @@ export function useLiveLook(output: () => OutputConfig | null, width = 640): Liv
   $effect(() => {
     const setting = effectiveIdle(output()?.idle ?? null, live.settings?.idle ?? null);
     let current = true;
-    loadIdlePicture(setting, width).then((r) => {
+    loadIdlePicture(setting, width, live.settings?.brand ?? null, live.settings?.default_theme ?? null).then((r) => {
       if (current) look.idle = r?.picture ?? null;
     });
     return () => {

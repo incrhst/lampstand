@@ -38,8 +38,8 @@
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
 
-  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
-  let { onsetup, onobs, onplan, ontips }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void } = $props();
+  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen. */
+  let { onsetup, onobs, onplan, ontips, onidle }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void } = $props();
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
@@ -482,6 +482,7 @@
       <div class="pick-head">
         <h1>No service is open</h1>
         <p class="muted">Open one to go live, or plan a new one.</p>
+        {#if onidle}<button type="button" class="quiet-link" onclick={onidle}>Change idle screen</button>{/if}
       </div>
       {#if services.length > 0}
         <ul class="plain pick-list" aria-label="Services to open">
@@ -568,6 +569,7 @@
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
         onclose={askClose}
+        {onidle}
       />
     </div>
 
@@ -699,6 +701,9 @@
               <LoopProgress seconds={liveSection.seconds} slideKey="{live.live.item}:{live.live.slide}:{live.live.step}" />
             {/if}
           </div>
+          {#if live.idle && live.overlay === "None" && onidle}
+            <button type="button" class="quiet-link idle-link" onclick={onidle}>Change idle screen</button>
+          {/if}
           <div class="transport">
             <Button icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
             <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
@@ -1073,6 +1078,26 @@
   }
   .live-screen.on {
     box-shadow: 0 0 0 2px var(--live);
+  }
+  .quiet-link {
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .quiet-link:hover {
+    color: var(--text);
+  }
+  .idle-link {
+    display: block;
+    margin-top: 0.4rem;
+  }
+  .pick-head .quiet-link {
+    margin-top: 0.35rem;
   }
   .transport {
     display: flex;

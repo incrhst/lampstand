@@ -166,7 +166,7 @@ function api(req: any): any {
         case "ListSongDatabases": return { type: "SongDatabases", data: [{ code: "en", name: "English", source: "Free song database" }] };
         case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
-        case "DeckThumbnail": case "MediaThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        case "DeckThumbnail": case "MediaThumbnail": case "IdlePreview": return { type: "Thumbnail", data: svgThumb("Slides") };
       }
       break;
     case "Service":
