@@ -805,6 +805,69 @@ fn an_update_waits_while_something_is_on_air_or_a_service_is_about_to_start() {
 }
 
 #[test]
+fn a_text_item_becomes_slides_with_its_attribution_and_can_be_edited() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let service = match ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Text {
+            title: "Quote".into(),
+            body: "Be still.\n\n---\nAnd know".into(),
+            attribution: Some("Psalm 46".into()),
+        },
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let (item, _) = service.ordered()[0];
+
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "Quote");
+    assert_eq!(loaded.items[0].slides.len(), 2);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let Some(Content::Text { slide }) = h.app.program().content.clone() else {
+        panic!("{:?}", h.app.program());
+    };
+    assert_eq!(slide.lines, ["Be still."]);
+    assert_eq!(slide.footer.as_deref(), Some("Psalm 46"));
+    let shown = shown_scenes(&h.sink);
+    assert!(scene_text(&shown.last().unwrap().1).contains("Be still."));
+
+    // Editing reloads the open service with three slides now.
+    let edited = ok(h.app.handle(Request::Service(ServiceRequest::SetItemText {
+        service: service.id,
+        item,
+        title: "Welcome".into(),
+        body: "One\n\nTwo\n\nThree".into(),
+        attribution: Some("  ".into()),
+    })));
+    let Response::Service(edited) = edited else {
+        panic!("{edited:?}");
+    };
+    assert!(matches!(
+        &edited.items[&item].kind,
+        ItemKind::Text { title, attribution: None, .. } if title == "Welcome"
+    ));
+    let slides = h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+        Event::Loaded(l) => Some(l.items[0].slides.len()),
+        _ => None,
+    });
+    assert_eq!(slides, Some(3));
+    let missing = h.app.handle(Request::Service(ServiceRequest::SetItemText {
+        service: service.id,
+        item: ItemId::generate(),
+        title: String::new(),
+        body: String::new(),
+        attribution: None,
+    }));
+    assert!(matches!(missing, Response::Error { .. }), "{missing:?}");
+}
+
+#[test]
 fn editing_the_open_service_reloads_it_without_changing_what_is_live() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());

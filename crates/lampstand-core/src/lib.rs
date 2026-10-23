@@ -13,6 +13,7 @@ pub mod scene;
 pub mod scripture;
 pub mod service;
 pub mod song;
+pub mod text;
 pub mod theme;
 
 /// Whether a font family is available, and what stands in for it if not.

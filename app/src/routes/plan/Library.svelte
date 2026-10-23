@@ -624,6 +624,16 @@
     <div class="title-row">
       <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
       <div class="add">
+        <Button
+          size="small"
+          variant="ghost"
+          icon="text"
+          disabled={!service}
+          onclick={() => onadd({ Text: { title: "", body: "", attribution: null } })}
+          title="Add a slide you type yourself: a quote, welcome or prayer points"
+        >
+          Text slide
+        </Button>
         <Button size="small" icon="upload" onclick={() => browse()} disabled={busy} title="Add files, or drop them anywhere on the library">
           Add files
         </Button>

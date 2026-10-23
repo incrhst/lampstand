@@ -7,4 +7,12 @@ export type ItemKind = { "Header": { title: string, } } | { "Song": { song: stri
 /**
  * This service's arrangement, if it differs from the song's.
  */
-arrangement: Array<string> | null, } } | { "Scripture": { passage: Passage, translation: string, } } | { "Deck": { deck: string, } } | { "Media": { blob: BlobHash, name: string, looped: boolean, } } | { "Countdown": { target: CountdownTarget, label: string, } } | { "Announcements": { slides: Array<BlobHash>, seconds_each: number, } };
+arrangement: Array<string> | null, } } | { "Scripture": { passage: Passage, translation: string, } } | { "Deck": { deck: string, } } | { "Media": { blob: BlobHash, name: string, looped: boolean, } } | { "Countdown": { target: CountdownTarget, label: string, } } | { "Text": { 
+/**
+ * Shown in the order list; never projected.
+ */
+title: string, body: string, 
+/**
+ * A line at the foot of every slide, for a quote's author.
+ */
+attribution: string | null, } } | { "Announcements": { slides: Array<BlobHash>, seconds_each: number, } };
