@@ -498,6 +498,22 @@ impl App {
                 lib.put_service(&service).map_err(err)?;
                 Response::Service(service)
             }
+            ServiceRequest::Duplicate {
+                service,
+                title,
+                starts_at,
+                time_zone,
+            } => {
+                let title = title.trim();
+                if title.is_empty() {
+                    return Err("a service needs a name".into());
+                }
+                let mut copy = get(service)?.duplicate(title);
+                copy.starts_at = starts_at;
+                copy.time_zone = time_zone;
+                lib.put_service(&copy).map_err(err)?;
+                Response::Service(copy)
+            }
             ServiceRequest::Reschedule {
                 service,
                 starts_at,

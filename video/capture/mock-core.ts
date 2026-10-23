@@ -173,6 +173,7 @@ function api(req: any): any {
       switch (key) {
         case "List": return { type: "Services", data: state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length })) };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
+        case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }
         case "InsertItem": {
           const s = state.services.find((x: any) => x.id === arg.service);

@@ -41,6 +41,8 @@
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
+  /** The service the New service form copies its items from, or "" for an empty one. */
+  let copyFrom = $state("");
   /** A date and time as the inputs hold them, in an IANA zone. */
   type When = { date: string; time: string; zone: string };
   /** The coming Sunday at 10:00 in `zone`, as the inputs hold it. */
@@ -146,21 +148,34 @@
     creating = !creating;
     // Each new service starts on the coming Sunday unless the planner
     // picks another day.
+    copyFrom = "";
     if (creating) newWhen = defaultWhen();
   }
 
+  /** Picking a service to start from titles the copy after it. */
+  function pickCopy() {
+    const source = services.find((s) => s.id === copyFrom);
+    newTitle = source ? `${source.title} (copy)` : "Sunday service";
+  }
+
+  /** Offers the New service form with `id` as its starting point. */
+  function startFrom(id: string) {
+    const source = services.find((s) => s.id === id);
+    creating = true;
+    newWhen = defaultWhen();
+    copyFrom = id;
+    if (source) newTitle = `${source.title} (copy)`;
+  }
+
   async function create() {
+    const title = newTitle.trim() || "Service";
     try {
       selected = await request(
         {
           area: "Service",
-          request: {
-            Create: {
-              title: newTitle.trim() || "Service",
-              starts_at: at(newWhen),
-              time_zone: newWhen.zone,
-            },
-          },
+          request: copyFrom
+            ? { Duplicate: { service: copyFrom, title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+            : { Create: { title, starts_at: at(newWhen), time_zone: newWhen.zone } },
         },
         "Service",
       );
@@ -771,6 +786,14 @@
           <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
         </div>
         {@render zonePicker(newWhen)}
+        {#if services.length > 0}
+          <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
+            <option value="">Start empty</option>
+            {#each services as s (s.id)}
+              <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
+            {/each}
+          </select>
+        {/if}
         <Button variant="primary" size="small" onclick={create}>Create</Button>
       </form>
     {/if}
@@ -798,6 +821,7 @@
               {#if selected?.id === s.id}
                 <span class="row-actions">
                   <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
+                  <Button variant="ghost" size="small" title="Start a new service from this one" onclick={() => startFrom(s.id)}>Duplicate</Button>
                   {#if live.loaded?.service === s.id}
                     <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => takeOffAir(s.id)}>Close</Button>
                   {/if}
