@@ -41,7 +41,7 @@ use lampstand_api::{
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::{
-    idle_for, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
+    idle_plan, IdlePlan, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
 };
 use lampstand_core::program::{Bug, Content, Idle, Logo, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
@@ -380,7 +380,7 @@ impl App {
             LibraryRequest::ImportBrand { path, mode } => {
                 Response::Text(self.import_brand(&path, mode)?)
             }
-            LibraryRequest::ThemePreview { .. } => {
+            LibraryRequest::ThemePreview { .. } | LibraryRequest::IdlePreview { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("theme previews are drawn by the app shell".into());
             }
@@ -1454,24 +1454,30 @@ impl App {
     }
 
     /// What `config` shows while nothing is on air: its own idle screen,
-    /// else the device default. A file or deck that has not reached this
-    /// device yet, or that is gone, shows the plain theme background
-    /// rather than a hole.
+    /// else the device default, else the default idle screen (the church's
+    /// logo and name, or Lampstand's lamp). A file or deck that has not
+    /// reached this device yet, or that is gone, shows the plain theme
+    /// background rather than a hole.
     fn idle_content(&mut self, config: &OutputConfig) -> Option<Idle> {
-        let default = self.settings.get().idle.clone();
+        let settings = self.settings.get().clone();
         let present = |lib: &Library, blob: &BlobHash| lib.repo().blobs().path(blob).is_some();
-        match idle_for(config, default.as_ref())?.clone() {
-            IdleScreen::Blank => None,
-            IdleScreen::Image { blob, .. } => {
-                present(&self.library, &blob).then_some(Idle::Image { blob })
+        match idle_plan(config, settings.idle.as_ref()) {
+            IdlePlan::Plain => None,
+            IdlePlan::Mark => {
+                let brand = crate::theme_preview::brand_for_idle(&self.library, settings.brand);
+                Some(Idle::mark(brand.as_ref()))
             }
-            IdleScreen::Video { blob, .. } => {
-                present(&self.library, &blob).then_some(Idle::Video { blob })
+            IdlePlan::Chosen(IdleScreen::Blank | IdleScreen::Default) => None,
+            IdlePlan::Chosen(IdleScreen::Image { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Image { blob: *blob })
             }
-            IdleScreen::DeckSlide { deck, slide } => {
-                let deck = self.library.deck(deck).ok().flatten()?;
+            IdlePlan::Chosen(IdleScreen::Video { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Video { blob: *blob })
+            }
+            IdlePlan::Chosen(IdleScreen::DeckSlide { deck, slide }) => {
+                let deck = self.library.deck(*deck).ok().flatten()?;
                 let parsed = self.parsed_deck(&deck).ok()?;
-                let scene = parsed.slides.get(slide)?.scenes.last()?.clone();
+                let scene = parsed.slides.get(*slide)?.scenes.last()?.clone();
                 Some(Idle::Deck { scene })
             }
         }
@@ -1588,6 +1594,7 @@ impl App {
             idle: match &file.idle {
                 Some(IdleScreen::Image { name, .. }) => Some(format!("Picture: {name}")),
                 Some(IdleScreen::Video { name, .. }) => Some(format!("Looping video: {name}")),
+                Some(IdleScreen::Blank) => Some("Plain background".into()),
                 _ => None,
             },
             has_brand: file.brand.is_some(),

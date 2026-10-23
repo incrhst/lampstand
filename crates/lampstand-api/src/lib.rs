@@ -236,6 +236,16 @@ pub enum LibraryRequest {
         height: u32,
         thumb_width: u32,
     },
+    /// A picture of the default idle screen (`IdleScreen::Default`) for a
+    /// church with this `brand` (none: Lampstand's own), `width` pixels
+    /// wide, drawn by the same layout and renderer as the screens in the
+    /// theme `theme` (the starter theme if none). Answers
+    /// `Response::Thumbnail`.
+    IdlePreview {
+        brand: Option<Brand>,
+        theme: Option<ThemeId>,
+        width: u32,
+    },
     ListTranslations,
     /// "Jn 3:16" in a translation, for the scripture panel (BI-1). A version
     /// typed after the reference ("Jn 3:16 ESV") wins over `translation`,

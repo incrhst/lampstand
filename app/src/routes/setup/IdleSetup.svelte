@@ -4,7 +4,7 @@
      Present still cover it. -->
 <script lang="ts">
   import { request, type Deck, type OutputConfig } from "../../lib/api";
-  import { describeIdle } from "../../lib/idle";
+  import { describeDefaultIdle, describeIdle } from "../../lib/idle";
   import { isScreen } from "../../lib/obs";
   import { live, refreshOutputs, refreshSettings, report, saveSettings } from "../../lib/state.svelte";
   import IdlePicker from "../../lib/kit/IdlePicker.svelte";
@@ -25,6 +25,14 @@
     }
   }
 
+  /** One plain line on which idle screen is in effect for all screens. */
+  let inEffect = $derived.by(() => {
+    const idle = live.settings?.idle ?? "Default";
+    if (idle === "Default") return `In effect: Default. ${describeDefaultIdle(live.settings?.brand ?? null)}`;
+    if (idle === "Blank") return "In effect: Plain. Screens show the theme's background and nothing else.";
+    return "In effect: the idle screen you chose.";
+  });
+
   refreshOutputs();
   refreshSettings();
   request({ area: "Library", request: "ListDecks" }, "Decks")
@@ -44,9 +52,10 @@
 
   <Panel title="All screens" description="Used by every screen that has not chosen its own.">
     <div class="current">
-      <SlidePreview lines={[]} size="small" empty={describeIdle(live.settings?.idle ?? null, decks, "The theme's plain background")} />
+      <SlidePreview lines={[]} size="small" empty={describeIdle(live.settings?.idle ?? "Default", decks, "The theme's plain background", live.settings?.brand ?? null)} />
     </div>
-    <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Blank"} onchange={(idle) => saveSettings({ idle: idle === "Blank" ? null : idle })} />
+    <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Default"} onchange={(idle) => saveSettings({ idle: idle === "Default" ? null : idle })} />
+    <p class="muted in-effect">{inEffect}</p>
   </Panel>
 
   <h2>Each screen</h2>
@@ -58,7 +67,7 @@
       <li>
         <div class="who">
           <strong>{o.name}</strong>
-          <span class="muted">{describeIdle(o.idle, decks, "Same as all screens")}</span>
+          <span class="muted">{describeIdle(o.idle, decks, "Same as all screens", live.settings?.brand ?? null)}</span>
         </div>
         <IdlePicker label="Idle screen for {o.name}" allowInherit value={o.idle} onchange={(idle) => put({ ...o, idle })} />
       </li>
@@ -107,6 +116,10 @@
     flex-direction: column;
     gap: 0.15rem;
     font-size: 0.875rem;
+  }
+  .in-effect {
+    margin: 0.6rem 0 0;
+    font-size: 0.8125rem;
   }
   .link {
     font: inherit;

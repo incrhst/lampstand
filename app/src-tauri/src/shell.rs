@@ -249,6 +249,28 @@ async fn api(
             }))
             .await
         }
+        // The default idle screen, by the same layout and renderer as the
+        // screens.
+        Request::Library(LibraryRequest::IdlePreview {
+            brand,
+            theme,
+            width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "previews are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                let brand = crate::theme_preview::brand_for_idle(&library, brand);
+                let theme = library.resolve_theme(&[theme]);
+                crate::theme_preview::idle_preview(brand.as_ref(), &theme, width, &fonts, &renderer)
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
         // Decoding a video for its thumbnail runs off the `App` lock.
         Request::Library(LibraryRequest::MediaThumbnail { blob, name, width }) => {
             blocking(Box::new(move || {

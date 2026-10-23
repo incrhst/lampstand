@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { IdleScreen } from "./api/index.ts";
-import { describeIdle, effectiveIdle, idleKind, stepSlide } from "./idle.ts";
+import { describeDefaultIdle, describeIdle, effectiveIdle, idleKind, stepSlide } from "./idle.ts";
 
 const picture: IdleScreen = { Image: { blob: "a", name: "Welcome.png" } };
 const video: IdleScreen = { Video: { blob: "b", name: "Loop.mp4" } };
@@ -11,6 +11,7 @@ const decks = [{ id: "d1", title: "Announcements" }];
 test("each setting is one kind", () => {
   assert.equal(idleKind(null), "Inherit");
   assert.equal(idleKind("Blank"), "Blank");
+  assert.equal(idleKind("Default"), "Default");
   assert.equal(idleKind(picture), "Image");
   assert.equal(idleKind(video), "Video");
   assert.equal(idleKind(slide), "DeckSlide");
@@ -29,8 +30,21 @@ test("a screen's own setting beats the default, and plain means nothing", () => 
   assert.equal(effectiveIdle(picture, video), picture);
   assert.equal(effectiveIdle(null, video), video);
   assert.equal(effectiveIdle("Blank", video), null);
-  assert.equal(effectiveIdle(null, null), null);
   assert.equal(effectiveIdle(null, "Blank"), null);
+});
+
+test("with nothing chosen a screen shows the default idle screen", () => {
+  assert.equal(effectiveIdle(null, null), "Default");
+  assert.equal(effectiveIdle("Default", picture), "Default");
+  assert.equal(effectiveIdle(null, "Default"), "Default");
+});
+
+test("the default says whose logo it shows", () => {
+  assert.match(describeDefaultIdle(null), /The Lampstand lamp/);
+  assert.match(describeDefaultIdle({ name: "Grace Chapel", logo: null }), /The Lampstand lamp/);
+  assert.match(describeDefaultIdle({ name: "Grace Chapel", logo: "abc" }), /Your logo and name \(Grace Chapel\)/);
+  assert.match(describeDefaultIdle({ name: " ", logo: "abc" }), /Your logo on your colour/);
+  assert.equal(describeIdle("Default", decks, undefined, null), describeDefaultIdle(null));
 });
 
 test("stepping through a deck stops at both ends", () => {
