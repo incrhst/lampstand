@@ -2,8 +2,8 @@
 //! into a starting theme (`lampstand_library::theme_from_brand`) and shows
 //! the logo when the Logo overlay is on.
 //!
-//! Like outputs, the brand belongs to one machine's settings and is not
-//! synced; the theme made from it is a library document and does sync.
+//! The brand is one of the church's settings that follow it across its
+//! devices (`crate::church`); the theme made from it is a library document.
 
 use serde::{Deserialize, Serialize};
 

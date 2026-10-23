@@ -16,6 +16,7 @@
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import BrandFile from "../../lib/kit/BrandFile.svelte";
+  import ChurchShare from "../../lib/kit/ChurchShare.svelte";
 
   let { onthemes }: { onthemes?: () => void } = $props();
 
@@ -111,6 +112,8 @@
     Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo on the Logo screen. You can change
     anything later in Themes.
   </p>
+
+  <ChurchShare only={["logo", "theme picture", "theme video"]} />
 
   <div class="layout">
     <div class="form">

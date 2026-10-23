@@ -16,6 +16,7 @@
   import CalibrateView from "./CalibrateView.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import IdlePicker from "../../lib/kit/IdlePicker.svelte";
+  import ChurchShare from "../../lib/kit/ChurchShare.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
@@ -158,6 +159,7 @@
         description="What every screen shows before the service, between items and after it. Press Logo or Blank in Present to cover it. A screen can choose its own below."
       >
         <IdlePicker label="Idle screen for all screens" value={live.settings?.idle ?? "Blank"} onchange={(idle) => saveSettings({ idle: idle === "Blank" ? null : idle })} />
+        <ChurchShare only={["idle picture", "idle video", "idle slide"]} />
       </Panel>
     </div>
 

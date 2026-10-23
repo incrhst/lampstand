@@ -66,7 +66,7 @@ const themes: any[] = [{
   text: { font_family: "Noto Sans", size: 72, min_size: 36, weight: 400, italic: false, color: { r: 255, g: 255, b: 255, a: 255 }, align: "Center", valign: "Middle", line_spacing: 1.2, uppercase: false, shadow: null, outline: null },
   background: { Color: { r: 0, g: 0, b: 0, a: 255 } }, text_area: { x: 0, y: 0, width: 1, height: 1 }, max_lines: 4, transition: { kind: "Cut", duration_ms: 0 }, show_copyright: true,
 }];
-let settings: any = { clicker_mode: false, default_translation: null, brand: null, brand_theme: null, default_theme: null, idle: null };
+let settings: any = { clicker_mode: false, default_translation: null, brand: null, brand_theme: null, default_theme: null, idle: null, church_synced: false };
 const hex = (c: any) => "#" + [c.r, c.g, c.b].map((n: number) => n.toString(16).padStart(2, "0")).join("");
 // A stand-in for the picture the core draws of a theme: its colours and font on a 16:9 card.
 const themeThumb = (t: any, sample: string, w: number, h: number) => {
@@ -253,6 +253,7 @@ function api(req: any): any {
         if (!settings.brand) return { type: "Error", data: { message: "Add your church's logo in Setup first." } };
         settings = { ...settings, brand: { ...settings.brand, bug: arg } };
       }
+      if (key === "Church" || key === "ResolveChurch") return { type: "Church", data: { shared: false, conflict: null, waiting: [] } };
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
     case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: [], nearby: [] } };

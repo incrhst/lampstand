@@ -500,6 +500,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let sync = match sync {
         Ok(sync) => {
             lock(&app).set_server_address(sync.public_address());
+            lock(&app).set_sync_link(sync.link());
             Some(Arc::new(sync))
         }
         Err(e) => {

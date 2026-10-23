@@ -62,12 +62,17 @@ use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
+
+mod church;
+
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
 use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+use church::ChurchSync;
+pub use church::SyncLink;
 
 /// Where an output window goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +146,8 @@ pub struct App {
     fonts: Fonts,
     outputs: OutputStore,
     settings: SettingsStore,
+    /// Bookkeeping for the settings shared with the church's other devices.
+    church_sync: ChurchSync,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -217,6 +224,7 @@ impl App {
             fonts,
             outputs,
             settings,
+            church_sync: ChurchSync::default(),
             sink,
             windows,
             emit,
@@ -305,8 +313,14 @@ impl App {
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
             Request::Settings(SettingsRequest::Get) => {
-                Ok(Response::Settings(self.settings.get().clone()))
+                Ok(Response::Settings(self.device_settings()))
             }
+            Request::Settings(SettingsRequest::Church) => {
+                Ok(Response::Church(self.church_status()))
+            }
+            Request::Settings(SettingsRequest::ResolveChurch(choice)) => self
+                .resolve_church(choice)
+                .map(|()| Response::Church(self.church_status())),
             Request::Settings(SettingsRequest::Put(settings)) => self.put_settings(settings),
             Request::Settings(SettingsRequest::SaveBrand(brand)) => self.save_brand(brand),
             Request::Settings(SettingsRequest::SetLogoBug(bug)) => self.set_logo_bug(bug),
@@ -1355,7 +1369,7 @@ impl App {
 
     /// The logo screen from the church's brand, if it has set one.
     fn logo(&mut self) -> Option<Logo> {
-        let brand = self.settings.get().brand.clone()?;
+        let brand = self.church().brand?;
         let bug = match brand.logo {
             Some(image) if brand.bug.enabled => self.logo_aspect(&image).map(|aspect| Bug {
                 image,
@@ -1391,7 +1405,9 @@ impl App {
                 .ok()?;
             (w > 0 && h > 0).then(|| w as f32 / h as f32)
         });
-        self.logo_aspects.insert(*blob, aspect);
+        if aspect.is_some() {
+            self.logo_aspects.insert(*blob, aspect);
+        }
         aspect
     }
 
@@ -1400,7 +1416,7 @@ impl App {
     /// device yet, or that is gone, shows the plain theme background
     /// rather than a hole.
     fn idle_content(&mut self, config: &OutputConfig) -> Option<Idle> {
-        let default = self.settings.get().idle.clone();
+        let default = self.church().idle;
         let present = |lib: &Library, blob: &BlobHash| lib.repo().blobs().path(blob).is_some();
         match idle_for(config, default.as_ref())?.clone() {
             IdleScreen::Blank => None,
@@ -1429,7 +1445,7 @@ impl App {
     /// delete on another device never takes the output down.
     fn resolve_theme(&self, id: Option<ThemeId>) -> Theme {
         self.library
-            .resolve_theme(&[id, self.settings.get().default_theme])
+            .resolve_theme(&[id, self.church().default_theme])
     }
 
     /// The theme songs and scripture are split with: the one the main
@@ -1437,30 +1453,22 @@ impl App {
     /// is paginated is what is shown.
     fn pagination_theme(&self, service: Option<ThemeId>, primary: &OutputConfig) -> Theme {
         self.library
-            .resolve_theme(&[primary.theme, service, self.settings.get().default_theme])
+            .resolve_theme(&[primary.theme, service, self.church().default_theme])
     }
 
     fn put_settings(&mut self, settings: lampstand_api::DeviceSettings) -> Result<Response> {
-        self.settings.put(settings).map_err(err)?;
+        self.put_device_settings(settings)?;
         // The default theme, the idle screen and the logo change what the
         // outputs show.
         self.sent.clear();
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
-    /// Takes a deleted theme out of the settings that name it.
+    /// Takes a deleted theme out of the settings that name it, on every
+    /// device (the church settings sync).
     fn settings_forget_theme(&mut self, id: ThemeId) -> Result<()> {
-        let mut settings = self.settings.get().clone();
-        if settings.default_theme == Some(id) {
-            settings.default_theme = None;
-        }
-        if settings.brand_theme == Some(id) {
-            settings.brand_theme = None;
-        }
-        if &settings != self.settings.get() {
-            self.settings.put(settings).map_err(err)?;
-        }
+        self.church_forget_theme(id)?;
         self.present();
         Ok(())
     }
@@ -1468,11 +1476,11 @@ impl App {
     /// `ExportBrand`: the brand, its themes and its idle screen in one file.
     fn export_brand(&self, path: &str) -> Result<String> {
         use lampstand_library::brand_package::{export, BrandSource};
-        let settings = self.settings.get();
+        let church = self.church();
         let source = BrandSource {
-            brand: settings.brand.clone(),
-            idle: settings.idle.clone(),
-            brand_theme: settings.brand_theme,
+            brand: church.brand.clone(),
+            idle: church.idle.clone(),
+            brand_theme: church.brand_theme,
         };
         let file = std::fs::File::create(path).map_err(err)?;
         let report = export(&self.library, &source, std::io::BufWriter::new(file)).map_err(err)?;
@@ -1483,7 +1491,7 @@ impl App {
             report.files,
             if report.files == 1 { "" } else { "s" },
         );
-        if settings.brand.is_none() {
+        if church.brand.is_none() {
             message
                 .push_str(" No church name or logo has been set up yet, so only themes went in.");
         }
@@ -1552,18 +1560,18 @@ impl App {
         )
         .map_err(err)?;
         let replace = mode == BrandImportMode::Replace;
-        let mut settings = self.settings.get().clone();
-        if got.brand.is_some() && (replace || settings.brand.is_none()) {
-            settings.brand = got.brand.clone();
-            if let Some(id) = got.brand_theme {
-                settings.brand_theme = Some(id);
-                settings.default_theme = Some(id);
+        self.save_church(|church| {
+            if got.brand.is_some() && (replace || church.brand.is_none()) {
+                church.brand = got.brand.clone();
+                if let Some(id) = got.brand_theme {
+                    church.brand_theme = Some(id);
+                    church.default_theme = Some(id);
+                }
             }
-        }
-        if got.idle.is_some() && (replace || settings.idle.is_none()) {
-            settings.idle = got.idle.clone();
-        }
-        self.settings.put(settings).map_err(err)?;
+            if got.idle.is_some() && (replace || church.idle.is_none()) {
+                church.idle = got.idle.clone();
+            }
+        })?;
         self.sent.clear();
         self.present();
         Ok(format!(
@@ -1577,38 +1585,41 @@ impl App {
     /// The quick start: keeps the brand, makes (or updates) its theme and
     /// makes that the default theme.
     fn save_brand(&mut self, brand: lampstand_core::brand::Brand) -> Result<Response> {
-        let mut settings = self.settings.get().clone();
-        let existing = settings
+        let existing = self
+            .church()
             .brand_theme
             .filter(|id| self.library.theme(*id).ok().flatten().is_some());
         let id = existing.unwrap_or_else(ThemeId::generate);
         self.library
             .put_theme(&lampstand_library::theme_from_brand(&brand, id))
             .map_err(err)?;
-        settings.brand = Some(brand);
-        settings.brand_theme = Some(id);
-        settings.default_theme = Some(id);
-        self.settings.put(settings).map_err(err)?;
+        self.save_church(|church| {
+            church.brand = Some(brand);
+            church.brand_theme = Some(id);
+            church.default_theme = Some(id);
+        })?;
         self.sent.clear();
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
     /// Turns the logo bug on or off, or moves or resizes it, without
     /// touching the rest of the brand or its theme. A church that has no
     /// brand yet has nothing to put it on.
     fn set_logo_bug(&mut self, bug: lampstand_core::brand::LogoBug) -> Result<Response> {
-        let mut settings = self.settings.get().clone();
-        let Some(brand) = settings.brand.as_mut() else {
+        if self.church().brand.is_none() {
             return Err(err("Add your church's logo in Setup first."));
-        };
-        brand.bug = lampstand_core::brand::LogoBug {
-            opacity: bug.opacity.clamp(10, 100),
-            ..bug
-        };
-        self.settings.put(settings).map_err(err)?;
+        }
+        self.save_church(|church| {
+            if let Some(brand) = church.brand.as_mut() {
+                brand.bug = lampstand_core::brand::LogoBug {
+                    opacity: bug.opacity.clamp(10, 100),
+                    ..bug
+                };
+            }
+        })?;
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
     /// The audience output scripture is split against: the primary one,
@@ -1819,6 +1830,7 @@ impl App {
         }
         // The heartbeat while live, and an fsync a burst of clicks put off.
         self.write_journal(now);
+        self.church_tick();
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -1948,6 +1960,16 @@ impl App {
             .any(|c| c.kind == lampstand_sync::DocKind::Theme)
         {
             self.present();
+        }
+        if changes
+            .iter()
+            .any(|c| c.kind == lampstand_sync::DocKind::ChurchSettings)
+        {
+            // The church look or idle screen changed on another device (or
+            // this one): redraw, and look for files it points at.
+            self.sent.clear();
+            self.present();
+            self.church_sync_look_now();
         }
         let Some(loaded) = &self.loaded else {
             return;

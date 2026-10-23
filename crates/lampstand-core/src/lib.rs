@@ -4,6 +4,7 @@
 //! See docs/ARCHITECTURE.md for how the pieces fit together.
 
 pub mod brand;
+pub mod church;
 pub mod deck;
 pub mod geom;
 pub mod id;

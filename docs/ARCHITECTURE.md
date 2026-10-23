@@ -151,7 +151,7 @@ Google Slides arrive as their PPTX export and take the same path. A 200-deck fid
 
 ### Sync: one Automerge document per thing, blobs beside them
 
-- **Documents.** Every song, service, theme, deck, translation's metadata and device usage log is its own Automerge document. One more team document holds members, roles, invites and an index of every document. The document ID is the entity's UUID. Core types map to documents with autosurgeon, so a planner's edit becomes only the operations for the fields that changed.
+- **Documents.** Every song, service, theme, deck, translation's metadata and device usage log is its own Automerge document, and the church's shared settings are one more (see *Church settings*). One more team document holds members, roles, invites and an index of every document. The document ID is the entity's UUID. Core types map to documents with autosurgeon, so a planner's edit becomes only the operations for the fields that changed.
 - **Ordering.** Service items are a map keyed by item ID, each with a fractional `Position`, not a list. A CRDT list has no "move", and concurrent moves would duplicate items.
 - **Blobs.** Deck files, images, video and Bible text are content-addressed files (BLAKE3). Peers fetch them by hash on demand. They are never inside documents, which keeps documents small and sync fast.
 - **Wire protocol.** One protocol for every link: a WebSocket carrying Automerge sync messages and blob requests. LAN peers advertise `_lampstand._tcp` over mDNS and connect to each other's local server (CD-2). The relay speaks the same protocol (CD-3). Shared-folder sync (CD-7, Phase 2) writes the same saved chunks to a folder.
@@ -170,6 +170,16 @@ Google Slides arrive as their PPTX export and take the same path. A 200-deck fid
   - *Blobs* are fetched on request (`SyncNode::fetch_blob`) from whichever connected device has them, and verified on arrival (`BlobStore::put_verified`).
   - *Measured* (`crates/lampstand-server/tests/sync.rs`, two processes on an M1, debug build): found by mDNS in under 1 s, converged 30–50 ms after pairing, edit to change on the other process median 13–19 ms, a restarted peer caught up in under 1 s. `app/src-tauri/tests/sync.rs` times edit to `Event::Loaded` on the presenting app at about 50 ms. Target: under 1 s on a LAN. Encryption (T75) did not move the edit median (13–15 ms before and after, four interleaved runs); a 500-song first sync went from 0.66–1.13 s to 0.87–1.06 s (`crates/lampstand-sync/tests/net.rs`).
 
+### Church settings: one document that follows the church
+
+The church look (name, logo, colours, font, logo bug), the brand and default themes and the default idle screen are one Automerge document of kind `church-settings` (`lampstand_core::church::ChurchSettings`), with a fixed ID so every device's copy is the same document. It is flat: each field is a scalar at the root (colours packed as `u32`, the idle screen as one JSON string so two edits never mix a picture from one device with a name from another), so two devices that each created it before meeting still merge. Rules:
+
+- Different fields edited on different devices both stay. The same field keeps the later edit (Automerge's last-writer-wins, per field).
+- A theme that is deleted is cleared from the document by the deleting device, and every device resolves a name it cannot find to the Starter theme (`Library::resolve_theme`), so a delete never leaves a device without a theme.
+- Blobs the document points at (logo, idle picture or video, a deck for an idle slide, the pictures and videos of the default and brand themes) are fetched from connected devices by the app (`SyncLink::fetch`) and asked for again every 10 s until they are here; screens show the plain theme background and Setup says what is awaited (`ChurchStatus::waiting`). The document records the name of the device that last changed it (`updated_by`) for that message.
+- Device-local, never in the document: outputs (and each output's theme and idle override, safe area, placement), browser-source keys, OBS settings, clicker mode, the default Bible, the device key and paired list.
+- Migration. A device that had these settings before keeps them in `settings.json` (`church_synced` false). The first time a paired device is connected (the device with the lower key waits 3 s, the other 6 s, for the document to arrive), `handler/church.rs` compares: a device with none uses the document; a device with settings and a document with none writes its settings into it; equal settings agree; different settings are never merged and the person is asked once (`ChurchStatus::conflict`, `SettingsRequest::ResolveChurch`). Afterwards `settings.json` holds none of them and `church_synced` is true. Planners and admins may write the document (`Role::can_write`).
+
 ### Plans from Notion (proposed)
 
 A church that plans in Notion points Lampstand at its Services database; Lampstand reads the service and its items, matches the songs and passages against its own library, and the person checks the result and creates the service ([decision 0007](decisions/0007-plans-from-notion.md), not built yet). The connector produces a [plan](plan-contract.md), a source-neutral list of entries with no people, lyrics or files in it, so a companion planning tool or a plain file could produce the same thing. Matching is shared with "New service from a list": CCLI number first, then title, then search, and only the first two count as matched. A service remembers the plan row each item came from and a hash of what the import wrote, so a later update replaces untouched items and leaves the operator's edits alone. The Notion token lives in the OS keychain, never in a synced document.
@@ -178,7 +188,7 @@ A church that plans in Notion points Lampstand at its Services database; Lampsta
 
 | Synced | Device only |
 | --- | --- |
-| Songs, services, themes, decks (metadata and current file), translations, team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens), window layout, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
+| Songs, services, themes, decks (metadata and current file), translations, church settings (look, logo bug, default theme, default idle screen), team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens, as does each screen's own theme and idle override), window layout, OBS connection, clicker mode, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
 
 ### Teams and roles: signed membership, honest-member threat model
 
