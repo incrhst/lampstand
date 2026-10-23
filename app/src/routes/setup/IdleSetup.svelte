@@ -1,5 +1,5 @@
-<!-- Setup › Idle screen: what the audience screens show when nothing is on
-     air, before the service, between items and after it. One choice for every
+<!-- Setup › Idle screen: what the audience screens show when no service is
+     open, or when nothing from the open service is on the screen. One choice for every
      screen, and a screen that needs its own can have one. Logo and Blank in
      Present still cover it. -->
 <script lang="ts">
@@ -35,9 +35,11 @@
 <div class="page">
   <h1>Idle screen</h1>
   <p class="muted intro">
-    What the screens show when nothing is on air: before the service, between items and after it. Choose the plain
-    theme background, a picture, a video that loops with the sound off, or one slide of a deck. Press <kbd>Logo</kbd>
-    or <kbd>Blank</kbd> in Present to cover it.
+    What the screens show when no service is open, or when nothing from the open service is on the screen, such as
+    before you start and after you end it. Choose the plain
+    theme background, a picture, a video that loops with the sound off, or one slide of a deck. It is not the same as
+    <kbd>Blank</kbd>, which you press in Present to hide a service that is running. <kbd>Blank</kbd> and
+    <kbd>Logo</kbd> both cover the idle screen.
   </p>
 
   <Panel title="All screens" description="Used by every screen that has not chosen its own.">
