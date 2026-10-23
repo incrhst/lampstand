@@ -323,7 +323,7 @@
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let tip = $derived(
     nextTip(
-      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0 },
+      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo },
       new Set([...dismissedTips, ...usedTips]),
     ),
   );
@@ -419,6 +419,22 @@
       const current = await request({ area: "Settings", request: "Get" }, "Settings");
       const s = await request({ area: "Settings", request: { Put: { ...current, clicker_mode: !clicker } } }, "Settings");
       clicker = s.clicker_mode;
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // The logo bug follows the logo set in Setup › Church look; this flips it
+  // on or off during a service and keeps the corner, size and opacity.
+  let bugReady = $derived(!!live.settings?.brand?.logo);
+  let bugOn = $derived(bugReady && !!live.settings?.brand?.bug.enabled);
+
+  async function toggleBug() {
+    const brand = live.settings?.brand;
+    if (!brand?.logo) return;
+    try {
+      live.settings = await request({ area: "Settings", request: { SetLogoBug: { ...brand.bug, enabled: !brand.bug.enabled } } }, "Settings");
+      used("logo-bug");
     } catch (e) {
       report(e);
     }
@@ -542,10 +558,13 @@
       <MoreMenu
         guide={showGuide}
         {clicker}
+        bug={bugOn}
+        {bugReady}
         obs={!!pill}
         {mod}
         onguide={() => { showGuide = !showGuide; used("safe-area"); }}
         onclicker={toggleClicker}
+        onbug={toggleBug}
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
         onclose={askClose}

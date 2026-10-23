@@ -11,6 +11,8 @@ export interface TipFacts {
   liveItem: string | null;
   /** How many slides the item on air has. */
   liveSlides?: number;
+  /** The church has set a logo (Setup › Church look). */
+  hasLogo?: boolean;
 }
 
 export type TipArea = "Present" | "Plan";
@@ -87,6 +89,14 @@ export const TIPS: Tip[] = [
     title: "Blank the screen in one key",
     body: "Press the full stop to blank the screen at once, and again to bring the slide back. The Blank button does the same.",
     relevant: onAir,
+    used: never,
+  },
+  {
+    id: "logo-bug",
+    area: "Present",
+    title: "Put your logo in a corner",
+    body: "Switch on Logo bug in the More menu to show your logo small in the lower corner of every screen and the stream. Black and the Logo screen cover it. Set the corner and size in Setup › Church look.",
+    relevant: (f) => onAir(f) && f.hasLogo === true,
     used: never,
   },
   {

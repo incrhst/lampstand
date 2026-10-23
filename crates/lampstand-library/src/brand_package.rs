@@ -399,6 +399,7 @@ pub fn import(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lampstand_core::brand::{BugCorner, BugSize, LogoBug};
     use lampstand_core::geom::Color;
     use lampstand_sync::team::DeviceKeypair;
     use std::io::Cursor;
@@ -415,6 +416,12 @@ mod tests {
             text: None,
             accent: Color::rgb(240, 190, 60),
             font_family: "Noto Serif".into(),
+            bug: LogoBug {
+                enabled: true,
+                corner: BugCorner::LowerLeft,
+                size: BugSize::Large,
+                opacity: 55,
+            },
         }
     }
 
@@ -502,7 +509,18 @@ mod tests {
         let read = |lib: &Library, h: &BlobHash| {
             std::fs::read(lib.repo().blobs().path(h).unwrap()).unwrap()
         };
-        let logo = got.brand.unwrap().logo.unwrap();
+        let got_brand = got.brand.unwrap();
+        assert_eq!(
+            got_brand.bug,
+            LogoBug {
+                enabled: true,
+                corner: BugCorner::LowerLeft,
+                size: BugSize::Large,
+                opacity: 55,
+            },
+            "the logo bug travels with the brand"
+        );
+        let logo = got_brand.logo.unwrap();
         assert_eq!(read(&b, &logo), b"logo bytes");
         let Some(IdleScreen::Video { blob, .. }) = got.idle else {
             panic!()
