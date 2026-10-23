@@ -7,7 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::Id;
+use crate::deck::DeckId;
+use crate::id::{BlobHash, Id};
 use crate::safe_area::SafeArea;
 use crate::theme::ThemeId;
 
@@ -24,7 +25,38 @@ pub struct OutputConfig {
     pub background: BackgroundMode,
     /// Overrides the service's theme for text on this output.
     pub theme: Option<ThemeId>,
+    /// What this screen shows when nothing is on air. `None` uses the
+    /// device's default (`DeviceSettings::idle`).
+    #[serde(default)]
+    pub idle: Option<IdleScreen>,
     pub enabled: bool,
+}
+
+/// What a screen shows when nothing is on air and neither Black nor Logo is
+/// on. Black and Logo stay one key away and cover it.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IdleScreen {
+    /// The theme's background and nothing else, as before.
+    Blank,
+    /// A picture in the blob store; `name` is the file it came from.
+    Image { blob: BlobHash, name: String },
+    /// A video in the blob store. It loops, silent.
+    Video { blob: BlobHash, name: String },
+    /// One slide (counted from 0) of a deck, shown with its builds played.
+    DeckSlide { deck: DeckId, slide: usize },
+}
+
+/// The idle screen an output shows: its own, else the device default, else
+/// `None` for the plain theme background.
+pub fn idle_for<'a>(
+    output: &'a OutputConfig,
+    default: Option<&'a IdleScreen>,
+) -> Option<&'a IdleScreen> {
+    match output.idle.as_ref().or(default)? {
+        IdleScreen::Blank => None,
+        idle => Some(idle),
+    }
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -73,4 +105,69 @@ pub struct DisplayMatch {
 pub enum BackgroundMode {
     Bleed,
     Fit,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::safe_area::SafeArea;
+
+    fn output(idle: Option<IdleScreen>) -> OutputConfig {
+        OutputConfig {
+            id: OutputId::generate(),
+            name: "Main".into(),
+            role: OutputRole::Audience { primary: true },
+            target: OutputTarget::Window {
+                width: 960,
+                height: 540,
+            },
+            safe_area: SafeArea::default(),
+            background: BackgroundMode::Bleed,
+            theme: None,
+            idle,
+            enabled: true,
+        }
+    }
+
+    fn image(name: &str) -> IdleScreen {
+        IdleScreen::Image {
+            blob: BlobHash::of(name.as_bytes()),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn a_screen_uses_its_own_idle_before_the_default() {
+        let default = image("default.png");
+        let own = image("own.png");
+        let o = output(Some(own.clone()));
+        assert_eq!(idle_for(&o, Some(&default)), Some(&own));
+    }
+
+    #[test]
+    fn a_screen_without_one_uses_the_default() {
+        let default = image("default.png");
+        assert_eq!(idle_for(&output(None), Some(&default)), Some(&default));
+    }
+
+    #[test]
+    fn blank_on_a_screen_overrides_the_default() {
+        let default = image("default.png");
+        let o = output(Some(IdleScreen::Blank));
+        assert_eq!(idle_for(&o, Some(&default)), None);
+    }
+
+    #[test]
+    fn nothing_set_is_the_plain_background() {
+        assert_eq!(idle_for(&output(None), None), None);
+    }
+
+    #[test]
+    fn an_old_output_file_without_idle_still_loads() {
+        let o = output(None);
+        let mut json: serde_json::Value = serde_json::to_value(&o).unwrap();
+        json.as_object_mut().unwrap().remove("idle");
+        let back: OutputConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(back.idle, None);
+    }
 }

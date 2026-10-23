@@ -172,6 +172,7 @@ fn lyrics(fonts: &mut Fonts) -> Scene {
         },
         background: BackgroundMode::Bleed,
         theme: None,
+        idle: None,
         enabled: true,
     };
     let program = Program {

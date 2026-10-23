@@ -8,7 +8,7 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
@@ -126,7 +126,7 @@
       setFlag("lampstand.getstarted.tried");
     }
   });
-  let started = $derived(getStartedSteps({ screensOn: enabled, songs: songCount, services: serviceList, triedService: tried }));
+  let started = $derived(getStartedSteps({ screensOn: enabled, songs: songCount, services: serviceList, triedService: tried, brandSet: !!live.settings?.brand }));
   let showStrip = $derived(!hidden && !allDone(started));
   function hide() {
     hidden = true;
@@ -162,6 +162,8 @@
       } else {
         screen = "plan";
       }
+    } else if (id === "look") {
+      openSetup("brand");
     } else if (id === "screen") {
       openSetup("screens");
     } else {
@@ -170,6 +172,8 @@
   }
 
   refreshOutputs();
+  refreshThemes();
+  refreshSettings();
   refreshObs();
 </script>
 

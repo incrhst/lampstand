@@ -206,6 +206,49 @@ async fn api(
             }))
             .await
         }
+        Request::Library(LibraryRequest::DeckSlidePicture { deck, slide, width }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "thumbnails are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                decks::deck_slide_picture(&library, deck, slide, width, &fonts, &renderer)
+                    .map(|(thumbnail, slides)| Response::DeckSlide { thumbnail, slides })
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // A theme drawn with sample text, by the same layout and renderer
+        // as the screens.
+        Request::Library(LibraryRequest::ThemePreview {
+            theme,
+            sample,
+            width,
+            height,
+            thumb_width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "previews are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                crate::theme_preview::preview(
+                    &theme,
+                    sample,
+                    (width, height),
+                    thumb_width,
+                    &fonts,
+                    &renderer,
+                )
+                .map(Response::Thumbnail)
+                .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
         // Decoding a video for its thumbnail runs off the `App` lock.
         Request::Library(LibraryRequest::MediaThumbnail { blob, name, width }) => {
             blocking(Box::new(move || {

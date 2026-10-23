@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::deck::DeckId;
+use crate::geom::Color;
 use crate::id::{BlobHash, Timestamp};
 use crate::scene::Scene;
 use crate::song::SongId;
@@ -69,6 +70,33 @@ pub enum Overlay {
     Logo,
 }
 
+/// What an audience screen shows while nothing is on air, already resolved
+/// for that screen (see `output::idle_for`). Black and Logo cover it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Idle {
+    Image {
+        blob: BlobHash,
+    },
+    /// Loops, muted.
+    Video {
+        blob: BlobHash,
+    },
+    /// A deck slide in slide points, with its builds played.
+    Deck {
+        scene: Arc<Scene>,
+    },
+}
+
+/// The church's logo screen, for the Logo overlay.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Logo {
+    /// `None` until the church has chosen one: a ring is drawn instead.
+    pub image: Option<BlobHash>,
+    pub background: Color,
+    /// The colour of the ring.
+    pub accent: Color,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Program {
     pub background: Option<Background>,
@@ -78,4 +106,11 @@ pub struct Program {
     /// The slide after this one, for the stage display.
     pub next: Option<Content>,
     pub theme: Option<ThemeId>,
+    /// Set by the app for an audience output when nothing is on air; the
+    /// engine never sets it.
+    #[serde(default)]
+    pub idle: Option<Idle>,
+    /// Set by the app from the church's brand, for the Logo overlay.
+    #[serde(default)]
+    pub logo: Option<Logo>,
 }
