@@ -117,7 +117,9 @@ pub fn preview(
 /// the Lampstand lamp rather than a hole.
 pub fn brand_for_idle(library: &lampstand_library::Library, brand: Option<Brand>) -> Option<Brand> {
     brand.map(|mut b| {
-        if b.logo.is_some_and(|l| library.repo().blobs().path(&l).is_none()) {
+        if b.logo
+            .is_some_and(|l| library.repo().blobs().path(&l).is_none())
+        {
             b.logo = None;
         }
         b

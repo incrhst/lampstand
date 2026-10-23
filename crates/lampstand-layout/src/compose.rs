@@ -7,8 +7,8 @@ use lampstand_core::id::Timestamp;
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputRole};
 use lampstand_core::program::{Content, Idle, Mark, Overlay, Program, SlideText};
 use lampstand_core::scene::{
-    Fit, GradientStop, HAlign, ImageNode, Node, NodeId, NodeKind, Paint, Paragraph, PathCommand, PathNode, Scene,
-    Stroke, TextBlock, TextRun, VAlign, VideoNode, COMPOSITOR_NODE_BASE,
+    Fit, GradientStop, HAlign, ImageNode, Node, NodeId, NodeKind, Paint, Paragraph, PathCommand,
+    PathNode, Scene, Stroke, TextBlock, TextRun, VAlign, VideoNode, COMPOSITOR_NODE_BASE,
 };
 use lampstand_core::theme::{Background, TextStyle, Theme, REFERENCE_HEIGHT};
 
@@ -552,24 +552,30 @@ impl Compositor<'_> {
             ]
         };
         let shapes: Vec<(Vec<PathCommand>, Paint)> = vec![
-            (
-                teardrop(235.0, 320.0, 372.0, 430.0, 76.0),
-                flame,
-            ),
+            (teardrop(235.0, 320.0, 372.0, 430.0, 76.0), flame),
             (
                 teardrop(350.0, 387.0, 410.0, 434.0, 30.0),
                 Paint::Solid(Color::rgb(0xff, 0xf1, 0xbd)),
             ),
-            (rounded(446.0, 522.0, 132.0, 24.0, 12.0), Paint::Solid(stand)),
+            (
+                rounded(446.0, 522.0, 132.0, 24.0, 12.0),
+                Paint::Solid(stand),
+            ),
             (rounded(498.0, 546.0, 28.0, 170.0, 0.0), Paint::Solid(stand)),
-            (rounded(416.0, 716.0, 192.0, 28.0, 14.0), Paint::Solid(stand)),
+            (
+                rounded(416.0, 716.0, 192.0, 28.0, 14.0),
+                Paint::Solid(stand),
+            ),
         ];
         let mut nodes = Vec::new();
         // The glow is a disc larger than the lamp, fading to nothing.
         let radius = 300.0 * scale;
         let c = at(512.0, 430.0);
         let k = 0.552_284_8 * radius;
-        let p = |x: f32, y: f32| Point { x: c.x + x, y: c.y + y };
+        let p = |x: f32, y: f32| Point {
+            x: c.x + x,
+            y: c.y + y,
+        };
         let disc = vec![
             PathCommand::MoveTo(p(radius, 0.0)),
             PathCommand::CubicTo(p(radius, k), p(k, radius), p(0.0, radius)),
@@ -1854,15 +1860,28 @@ mod tests {
                 let right = |r: Rect| r.x + r.width;
                 let bottom = |r: Rect| r.y + r.height;
                 for r in [l.logo, l.text] {
-                    assert!(r.x >= safe.x - 0.01 && right(r) <= right(safe) + 0.01, "{w}x{h}");
-                    assert!(r.y >= safe.y - 0.01 && bottom(r) <= bottom(safe) + 0.01, "{w}x{h}");
+                    assert!(
+                        r.x >= safe.x - 0.01 && right(r) <= right(safe) + 0.01,
+                        "{w}x{h}"
+                    );
+                    assert!(
+                        r.y >= safe.y - 0.01 && bottom(r) <= bottom(safe) + 0.01,
+                        "{w}x{h}"
+                    );
                 }
                 let cx = safe.x + safe.width / 2.0;
                 assert!((l.logo.x + l.logo.width / 2.0 - cx).abs() < 0.01, "{w}x{h}");
                 assert!((l.text.x + l.text.width / 2.0 - cx).abs() < 0.01, "{w}x{h}");
-                assert!(bottom(l.logo) <= l.text.y || !named, "name below logo, {w}x{h}");
+                assert!(
+                    bottom(l.logo) <= l.text.y || !named,
+                    "name below logo, {w}x{h}"
+                );
                 // Logo and name together are centred top to bottom.
-                let used_bottom = if named { l.text.y + safe.height * 0.07 } else { bottom(l.logo) };
+                let used_bottom = if named {
+                    l.text.y + safe.height * 0.07
+                } else {
+                    bottom(l.logo)
+                };
                 let above = l.logo.y - safe.y;
                 let below = bottom(safe) - used_bottom;
                 assert!((above - below).abs() < 0.01, "{w}x{h}: {above} vs {below}");
@@ -1873,7 +1892,12 @@ mod tests {
     #[test]
     fn the_lamp_keeps_its_shape_and_fits_its_box_on_any_screen() {
         let t = theme(60.0, 30.0);
-        for (w, h) in [(1920.0_f32, 1080.0_f32), (1024.0, 768.0), (2560.0, 1080.0), (1080.0, 1920.0)] {
+        for (w, h) in [
+            (1920.0_f32, 1080.0_f32),
+            (1024.0, 768.0),
+            (2560.0, 1080.0),
+            (1080.0, 1920.0),
+        ] {
             let o = output(
                 OutputRole::Audience { primary: true },
                 BackgroundMode::Bleed,
@@ -1894,7 +1918,12 @@ mod tests {
 
     #[test]
     fn contain_fits_the_shape_inside_the_box() {
-        let r = Rect { x: 10.0, y: 20.0, width: 100.0, height: 50.0 };
+        let r = Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+        };
         let wide = contain(r, 4.0);
         assert_eq!((wide.width, wide.height), (100.0, 25.0));
         assert_eq!((wide.x, wide.y), (10.0, 32.5));
@@ -1922,7 +1951,10 @@ mod tests {
         );
         p.overlay = Overlay::None;
         let kinds_now = kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene);
-        assert!(!kinds_now.contains(&"image"), "no corner bug over the default idle screen");
+        assert!(
+            !kinds_now.contains(&"image"),
+            "no corner bug over the default idle screen"
+        );
     }
 
     #[test]
