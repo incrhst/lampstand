@@ -49,6 +49,8 @@ pub enum AboutRequest {
     AskForHelp,
     /// The optional form where a church says who it is and how it plans to use Lampstand.
     TellUs,
+    /// The documentation on the project's website.
+    ReadDocs,
 }
 
 /// Updating Lampstand itself (T59).

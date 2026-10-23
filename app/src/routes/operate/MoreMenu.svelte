@@ -4,6 +4,7 @@
 <script lang="ts">
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import { KEYS as keys } from "../../lib/shortcuts";
   import type { IconName } from "../../lib/kit/icons";
 
   let {
@@ -50,14 +51,6 @@
     }
   }
 
-  const keys: [string, string][] = [
-    ["← → or Space", "Next and previous"],
-    [".", "Blank"],
-    ["1–9", "Jump to a verse"],
-    ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
-    ["⇧↑ ⇧↓ then Enter", "Choose an item, then start it"],
-    ["/", "Quick add a song or scripture"],
-  ];
 </script>
 
 <svelte:window onclick={onwindowclick} onkeydown={onwindowkey} />
