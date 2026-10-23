@@ -855,6 +855,10 @@ pub struct SlideView {
     /// "V1", "John 3:16", or the slide's kind for non-text slides.
     pub label: Option<String>,
     pub lines: Vec<String>,
+    /// The smaller line at the foot: a song's author, copyright and CCLI
+    /// number, a verse's reference, or a text slide's attribution.
+    #[serde(default)]
+    pub footer: Option<String>,
     /// Build steps after the slide appears (deck slides).
     pub steps: usize,
     /// Speaker notes (deck slides), one line per paragraph; empty when

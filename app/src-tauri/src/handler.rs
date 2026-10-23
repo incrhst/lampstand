@@ -2039,14 +2039,14 @@ fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange 
 }
 
 fn slide_view(slide: &LoadedSlide) -> SlideView {
-    let (label, lines) = match &slide.content {
+    let (label, lines, footer) = match &slide.content {
         Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => {
-            (slide.label.clone(), slide.lines.clone())
+            (slide.label.clone(), slide.lines.clone(), slide.footer.clone())
         }
-        Content::DeckSlide { index, .. } => (Some(format!("Slide {}", index + 1)), Vec::new()),
-        Content::Image { .. } => (Some("Image".into()), Vec::new()),
-        Content::Video { .. } => (Some("Video".into()), Vec::new()),
-        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()]),
+        Content::DeckSlide { index, .. } => (Some(format!("Slide {}", index + 1)), Vec::new(), None),
+        Content::Image { .. } => (Some("Image".into()), Vec::new(), None),
+        Content::Video { .. } => (Some("Video".into()), Vec::new(), None),
+        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()], None),
     };
     let notes = match &slide.content {
         Content::DeckSlide { notes, .. } => notes.clone(),
@@ -2055,6 +2055,7 @@ fn slide_view(slide: &LoadedSlide) -> SlideView {
     SlideView {
         label,
         lines,
+        footer,
         steps: slide.steps,
         notes,
     }
