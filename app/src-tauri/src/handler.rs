@@ -43,7 +43,7 @@ use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::{
     idle_for, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
 };
-use lampstand_core::program::{Content, Idle, Logo, Overlay, Program, SlideText};
+use lampstand_core::program::{Bug, Content, Idle, Logo, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::scripture::{
@@ -173,6 +173,8 @@ pub struct App {
     loop_overrides: HashMap<ItemId, Option<u16>>,
     /// Video lengths already read, by blob, in milliseconds.
     video_lengths: HashMap<BlobHash, Option<u32>>,
+    /// Logo shapes already read, by blob: width over height.
+    logo_aspects: HashMap<BlobHash, Option<f32>>,
     /// Parsed decks by the blob they were parsed from, for the decks in
     /// the open service.
     parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
@@ -232,6 +234,7 @@ impl App {
             loaded: None,
             loop_overrides: HashMap::new(),
             video_lengths: HashMap::new(),
+            logo_aspects: HashMap::new(),
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
@@ -307,6 +310,7 @@ impl App {
             }
             Request::Settings(SettingsRequest::Put(settings)) => self.put_settings(settings),
             Request::Settings(SettingsRequest::SaveBrand(brand)) => self.save_brand(brand),
+            Request::Settings(SettingsRequest::SetLogoBug(bug)) => self.set_logo_bug(bug),
             Request::Obs(_) => Err("OBS control is not running".into()),
             // The shell answers updates: it owns the updater.
             Request::Update(_) => Err("updates are not available here".into()),
@@ -1274,6 +1278,12 @@ impl App {
             // them and they cover it. Stage and stream never show it.
             let mut shown_program = program.clone();
             shown_program.logo = logo.clone();
+            // Only audience and stream outputs carry the logo bug.
+            if config.role == OutputRole::Stage {
+                if let Some(l) = shown_program.logo.as_mut() {
+                    l.bug = None;
+                }
+            }
             if idle && matches!(config.role, OutputRole::Audience { .. }) {
                 shown_program.idle = self.idle_content(&config);
             }
@@ -1402,13 +1412,45 @@ impl App {
     }
 
     /// The logo screen from the church's brand, if it has set one.
-    fn logo(&self) -> Option<Logo> {
-        let brand = self.settings.get().brand.as_ref()?;
+    fn logo(&mut self) -> Option<Logo> {
+        let brand = self.settings.get().brand.clone()?;
+        let bug = match brand.logo {
+            Some(image) if brand.bug.enabled => self.logo_aspect(&image).map(|aspect| Bug {
+                image,
+                aspect,
+                corner: brand.bug.corner,
+                size: brand.bug.size,
+                opacity: brand.bug.alpha(),
+            }),
+            _ => None,
+        };
         Some(Logo {
             image: brand.logo,
             background: brand.primary,
             accent: brand.accent,
+            bug,
         })
+    }
+
+    /// The logo's width over its height, read once. `None` when the
+    /// picture is not on this device or cannot be read, so no bug is drawn
+    /// rather than a misshapen one.
+    fn logo_aspect(&mut self, blob: &BlobHash) -> Option<f32> {
+        if let Some(known) = self.logo_aspects.get(blob) {
+            return *known;
+        }
+        let path = self.library.repo().blobs().path(blob);
+        let aspect = path.and_then(|p| {
+            let (w, h) = image::ImageReader::open(p)
+                .ok()?
+                .with_guessed_format()
+                .ok()?
+                .into_dimensions()
+                .ok()?;
+            (w > 0 && h > 0).then(|| w as f32 / h as f32)
+        });
+        self.logo_aspects.insert(*blob, aspect);
+        aspect
     }
 
     /// What `config` shows while nothing is on air: its own idle screen,
@@ -1606,6 +1648,23 @@ impl App {
         settings.default_theme = Some(id);
         self.settings.put(settings).map_err(err)?;
         self.sent.clear();
+        self.present();
+        Ok(Response::Settings(self.settings.get().clone()))
+    }
+
+    /// Turns the logo bug on or off, or moves or resizes it, without
+    /// touching the rest of the brand or its theme. A church that has no
+    /// brand yet has nothing to put it on.
+    fn set_logo_bug(&mut self, bug: lampstand_core::brand::LogoBug) -> Result<Response> {
+        let mut settings = self.settings.get().clone();
+        let Some(brand) = settings.brand.as_mut() else {
+            return Err(err("Add your church's logo in Setup first."));
+        };
+        brand.bug = lampstand_core::brand::LogoBug {
+            opacity: bug.opacity.clamp(10, 100),
+            ..bug
+        };
+        self.settings.put(settings).map_err(err)?;
         self.present();
         Ok(Response::Settings(self.settings.get().clone()))
     }

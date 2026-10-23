@@ -68,6 +68,13 @@ test("the jump-keys tip needs an item with three or more slides", () => {
   assert.equal(nextTip(f, new Set(["quick-add"]))?.id, "blank-screen");
 });
 
-test("there are seven tips", () => {
-  assert.equal(TIPS.length, 7);
+test("the logo-bug tip waits for a logo", () => {
+  const f = { loaded: service([]), liveItem: "a", liveSlides: 1 };
+  const seen = new Set(["quick-add", "blank-screen", "safe-area"]);
+  assert.equal(nextTip(f, seen), null);
+  assert.equal(nextTip({ ...f, hasLogo: true }, seen)?.id, "logo-bug");
+});
+
+test("there are eight tips", () => {
+  assert.equal(TIPS.length, 8);
 });

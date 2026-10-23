@@ -3,7 +3,7 @@
      slides show the core's rendered picture (`image`); text slides are the
      operator's text picture until thumbnails for them arrive (T47). -->
 <script lang="ts">
-  import type { SafeArea } from "../api";
+  import type { LogoBug, SafeArea } from "../api";
 
   let {
     lines = [],
@@ -32,8 +32,20 @@
     /** A picture of the screen's idle screen, shown when there is nothing to show. */
     idle?: string | null;
     /** The church's logo screen, for the Logo overlay. */
-    brand?: { logo: string | null; background: string; accent: string } | null;
+    brand?: { logo: string | null; background: string; accent: string; bug?: LogoBug } | null;
   } = $props();
+
+  // The logo bug, drawn where the screens draw it: in the safe area's lower
+  // corner, over the slide, hidden under Black and the Logo screen.
+  const bugHeight = { Small: 0.07, Medium: 0.1, Large: 0.14 } as const;
+  let bug = $derived(brand?.logo && brand.bug?.enabled && overlay === "None" ? { src: brand.logo, ...brand.bug } : null);
+  let bugBox = $derived.by(() => {
+    if (!bug) return "";
+    const s = safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const edge = bug.corner === "LowerLeft" ? `left:${s.left * 100}%` : `right:${s.right * 100}%`;
+    // 16:9, so 2% of the height is 1.125% of the width.
+    return `${edge};bottom:${s.bottom * 100}%;margin:1.125cqw;height:${bugHeight[bug.size] * 56.25}cqw;max-width:25%;opacity:${Math.max(10, bug.opacity) / 100}`;
+  });
 
   let box = $derived.by(() => {
     const s = safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 };
@@ -61,6 +73,9 @@
       {#each lines as line}<p>{line}</p>{:else}<span class="empty">{empty}</span>{/each}
       {#if footer && lines.length > 0}<p class="footer">{footer}</p>{/if}
     </div>
+  {/if}
+  {#if bug}
+    <img class="bug {bug.corner === 'LowerLeft' ? 'left' : 'right'}" src={bug.src} alt="" style={bugBox} />
   {/if}
   {#if showGuide}<div class="guide" style={box} aria-hidden="true"></div>{/if}
 </div>
@@ -154,6 +169,18 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+  }
+  .bug {
+    position: absolute;
+    width: auto;
+    object-fit: contain;
+    pointer-events: none;
+  }
+  .bug.left {
+    object-position: left bottom;
+  }
+  .bug.right {
+    object-position: right bottom;
   }
   .guide {
     position: absolute;

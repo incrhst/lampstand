@@ -10,22 +10,30 @@
   let {
     guide,
     clicker,
+    bug,
+    bugReady,
     obs,
     mod,
     onguide,
     onclicker,
+    onbug,
     onclearText,
     onclearAll,
   }: {
     /** The safe-area guide is drawn on the preview. */
     guide: boolean;
     clicker: boolean;
+    /** The logo bug is on. */
+    bug: boolean;
+    /** The church has a logo to put in the corner. */
+    bugReady: boolean;
     /** The service has an OBS control, so the O key applies. */
     obs: boolean;
     /** "⌘" or "Ctrl+", for the screen keys. */
     mod: string;
     onguide: () => void;
     onclicker: () => void;
+    onbug: () => void;
     onclearText: () => void;
     onclearAll: () => void;
   } = $props();
@@ -54,11 +62,12 @@
 <svelte:window onclick={onwindowclick} onkeydown={onwindowkey} />
 
 <span class="more" bind:this={root}>
-  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, clearing and the keys">More</Button>
+  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, logo bug, clearing and the keys">More</Button>
   {#if open}
     <div class="menu" role="menu" aria-label="More controls">
       {@render item("safeArea", "Safe area guide", guide ? "On" : "Off", then(onguide), guide)}
       {@render item("keyboard", "Clicker mode", clicker ? "On" : "Off", then(onclicker), clicker)}
+      {@render item("image", "Logo bug", bugReady ? (bug ? "On" : "Off") : "Add a logo in Setup", then(onbug), bugReady ? bug : undefined, !bugReady)}
       {@render item("x", "Clear text", "Keep the background", then(onclearText))}
       {@render item("x", "Clear all", "Text, background and overlay", then(onclearAll))}
       <h3>Keys</h3>
@@ -78,8 +87,8 @@
   {/if}
 </span>
 
-{#snippet item(icon: IconName, label: string, hint: string, run: () => void, pressed?: boolean)}
-  <button type="button" class="row" role={pressed === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={pressed} onclick={run}>
+{#snippet item(icon: IconName, label: string, hint: string, run: () => void, pressed?: boolean, disabled = false)}
+  <button type="button" class="row" role={pressed === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={pressed} {disabled} onclick={run}>
     <Icon name={icon} size={14} />
     <span class="label">{label}</span>
     <span class="hint" class:on={pressed}>{hint}</span>
@@ -118,7 +127,11 @@
     text-align: left;
     cursor: pointer;
   }
-  .row:hover {
+  .row:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+  .row:hover:not(:disabled) {
     background: var(--raised);
   }
   .label {
