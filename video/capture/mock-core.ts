@@ -49,7 +49,18 @@ const welcome = {
   id: "welcome", title: "Welcome to Lampstand", starts_at: null, time_zone: null, theme: null,
   items: { w1: item({ Song: { song: "amazing-grace", arrangement: null } }), w2: item({ Scripture: { passage: { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } }, translation: "kjv" } }), w3: item({ Song: { song: "how-great-thou-art", arrangement: null } }) } as Record<string, any>,
 };
-const state: any = { services: [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
+const tipsService = {
+  id: "tips", title: "Pre-service and service", starts_at: null, time_zone: null, theme: null,
+  items: {
+    t1: { ...item({ Header: { title: "Pre-service" } }), loop_seconds: (window as any).__scene === "tips-loop" ? 3 : null },
+    t2: item({ Song: { song: "holy-holy-holy", arrangement: null } }),
+    t3: item({ Song: { song: "amazing-grace", arrangement: null } }),
+    t4: item({ Header: { title: "Service" } }),
+    t5: item({ Song: { song: "be-thou-my-vision", arrangement: null } }),
+    t6: item({ Song: { song: "it-is-well", arrangement: null } }),
+  } as Record<string, any>,
+};
+const state: any = { services: String((window as any).__scene).startsWith("tips") ? [tipsService] : [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, enabled: true });
 (window as any).__mock = state;
 
@@ -81,7 +92,23 @@ function load(id: string) {
   }
   return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })), sections };
 }
-function pushLive() { emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: false, overlay: state.overlay } }); }
+let liveKey = "";
+let liveSince = 0;
+function pushLive() {
+  const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
+  if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
+  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: false, overlay: state.overlay } });
+}
+// A looping section moves the live slide on by itself, as the real engine does.
+setInterval(() => {
+  if (!state.live || !state.loaded) return;
+  const sec = state.loaded.sections.find((x: any) => x.items.includes(state.live.item));
+  if (!sec?.seconds || Date.now() - liveSince < sec.seconds * 1000) return;
+  const cursors = sec.items.flatMap((id: string) => state.loaded.items.find((i: any) => i.id === id).slides.map((_: any, n: number) => ({ item: id, slide: n, step: 0 })));
+  const at = cursors.findIndex((c: any) => c.item === state.live.item && c.slide === state.live.slide);
+  state.live = state.preview = cursors[(at + 1) % cursors.length];
+  pushLive();
+}, 200);
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
 function move(dir: number, byItem = false) {
   const f = flat(); if (!f.length) return;

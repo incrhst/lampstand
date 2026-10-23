@@ -74,7 +74,7 @@ SongSelect, FreeShow or ProPresenter files.
 - **Something broken, or an idea?** Open an
   **[issue](https://github.com/incrhst/lampstand/issues/new/choose)**.
 
-In the app, **Setup › About** has **Ask for help**, **Report a problem** and
+In the app, **Help › Help and feedback** has **Ask for help**, **Report a problem** and
 **Suggest an idea** buttons that open the right page in your browser with your
 version already filled in. Everything is public, so please do not paste
 passwords or OBS Browser source addresses (they contain a key).
