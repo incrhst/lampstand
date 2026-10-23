@@ -191,6 +191,7 @@
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
         Setup
+        {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
     </div>
   </header>
@@ -230,7 +231,7 @@
     {/snippet}
     {#snippet end()}
       {#if newVersion}
-        <button class="status-link" onclick={() => openSetup("about")} title="A new version of Lampstand is ready to install. Open Setup › About">
+        <button class="status-link update-pill" onclick={() => openSetup("about")} title="A new version of Lampstand is ready to install. Open Setup › About">
           <Icon name="download" size={14} />
           <span class="update">Update {newVersion} available</span>
         </button>
@@ -367,6 +368,26 @@
   }
   .update {
     color: var(--gold);
+  }
+  /* A new version is waiting: a gold pill in the footer and a dot on Setup. */
+  .update-pill {
+    background: var(--gold-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--gold);
+    font-weight: 600;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+  }
+  .update-pill:hover {
+    background: var(--gold-soft);
+    color: var(--gold-hover);
+  }
+  .update-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-left: 0.15rem;
   }
   .status-link {
     font: inherit;
