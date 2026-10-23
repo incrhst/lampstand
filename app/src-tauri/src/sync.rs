@@ -242,7 +242,10 @@ impl Sync {
         node.set_drive_hooks(DriveHooks {
             command: Box::new(move |from, payload| {
                 match serde_json::from_slice::<Request>(&payload) {
-                    Ok(request) if driveable(&request) => command(request),
+                    Ok(request) if driveable(&request) => {
+                        eprintln!("lampstand: driver asks for {request:?}");
+                        command(request)
+                    }
                     Ok(request) => eprintln!(
                         "lampstand: {} asked for something a driver may not do: {request:?}",
                         from.fingerprint()
@@ -346,7 +349,10 @@ impl Sync {
             return None;
         }
         let driving = self.node.driving()?;
-        let error = |message: String| Some(Response::Error { message });
+        let error = |message: String| {
+            eprintln!("lampstand: cannot drive {}: {message}", driving.name);
+            Some(Response::Error { message })
+        };
         if !driving.online {
             return error(format!(
                 "{} is not connected. Controls wait until it is back.",
