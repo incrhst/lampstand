@@ -2320,3 +2320,50 @@ fn moved_setting() -> lampstand_core::brand::LogoBug {
         opacity: 80,
     }
 }
+
+#[test]
+fn a_planning_device_refuses_live_control_and_keeps_its_screens_dark() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(h.app.program().content.is_some(), "on air while presenting");
+    assert_eq!(h.host.0.lock().unwrap().open.len(), 1);
+
+    // Another device takes over: the service comes off air and the
+    // window closes, but the output stays switched on in its settings.
+    h.app.set_presenting(false);
+    assert!(h.app.program().content.is_none());
+    assert_eq!(h.host.0.lock().unwrap().closed, [output.id]);
+    let enabled = match ok(h.app.handle(Request::Outputs(OutputRequest::List))) {
+        Response::Outputs(o) => o[0].enabled,
+        other => panic!("{other:?}"),
+    };
+    assert!(enabled, "the screen keeps its setting");
+
+    for command in [Command::GoLive, Command::Next, Command::ToggleBlack] {
+        match h.app.handle(Request::Live(command)) {
+            Response::Error { message } => assert!(message.contains("planning"), "{message}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+    assert!(matches!(
+        h.app
+            .handle(Request::Service(ServiceRequest::Open(service.id))),
+        Response::Error { .. }
+    ));
+    assert!(h.app.program().content.is_none());
+
+    // Presenting again brings the window back, with nothing on air.
+    h.app.set_presenting(true);
+    assert_eq!(h.host.0.lock().unwrap().open.len(), 2);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(h.app.program().content.is_some());
+}

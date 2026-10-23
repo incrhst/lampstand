@@ -13,6 +13,8 @@
   import { syncPill } from "./lib/sync";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
+  import { isPlanning, withRole } from "./lib/presenting";
+  import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
@@ -51,7 +53,9 @@
     screen = "help";
   }
   let obsStatus = $derived(obsPill(live.obs));
+  let planningOnly = $derived(isPlanning(live.team));
   let syncStatus = $derived(syncPill(live.sync));
+  let rolePill = $derived(withRole(syncStatus, live.team));
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -211,6 +215,8 @@
     </div>
   </header>
 
+  <PresenterNotices />
+
   {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
   <main>
@@ -227,9 +233,9 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="{syncStatus.title}. Open Setup › Devices">
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
         <Dot tone={syncStatus.tone} />
-        <span class:warn={syncStatus.tone === "warn"}>{syncStatus.text}</span>
+        <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
     {/snippet}
     {#snippet middle()}
@@ -264,7 +270,7 @@
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
-        {#if screenOutputs.length > 0}<span>· {enabled} on</span>{/if}
+        {#if screenOutputs.length > 0}<span>· {enabled} on{planningOnly && enabled > 0 ? ", dark while planning" : ""}</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}

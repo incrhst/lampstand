@@ -19,6 +19,7 @@
 
 #[cfg(feature = "net")]
 pub mod net;
+pub mod presenter;
 mod repo;
 pub mod team;
 

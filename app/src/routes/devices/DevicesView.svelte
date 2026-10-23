@@ -7,6 +7,8 @@
   import { report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
 
   let status: TeamStatus | null = $state(null);
@@ -42,6 +44,11 @@
   }
 
   const refresh = () => team("Status");
+  let presenter = $derived.by(() => status?.presenter ?? null);
+  /** The saved time, plus the current one if it is not among the choices. */
+  let takeoverChoices = $derived(
+    [...new Set<number>([...TAKEOVER_CHOICES, presenter?.takeover_secs ?? 120])].sort((a, b) => a - b),
+  );
   const unlisten = onEvent((e) => {
     if (e.type === "SyncStatus") refresh();
   });
@@ -122,6 +129,37 @@
     {/if}
   </Panel>
 
+  {#if status && status.paired.length > 0 && presenter}
+    <Panel title="Presenting" description="One device at a time drives the screens and takes a service live. Every device can still plan and sync.">
+      <p>
+        <strong>This device: {presenter.role === "Presenting" ? "Presenting" : "Planning"}</strong>
+      </p>
+      {#if presenter.role === "Planning"}
+        <p class="muted">
+          {#if presenter.holder}{presenter.holder_name} is the presenting device.{:else}Nobody is presenting yet.{/if}
+          {PLANNING_SCREENS}
+        </p>
+        <div class="actions"><PresentAction present="Make this device the presenter" /></div>
+      {:else}
+        <p class="muted">Screens turned on here show the service. Another device can ask to present; you will be asked to allow it.</p>
+      {/if}
+      <label class="takeover">
+        Take over without asking after
+        <select
+          value={presenter.takeover_secs}
+          onchange={(e) => team({ SetTakeover: { seconds: Number(e.currentTarget.value) } })}
+        >
+          {#each takeoverChoices as s}
+            <option value={s}>{howLong(s)} offline</option>
+          {/each}
+        </select>
+        <small class="muted">
+          If the presenting device is offline this long, another device can present without its permission. Never while it is connected. Set on each device.
+        </small>
+      </label>
+    </Panel>
+  {/if}
+
   <Panel title="Paired devices">
     {#snippet actions()}
       <Button onclick={refresh}>Refresh</Button>
@@ -141,6 +179,7 @@
           <span>
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
+            <small class="role" class:presenting={p.presenting}>{p.presenting ? "Presenting" : "Planning"}</small>
             <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>
           <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
@@ -193,6 +232,24 @@
     font-size: 0.85rem;
     color: var(--muted);
     margin: 1rem 0 0.4rem;
+  }
+  .takeover {
+    margin-top: 1rem;
+  }
+  select {
+    font: inherit;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--raised);
+    color: var(--text);
+  }
+  .role {
+    margin-right: 0.4rem;
+    color: var(--muted);
+  }
+  .role.presenting {
+    color: var(--accent);
   }
   .summary {
     margin: 0 0 0.3rem;

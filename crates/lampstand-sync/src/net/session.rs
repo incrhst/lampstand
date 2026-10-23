@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::{FutureExt, SinkExt, StreamExt};
 use lampstand_core::id::BlobHash;
@@ -23,11 +24,19 @@ use uuid::Uuid;
 
 use super::wire::{Frame, Link, BLOB_CHUNK};
 use super::{Control, NetError, SyncNode};
+use crate::presenter::Lease;
 use crate::team::DeviceKey;
 use crate::{DocKind, SyncMessage};
 
 /// Incoming frames applied in one batch, at most.
 const BATCH: usize = 512;
+
+/// How often a session says it is alive.
+const BEAT: Duration = Duration::from_secs(5);
+
+/// A session that has heard nothing for this long is over: the other
+/// device is gone even if the socket has not noticed.
+const SILENCE: Duration = Duration::from_secs(30);
 
 struct Incoming {
     path: PathBuf,
@@ -79,14 +88,25 @@ pub(crate) async fn run(
             .collect::<Vec<_>>()
     })
     .await;
+    s.send(node.lease_frame());
     s.send_all(offered.unwrap_or_default());
 
+    let mut beat = tokio::time::interval(BEAT);
+    let mut heard = tokio::time::Instant::now();
     loop {
         tokio::select! {
             _ = &mut stop => break,
+            _ = beat.tick() => {
+                if heard.elapsed() > SILENCE {
+                    eprintln!("lampstand: sync connection silent for {}s: closing", SILENCE.as_secs());
+                    break;
+                }
+                s.send(Frame::Beat);
+            }
             c = control.recv() => match c {
                 Some(Control::Changed(ids)) => s.offer(ids).await,
                 Some(Control::Want(hash, reply)) => s.want(hash, reply),
+                Some(Control::Frame(frame)) => s.send(frame),
                 None => break,
             },
             frame = stream.next() => {
@@ -98,6 +118,7 @@ pub(crate) async fn run(
                     }
                     None => break,
                 };
+                node.heard(peer);
                 // Take whatever else has already arrived, to apply together.
                 // An error (a frame that failed to open) ends the session
                 // after the frames before it.
@@ -118,7 +139,11 @@ pub(crate) async fn run(
                         None => break,
                     }
                 }
-                if s.handle(frames).await.is_err() || end {
+                let failed = s.handle(frames).await.is_err();
+                // Applying a big batch can take a while; that is not silence.
+                heard = tokio::time::Instant::now();
+                node.heard(peer);
+                if failed || end {
                     break;
                 }
             }
@@ -249,6 +274,19 @@ impl State {
                     ))));
                 }
             }
+            Frame::Lease {
+                holder,
+                name,
+                epoch,
+            } => self.node.lease_received(Lease {
+                holder: holder.map(DeviceKey),
+                name,
+                epoch,
+            }),
+            Frame::Ask => self.node.ask_received(self.peer),
+            Frame::Cancel => self.node.cancel_received(self.peer),
+            Frame::Declined { epoch } => self.node.declined_received(self.peer, epoch),
+            Frame::Beat => {}
             // Handshake frames after the handshake: ignore.
             Frame::Hello(_) | Frame::Proof { .. } | Frame::Refused { .. } => {}
             Frame::Sync { .. } => unreachable!("batched by handle"),

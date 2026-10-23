@@ -593,6 +593,30 @@ pub enum TeamRequest {
     Unpair {
         device: String,
     },
+    /// Becomes the presenting device when nobody needs to allow it: nobody
+    /// holds the role, or the presenter has been offline past the takeover
+    /// time. Answers `Response::Team`, or an error saying to ask.
+    PresenterClaim,
+    /// Asks the presenting device to hand over; it shows a prompt.
+    PresenterAsk,
+    /// Withdraws this device's ask, or clears the "not now" it was shown.
+    PresenterCancel,
+    /// On the presenting device: hands the role to a device that asked
+    /// (its key in hex). This device becomes Planning and its screens clear.
+    PresenterAllow {
+        device: String,
+    },
+    /// On the presenting device: says not now to a device that asked.
+    PresenterDecline {
+        device: String,
+    },
+    /// Clears the notice about having been replaced as presenter.
+    PresenterDismiss,
+    /// How long the presenter may be offline before another device may take
+    /// over without asking, on this device.
+    SetTakeover {
+        seconds: u32,
+    },
 }
 
 /// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
@@ -759,6 +783,8 @@ pub struct TeamStatus {
     pub paired: Vec<DeviceView>,
     /// Lampstand devices seen on the network that are not paired.
     pub nearby: Vec<NearbyView>,
+    /// Who may present, and what this device can do about it.
+    pub presenter: PresenterView,
     pub sync: SyncSummary,
 }
 
@@ -797,6 +823,78 @@ pub enum SyncState {
     Error,
 }
 
+/// What this device may do on screen: the presenting device drives the
+/// screens and takes a service live; the others are Planning.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PresenterRole {
+    Presenting,
+    Planning,
+}
+
+/// How a Planning device can become the presenter.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PresenterStanding {
+    /// Already presenting, or alone.
+    Presenting,
+    /// Nobody holds the role: `PresenterClaim` takes it with no one's
+    /// permission.
+    Open,
+    /// The presenter is connected: `PresenterAsk`.
+    Ask,
+    /// The presenter has been offline long enough: `PresenterClaim` takes
+    /// over without asking; say so first ("offline for 5 minutes").
+    TakeOver,
+    /// The presenter is offline but only recently: wait `wait_secs`.
+    Wait,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresenterView {
+    pub role: PresenterRole,
+    pub standing: PresenterStanding,
+    /// The presenting device's key in hex; `None` while nobody holds it.
+    pub holder: Option<String>,
+    /// The presenter's name: "Mary's laptop". This device's own when it
+    /// presents.
+    pub holder_name: String,
+    /// Counts every claim or hand-over.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub epoch: u64,
+    /// How long the presenter has been offline, when it is.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub offline_secs: Option<u64>,
+    /// Seconds until takeover opens, when the presenter is offline.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub wait_secs: Option<u64>,
+    /// The takeover time on this device.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub takeover_secs: u64,
+    /// Devices asking this one, the presenter, to hand over.
+    pub requests: Vec<PresentRequestView>,
+    /// This device's own ask, while it is open or was declined.
+    pub asking: Option<AskingView>,
+    /// This device was presenting and another took over; shown once.
+    pub replaced_by: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresentRequestView {
+    /// The asking device's key in hex.
+    pub device: String,
+    pub name: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AskingView {
+    /// The presenter said not now.
+    pub declined: bool,
+}
+
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PairingView {
@@ -815,6 +913,8 @@ pub struct DeviceView {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
+    /// It holds the presenter role.
+    pub presenting: bool,
     /// Why the last attempt to reach it failed, when it is not connected.
     pub problem: Option<String>,
 }

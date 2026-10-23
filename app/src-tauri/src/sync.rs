@@ -20,8 +20,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lampstand_api::{
-    DeviceView, Event, NearbyView, PairingView, Response, SyncState, SyncSummary, TeamRequest,
-    TeamStatus,
+    AskingView, DeviceView, Event, NearbyView, PairingView, PresentRequestView, PresenterRole,
+    PresenterStanding, PresenterView, Response, SyncState, SyncSummary, TeamRequest, TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -29,7 +29,8 @@ use lampstand_core::scene::Scene;
 use lampstand_library::Library;
 use lampstand_render::Renderer;
 use lampstand_server::{Backend, SceneHub, Server};
-use lampstand_sync::net::{local_addresses, NodeConfig, NodeStatus, SyncNode};
+use lampstand_sync::net::{local_addresses, NodeConfig, NodeStatus, PresenterStatus, SyncNode};
+use lampstand_sync::presenter::{Notice, Role, Standing};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
 use crate::handler::{EventSink, SyncLink};
@@ -68,6 +69,11 @@ impl SyncConfig {
         }
     }
 }
+
+/// Told whether this device may drive the screens (`true`: it presents),
+/// once at the start and whenever that changes. Runs on a sync task, so it
+/// must not wait for the `App` lock.
+pub type RoleSink = Arc<dyn Fn(bool) + Send + std::marker::Sync>;
 
 /// What the local server's OBS routes read: the app's browser-source keys
 /// and scenes, and a renderer for deck frames.
@@ -154,6 +160,7 @@ impl Sync {
         config: SyncConfig,
         obs: Obs,
         emit: EventSink,
+        on_role: RoleSink,
     ) -> Result<Self, String> {
         let node = SyncNode::new(
             library.shared_repo(),
@@ -192,6 +199,8 @@ impl Sync {
         );
         let mut changes = node.watch();
         let watched = node.clone();
+        let mut presenting = watched.role() == Role::Presenter;
+        on_role(presenting);
         tokio::spawn(async move {
             let mut last = None;
             let mut busy = false;
@@ -209,6 +218,15 @@ impl Sync {
                 // Changes come in bursts (a connection and its addresses).
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 changes.borrow_and_update();
+                let now_presenting = watched.role() == Role::Presenter;
+                if now_presenting != presenting {
+                    presenting = now_presenting;
+                    eprintln!(
+                        "lampstand: this device is {} now",
+                        if presenting { "presenting" } else { "planning" }
+                    );
+                    on_role(presenting);
+                }
                 let status = watched.status();
                 let sync = summarize(&status, now_ms());
                 busy = sync.state == SyncState::Syncing;
@@ -274,6 +292,32 @@ impl Sync {
                 Some(key) => self.node.unpair(key).map(|_| ()).map_err(|e| e.to_string()),
                 None => Err("not a device key".into()),
             },
+            TeamRequest::PresenterClaim => self.node.claim_presenter().map_err(|e| e.to_string()),
+            TeamRequest::PresenterAsk => self.node.ask_to_present().map_err(|e| e.to_string()),
+            TeamRequest::PresenterCancel => {
+                self.node.cancel_ask();
+                Ok(())
+            }
+            TeamRequest::PresenterAllow { device } => match DeviceKey::from_hex(&device) {
+                Some(key) => self.node.allow_presenter(key),
+                None => Err("not a device key".into()),
+            },
+            TeamRequest::PresenterDecline { device } => match DeviceKey::from_hex(&device) {
+                Some(key) => {
+                    self.node.decline_presenter(key);
+                    Ok(())
+                }
+                None => Err("not a device key".into()),
+            },
+            TeamRequest::PresenterDismiss => {
+                self.node.dismiss_presenter_notice();
+                Ok(())
+            }
+            TeamRequest::SetTakeover { seconds } => {
+                self.node
+                    .set_takeover_after(Duration::from_secs(u64::from(seconds)));
+                Ok(())
+            }
             TeamRequest::CreateInvite { .. } => Err("team invites arrive with T18".into()),
             TeamRequest::SetRelay { .. } => Err("the relay arrives with T19".into()),
         };
@@ -314,7 +358,11 @@ pub fn summarize(status: &NodeStatus, now_ms: i64) -> SyncSummary {
             SyncState::Error,
             Some(format!(
                 "{} no longer accepts this device. Unpair it on both devices and pair again.",
-                if p.name.is_empty() { "A paired device" } else { &p.name }
+                if p.name.is_empty() {
+                    "A paired device"
+                } else {
+                    &p.name
+                }
             )),
         )
     } else if connected < paired {
@@ -352,6 +400,7 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
                 name: p.name.clone(),
                 address: p.address.clone(),
                 connected: p.connected,
+                presenting: p.presenting,
                 problem: p.problem.clone(),
             })
             .collect(),
@@ -366,7 +415,51 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
                 pairing: n.pairing,
             })
             .collect(),
+        presenter: presenter_view(&status.presenter),
         sync: summarize(status, now_ms),
+    }
+}
+
+fn presenter_view(p: &PresenterStatus) -> PresenterView {
+    let (standing, offline_secs, wait_secs) = match p.standing {
+        Standing::Presenting => (PresenterStanding::Presenting, None, None),
+        Standing::Open => (PresenterStanding::Open, None, None),
+        Standing::Ask => (PresenterStanding::Ask, None, None),
+        Standing::TakeOver { offline } => {
+            (PresenterStanding::TakeOver, Some(offline.as_secs()), None)
+        }
+        Standing::Wait { offline, remaining } => (
+            PresenterStanding::Wait,
+            Some(offline.as_secs()),
+            Some(remaining.as_secs() + 1),
+        ),
+    };
+    PresenterView {
+        role: match p.role {
+            Role::Presenter => PresenterRole::Presenting,
+            Role::Planning => PresenterRole::Planning,
+        },
+        standing,
+        holder: p.lease.holder.map(|h| h.to_hex()),
+        holder_name: p.lease.name.clone(),
+        epoch: p.lease.epoch,
+        offline_secs,
+        wait_secs,
+        takeover_secs: p.takeover_after.as_secs(),
+        requests: p
+            .requests
+            .iter()
+            .map(|r| PresentRequestView {
+                device: r.device.to_hex(),
+                name: r.name.clone(),
+            })
+            .collect(),
+        asking: p.asking.map(|a| AskingView {
+            declined: a.declined,
+        }),
+        replaced_by: p.notice.as_ref().map(|n| match n {
+            Notice::Replaced { by } => by.clone(),
+        }),
     }
 }
 
@@ -381,6 +474,7 @@ mod tests {
             name: name.into(),
             address: None,
             connected,
+            presenting: false,
             problem: refused.then(|| "refused".into()),
             refused,
         }
@@ -394,6 +488,15 @@ mod tests {
             pairing: None,
             paired,
             nearby: Vec::new(),
+            presenter: PresenterStatus {
+                role: Role::Presenter,
+                standing: Standing::Presenting,
+                lease: Default::default(),
+                takeover_after: std::time::Duration::from_secs(120),
+                requests: Vec::new(),
+                asking: None,
+                notice: None,
+            },
             last_in_ms,
             last_out_ms: None,
         }

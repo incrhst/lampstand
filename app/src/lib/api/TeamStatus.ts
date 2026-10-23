@@ -2,6 +2,7 @@
 import type { DeviceView } from "./DeviceView";
 import type { NearbyView } from "./NearbyView";
 import type { PairingView } from "./PairingView";
+import type { PresenterView } from "./PresenterView";
 import type { SyncSummary } from "./SyncSummary";
 
 /**
@@ -23,4 +24,8 @@ pairing: PairingView | null, paired: Array<DeviceView>,
 /**
  * Lampstand devices seen on the network that are not paired.
  */
-nearby: Array<NearbyView>, sync: SyncSummary, };
+nearby: Array<NearbyView>, 
+/**
+ * Who may present, and what this device can do about it.
+ */
+presenter: PresenterView, sync: SyncSummary, };

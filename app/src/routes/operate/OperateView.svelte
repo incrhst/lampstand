@@ -37,6 +37,11 @@
   import { steppedDown, windowToDemote } from "../../lib/primary";
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import { isPlanning } from "../../lib/presenting";
+
+  /** This device only plans: it cannot take a service live until it presents. */
+  let planningOnly = $derived(isPlanning(live.team));
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen. */
   let { onsetup, onobs, onplan, ontips, onidle }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void } = $props();
@@ -484,6 +489,14 @@
         <p class="muted">Open one to go live, or plan a new one.</p>
         {#if onidle}<button type="button" class="quiet-link" onclick={onidle}>Change idle screen</button>{/if}
       </div>
+      {#if planningOnly}
+        <div class="pick-foot gate">
+          <Banner tone="neutral" icon="monitor">
+            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter.</span>
+            <PresentAction />
+          </Banner>
+        </div>
+      {/if}
       {#if services.length > 0}
         <ul class="plain pick-list" aria-label="Services to open">
           {#each services as svc (svc.id)}
@@ -500,7 +513,7 @@
                 {#if svc.items === 0 && onplan}
                   <Button size="small" icon="calendar" onclick={() => planService(svc.id)} label="Plan {svc.title}">Plan</Button>
                 {:else}
-                  <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  <Button variant="primary" size="small" icon="play" disabled={planningOnly} onclick={() => openService(svc.id)} label="Open {svc.title} for live">
                     Open
                   </Button>
                 {/if}

@@ -6,6 +6,10 @@ export type DeviceView = {
  */
 device: string, fingerprint: string, name: string, address: string | null, connected: boolean, 
 /**
+ * It holds the presenter role.
+ */
+presenting: boolean, 
+/**
  * Why the last attempt to reach it failed, when it is not connected.
  */
 problem: string | null, };
