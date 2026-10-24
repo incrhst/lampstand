@@ -1,7 +1,9 @@
 # Diagrams
 
-The `.mmd` files are the Mermaid sources of the `.svg` files that `docs/roles.md` shows. After editing a source, regenerate its picture with the Mermaid CLI:
+The pictures in `docs/roles.md`. Each role has one colour in every picture: Projection blue, Operator green, Stream purple, Audio orange. Grey is equipment, room sound and the network.
+
+They are drawn by `generate.py`, which writes the SVGs. Change a box or arrow there, then regenerate:
 
 ```bash
-mmdc -c docs/diagrams/config.json -b white -i docs/diagrams/roles-one-machine.mmd -o docs/diagrams/roles-one-machine.svg
+python3 docs/diagrams/generate.py docs/diagrams
 ```
