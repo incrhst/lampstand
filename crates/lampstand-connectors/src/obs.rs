@@ -643,6 +643,45 @@ impl Obs {
         }
     }
 
+    /// The names of the sources in `scene`, top of its list first.
+    pub async fn scene_sources(&self, scene: &str) -> Result<Vec<String>, ObsError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Item {
+            source_name: String,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Raw {
+            scene_items: Vec<Item>,
+        }
+        let raw: Raw = self
+            .call("GetSceneItemList", json!({ "sceneName": scene }))
+            .await?;
+        Ok(raw.scene_items.into_iter().map(|i| i.source_name).collect())
+    }
+
+    /// The URL, width and height a browser source is set to now.
+    pub async fn browser_source_settings(
+        &self,
+        name: &str,
+    ) -> Result<(String, u32, u32), ObsError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Raw {
+            input_settings: Value,
+        }
+        let raw: Raw = self
+            .call("GetInputSettings", json!({ "inputName": name }))
+            .await?;
+        let s = &raw.input_settings;
+        Ok((
+            s["url"].as_str().unwrap_or_default().to_string(),
+            s["width"].as_u64().unwrap_or_default() as u32,
+            s["height"].as_u64().unwrap_or_default() as u32,
+        ))
+    }
+
     /// Points an existing browser source at a new URL or size (a rotated
     /// key, a resized stream output).
     pub async fn update_browser_source(

@@ -4,4 +4,4 @@
  * Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
  * `Response::Obs`, except `Screenshot`.
  */
-export type ObsRequest = "Status" | { "Configure": { host: string, port: number, password: string | null, } } | "Launch" | "Download" | { "SetScene": { scene: string, } } | "Resume" | { "Screenshot": { scene: string | null, width: number, } } | { "SetMute": { input: string, muted: boolean, } };
+export type ObsRequest = "Status" | { "Configure": { host: string, port: number, password: string | null, } } | "Launch" | "Download" | { "SetScene": { scene: string, } } | "Resume" | { "Screenshot": { scene: string | null, width: number, } } | { "SetMute": { input: string, muted: boolean, } } | { "SetUp": { url: string, width: number, height: number, } } | { "UseAddress": { address: string | null, } };

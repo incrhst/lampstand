@@ -107,7 +107,13 @@ export function notice(view: ObsView | null): ObsNotice | null {
       };
     case "Unreachable":
       return {
-        message: `OBS at ${where(view)} doesn't answer. Check that it's running and on the same network.`,
+        message: `Lampstand can't reach OBS on ${view.host}. Check that OBS is open there, that its WebSocket server is on (Tools > WebSocket Server Settings), and that both computers are on the same network.`,
+        action: "setup",
+        steps: [],
+      };
+    case "RemoteNotListening":
+      return {
+        message: `${view.host} is on the network, but OBS isn't answering on port ${view.port}. Check that OBS is open there, that its WebSocket server is on (Tools > WebSocket Server Settings), and that the port matches.`,
         action: "setup",
         steps: [],
       };
@@ -243,4 +249,35 @@ export function pictureStatus(enabled: boolean, clients: number): PictureStatus 
     return { tone: "ready", text: "OBS is showing this", title: clients === 1 ? "OBS has this picture loaded" : `${clients} OBS pages have this picture loaded` };
   }
   return { tone: "warn", text: "Waiting for OBS", title: "OBS hasn't loaded this URL yet. In OBS, add a Browser source with it." };
+}
+
+// OBS on another computer (#133). Only then does Setup show "Set up OBS" and
+// "Use this address"; a church with OBS on this computer sees neither.
+
+/**
+ * `url` with its host replaced by the pinned address, for showing the URL
+ * to copy into OBS on another computer. The core does the same when it sets
+ * OBS up. With no pin, or OBS on this computer, the URL is as it stands.
+ */
+export function withAddress(url: string, view: ObsView | null): string {
+  const pinned = view?.remote ? view.pinned_address : null;
+  if (!pinned) return url;
+  const m = /^([a-z]+:\/\/)(\[[^\]]*\]|[^/:?#]*)(.*)$/i.exec(url);
+  if (!m) return url;
+  const host = pinned.includes(":") && !pinned.startsWith("[") ? `[${pinned}]` : pinned;
+  return `${m[1]}${host}${m[3]}`;
+}
+
+/** The first picture OBS should show in Set up OBS: an enabled stream picture. */
+export function setupPicture(pictures: OutputConfig[]): OutputConfig | null {
+  const mine = pictures.filter(isPicture);
+  return mine.find((o) => o.enabled && o.role === "Stream") ?? mine.find((o) => o.enabled) ?? null;
+}
+
+/** Why "Set up OBS" is greyed out, or null when it can run. */
+export function setupBlocked(view: ObsView | null, picture: OutputConfig | null): string | null {
+  if (!picture) return "Add a picture for OBS above and turn it on first.";
+  if (!isConnected(view)) return "Lampstand isn't connected to OBS yet. Save and test the connection first.";
+  if (view?.stream?.active || view?.record?.active) return "OBS is streaming or recording. Set it up after the service.";
+  return null;
 }

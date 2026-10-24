@@ -7,7 +7,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { live, obs, putOutput, refreshObs, report } from "../../lib/state.svelte";
-  import { notice, SERVER_OFF_STEPS } from "../../lib/obs";
+  import { request } from "../../lib/api";
+  import { notice, isPicture, setupBlocked, setupPicture, SERVER_OFF_STEPS } from "../../lib/obs";
   import type { ObsConnection, OutputConfig } from "../../lib/api";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
@@ -58,6 +59,42 @@
       report(e);
     }
     busy = false;
+  }
+
+  // OBS on another computer (#133). Nothing below shows when OBS is on this one.
+  let picture = $derived(setupPicture(live.outputs.filter(isPicture)));
+  let blocked = $derived(setupBlocked(live.obs, picture));
+  let settingUp = $state(false);
+  let setupResult: string | null = $state(null);
+  /** The pin, or "" for "let Lampstand choose". */
+  let pinned = $derived(live.obs?.pinned_address ?? "");
+  /** This computer's addresses, and the pinned one even if it isn't here now. */
+  let choices = $derived.by(() => {
+    const here = live.obs?.addresses ?? [];
+    return pinned && !here.includes(pinned) ? [...here, pinned] : here;
+  });
+
+  async function useAddress(address: string) {
+    try {
+      await obs({ UseAddress: { address: address === "" ? null : address } });
+      setupResult = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function setUpObs() {
+    if (!picture || !("BrowserSource" in picture.target)) return;
+    settingUp = true;
+    setupResult = null;
+    try {
+      const url = await request({ area: "Outputs", request: { BrowserSourceUrl: picture.id } }, "Text");
+      const { width, height } = picture.target.BrowserSource;
+      setupResult = await request({ area: "Obs", request: { SetUp: { url, width, height } } }, "Text");
+    } catch (e) {
+      report(e);
+    }
+    settingUp = false;
   }
 
   function describe(c: ObsConnection): { tone: "ready" | "warn" | "neutral"; text: string } {
@@ -154,6 +191,44 @@
         <div class="notice"><ObsNotice {view} /></div>
       </Panel>
 
+      {#if live.obs?.remote}
+        <Panel
+          title="OBS is on another computer"
+          description="OBS loads Lampstand's picture over your network, so it needs this computer's network address, never “localhost”."
+        >
+          <div class="remote">
+            <label class="address">
+              <span>Use this address</span>
+              <select value={pinned} onchange={(e) => useAddress(e.currentTarget.value)} aria-describedby="address-help">
+                <option value="">Let Lampstand choose</option>
+                {#each choices as a (a)}
+                  <option value={a}>{a}{live.obs.addresses.includes(a) ? "" : " (not on this computer now)"}</option>
+                {/each}
+              </select>
+            </label>
+            <p id="address-help" class="muted small">
+              {#if pinned}
+                OBS will use {pinned} to reach this computer, even if the computer has others.
+              {:else if choices.length > 1}
+                This computer has {choices.length} network addresses. If OBS can't load the picture, pick the one on the same network as OBS.
+              {:else}
+                Pick one only if this computer has several and Lampstand chose the wrong one.
+              {/if}
+            </p>
+            <div class="buttons">
+              <Button variant="primary" onclick={setUpObs} disabled={settingUp || blocked !== null}>
+                {settingUp ? "Setting up…" : "Set up OBS"}
+              </Button>
+            </div>
+            {#if blocked}<p class="muted small">Set up OBS is greyed out: {blocked}</p>{/if}
+            <p class="muted small">
+              Makes a “Lampstand” collection in OBS with the scenes Slides, Worship and Pastor and slides, each showing Lampstand's picture. Run it again after you change the address or press New key. It never changes your own scenes.
+            </p>
+            {#if setupResult}<p class="result" role="status">{setupResult}</p>{/if}
+          </div>
+        </Panel>
+      {/if}
+
       {#if !stepsShown}
         <Panel title="Turn on OBS's WebSocket server" description="It's off when OBS is first installed.">
           <ol class="steps">
@@ -239,6 +314,18 @@
     grid-column: 1 / -1;
     display: flex;
     gap: 0.5rem;
+  }
+  .remote {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .address {
+    max-width: 20rem;
+  }
+  .result {
+    font-size: 0.875rem;
+    line-height: 1.5;
   }
   .reason {
     margin-top: 0.75rem;
