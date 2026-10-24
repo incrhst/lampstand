@@ -839,10 +839,14 @@ async fn declining_keeps_the_presenter_and_tells_the_asker() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return() {
-    let (mut sanctuary, office) = paired_and_leased().await;
+    let (mut sanctuary, mut office) = paired_and_leased().await;
     office.node.set_takeover_after(Duration::from_secs(2));
 
+    // A cut network cuts both ways: if the office kept listening, the
+    // sanctuary's own dialler could reach it again and every reconnect
+    // would restart the offline clock.
     sanctuary.cut();
+    office.cut();
     until(Duration::from_secs(5), "disconnected", || {
         office.node.status().connected() == 0
     })
@@ -869,6 +873,7 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
 
     // The old presenter, still believing it presents, comes back.
     assert_eq!(sanctuary.node.role(), Role::Presenter);
+    office.restore().await;
     sanctuary.restore().await;
     until(
         Duration::from_secs(15),
