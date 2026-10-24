@@ -1,14 +1,14 @@
 # Releasing Lampstand
 
 A release is a version tag. Pushing `v0.1.0` makes CI build the installers for
-Mac, Linux and Windows and attach them to a **draft** release on GitHub, along
+Mac and Windows and attach them to a **draft** release on GitHub, along
 with the files installed copies use to update themselves. Nothing is public
 until someone reads the notes and presses **Publish**.
 
 | Platform | Installers | Signed? |
 |---|---|---|
 | macOS (Apple silicon and Intel in one) | `.dmg` | The app and the disk image are both signed with a Developer ID and notarised by Apple, with the tickets stapled, so it opens without a warning, even offline |
-| Linux | `.AppImage`, `.deb` | Not signed |
+| Linux | None for now (last built for v0.7.0) | |
 | Windows | NSIS installer (`.exe`) | **Not signed yet**: Windows shows a SmartScreen warning (T95 adds signing) |
 
 ## Updating installed copies
@@ -17,9 +17,32 @@ Installed copies update themselves. A copy looks for the **latest published
 release that is not marked a pre-release** at startup and every few hours, shows
 "Update 0.2.0 available" in the status bar, and installs it from Setup, About
 when the operator chooses. It refuses to install while anything is on air or a
-service starts within the hour. The Mac and Windows installs and the Linux
-AppImage update themselves; the Linux `.deb` does not (installing a package needs
-administrator rights), so `.deb` users download the new one.
+service starts within the hour. The Mac and Windows installs update themselves.
+
+### Linux is not supported for now
+
+The owner paused Linux support: CI and releases cover macOS and Windows only,
+and the last release with a Linux build is
+[v0.7.0](https://github.com/incrhst/lampstand/releases/tag/v0.7.0). No
+`.AppImage` or `.deb` is built, so `latest.json` has `darwin-*` and
+`windows-*` entries and no `linux-*` one. (The Linux code paths are still in the
+source; this is a support decision, not a removal.)
+
+What a Linux AppImage copy of 0.7.0 does: it asks the same `latest.json`, finds a
+newer version with no `linux-x86_64` entry, and the updater plugin reports an
+error rather than "up to date". Setup, About shows **Could not check: the
+platform `linux-x86_64` was not found in the response `platforms` object** (the
+status bar shows no update). Nothing is installed and nothing breaks; the line
+repeats at each check. The 0.7.0 app cannot be changed, and the only way to hide
+the line is to put a fake `linux-x86_64` entry in `latest.json`, which would offer
+those users an update they cannot install, so we do not. The site's Download
+button tells Linux visitors there is no Linux version right now.
+
+To bring Linux back: restore the Linux entry in the `build` matrix of
+`.github/workflows/release.yml` (and its system-libraries step), add `appimage`
+and `deb` to `bundle.targets` in `app/src-tauri/tauri.conf.json`, put Linux back
+in the CI `check` matrix, make `obs-page (linux, not required)` required if wanted,
+and revert the wording on the website.
 
 Updates are checked against a signing key, so only a release signed by us can be
 installed:
@@ -75,8 +98,8 @@ The update-signing secret (`TAURI_SIGNING_PRIVATE_KEY`) is in the section above.
 Do a rehearsal before the first real release, and after any change to the
 bundle settings.
 
-1. **Build without a release.** Actions, Release, Run workflow. It builds all
-   three platforms and keeps the installers as downloadable artifacts. Nothing
+1. **Build without a release.** Actions, Release, Run workflow. It builds both
+   platforms and keeps the installers as downloadable artifacts. Nothing
    is published.
 2. **Tag a rehearsal.** `git tag v0.1.0-preview.1 && git push origin v0.1.0-preview.1`
    makes a draft pre-release. Delete the draft and the tag afterwards.
@@ -100,8 +123,8 @@ bundle settings.
    (the workspace), `app/src-tauri/tauri.conf.json` and `app/package.json`. The
    workflow stops if the tag disagrees with any of them.
 3. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-4. Wait for the three builds. Open the draft release, check it has the
-   `.dmg`, `.AppImage`, `.deb` and the Windows `.exe`, and write the notes
+4. Wait for the two builds. Open the draft release, check it has the
+   `.dmg`, the Windows `.exe` and a `latest.json` with `darwin-*` and `windows-*` entries, and write the notes
    (what is new, known problems). Put what an operator should expect from the
    update under a line that starts `**What's new in 0.1.0**`, as a short list in
    plain words. Publishing copies that section into `latest.json` (the Release

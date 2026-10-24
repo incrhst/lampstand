@@ -4,7 +4,7 @@
 
 ## Platform
 
-web (the public landing page). The product itself is a desktop app for Windows, macOS and Linux.
+web (the public landing page). The product itself is a desktop app for Windows and macOS. (There is no Linux version for now; the last release that has one is v0.7.0.)
 
 ## Stack
 

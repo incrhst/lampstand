@@ -29,8 +29,6 @@
     "targets": [
       "dmg",
       "app",
-      "appimage",
-      "deb",
       "nsis"
     ],
     "category": "Productivity",

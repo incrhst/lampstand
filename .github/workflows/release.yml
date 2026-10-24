@@ -46,7 +46,7 @@ jobs:
             fi
           done
 
-  # The three builds start together; if each made the draft release itself
+  # The two builds start together; if each made the draft release itself
   # they would make three, each with only its own files and its own
   # latest.json. Make the one draft here and let the builds add to it.
   draft:
@@ -63,11 +63,11 @@ jobs:
           BODY: |
             **Preview release.** Lampstand is free and open source (GPL-3.0). This is an early version for churches willing to test it; please report what you find.
 
-            Already installed? Lampstand offers this release itself under **Help › About**; there is no need to download it again. (The Linux `.deb` does not update itself; the AppImage does.)
+            Already installed? Lampstand offers this release itself under **Help › About**; there is no need to download it again.
 
             - **Mac:** open the `.dmg` and drag Lampstand to Applications.
             - **Windows:** run the installer. Windows will warn that the publisher is unknown (SmartScreen): choose **More info**, then **Run anyway**. The installer is not signed yet.
-            - **Linux:** make the `.AppImage` executable and run it, or install the `.deb`. A GPU with Vulkan support is needed for the projector output.
+            - **Linux:** there is no Linux version of this release. The last version with one is [0.7.0](https://github.com/incrhst/lampstand/releases/tag/v0.7.0).
 
             **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Help › Help and feedback** has buttons for all three that fill in your version for you.
 
@@ -94,11 +94,10 @@ jobs:
             os: macos-latest
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
             args: --target universal-apple-darwin --bundles app,dmg
-          # Built on the older Ubuntu so the AppImage runs on older distributions.
-          - name: Linux (AppImage and .deb)
-            os: ubuntu-22.04
-            rust-targets: ""
-            args: --bundles appimage,deb
+          # No Linux build for now (the AppImage and .deb were last built for
+          # v0.7.0). To bring it back, restore the entry from git history, add
+          # "appimage" and "deb" to bundle.targets in tauri.conf.json, and see
+          # docs/RELEASING.md.
           - name: Windows (installer)
             os: windows-latest
             rust-targets: ""
@@ -106,14 +105,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Tauri's system libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev \
-            libssl-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev file xdg-utils
 
       - uses: dtolnay/rust-toolchain@stable
         with:

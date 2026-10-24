@@ -2,6 +2,10 @@
 
 ## Takeover test is skipped on Linux (flaky on Ubuntu CI)
 
+**Status:** Linux support is paused. CI no longer runs the main checks on
+Linux (only macOS and Windows), and no Linux installers are built. The skip
+below stays in the code for when Linux comes back; the issue stays open.
+
 Tracking issue: https://github.com/incrhst/lampstand/issues/144
 
 `takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return`

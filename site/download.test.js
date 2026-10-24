@@ -1,7 +1,7 @@
 // node --test site/
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { platformOf, installers, best, megabytes, versionOf } = require("./download.js");
+const { platformOf, installers, best, megabytes, versionOf, LINUX_LAST } = require("./download.js");
 
 const release = {
   tag_name: "v0.1.0",
@@ -32,13 +32,13 @@ test("it finds one installer per kind and ignores signatures, updater files and 
   assert.deepEqual(found.map((i) => [i.platform, i.name]), [
     ["mac", "Lampstand_0.1.0_universal.dmg"],
     ["windows", "Lampstand_0.1.0_x64-setup.exe"],
-    ["linux", "Lampstand_0.1.0_amd64.AppImage"],
-    ["linux", "Lampstand_0.1.0_amd64.deb"],
   ]);
 });
 
-test("the AppImage is offered before the .deb on Linux", () => {
-  assert.equal(best(installers(release), "linux").name, "Lampstand_0.1.0_amd64.AppImage");
+test("Linux gets no installer, even from an older release that has them, and points to 0.7.0", () => {
+  assert.equal(best(installers(release), "linux"), null);
+  assert.equal(LINUX_LAST.version, "0.7.0");
+  assert.equal(LINUX_LAST.url, "https://github.com/incrhst/lampstand/releases/tag/v0.7.0");
   assert.equal(best(installers(release), "mac").url, "https://x/mac.dmg");
   assert.equal(best(installers(release), null), null);
 });

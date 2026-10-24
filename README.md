@@ -43,6 +43,8 @@ Needs Node 22 (tested with 22.22, npm 10.9) and Rust 1.95 or newer (tested
 with 1.99). The Tauri CLI comes with the npm dependencies (2.12); a global
 `cargo tauri` (tested with 2.9.4) works too. On Linux, install
 `libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev` first.
+Linux installers are not built for now (the last release with one is
+[v0.7.0](https://github.com/incrhst/lampstand/releases/tag/v0.7.0)), so on Linux you build from source.
 
 ```
 cd app

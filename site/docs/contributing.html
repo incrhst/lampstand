@@ -26,7 +26,7 @@
   <li>Node 22 (tested with 22.22, npm 10.9).</li>
   <li>Rust 1.95 or newer (tested with 1.99).</li>
   <li>The Tauri CLI comes with the npm dependencies (2.12). A global <code>cargo tauri</code> (tested with 2.9.4) also works.</li>
-  <li>On Linux, install the system libraries first: <code>libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev</code>.</li>
+  <li>On Linux (for building from source only; Linux installers are not built for now), install the system libraries first: <code>libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev</code>.</li>
 </ul>
 <h2 id="run">Run the app</h2>
 <pre><code>git clone https://github.com/incrhst/lampstand
@@ -40,7 +40,7 @@ npm run tauri dev</code></pre>
 <p>The app crate embeds the built web UI, so build that once before any workspace-wide cargo command:</p>
 <pre><code>cd app && npm ci && npm run build && cd ..
 cargo test --workspace</code></pre>
-<p>In <code>app/</code>, <code>npm run check</code> type-checks the UI and <code>npm test</code> runs its unit tests. CI runs both, plus the Rust checks, on Linux, macOS and Windows.</p>
+<p>In <code>app/</code>, <code>npm run check</code> type-checks the UI and <code>npm test</code> runs its unit tests. CI runs both, plus the Rust checks, on macOS and Windows. A separate Linux-only check of the OBS browser source page runs too, but it does not block a merge.</p>
 <h2 id="contribute">Contributing</h2>
 <p>Work is tracked as numbered tickets in <a href="https://github.com/incrhst/lampstand/blob/main/docs/TICKETS.md">docs/TICKETS.md</a>. Pick one, and read <a href="how-it-works.html">How it works</a> first to find the crate it touches. Lampstand is GPL-3.0-or-later.</p>
         <nav class="pager" aria-label="Pages"><span>&larr; <a href="how-it-works.html">How it works</a></span><span><a href="decisions.html">Decisions</a> &rarr;</span></nav>

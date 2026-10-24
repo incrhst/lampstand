@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Getting started · Lampstand docs</title>
-  <meta name="description" content="Download Lampstand, install it on Mac, Windows or Linux, and run your first service in about ten minutes.">
+  <meta name="description" content="Download Lampstand, install it on Mac or Windows, and run your first service in about ten minutes.">
   <meta name="theme-color" content="#2b211a">
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../style.css">
@@ -26,7 +26,7 @@
 <ul>
   <li><b>Mac:</b> macOS 11 or later, Apple silicon or Intel.</li>
   <li><b>Windows:</b> Windows 10 or 11, 64-bit.</li>
-  <li><b>Linux:</b> 64-bit, with a graphics driver that supports Vulkan.</li>
+  <li><b>Linux:</b> not available right now. The last version for Linux is <a href="https://github.com/incrhst/lampstand/releases/tag/v0.7.0">0.7.0</a>.</li>
   <li>A projector or TV is optional. Lampstand can show the congregation&rsquo;s screen in a window on the laptop, so you can try everything first.</li>
   <li>Internet is only needed to download and to update. Lampstand runs offline on Sunday morning.</li>
 </ul>
@@ -42,14 +42,7 @@
   <li>If it is missing, Windows fetches a small helper (WebView2) the first time, which needs the internet once.</li>
 </ol>
 <h3>Linux</h3>
-<ul>
-  <li><b>AppImage:</b> make it runnable and start it:
-<pre><code>chmod +x Lampstand_*.AppImage
-./Lampstand_*.AppImage</code></pre>
-  If it does not start on Ubuntu 22.04 or later, install <code>libfuse2</code> first (<code>sudo apt install libfuse2</code>).</li>
-  <li><b>.deb</b> (Debian, Ubuntu): <code>sudo apt install ./Lampstand_*.deb</code>.</li>
-  <li>Output to a projector needs a working Vulkan graphics driver.</li>
-</ul>
+<p>Lampstand does not have a Linux version right now. The last version that does is <a href="https://github.com/incrhst/lampstand/releases/tag/v0.7.0">0.7.0</a>.</p>
 <h2 id="first">Your first service</h2>
 <p>When Lampstand opens it shows a <b>Get started</b> strip across the top. Work along it, or follow these steps.</p>
 <ol>
@@ -61,13 +54,12 @@
 </ol>
 <p>More on each of these is in <a href="using.html">Using Lampstand</a>.</p>
 <h2 id="updates">Updating</h2>
-<p>Lampstand looks for a new version when it starts and every few hours, and shows <b>Update available</b> at the bottom of the window. Install it from <b>Help &rsaquo; About</b>. It only installs when nothing is on air and no service starts within the hour, so an update never interrupts one. The Linux <code>.deb</code> does not update itself; download the new one.</p>
+<p>Lampstand looks for a new version when it starts and every few hours, and shows <b>Update available</b> at the bottom of the window. Install it from <b>Help &rsaquo; About</b>. It only installs when nothing is on air and no service starts within the hour, so an update never interrupts one.</p>
 <h2 id="data">Where your data lives</h2>
 <p>Your songs, services and settings stay on your computer. Back this folder up to keep them safe:</p>
 <ul>
   <li><b>Mac:</b> <code>~/Library/Application Support/org.lampstand.app</code></li>
   <li><b>Windows:</b> <code>%APPDATA%\org.lampstand.app</code></li>
-  <li><b>Linux:</b> <code>~/.local/share/org.lampstand.app</code></li>
 </ul>
 <h2 id="help">Help</h2>
 <ul>

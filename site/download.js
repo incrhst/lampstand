@@ -4,6 +4,8 @@
 (() => {
   const REPO = "incrhst/lampstand";
   const RELEASES = `https://github.com/${REPO}/releases`;
+  // Linux is not supported for now. The last release with a Linux version:
+  const LINUX_LAST = { version: "0.7.0", url: `https://github.com/${REPO}/releases/tag/v0.7.0` };
 
   /** "mac", "windows" or "linux" for the visitor's computer, or null for a phone or anything else. */
   function platformOf(ua, platform) {
@@ -20,10 +22,7 @@
   const KINDS = {
     mac: [{ test: (n) => n.endsWith(".dmg"), label: "Mac (Apple silicon and Intel)" }],
     windows: [{ test: (n) => n.endsWith("-setup.exe") || (n.endsWith(".exe") && !n.endsWith(".sig")), label: "Windows" }],
-    linux: [
-      { test: (n) => n.endsWith(".appimage"), label: "Linux (AppImage)" },
-      { test: (n) => n.endsWith(".deb"), label: "Linux (.deb, Debian and Ubuntu)" },
-    ],
+    // No Linux installers are built for now, so none are offered.
   };
 
   /** The release's installer files, by platform: [{ platform, label, url, name, size }]. */
@@ -51,7 +50,7 @@
   /** "v0.1.0" -> "0.1.0". */
   const versionOf = (release) => String((release && release.tag_name) || "").replace(/^v/, "");
 
-  if (typeof module !== "undefined") module.exports = { platformOf, installers, best, megabytes, versionOf };
+  if (typeof module !== "undefined") module.exports = { platformOf, installers, best, megabytes, versionOf, LINUX_LAST };
   if (typeof document === "undefined") return;
 
   const button = document.getElementById("download");
@@ -60,6 +59,14 @@
   if (!button || !note) return;
 
   const platform = platformOf(navigator.userAgent, (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform);
+
+  // A Linux visitor gets a plain message instead of a download.
+  if (platform === "linux") {
+    button.href = LINUX_LAST.url;
+    button.querySelector(".btn-label").textContent = `Get Lampstand ${LINUX_LAST.version}`;
+    note.textContent = `Lampstand does not have a Linux version right now. The last version that does is ${LINUX_LAST.version}.`;
+    return;
+  }
 
   fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } })
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))

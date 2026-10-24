@@ -307,13 +307,13 @@ The Tauri updater installs only when `LiveEngine::is_idle()` is true and no serv
 | Pure crates | Unit tests next to the code; acceptance tests in the contracts |
 | Importers | Fixture files per format in `crates/lampstand-import/tests/fixtures/` |
 | Layout | Snapshot tests of composed scenes as JSON (insta) |
-| Render | Golden PNGs from `render_offscreen`, compared with a per-pixel tolerance; `LAMPSTAND_BLESS=1` rewrites them. CI renders on lavapipe (Linux), WARP or the runner's adapter (Windows) and Metal (macOS); with no adapter at all the tests skip with a message |
+| Render | Golden PNGs from `render_offscreen`, compared with a per-pixel tolerance; `LAMPSTAND_BLESS=1` rewrites them. CI renders on WARP or the runner's adapter (Windows) and Metal (macOS); the OBS browser source page is also compared on lavapipe (Linux) by a non-required job; with no adapter at all the tests skip with a message |
 | Slides | Synthetic decks in the repo; the 200-deck SSIM corpus in a private CI job |
 | Sync | Two and three in-process repos over in-memory transports, with random edit and partition schedules |
 | OBS browser source | Playwright (`crates/lampstand-server/web`) loads the page from a real server and compares screenshots with `render_offscreen` for a lyrics lower third, a gradient plate, a deck frame and an empty scene; skipped where there is no GPU or software adapter |
 | App | Playwright against the web UI with a mock API; a manual Sunday-service checklist per release |
 
-CI runs on Windows, macOS and Linux: `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --workspace` (T58).
+CI runs on Windows and macOS (Linux is not supported for now): `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --workspace` (T58).
 
 ## Rust version
 
