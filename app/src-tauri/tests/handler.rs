@@ -2367,3 +2367,84 @@ fn a_planning_device_refuses_live_control_and_keeps_its_screens_dark() {
     ok(h.app.handle(Request::Live(Command::Next)));
     assert!(h.app.program().content.is_some());
 }
+
+#[test]
+fn a_projector_that_appears_while_the_app_is_starting_is_still_opened() {
+    // The shell takes its first look at the displays only after the app has
+    // opened. A projector that came up in between must not be missed, so
+    // the look is compared with what the windows were placed against.
+    let dir = tempfile::tempdir().unwrap();
+    let projector = DisplayInfo {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    };
+    let mut output = window_output();
+    output.target = OutputTarget::Display(DisplayMatch {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    });
+    {
+        let mut h = open(dir.path());
+        ok(h.app
+            .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    }
+    let host = Host::default();
+    let mut h = open_with(dir.path(), host.clone());
+    assert!(host.0.lock().unwrap().open.is_empty());
+
+    // The projector comes up before the shell's first look.
+    host.0.lock().unwrap().displays.push(projector.clone());
+    let seen = host.0.lock().unwrap().displays.clone();
+    h.app.displays_polled(seen.clone());
+    assert_eq!(
+        host.0.lock().unwrap().open,
+        [(output.id, Placement::Display(projector))]
+    );
+    // Looking again at the same displays changes nothing.
+    h.app.displays_polled(seen);
+    assert_eq!(host.0.lock().unwrap().open.len(), 1);
+}
+
+#[test]
+fn the_address_obs_is_given_follows_the_network_but_the_key_stays() {
+    // A machine that starts before its network is up first knows only
+    // itself. When the address improves, the URL changes and the key, which
+    // OBS already has, does not.
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let mut output = window_output();
+    output.role = OutputRole::Stream;
+    output.target = OutputTarget::BrowserSource {
+        width: 1280,
+        height: 720,
+    };
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let url = |h: &mut Harness| match ok(h
+        .app
+        .handle(Request::Outputs(OutputRequest::BrowserSourceUrl(output.id))))
+    {
+        Response::Text(t) => t,
+        other => panic!("{other:?}"),
+    };
+    h.app.set_server_address("127.0.0.1:7340".into());
+    let before = url(&mut h);
+    assert!(before.starts_with("http://127.0.0.1:7340/obs/"), "{before}");
+
+    h.app.set_server_address("192.168.1.20:7340".into());
+    let after = url(&mut h);
+    assert!(
+        after.starts_with("http://192.168.1.20:7340/obs/"),
+        "{after}"
+    );
+    assert_eq!(
+        before.split_once("?k=").unwrap().1,
+        after.split_once("?k=").unwrap().1
+    );
+}

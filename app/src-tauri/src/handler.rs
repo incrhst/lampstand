@@ -194,6 +194,9 @@ pub struct App {
     /// paired devices. Set by the shell as sync reports it; a Planning
     /// device refuses live control and keeps its screens dark.
     presenting: bool,
+    /// The displays the windows were last placed against, so a display that
+    /// appears after that, even before the shell's first look, is noticed.
+    seen_displays: Vec<DisplayInfo>,
 }
 
 /// Why a Planning device refuses live control.
@@ -255,6 +258,7 @@ impl App {
             journal: Journal::new(data_dir),
             restoring: true,
             presenting: true,
+            seen_displays: Vec::new(),
         };
         app.place_windows();
         app.restore();
@@ -781,12 +785,14 @@ impl App {
                 self.outputs.put(config).map_err(err)?;
                 self.sent.remove(&id);
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Remove(id) => {
                 self.outputs.remove(id).map_err(err)?;
                 self.keys.remove(id).map_err(err)?;
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Calibrate { output, active } => {
@@ -1758,6 +1764,7 @@ impl App {
     /// closes the rest, then shows the program on the new ones.
     fn place_windows(&mut self) {
         let displays = self.windows.displays();
+        self.seen_displays = displays.clone();
         let wanted: Vec<(OutputId, lampstand_core::output::DisplayMatch)> = self
             .outputs
             .all()
@@ -1888,6 +1895,7 @@ impl App {
         if let Some(mut config) = self.outputs.get(id).cloned() {
             config.enabled = false;
             if self.outputs.put(config).is_ok() {
+                self.tell_screens();
                 (self.emit)(Event::Changed {
                     kind: "outputs".into(),
                     id: id.uuid().to_string(),
@@ -1895,6 +1903,14 @@ impl App {
             }
         }
         self.write_journal(now());
+    }
+
+    /// The shell's look at the displays: place the outputs again only if
+    /// they differ from those the windows were last placed against.
+    pub fn displays_polled(&mut self, now: Vec<DisplayInfo>) {
+        if now != self.seen_displays {
+            self.displays_changed();
+        }
     }
 
     /// Displays came or went: place display outputs again.

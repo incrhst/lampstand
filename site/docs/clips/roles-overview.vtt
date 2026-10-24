@@ -1,0 +1,115 @@
+WEBVTT
+
+00:00:00.300 --> 00:00:05.087
+Lampstand is built so a team can share the work of a Sunday service.
+
+00:00:05.087 --> 00:00:06.636
+Here is who runs what.
+
+00:00:08.800 --> 00:00:12.726
+A role is just a job that someone is doing right now.
+
+00:00:12.726 --> 00:00:15.245
+Each job has one holder at a time.
+
+00:00:15.245 --> 00:00:22.504
+One computer can hold any mix of jobs, and a computer with no job can still help plan the service.
+
+00:00:24.800 --> 00:00:29.576
+There are four jobs: Projection, Operator, Stream, and Audio.
+
+00:00:31.800 --> 00:00:33.353
+Projection runs the screens.
+
+00:00:33.353 --> 00:00:36.513
+It is the picture on the projector and the stage screens.
+
+00:00:36.513 --> 00:00:42.336
+It lives on the computer that is plugged into them, and it can run on its own, with nobody sitting there.
+
+00:00:44.300 --> 00:00:45.754
+Operator runs the service.
+
+00:00:45.754 --> 00:00:47.767
+Next, back, and jumping to any item.
+
+00:00:47.767 --> 00:00:50.228
+The Operator needs Projection to be running.
+
+00:00:52.300 --> 00:00:54.452
+Stream runs what goes out online.
+
+00:00:54.452 --> 00:00:56.735
+That means OBS and the live stream.
+
+00:00:56.735 --> 00:01:00.388
+It keeps working even if the projector computer is away.
+
+00:01:02.300 --> 00:01:07.814
+Audio runs the sound that Lampstand plays: videos, music, and backing tracks.
+
+00:01:07.814 --> 00:01:11.036
+It plays from the computer next to the mixer.
+
+00:01:13.300 --> 00:01:16.061
+With one computer, it holds all four jobs.
+
+00:01:16.061 --> 00:01:17.836
+There is nothing to set up.
+
+00:01:19.800 --> 00:01:26.736
+With two computers, the one at the projector keeps Projection, Operator, and Audio, and the stream desk takes Stream.
+
+00:01:28.800 --> 00:01:35.424
+With three, a laptop at the back of the room takes Operator, so someone can run the service from where they can see everything.
+
+00:01:37.800 --> 00:01:43.104
+With four, the sound desk takes Audio, so music and videos play straight into the mixer.
+
+00:01:45.300 --> 00:01:48.516
+Here is the same four-computer set-up, drawn out.
+
+00:01:50.800 --> 00:01:56.608
+Phones and tablets can help, for example as a remote, but they never hold a job.
+
+00:01:58.800 --> 00:02:01.460
+To hand a job over, one computer asks for it.
+
+00:02:01.460 --> 00:02:04.061
+The one holding it chooses Allow or Not now.
+
+00:02:04.061 --> 00:02:08.376
+And if the holder has been gone for two minutes, anyone can take it over.
+
+00:02:10.300 --> 00:02:12.811
+Mary's laptop asks to take Stream.
+
+00:02:12.811 --> 00:02:16.357
+The holder sees the question, and chooses Allow.
+
+00:02:16.357 --> 00:02:17.908
+The job moves across.
+
+00:02:20.300 --> 00:02:23.892
+If the holder chooses Not now, nothing changes.
+
+00:02:23.892 --> 00:02:25.268
+They keep the job.
+
+00:02:29.300 --> 00:02:33.100
+If the holder is cut off, say the network drops, the job waits.
+
+00:02:33.100 --> 00:02:36.116
+After two minutes, Mary's laptop can take it over.
+
+00:02:40.300 --> 00:02:45.212
+When a job passes, Projection clears the screens, and Audio stops the music.
+
+00:02:45.212 --> 00:02:49.348
+Operator leaves the slide up, and Stream leaves OBS where it is.
+
+00:02:51.300 --> 00:02:56.436
+A computer that comes back learns it lost the job, and does not grab it back.
+
+00:02:58.800 --> 00:03:01.824
+You can read the full roles guide on the Lampstand website.

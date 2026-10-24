@@ -24,8 +24,7 @@ use uuid::Uuid;
 
 use super::wire::{Frame, Link, BLOB_CHUNK};
 use super::{Control, NetError, SyncNode};
-use crate::driver::Named;
-use crate::presenter::Lease;
+use crate::roles::Record;
 use crate::team::DeviceKey;
 use crate::{DocKind, SyncMessage};
 
@@ -80,6 +79,13 @@ pub(crate) async fn run(
         wants: HashMap::new(),
         incoming: HashMap::new(),
     };
+    // The role records go first: how long a connection has been open is
+    // what tells a device that was away from one that never left, and the
+    // sweep of documents below can take a while on a big library.
+    for frame in node.record_frames() {
+        s.send(frame);
+    }
+    node.session_opened(peer);
     // The sweep: offer every document.
     let repo = node.repo.clone();
     let offered = blocking(move || {
@@ -89,8 +95,6 @@ pub(crate) async fn run(
             .collect::<Vec<_>>()
     })
     .await;
-    s.send(node.lease_frame());
-    s.send(node.drive_state_frame());
     s.send_all(offered.unwrap_or_default());
 
     let mut beat = tokio::time::interval(BEAT);
@@ -276,28 +280,31 @@ impl State {
                     ))));
                 }
             }
-            Frame::Lease {
+            Frame::Role {
+                role,
                 holder,
-                name,
                 epoch,
-            } => self.node.lease_received(Lease {
-                holder: holder.map(DeviceKey),
-                name,
-                epoch,
-            }),
-            Frame::Ask => self.node.ask_received(self.peer),
-            Frame::Cancel => self.node.cancel_received(self.peer),
-            Frame::Declined { epoch } => self.node.declined_received(self.peer, epoch),
-            Frame::DriveAsk => self.node.drive_ask_received(self.peer),
-            Frame::DriveCancel => self.node.drive_cancel_received(self.peer),
-            Frame::DriveAnswer { answer } => self.node.drive_answer_received(self.peer, answer),
-            Frame::DriveState { driver } => self.node.drive_state_received(
+                steps,
+            } => self.node.record_received(
                 self.peer,
-                driver.map(|(device, name)| Named {
-                    device: DeviceKey(device),
-                    name,
-                }),
+                role,
+                Record {
+                    holder: holder.map(DeviceKey),
+                    name: String::new(),
+                    epoch,
+                    chain: steps,
+                },
             ),
+            Frame::RoleAsk { role } => self.node.role_ask_received(self.peer, role),
+            Frame::RoleCancel { role } => self.node.role_cancel_received(self.peer, role),
+            Frame::RoleAnswer {
+                role,
+                epoch,
+                answer,
+            } => self
+                .node
+                .role_answer_received(self.peer, role, epoch, answer),
+            Frame::RoleYield { role } => self.node.role_yield_received(self.peer, role),
             Frame::DriveCommand { payload } => self.node.drive_command_received(self.peer, payload),
             Frame::DriveLive { payload } => self.node.drive_live_received(self.peer, payload),
             Frame::Beat => {}
