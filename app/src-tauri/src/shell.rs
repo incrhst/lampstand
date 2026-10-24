@@ -137,7 +137,18 @@ async fn api(
         }
     }
     match request {
-        Request::Obs(request) => Ok(state.obs.handle(request).await),
+        Request::Obs(request) => {
+            // A scene or mute chosen by hand is carried out by the device
+            // that owns OBS (a driver's choice is forwarded above).
+            let here = state.sync.as_ref().is_none_or(|s| s.node().obs_here());
+            if !here && crate::stream_cues::switches_obs(&request) {
+                return Ok(Response::Error {
+                    message: crate::stream_cues::NOT_THE_STREAM.into(),
+                });
+            }
+            let response = state.obs.handle(request).await;
+            Ok(crate::stream_cues::shape_response(response, here))
+        }
         Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
         Request::About(request) => {
             let url = crate::help::page(
@@ -519,27 +530,46 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     };
     let streaming = app.streaming();
     let app = Arc::new(Mutex::new(app));
+    // OBS belongs to the Stream holder (`crate::stream_cues`): its events
+    // are shaped for whether this device owns OBS, and the cue each live item
+    // makes goes to this device's OBS or the Stream holder's.
     let obs_control = tauri::async_runtime::block_on(async {
         ObsControl::start(
             data_dir,
             streaming,
             Arc::new(System),
             Os::current(),
+            crate::stream_cues::shaping(emit.clone(), node_cell.clone()),
+        )
+    });
+    let obs_view = obs_control.clone();
+    let cues = tauri::async_runtime::block_on(async {
+        crate::stream_cues::start_router(
+            node_cell.clone(),
+            obs_control.cues(),
+            Arc::new(move || obs_view.view()),
             emit.clone(),
         )
     });
-    lock(&app).set_obs_cues(obs_control.cues());
+    lock(&app).set_obs_cues(cues);
 
     let role_tx = tx.clone();
     let drive_tx = tx.clone();
     let announce_tx = tx.clone();
     let drive_obs = obs_control.clone();
     let announce_obs = obs_control.clone();
-    let announce_emit = emit.clone();
+    let announce_emit = crate::stream_cues::shaping(emit.clone(), node_cell.clone());
+    let drive_cell = node_cell.clone();
     let drive = DriveSinks {
         command: Arc::new(move |request| match request {
             // OBS answers on the async runtime, without the `App` lock.
             Request::Obs(request) => {
+                if !crate::stream_cues::obs_here(&drive_cell) {
+                    eprintln!(
+                        "lampstand: ignored an OBS request from a driver: OBS is not run here"
+                    );
+                    return;
+                }
                 let obs = drive_obs.clone();
                 tauri::async_runtime::spawn(async move {
                     obs.handle(request).await;
@@ -574,6 +604,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     };
     let (sync, sync_error) = match sync {
         Ok(sync) => {
+            crate::stream_cues::accept(sync.node(), obs_control.cues());
             lock(&app).set_server_address(sync.public_address());
             lock(&app).set_sync_link(sync.link());
             (Some(Arc::new(sync)), None)

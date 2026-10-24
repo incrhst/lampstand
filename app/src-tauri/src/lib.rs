@@ -20,6 +20,7 @@ pub mod keys;
 pub mod obs_control;
 pub mod seed;
 mod shell;
+pub mod stream_cues;
 pub mod sync;
 pub mod theme_preview;
 pub mod update;

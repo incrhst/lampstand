@@ -112,7 +112,10 @@ pub type NodeCell = Arc<OnceLock<Arc<SyncNode>>>;
 pub fn mirroring(emit: EventSink, node: NodeCell) -> EventSink {
     Arc::new(move |event: Event| {
         if matches!(event, Event::Live { .. } | Event::Loaded(_) | Event::Obs(_)) {
-            if let Some(node) = node.get().filter(|n| n.driven()) {
+            // OBS state comes from the device that owns OBS; a Projection
+            // holder that does not own it has nothing to say about it.
+            let obs_elsewhere = |n: &SyncNode| matches!(event, Event::Obs(_)) && !n.obs_here();
+            if let Some(node) = node.get().filter(|n| n.driven() && !obs_elsewhere(n)) {
                 if let Ok(json) = serde_json::to_vec(&event) {
                     node.drive_live(json);
                 }
@@ -390,6 +393,19 @@ impl Sync {
     pub async fn forward(&self, request: &Request) -> Option<Response> {
         if !driveable(request) {
             return None;
+        }
+        // OBS belongs to the device that holds Stream: scene and mute
+        // choices are carried out there, never on the Projection holder
+        // while another device holds Stream.
+        if matches!(request, Request::Obs(o) if crate::stream_cues::switches_obs(o)) {
+            if self.node.obs_here() {
+                return None;
+            }
+            if self.node.stream_elsewhere().is_some() {
+                return Some(Response::Error {
+                    message: crate::stream_cues::NOT_THE_STREAM.into(),
+                });
+            }
         }
         let driving = self.node.driving()?;
         let error = |message: String| {
