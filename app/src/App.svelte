@@ -17,6 +17,7 @@
   import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning, withRole } from "./lib/presenting";
   import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
+  import { drivenBy, isDriving } from "./lib/driving";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
@@ -56,6 +57,19 @@
   }
   let obsStatus = $derived(obsPill(live.obs));
   let planningOnly = $derived(isPlanning(live.team));
+  // Driving, or being driven, opens Present at once: that is where the job is.
+  let wasBusy = false;
+  let arriving = $state(false);
+  $effect(() => {
+    const busy = isDriving(live.team) || drivenBy(live.team) !== null;
+    if (busy && !wasBusy) {
+      screen = "operate";
+      // A short slide-in and a gold edge, so the change is obvious.
+      arriving = true;
+      setTimeout(() => (arriving = false), 1400);
+    }
+    wasBusy = busy;
+  });
   let syncStatus = $derived(syncPill(live.sync));
   let rolePill = $derived(withRole(syncStatus, live.team));
   // The quiet "Connect another device" line beside the sync pill, until a device is paired or it is put off.
@@ -233,7 +247,7 @@
 
   {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
-  <main>
+  <main class:arriving>
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
@@ -406,6 +420,28 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  main.arriving {
+    animation: arrive 0.45s ease-out, edge 1.4s ease-out;
+  }
+  @keyframes arrive {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+  }
+  @keyframes edge {
+    from {
+      box-shadow: inset 0 0 0 3px var(--gold);
+    }
+    to {
+      box-shadow: inset 0 0 0 3px transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    main.arriving {
+      animation: edge 1.4s ease-out;
+    }
   }
   .update {
     color: var(--gold);

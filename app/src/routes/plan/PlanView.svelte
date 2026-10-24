@@ -1201,6 +1201,7 @@
   }
   .heading {
     min-width: 0;
+    flex: 1 1 16rem;
   }
   h1 {
     font-size: 1.3rem;

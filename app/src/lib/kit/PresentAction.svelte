@@ -1,6 +1,6 @@
 <!-- The button that takes a service live, on a device that may. On a device
      that is only planning it becomes the way to become the presenter:
-     "Ask to present" while the presenter is connected, "Present from here"
+     "Make this device the presenter" while the presenter is connected, "Present from here"
      when nobody holds the role or the presenter has been offline long
      enough (it says how long, and asks first), and the state of an ask. -->
 <script lang="ts">
