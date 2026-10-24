@@ -63,11 +63,27 @@ the three duties *roles* only because the app does.
    switches OBS itself while Stream is held, so two devices never both
    switch. With nobody holding Stream, Projection keeps the OBS duty as
    today, so a one-machine church sees nothing new.
-7. **Audio is the mixer's concern, not Lampstand's, and belongs to no
-   role.** Each set-up sorts out sound with its own mixer; the source may be
-   any device, several, or none. The docs give one example (a house feed from
-   the mixing board into a USB interface on the stream machine) and no more.
-   Decision 0005 stands: audio stays on the desk.
+7. **Sound from the room is the mixer's concern, not Lampstand's, and
+   belongs to no role.** Microphones, the band and the house mix reach the
+   stream through the church's own mixer, and cameras plug into the stream
+   machine or reach OBS over the network. Each set-up sorts this out with its
+   own equipment; the source may be any device, several, or none. Lampstand
+   never carries camera video or room sound.
+8. **Sound that Lampstand plays goes with the picture to OBS.** When a church
+   turns on "Send sound to the stream" (Setup › OBS, off by default), the
+   stream output's browser page plays the sound of a video or music item, and
+   OBS captures it (the browser source is set to "Control audio via OBS").
+   The stream's sound and picture then come from one element and stay in step,
+   the Stream holder has OBS's own mute and fader for it, and the mixer feed
+   needs only the microphones. Nothing else changes: the house still hears the
+   clip once, from the Projection machine's output (decision 0005 stands: no
+   faders in Lampstand). A church that already sends the computer's channel
+   to the stream through the mixer leaves the option off, or the sound doubles;
+   the setup screen says so. Contracts for music-only items are in the
+   [roles spec](../roles.md#sound-that-lampstand-plays).
+   Needs a prototype first (ticket "Prototype: can the OBS browser source play
+   Lampstand's sound through OBS?"); until it passes, the mixer route is the
+   documented way.
 
 Defaults and details that the map did not grill, proposed here for approval:
 see [roles spec](../roles.md), "Proposed details".

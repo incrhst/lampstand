@@ -39,11 +39,27 @@ Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
 Operator is disabled if A drops, and wakes when Projection is held again. C keeps working without A. Phones and tablets act as helpers on any of these set-ups (below).
 
-### Sound for the stream
+### What comes from the house: cameras, microphones, the band
 
-Sound is not Lampstand's concern. Each set-up sorts it out with its own mixer, and Lampstand sends no sound to OBS or Zoom. The source may be any device, several, or none (a mixing board with microphones and no computer at all), and no role owns it. Whatever the mixer sends, it has to reach the machine running Zoom and the OBS Virtual Camera.
+None of it goes through Lampstand, and no role owns it. Lampstand never carries camera video or sound from the room.
 
-One common way, offered as an example and not a requirement: a house feed from the mixing board into a USB audio interface on the stream machine, used as the Zoom microphone (with "Original sound" on) and as an OBS audio source. The stream machine's OBS mutes belong to the Stream holder.
+- **Cameras** belong to OBS. Plug them into the stream machine (USB or an HDMI capture box), or, where the stream machine is far from the cameras, bring them in over the network (network cameras, NDI or RTSP) into OBS. Putting the stream machine near the cameras and the mixer is the simplest.
+- **Microphones, the band and the house mix** come from the church's mixing board. Each set-up sorts it out with its own mixer, and the source may be any device, several, or none. Whatever the mixer sends has to reach the machine running Zoom and the OBS Virtual Camera. One common way, as an example and not a requirement: a feed from the board into a USB audio interface on the stream machine, used as the Zoom microphone (with "Original sound" on) and as an OBS audio source.
+- **Lampstand's own graphics** reach OBS as the browser source, so the stream shows camera and graphics together, switched by the Stream holder.
+
+### Sound that Lampstand plays
+
+A video or music item played from Lampstand has sound. It always plays in the house, once, from the Projection machine's output.
+
+- **Option "Send sound to the stream"** (Setup › OBS, off by default). When it is on, the stream output also plays that sound in its OBS browser source, and OBS captures it. The stream's sound and picture then match. The Stream holder gets OBS's own mute and fader for it. The mixer feed then needs only the microphones.
+- **Do not do both.** If the mixer already sends the computer's channel to the stream, leave the option off, or the sound doubles. The setup screen says so.
+- **Music-only items** (no picture) follow the same rule. The rules, proposed for approval:
+  1. A music-only item is a scene with sound and no picture. With the option on, the stream output plays it, exactly as it plays a video's sound.
+  2. Every item has "Don't send this sound to the stream" (for copyright, or because the sound reaches the stream another way). It is off unless set. The house is unaffected.
+  3. Background music that runs under several items follows the item that started it, and stops with it, for the house and the stream alike.
+  4. If the stream output's page is not connected when a sound starts, the sound does not fall back to anything. The Stream holder's view says "Sound is not reaching the stream", and the house is unaffected.
+  5. With the option off, nothing changes: the stream hears whatever the mixer sends.
+- Until the prototype passes (ticket "Prototype: can the OBS browser source play Lampstand's sound through OBS?"), the mixer route is the documented way, and the lip-sync tip applies: delay the mixer source in OBS (Advanced Audio Properties, Sync Offset) until it matches the picture.
 
 ### Phones and tablets
 
@@ -77,4 +93,4 @@ The same rules for every role.
 - **Migration.** The lease becomes the Projection record keeping its epoch; the driver seat becomes Operator (the "always allowed" list in `driver.json` carries over). Sync protocol 5.
 - **Roster.** The status bar shows the roles this device holds ("Runs the screens", "Runs the service", "Runs the stream"), and for the others who holds them; "Presenting" and "Driving" are replaced by these. Setup › Devices lists each device with its roles and the takeover time. A device with no role is just "Planning".
 - **Teams check.** Who may hold a role is decided at `Roles::claim` and `Roles::allow` and nowhere else (T18).
-- **Audio.** Stays outside Lampstand and outside the roles: the source may be any device or none. An output-device selector for media playback, or an NDI audio feed, are later tickets.
+- **Sound.** Room sound stays outside Lampstand and outside the roles. Sound that Lampstand plays goes with the picture to OBS when the church turns it on (above). An output-device selector for the house output, and NDI audio, are later tickets.
