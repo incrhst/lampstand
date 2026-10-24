@@ -1,4 +1,4 @@
-# 0010. Roles: Projection, Operator and Stream, held by devices
+# 0010. Roles: Projection, Operator, Stream and Audio, held by devices
 
 - Status: proposed (for 0.8.0; the map is [issue 114](https://github.com/incrhst/lampstand/issues/114))
 - Date: 2026-10-24
@@ -18,18 +18,24 @@ A **role** is a duty, who is doing what right now. It is not a permission:
 which person or Teams role *may* hold a duty is the Teams ticket (T18), and
 this record names one place for that check (below). Teams "roles" in
 [ARCHITECTURE](../ARCHITECTURE.md) are permissions; this record calls
-the three duties *roles* only because the app does.
+the four duties *roles* only because the app does.
 
-1. **Three roles at launch, all single-holder.**
+1. **Four roles at launch, all single-holder.**
    - **Projection**, "runs the screens": the projector and stage screens, the
      live engine, media sound and the local server OBS reads from. Today's
      lease.
    - **Operator**, "runs the service": next, previous, jump, take an item
      live. Today's driver seat, as a role of its own.
    - **Stream**, "runs what goes out online": the OBS program scene, mutes
-     and preview. Sound itself belongs to no role (item 7).
-   Audio, Stage display, Planner and a video switcher are deferred, not
-   rejected.
+     and preview.
+   - **Audio**, "runs the sound": plays the sound Lampstand makes (the sound
+     of videos, music-only items and backing tracks for singers) on its own
+     output. No other device plays it. It can be the same device as
+     Projection, as today, or a device at the mixer, and a church can start
+     with one machine and spin Audio off later.
+   Stage display, Planner and a video switcher are deferred, not rejected.
+   Audio was deferred in the first design and brought in when backing tracks
+   for singers came up: the sound desk is often far from the screens.
 2. **A device holds a role, not a person.** The roster shows the device's
    friendly name. A device may hold any mix of roles. People come later
    through Teams, which gives a device an owner without changing the role
@@ -45,15 +51,20 @@ the three duties *roles* only because the app does.
    - *Takeover:* only when the holder has been offline for the takeover time
      (two minutes by default, per device), or nobody holds the role.
    - *Always allow this device:* for Operator and Stream, remembered per
-     device. Never for Projection, because handing over the screens clears
-     what is on air.
-   - *On air at a hand-over:* only Projection clears anything (the screens,
-     and the prompt says so). Operator leaves the current slide up. Stream
-     leaves OBS on its current scene. No fallback scene.
+     device. Never for Projection or Audio, because handing either over
+     clears what is on air (the screens, or the music that is playing).
+   - *On air at a hand-over:* Projection clears the screens and Audio stops
+     what is playing, and the prompt says so ("Allow and clear the screens",
+     "Allow and stop the music"). Operator leaves the current slide up.
+     Stream leaves OBS on its current scene. No fallback scene.
    - A returning holder yields, as the presenter does.
-5. **Operator needs Projection.** While nobody holds Projection the Operator
-   controls are disabled and the seat is kept. Projection and Stream depend on
-   nothing: the stream desk can work if the house machine drops.
+5. **Operator needs Projection. Audio needs Projection for new cues.** While
+   nobody holds Projection the Operator controls are disabled and the seat is
+   kept. The Audio holder receives its cues (start this file, stop) from
+   Projection, so it starts nothing new without it, but what is already
+   playing keeps playing and its stop and pause stay on the Audio holder.
+   Projection and Stream depend on nothing: the stream desk can work if the
+   house machine drops.
 6. **The Stream holder holds the OBS connection itself.** On a stream machine
    that is its own OBS on localhost, so the OBS password stays there.
    Projection sends the scene of each item that goes live to the Stream
@@ -64,7 +75,8 @@ the three duties *roles* only because the app does.
    switch. With nobody holding Stream, Projection keeps the OBS duty as
    today, so a one-machine church sees nothing new.
 7. **Sound from the room is the mixer's concern, not Lampstand's, and
-   belongs to no role.** Microphones, the band and the house mix reach the
+   belongs to no role** (it is not the Audio role, which plays only what
+   Lampstand makes). Microphones, the band and the house mix reach the
    stream through the church's own mixer, and cameras plug into the stream
    machine or reach OBS over the network. Each set-up sorts this out with its
    own equipment; the source may be any device, several, or none. Lampstand
@@ -76,14 +88,24 @@ the three duties *roles* only because the app does.
    The stream's sound and picture then come from one element and stay in step,
    the Stream holder has OBS's own mute and fader for it, and the mixer feed
    needs only the microphones. Nothing else changes: the house still hears the
-   clip once, from the Projection machine's output (decision 0005 stands: no
-   faders in Lampstand). A church that already sends the computer's channel
+   clip once, from the Audio holder's output (decision 0005 stands: no faders
+   in Lampstand). A church that already sends the computer's channel
    to the stream through the mixer leaves the option off, or the sound doubles;
    the setup screen says so. Contracts for music-only items are in the
    [roles spec](../roles.md#sound-that-lampstand-plays).
    Needs a prototype first (ticket "Prototype: can the OBS browser source play
    Lampstand's sound through OBS?"); until it passes, the mixer route is the
    documented way.
+
+9. **Audio is a role for backing tracks.** For 0.8.0: a music-only item
+   (a song's backing track, walk-in music), attached to a song or on its own;
+   "play when this goes live" or "wait for me to press play"; play, pause,
+   stop with a fade, and a panic stop that always works, on the Audio holder
+   and from the Operator and helpers; and a choice of sound output on the
+   Audio holder (Setup › Sound), so the track goes to the mixer's interface
+   and not the projector's. The Audio holder gets the files from sync and
+   starts them on Projection's cue. Count-in, a click on a separate output for
+   the band, and key or tempo changes are later tickets.
 
 Defaults and details that the map did not grill, proposed here for approval:
 see [roles spec](../roles.md), "Proposed details".

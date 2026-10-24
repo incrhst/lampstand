@@ -4,27 +4,28 @@ Status: proposed for 0.8.0. Decisions: [0010](decisions/0010-roles-and-handoff.m
 
 A **role** is a job someone is doing right now. It is not a permission; who may do a job is the Teams work (T18).
 
-## The three roles
+## The four roles
 
 | Role | In plain words | What it owns | Needs |
 | --- | --- | --- | --- |
-| **Projection** | Runs the screens | Projector and stage screens, the live engine, media sound, the local server OBS reads | nothing |
+| **Projection** | Runs the screens | Projector and stage screens, the live engine, the local server OBS reads | nothing |
 | **Operator** | Runs the service | Next, previous, jump, take an item live | Projection held |
 | **Stream** | Runs what goes out online | OBS scene, mutes, preview; OBS and Zoom | nothing |
+| **Audio** | Runs the sound | The sound Lampstand plays: video sound, music-only items, backing tracks; the sound output | Projection, for new cues |
 
-All three have one holder at a time. A device may hold any mix. A device with no role still edits and syncs freely, as a planning device does today.
+All four have one holder at a time. A device may hold any mix. A device with no role still edits and syncs freely, as a planning device does today.
 
-## Set-ups: one machine, two, three
+## Set-ups: one machine, two, three or more
 
 You can start with one machine and add the others later. Nothing about the service changes; each role moves to another device by asking.
 
 ### 1. One machine, all roles
 
-One computer runs the screens, the service and OBS. It holds Projection, Operator and Stream (it holds them automatically; there is nothing to set up). OBS and Zoom, if used, run on the same computer. The house sound is whatever that computer plays, so for Zoom use a mixer feed into the computer. Nothing is paired.
+One computer runs the screens, the service and OBS. It holds Projection, Operator, Stream and Audio (it holds them automatically; there is nothing to set up). OBS and Zoom, if used, run on the same computer. The house sound is whatever that computer plays, so for Zoom use a mixer feed into the computer. Nothing is paired.
 
 ### 2. Two machines
 
-- **Machine A, in the house:** Projection and Operator. Screens, projector, sound desk.
+- **Machine A, in the house:** Projection, Operator and Audio. Screens, projector, and the sound Lampstand plays.
 - **Machine B, the stream machine:** Stream. Runs OBS, Zoom and the OBS Virtual Camera. Connects to its own OBS.
 
 Pair B with A. B asks for Stream; A allows (and can say "always allow this device"). Use a wired network with reserved addresses. The browser source in B's OBS reads A's address.
@@ -33,11 +34,15 @@ Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
 ### 3. Three machines
 
-- **A, house:** Projection (screens, projector).
+- **A, house:** Projection (screens, projector), and Audio unless it moves.
 - **B, back of the room:** Operator (runs the service, sees what is on air).
 - **C, stream machine:** Stream (OBS, Zoom, Virtual Camera).
 
 Operator is disabled if A drops, and wakes when Projection is held again. C keeps working without A. Phones and tablets act as helpers on any of these set-ups (below).
+
+### Audio at the sound desk
+
+Where the machine running the screens is far from the mixer, spin Audio off to a machine at the desk: its own laptop, or B or C above. That device asks for Audio, and from then on Lampstand's sound (video sound, backing tracks) plays from its output into the mixer. Projection keeps rendering and stays silent. Passing Audio stops whatever is playing, and the prompt says so.
 
 ### What comes from the house: cameras, microphones, the band
 
@@ -49,12 +54,13 @@ None of it goes through Lampstand, and no role owns it. Lampstand never carries 
 
 ### Sound that Lampstand plays
 
-A video or music item played from Lampstand has sound. It always plays in the house, once, from the Projection machine's output.
+A video, a music-only item or a backing track has sound. It always plays in the house, once, from the **Audio holder's** output (the machine running the screens unless Audio has moved). Pick the output in Setup › Sound, so it goes to the mixer's interface and not the projector's.
 
+- **Backing tracks for singers.** A music-only item can be attached to a song or stand alone. It plays when the item goes live, or waits for someone to press play. It can play, pause and stop with a fade, and there is a panic stop that always works: on the Audio holder, from the Operator, and from a helper. The Audio holder starts it on Projection's cue from its own copy of the file. If Projection is away, what is playing keeps playing and can still be stopped, but nothing new starts. Count-in, a click for the band, and key or tempo changes are later features.
 - **Option "Send sound to the stream"** (Setup › OBS, off by default). When it is on, the stream output also plays that sound in its OBS browser source, and OBS captures it. The stream's sound and picture then match. The Stream holder gets OBS's own mute and fader for it. The mixer feed then needs only the microphones.
 - **Do not do both.** If the mixer already sends the computer's channel to the stream, leave the option off, or the sound doubles. The setup screen says so.
-- **Music-only items** (no picture) follow the same rule. The rules, proposed for approval:
-  1. A music-only item is a scene with sound and no picture. With the option on, the stream output plays it, exactly as it plays a video's sound.
+- **Music-only items** follow the same rule as a video's sound. The rules, proposed for approval:
+  1. A music-only item is a scene with sound and no picture. With the option on, the stream output plays it, as it plays a video's sound.
   2. Every item has "Don't send this sound to the stream" (for copyright, or because the sound reaches the stream another way). It is off unless set. The house is unaffected.
   3. Background music that runs under several items follows the item that started it, and stops with it, for the house and the stream alike.
   4. If the stream output's page is not connected when a sound starts, the sound does not fall back to anything. The Stream holder's view says "Sound is not reaching the stream", and the house is unaffected.
@@ -63,7 +69,7 @@ A video or music item played from Lampstand has sound. It always plays in the ho
 
 ### Phones and tablets
 
-A phone or tablet in the browser (the tablet remote, paired by QR code and PIN) is a **helper**: it acts for the device that holds a role, today by sending Operator-type commands (next, previous, show, black, logo, clear) to the Projection machine. It never holds a role, and does not appear in a seat. A browser view for Stream is a later feature.
+A phone or tablet in the browser (the tablet remote, paired by QR code and PIN) is a **helper**: it acts for the device that holds a role, today by sending Operator-type commands (next, previous, show, black, logo, clear) to the Projection machine, and later the panic stop for music. It never holds a role, and does not appear in a seat. A browser view for Stream is a later feature.
 
 ## How a role moves
 
@@ -71,10 +77,10 @@ The same rules for every role.
 
 1. **Ask.** A device presses its "Take" button for a role. The current holder sees "Mary's laptop wants to run the stream. Allow / Not now" (Operator and Stream also offer "Always allow this device"). It works only while the holder is connected.
 2. **Take over.** If the holder has been offline for the takeover time (two minutes by default, Setup › Devices), or nobody holds the role, another device may take it after confirming.
-3. **What is on air.** Passing **Projection** clears the screens, and the prompt says so ("Allow and clear the screens"). Passing **Operator** leaves the slide up. Passing **Stream** leaves OBS on its current scene.
+3. **What is on air.** Passing **Projection** clears the screens, and passing **Audio** stops what is playing; the prompt says so ("Allow and clear the screens", "Allow and stop the music"). Passing **Operator** leaves the slide up. Passing **Stream** leaves OBS on its current scene.
 4. **A returning holder yields.** A device that comes back after losing a role learns it, drops the role and shows a notice. It cannot win the role back by itself.
 
-"Always allow this device" is not offered for Projection.
+"Always allow this device" is not offered for Projection or Audio.
 
 ## Where OBS lives
 
@@ -86,11 +92,12 @@ The same rules for every role.
 
 ## Proposed details (not yet grilled; confirm or change)
 
-- **Defaults.** A single device holds all three. Pairing gives the first (pairing) device Projection and Operator; Stream is unheld, so Projection keeps the OBS duty until someone takes Stream.
+- **Defaults.** A single device holds all four. Pairing gives the first (pairing) device Projection, Operator and Audio, so sound keeps playing where it does today; Stream is unheld, so Projection keeps the OBS duty until someone takes Stream.
 - **Restarts.** Each role is a record `{ holder, name, epoch }` like the lease, kept in `roles.json` beside `paired.json`, device-local. A restart, crash or sleep leaves a holder that others see as offline; the takeover time applies. A device with no paired devices holds all roles whatever an old record says.
 - **Two asks at once.** As in 0008 and 0009: the higher `(epoch, device key)` wins a simultaneous claim; the holder's prompt answers one ask at a time, and a second asker is told who is already asking, and is not queued.
 - **Operator across a Projection hand-over.** The Operator seat is kept and the new Projection holder announces its state to the Operator. (Today a lease change ends driving.)
 - **Migration.** The lease becomes the Projection record keeping its epoch; the driver seat becomes Operator (the "always allowed" list in `driver.json` carries over). Sync protocol 5.
-- **Roster.** The status bar shows the roles this device holds ("Runs the screens", "Runs the service", "Runs the stream"), and for the others who holds them; "Presenting" and "Driving" are replaced by these. Setup › Devices lists each device with its roles and the takeover time. A device with no role is just "Planning".
+- **Roster.** The status bar shows the roles this device holds ("Runs the screens", "Runs the service", "Runs the stream", "Runs the sound"), and for the others who holds them; "Presenting" and "Driving" are replaced by these. Setup › Devices lists each device with its roles and the takeover time. A device with no role is just "Planning".
 - **Teams check.** Who may hold a role is decided at `Roles::claim` and `Roles::allow` and nowhere else (T18).
-- **Sound.** Room sound stays outside Lampstand and outside the roles. Sound that Lampstand plays goes with the picture to OBS when the church turns it on (above). An output-device selector for the house output, and NDI audio, are later tickets.
+- **Sound.** Room sound (microphones, the band) stays outside Lampstand and outside the roles. Sound that Lampstand plays belongs to the Audio role and goes with the picture to OBS when the church turns it on (above). NDI audio is a later ticket.
+- **Audio and the stream option.** The Audio holder plays for the house from its own copy of the file; the stream page plays its own copy through OBS. The two are not locked to each other, which is fine for the room and for the stream.
