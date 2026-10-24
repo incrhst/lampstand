@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roles: who runs what · Lampstand docs</title>
+  <meta name="description" content="Four jobs (Projection, Operator, Stream and Audio) and how one, two, three or four computers share them. Arrives in Lampstand 0.8.0.">
+  <meta name="theme-color" content="#2b211a">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="docs.css">
+</head>
+<body>
+  <main class="sheet sheet--docs">
+    <header class="docs-bar">
+      <a class="brand" href="../">Lampstand</a>
+      <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html">Getting started</a><a href="using.html">Using Lampstand</a><a href="roles.html" aria-current="page">Roles</a><a href="how-it-works.html">How it works</a><a href="contributing.html">Contributing</a><a href="decisions.html">Decisions</a></nav>
+    </header>
+    <div class="docs-wrap">
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#video">Watch: who runs what</a></li><li><a href="#what">What a role is</a></li><li><a href="#jobs">The four jobs</a></li><li><a href="#setups">One computer or several</a></li><li><a href="#handover">Passing a job on</a></li><li><a href="#helpers">Phones, tablets and the house</a></li><li><a href="#transcript">Transcript</a></li></ol></aside>
+      <article class="doc">
+        <h1>Roles: who runs what</h1>
+        <p class="lede">On Sunday a few jobs need doing at once: the screens, the service, the stream and the sound. Roles let a team share those jobs across their computers.</p>
+        <div class="callout"><p><b>Status:</b> roles arrive in Lampstand 0.8.0. Lampstand is in development and nothing is released yet, so this page describes how roles are designed to work.</p></div>
+        <h2 id="video">Watch: who runs what</h2>
+        <figure class="clip">
+          <video controls preload="metadata" poster="clips/roles-overview-poster.jpg" aria-describedby="roles-video-note">
+            <source src="clips/roles-overview.mp4" type="video/mp4">
+            <track kind="captions" src="clips/roles-overview.vtt" srclang="en" label="English" default>
+            Your browser cannot play this video. The transcript is further down this page.
+          </video>
+          <figcaption id="roles-video-note">A three-minute explainer with a voice-over and captions. The same words are in the transcript at the end of this page.</figcaption>
+        </figure>
+        <h2 id="what">What a role is</h2>
+        <p>A role is a job that someone is doing right now. It is not a permission. Each job has one holder at a time, and one computer can hold any mix of jobs. A computer with no job can still plan the service and keep in step with the others.</p>
+        <h2 id="jobs">The four jobs</h2>
+<table>
+  <tr><th>Job</th><th>In plain words</th><th>What it looks after</th></tr>
+  <tr><td>Projection</td><td>Runs the screens</td><td>The picture on the projector and the stage screens. It belongs to the computer plugged into them, and it can run on its own with nobody sitting there.</td></tr>
+  <tr><td>Operator</td><td>Runs the service</td><td>Next, back, and jumping to any item. It needs Projection to be running.</td></tr>
+  <tr><td>Stream</td><td>Runs what goes online</td><td>OBS, the live stream and its mutes. It keeps working even if the projector computer is away.</td></tr>
+  <tr><td>Audio</td><td>Runs the sound</td><td>The sound Lampstand plays: videos, music and backing tracks. It plays from the computer next to the mixer.</td></tr>
+</table>
+        <p>Only a computer that has screens set up can hold Projection. On any other computer the Take button for Projection is greyed out and says &ldquo;No screens are set up on this device&rdquo;.</p>
+        <h2 id="setups">One computer or several</h2>
+        <p>You can start with one computer and add others later. The service works the same way; each job moves to another computer by asking, except Projection, which stays with the computer wired to the screens.</p>
+        <ul>
+          <li><b>One computer.</b> It holds all four jobs, and there is nothing to set up. OBS and Zoom, if you use them, run on the same computer.</li>
+          <li><b>Two computers.</b> The one at the projector keeps Projection, Operator and Audio. A second computer, the stream desk, takes Stream and runs OBS and Zoom. Use a wired network if you can.</li>
+          <li><b>Three computers.</b> A laptop at the back of the room takes Operator, so someone can run the service from where they can see everything. If the projector computer drops off, the Operator waits and wakes when Projection is back, and the stream desk keeps working.</li>
+          <li><b>Four computers.</b> Where the mixer is far from the projector, a computer at the sound desk takes Audio, so music and videos play straight into the mixer. Projection keeps drawing the screens and stays silent.</li>
+        </ul>
+        <h2 id="handover">Passing a job on</h2>
+        <p>The same four steps work for every job.</p>
+        <ol>
+          <li><b>Ask.</b> On the computer that wants the job, press <b>Take</b>.</li>
+          <li><b>Allow or Not now.</b> The computer holding the job sees who is asking and chooses. If they choose Not now, nothing changes.</li>
+          <li><b>Take over.</b> If the holder has been gone for two minutes (the network dropped, or the computer shut), or nobody holds the job, another computer can take it after confirming. You can change the two minutes in Setup.</li>
+          <li><b>A computer that comes back</b> learns it lost the job and shows a notice. It does not take the job back by itself.</li>
+        </ol>
+        <p>What happens on the screen: passing Projection clears the screens, and passing Audio stops what is playing, and the question says so before you agree. Passing Operator leaves the slide up, and passing Stream leaves OBS on its current scene.</p>
+        <h2 id="helpers">Phones, tablets and the house</h2>
+        <ul>
+          <li><b>Phones and tablets</b> in a browser, such as the tablet remote, are helpers. They send next, back and blank to the computer that runs the screens, but they never hold a job.</li>
+          <li><b>Stage screens</b> for the band can be a second display on the projector computer, or a web page on a tablet on a music stand.</li>
+          <li><b>Cameras, microphones and the band</b> do not go through Lampstand. Cameras plug into the stream desk&rsquo;s OBS, and the microphones come from your mixing desk.</li>
+        </ul>
+        <p>The full design is in the <a href="https://github.com/incrhst/lampstand/blob/main/docs/roles.md">roles guide on GitHub</a> and in <a href="https://github.com/incrhst/lampstand/blob/main/docs/decisions/0010-roles-and-handoff.md">decision 0010</a>.</p>
+        <h2 id="transcript">Transcript</h2>
+        <details>
+          <summary>Read the video&rsquo;s words</summary>
+<p>Lampstand is built so a team can share the work of a Sunday service. Here is who runs what.</p>
+<p>A role is just a job that someone is doing right now. Each job has one holder at a time. One computer can hold any mix of jobs, and a computer with no job can still help plan the service.</p>
+<p>There are four jobs: Projection, Operator, Stream, and Audio.</p>
+<p>Projection runs the screens. It is the picture on the projector and the stage screens. It lives on the computer that is plugged into them, and it can run on its own, with nobody sitting there.</p>
+<p>Operator runs the service. Next, back, and jumping to any item. The Operator needs Projection to be running.</p>
+<p>Stream runs what goes out online. That means OBS and the live stream. It keeps working even if the projector computer is away.</p>
+<p>Audio runs the sound that Lampstand plays: videos, music, and backing tracks. It plays from the computer next to the mixer.</p>
+<p>With one computer, it holds all four jobs. There is nothing to set up.</p>
+<p>With two computers, the one at the projector keeps Projection, Operator, and Audio, and the stream desk takes Stream.</p>
+<p>With three, a laptop at the back of the room takes Operator, so someone can run the service from where they can see everything.</p>
+<p>With four, the sound desk takes Audio, so music and videos play straight into the mixer.</p>
+<p>Here is the same four-computer set-up, drawn out.</p>
+<p>Phones and tablets can help, for example as a remote, but they never hold a job.</p>
+<p>To hand a job over, one computer asks for it. The one holding it chooses Allow or Not now. And if the holder has been gone for two minutes, anyone can take it over.</p>
+<p>Mary&rsquo;s laptop asks to take Stream. The holder sees the question, and chooses Allow. The job moves across.</p>
+<p>If the holder chooses Not now, nothing changes. They keep the job.</p>
+<p>If the holder is cut off, say the network drops, the job waits. After two minutes, Mary&rsquo;s laptop can take it over.</p>
+<p>When a job passes, Projection clears the screens, and Audio stops the music. Operator leaves the slide up, and Stream leaves OBS where it is.</p>
+<p>A computer that comes back learns it lost the job, and does not grab it back.</p>
+<p>You can read the full roles guide on the Lampstand website.</p>
+        </details>
+        <nav class="pager" aria-label="Pages"><span>&larr; <a href="using.html">Using Lampstand</a></span><span><a href="how-it-works.html">How it works</a> &rarr;</span></nav>
+      </article>
+    </div>
+    <footer class="colophon typed">
+      <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; These pages track the repository&rsquo;s <a href="https://github.com/incrhst/lampstand/blob/main/docs/">docs folder</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>
