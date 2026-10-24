@@ -17,7 +17,7 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use lampstand_api::{
     AskingView, DeviceView, DriveAskingView, DriveView, DriverView, DrivingView, Event,
@@ -157,6 +157,50 @@ pub struct Obs {
     /// An offscreen renderer of its own (not the render thread's), so
     /// deck slides go out as frames; without one they are drawn in the DOM.
     pub renderer: Option<Arc<Renderer>>,
+}
+
+/// Keeps the address OBS is told to open (`host:port` of the local server)
+/// true after a start with no network: a machine that boots into the
+/// projector room before its network is up first sees only itself, and
+/// must not hand out `127.0.0.1` for the rest of the day.
+///
+/// It changes only toward a better answer. An address that is already the
+/// machine's network address is kept when the network drops for a moment,
+/// and a machine whose address never changes (one computer, or a network
+/// that was up at start) is never told anything.
+pub struct AddressWatch {
+    probe: Box<dyn Fn() -> String + Send>,
+    current: String,
+    polled: Instant,
+}
+
+impl AddressWatch {
+    /// How often to look again.
+    pub const EVERY: Duration = Duration::from_secs(5);
+
+    pub fn new(current: String, probe: impl Fn() -> String + Send + 'static) -> Self {
+        Self {
+            probe: Box::new(probe),
+            current,
+            polled: Instant::now(),
+        }
+    }
+
+    /// The new address, when it is time to look and it has become a
+    /// better one.
+    pub fn check(&mut self, now: Instant) -> Option<String> {
+        if now.saturating_duration_since(self.polled) < Self::EVERY {
+            return None;
+        }
+        self.polled = now;
+        let found = (self.probe)();
+        let loopback = |a: &str| a.starts_with("127.");
+        if found == self.current || (loopback(&found) && !loopback(&self.current)) {
+            return None;
+        }
+        self.current = found.clone();
+        Some(found)
+    }
 }
 
 /// The sync node and the server it listens on.
@@ -702,6 +746,68 @@ fn drive_view(d: &DriveStatus) -> DriveView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn watch(current: &str, answers: &[&str]) -> AddressWatch {
+        let answers: Mutex<Vec<String>> =
+            Mutex::new(answers.iter().rev().map(|a| a.to_string()).collect());
+        AddressWatch::new(current.into(), move || {
+            answers.lock().unwrap().pop().expect("asked too often")
+        })
+    }
+
+    fn later(start: Instant, secs: u64) -> Instant {
+        start + Duration::from_secs(secs)
+    }
+
+    #[test]
+    fn an_address_that_never_changes_is_never_reported() {
+        // One computer, or a network that was up at start: nothing new.
+        let mut w = watch("10.0.0.5:7340", &["10.0.0.5:7340", "10.0.0.5:7340"]);
+        let t = w.polled;
+        assert_eq!(w.check(later(t, 5)), None);
+        assert_eq!(w.check(later(t, 10)), None);
+        let mut alone = watch("127.0.0.1:7340", &["127.0.0.1:7340"]);
+        let t = alone.polled;
+        assert_eq!(alone.check(later(t, 5)), None);
+    }
+
+    #[test]
+    fn it_looks_only_every_few_seconds() {
+        let mut w = watch("127.0.0.1:7340", &["10.0.0.5:7340"]);
+        let t = w.polled;
+        assert_eq!(
+            w.check(later(t, 1)),
+            None,
+            "too soon: the probe is not asked"
+        );
+        assert_eq!(w.check(later(t, 5)), Some("10.0.0.5:7340".into()));
+    }
+
+    #[test]
+    fn a_network_that_arrives_after_start_replaces_localhost() {
+        let mut w = watch("127.0.0.1:7340", &["127.0.0.1:7340", "192.168.1.20:7340"]);
+        let t = w.polled;
+        assert_eq!(w.check(later(t, 5)), None, "still no network");
+        assert_eq!(w.check(later(t, 10)), Some("192.168.1.20:7340".into()));
+    }
+
+    #[test]
+    fn a_dropped_network_does_not_put_localhost_back() {
+        let mut w = watch(
+            "192.168.1.20:7340",
+            &["127.0.0.1:7340", "192.168.1.20:7340"],
+        );
+        let t = w.polled;
+        assert_eq!(w.check(later(t, 5)), None);
+        assert_eq!(w.check(later(t, 10)), None);
+    }
+
+    #[test]
+    fn a_moved_network_address_is_followed() {
+        let mut w = watch("192.168.1.20:7340", &["192.168.1.31:7340"]);
+        let t = w.polled;
+        assert_eq!(w.check(later(t, 5)), Some("192.168.1.31:7340".into()));
+    }
     use lampstand_sync::net::PeerStatus;
 
     fn peer(name: &str, connected: bool, refused: bool) -> PeerStatus {
