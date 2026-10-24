@@ -697,6 +697,7 @@ mod tests {
             text: None,
             accent: Color::rgb(240, 190, 60),
             font_family: "Noto Serif".into(),
+            bug: Default::default(),
         };
         let id = ThemeId::generate();
         let t = theme_from_brand(&brand, id);

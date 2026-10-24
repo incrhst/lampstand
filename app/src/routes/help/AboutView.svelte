@@ -1,9 +1,9 @@
-<!-- Setup › About: the version running, and updating it in place. A new
+<!-- Help › About: the version running, and updating it in place. A new
      release is found by asking the release page (the core does this, at
      startup and every few hours), and installed from here when nothing is on
      air and no service is about to start, so an update never interrupts one. -->
 <script lang="ts">
-  import { request, send } from "../../lib/api";
+  import { send } from "../../lib/api";
   import { checkForUpdate, installUpdate, live, refreshUpdate, report } from "../../lib/state.svelte";
   import { availableVersion, canInstall, updateSummary } from "../../lib/updates";
   import Button from "../../lib/kit/Button.svelte";
@@ -26,15 +26,6 @@
     try {
       await send({ area: "Live", request: "EndService" });
       await refreshUpdate();
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  /** Opens the project's issue form in the browser, with the version filled in. */
-  async function tell(what: "AskForHelp" | "ReportProblem" | "SuggestIdea" | "TellUs") {
-    try {
-      await request({ area: "About", request: what }, "Ok");
     } catch (e) {
       report(e);
     }
@@ -80,27 +71,6 @@
         <Button variant="primary" onclick={check} disabled={checking}>{checking ? "Checking…" : "Check for updates"}</Button>
       </div>
     {/if}
-  </Panel>
-
-  <Panel title="Tell us about your church" description="An optional two-minute form: who you are and how you plan to use Lampstand, so we know who it is for and what to build next.">
-    <div class="buttons">
-      <Button icon="info" onclick={() => tell("TellUs")}>Open the form</Button>
-    </div>
-    <p class="muted small">It opens in your browser. Nothing is sent from Lampstand, and everything on it is optional.</p>
-  </Panel>
-
-  <Panel title="Help and feedback" description="Opens in your browser with your version already filled in.">
-    <div class="buttons">
-      <Button variant="primary" icon="info" onclick={() => tell("AskForHelp")}>Ask for help</Button>
-      <Button icon="alert" onclick={() => tell("ReportProblem")}>Report a problem</Button>
-      <Button icon="plus" onclick={() => tell("SuggestIdea")}>Suggest an idea</Button>
-    </div>
-    <p class="muted small">
-      <strong>Ask for help</strong> with how to do something: other churches and the team answer in Discussions.
-      <strong>Report a problem</strong> when something is broken, and <strong>Suggest an idea</strong> for something
-      new. All of it is public, on GitHub (github.com/incrhst/lampstand), so please leave out passwords and OBS
-      Browser source addresses, which contain a key.
-    </p>
   </Panel>
 </div>
 

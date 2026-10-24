@@ -17,7 +17,7 @@
       <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html">Getting started</a><a href="using.html" aria-current="page">Using Lampstand</a><a href="how-it-works.html">How it works</a><a href="contributing.html">Contributing</a><a href="decisions.html">Decisions</a></nav>
     </header>
     <div class="docs-wrap">
-      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#modes">Plan, Present and Setup</a></li><li><a href="#keys">Keyboard</a></li><li><a href="#songs">Songs and imports</a></li><li><a href="#slides">PowerPoint and Google Slides</a></li><li><a href="#themes">Themes</a></li><li><a href="#brand">Church brand</a></li><li><a href="#idle">Default (idle) screen</a></li><li><a href="#obs">Live stream with OBS</a></li><li><a href="#remote">Tablet and phone remote</a></li><li><a href="#offline">Offline and recovery</a></li></ol></aside>
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#modes">Plan, Present and Setup</a></li><li><a href="#keys">Keyboard</a></li><li><a href="#duplicate">Start from a previous service</a></li><li><a href="#groups">Groups and looping</a></li><li><a href="#tips">Quick tips</a></li><li><a href="#songs">Songs and imports</a></li><li><a href="#slides">PowerPoint and Google Slides</a></li><li><a href="#themes">Themes</a></li><li><a href="#brand">Church brand</a></li><li><a href="#bug">Logo bug</a></li><li><a href="#idle">Default (idle) screen</a></li><li><a href="#obs">Live stream with OBS</a></li><li><a href="#remote">Tablet and phone remote</a></li><li><a href="#offline">Offline and recovery</a></li></ol></aside>
       <article class="doc">
         <h1>Using Lampstand</h1>
         <p class="lede">Two jobs, Plan and Present, with the one-time configuration under Setup.</p>
@@ -27,11 +27,15 @@
   <tr><th>Area</th><th>What it is for</th></tr>
   <tr><td>Plan</td><td>Build the service: songs, scripture, slides and media in order. <b>Open for live</b> hands it to Present. A new service can start as a copy of an earlier one.</td></tr>
   <tr><td>Present</td><td>Run the service: next, previous, black, jump to a verse. Also where OBS status, scene buttons and the tablet remote QR code appear.</td></tr>
-  <tr><td>Setup</td><td><b>Screens</b> (the windows Lampstand draws on, each with its own safe area, theme and idle screen), <b>Themes</b>, <b>Church look</b> (name, logo, colours and font) and <b>Devices</b>. Team is planned to join them.</td></tr>
+  <tr><td>Setup</td><td><b>Screens</b> (the windows Lampstand draws on, each with its own safe area, theme and idle screen), <b>Themes</b>, <b>Church look</b> (name, logo, colours and font), <b>Scripture</b>, <b>Devices</b> and <b>OBS</b>. Team is planned to join them.</td></tr>
+  <tr><td>Help</td><td><b>Quick tips</b>, the <b>Keys</b>, <b>Help and feedback</b> (the docs, asking a question, reporting a problem, suggesting an idea) and <b>About</b> (the version, and updating it).</td></tr>
 </table>
 <h3 id="duplicate">Start a service from a previous one</h3>
 <p>Most weeks look like last week. In Plan, select a service and choose <b>Duplicate</b>, or choose <b>New service</b> and pick an earlier service from <b>Start from&hellip;</b>. Either way you set the new title (it begins as the old title followed by &ldquo;(copy)&rdquo;) and the date and time, then choose <b>Create</b>.</p>
 <p>The copy has the same items in the same order, with each item&rsquo;s notes, OBS scene, loop and song arrangement. The title and date are the ones you set. The copy is separate from the original, so changing or deleting an item in one never changes the other.</p>
+<figure class="clip"><video src="clips/plan-to-present.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Choose a service in Plan and press Open for live to hand it to Present."></video><figcaption>Choose a service in Plan and press Open for live to hand it to Present.</figcaption></figure>
+<figure class="clip"><video src="clips/setup-screens.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Setup holds what you configure once: screens, scripture, devices and OBS."></video><figcaption>Setup holds what you configure once: screens, scripture, devices and OBS.</figcaption></figure>
+<figure class="clip"><video src="clips/safe-area.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Switch on the safe-area guide in Present&rsquo;s More menu to see what a projector might crop."></video><figcaption>Switch on the safe-area guide in Present&rsquo;s More menu to see what a projector might crop.</figcaption></figure>
 <h2 id="keys">Keyboard</h2>
 <table>
   <tr><th>Key</th><th>Action</th></tr>
@@ -41,6 +45,33 @@
   <tr><td><kbd>1</kbd> to <kbd>9</kbd></td><td>Jump to that verse</td></tr>
   <tr><td><kbd>C</kbd></td><td>Jump to the chorus</td></tr>
   <tr><td><kbd>B</kbd></td><td>Jump to the bridge</td></tr>
+</table>
+<figure class="clip"><video src="clips/present-next.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Press Space to go live and again to move to the next slide."></video><figcaption>Press Space to go live and again to move to the next slide.</figcaption></figure>
+<figure class="clip"><video src="clips/jump-keys.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Press a number to jump to that verse."></video><figcaption>Press a number to jump to that verse.</figcaption></figure>
+<figure class="clip"><video src="clips/blank-screen.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Press the full stop to blank the screen, and again to bring the slide back."></video><figcaption>Press the full stop to blank the screen, and again to bring the slide back.</figcaption></figure>
+<figure class="clip"><video src="clips/quick-add.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Press / to add a song right after what is on air."></video><figcaption>Press / to add a song right after what is on air.</figcaption></figure>
+<h2 id="groups">Groups and looping</h2>
+<p>A header in the service order starts a group: the header and the items under it, up to the next header. In Present each group sits in its own outlined box in the service order, with its name above its items.</p>
+<ul>
+  <li><b>Fold a group.</b> Click the group&rsquo;s name to fold it up and keep a long order short. Click again to open it. The slide on air always stays visible, even when its group is folded.</li>
+  <li><b>Loop a group.</b> Press <b>Loop</b> under the group&rsquo;s name and its slides advance by themselves and start again from the top, which suits the minutes before and after a service. The box brightens and the button reads <b>Looping</b>. Press it again to stop; the group then holds on its last slide.</li>
+  <li><b>Set the time.</b> While a group is on air, choose how long each still slide stays up (5, 8, 12 or 20 seconds). The change applies from the next slide and belongs to this run of the service. The saved loop is changed in Plan. Videos play through at their own length.</li>
+  <li><b>See the time left.</b> While a group loops, a thin bar along the bottom of the live screen fills as the slide&rsquo;s time runs out and starts again on the next slide.</li>
+</ul>
+<figure class="clip"><video src="clips/fold-group.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Click a group&rsquo;s name to fold it away."></video><figcaption>Click a group&rsquo;s name to fold it away.</figcaption></figure>
+<figure class="clip"><video src="clips/loop-group.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Press Loop and the group&rsquo;s slides advance by themselves."></video><figcaption>Press Loop and the group&rsquo;s slides advance by themselves.</figcaption></figure>
+<figure class="clip"><video src="clips/loop-progress.mp4" muted loop playsinline autoplay preload="metadata" aria-label="A thin bar along the bottom of the live screen shows the time left on the slide."></video><figcaption>A thin bar along the bottom of the live screen shows the time left on the slide.</figcaption></figure>
+<h2 id="tips">Quick tips</h2>
+<p>Present shows a short <b>Did you know?</b> card when a feature is in front of you: for example the loop tip when your service has a group, or the keyboard jump tip when a song with several verses is on air. One card shows at a time. <b>Got it</b> dismisses it for good, and a tip for something you have already used never appears. <b>All quick tips</b> opens <b>Help &rsaquo; Quick tips</b>, which lists every tip, including ones you dismissed, each with a short clip.</p>
+<table>
+  <tr><th>Tip</th><th>Shows when</th></tr>
+  <tr><td>Loop a group</td><td>The service has a group, until you loop one.</td></tr>
+  <tr><td>See the time left on a slide</td><td>A looping group is on air.</td></tr>
+  <tr><td>Fold a group away</td><td>The service has two or more groups with items.</td></tr>
+  <tr><td>Add a song without leaving the screen</td><td>Something is on air (press <kbd>/</kbd>).</td></tr>
+  <tr><td>Jump straight to a verse or chorus</td><td>The item on air has three or more slides.</td></tr>
+  <tr><td>Blank the screen in one key</td><td>Something is on air (press <kbd>.</kbd>).</td></tr>
+  <tr><td>Check the safe area</td><td>Something is on air (More menu).</td></tr>
 </table>
 <h2 id="songs">Songs and imports</h2>
 <p>Use <b>Get songs</b> for a free song database by language. To bring in your own library, use <b>Import files&hellip;</b> or <b>Import folder&hellip;</b>. Lampstand detects the format of OpenSong, OpenLyrics, SongSelect, FreeShow and ProPresenter files.</p>
@@ -53,6 +84,10 @@
 <h2 id="brand">Church brand</h2>
 <p>The quickest way to a look that is yours is <b>Setup &rsaquo; Church look</b> (also a step in Get started). Type your church&rsquo;s name, add your logo, pick a main colour, a second colour and a font, and choose <b>Make my theme</b>. Lampstand makes a matching theme and uses it everywhere that doesn&rsquo;t choose its own. Your logo is what the <b>Logo</b> button in Present puts on the screens, on your main colour.</p>
 <p>To share your look, use <b>Export brand</b> on Church look or Themes. It saves one file with your name, logo, colours, font name, themes and idle screen, and the pictures and videos they use. Videos over 150&nbsp;MB are left out, and Lampstand says so. On another computer or campus, choose <b>Import brand</b>: Lampstand shows what is in the file and asks whether to <b>Add alongside</b> your themes or <b>Replace</b> the ones with the same name. It never overwrites the Starter theme. Fonts are not in the file, only their names, so Lampstand tells you if one isn&rsquo;t installed on that computer.</p>
+<h2 id="bug">Logo bug</h2>
+<p>A <b>logo bug</b> is your logo drawn small in a lower corner of the screen, the way a broadcaster marks its programmes. Lampstand draws it over songs, scripture, text slides, PowerPoint and Google Slides slides, pictures and video, on every audience screen and in the picture sent to OBS, so the congregation and anyone watching the stream always see it. It uses the logo from <b>Setup &rsaquo; Church look</b>; until you add one the controls are greyed out.</p>
+<p>In <b>Setup &rsaquo; Church look</b>, under <b>Logo bug</b>, switch it on, choose the <b>lower left</b> or <b>lower right</b> corner (lower right to begin with), a size (small, medium or large, as a share of the screen&rsquo;s height) and how solid it is. A sample slide beside the form shows how it will look. It is always kept inside each screen&rsquo;s safe area, so a projector that crops the edges cannot hide it, and it is scaled to every screen&rsquo;s own size and shape.</p>
+<p>The bug does not move or fade when the slide changes. <b>Blank</b> covers it, and so does the <b>Logo</b> screen, which shows the whole logo instead. It is not drawn on an idle screen that is your logo already, and the stage display never shows it. On the stream it can sit over a lower-third caption in the same corner, so pick the other corner if your captions run wide. During a service, turn it on or off from Present&rsquo;s <b>More</b> menu without opening Setup; the choice is kept. The bug&rsquo;s corner, size and opacity are part of the brand file, so they travel with your look to another computer.</p>
 <h2 id="idle">Default (idle) screen</h2>
 <p>When nothing is on air, a screen can show more than black: a picture, a video that loops with the sound off, or one slide of a deck. In <b>Setup &rsaquo; Screens</b>, choose one for all screens under <b>When nothing is on air</b>, and give a single screen its own if it needs a different one. It shows before the service, and again when you end the service.</p>
 <p><b>Logo</b> and <b>Blank</b> are still one key away and cover the idle screen. Present&rsquo;s live preview shows what the screen is showing, idle screen included.</p>
@@ -74,5 +109,6 @@
       <p>Lampstand is made in the open at <a href="https://github.com/incrhst/lampstand">github.com/incrhst/lampstand</a> &middot; GPL-3.0-or-later &middot; These pages track the repository&rsquo;s <a href="https://github.com/incrhst/lampstand/blob/main/docs/">docs folder</a>.</p>
     </footer>
   </main>
+<script>if (matchMedia("(prefers-reduced-motion: reduce)").matches) document.querySelectorAll("figure.clip video").forEach((v) => { v.removeAttribute("autoplay"); v.pause(); v.controls = true; });</script>
 </body>
 </html>

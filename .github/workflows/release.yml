@@ -63,13 +63,13 @@ jobs:
           BODY: |
             **Preview release.** Lampstand is free and open source (GPL-3.0). This is an early version for churches willing to test it; please report what you find.
 
-            Already installed? Lampstand offers this release itself under **Setup › About**; there is no need to download it again. (The Linux `.deb` does not update itself; the AppImage does.)
+            Already installed? Lampstand offers this release itself under **Help › About**; there is no need to download it again. (The Linux `.deb` does not update itself; the AppImage does.)
 
             - **Mac:** open the `.dmg` and drag Lampstand to Applications.
             - **Windows:** run the installer. Windows will warn that the publisher is unknown (SmartScreen): choose **More info**, then **Run anyway**. The installer is not signed yet.
             - **Linux:** make the `.AppImage` executable and run it, or install the `.deb`. A GPU with Vulkan support is needed for the projector output.
 
-            **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Setup › About** has buttons for all three that fill in your version for you.
+            **Stuck, or something not working?** Ask in [Discussions](https://github.com/incrhst/lampstand/discussions). Found a bug or have an idea? [Open an issue](https://github.com/incrhst/lampstand/issues/new/choose). In Lampstand, **Help › Help and feedback** has buttons for all three that fill in your version for you.
 
             See the changes below.
         run: |

@@ -8,7 +8,7 @@
      T47 replaces this with the full operator view. -->
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SlideView } from "../../lib/api";
+  import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SectionView, type SlideView } from "../../lib/api";
   import { live, mainOutput, report } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { neighbourItem, nextClick, nextSlide } from "../../lib/cursor";
@@ -22,7 +22,10 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
+  import TipCard from "../../lib/kit/TipCard.svelte";
+  import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
+  import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
@@ -36,7 +39,7 @@
   import MoreMenu from "./MoreMenu.svelte";
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
-  let { onsetup, onobs, onplan }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void } = $props();
+  let { onsetup, onobs, onplan, ontips }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void } = $props();
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
@@ -108,6 +111,7 @@
   }
 
   async function command(c: Command) {
+    if (c === "ToggleBlack") used("blank-screen");
     try {
       await send({ area: "Live", request: c });
     } catch (e) {
@@ -156,6 +160,7 @@
     if (live.loaded && e.key === "/") {
       e.preventDefault();
       quickAddOpen = true;
+      used("quick-add");
       return;
     }
     if (pill && live.loaded && (e.key === "o" || e.key === "O")) {
@@ -210,6 +215,7 @@
       const cursor = sectionCursor(live.loaded, live.live, e.key);
       if (cursor) {
         e.preventDefault();
+        used("jump-keys");
         show(cursor);
       }
     }
@@ -268,7 +274,59 @@
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   /** The section on air, if the live item sits under a header. */
   let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
+  /** Headers whose sections are folded away in the service order. */
+  let collapsed: Set<string> = $state(new Set());
+  function toggleSection(header: string) {
+    const next = new Set(collapsed);
+    if (!next.delete(header)) next.add(header);
+    collapsed = next;
+  }
+  /** Tips dismissed on this device; the card offers one that applies now. */
+  let dismissedTips = $state(loadDismissed());
+  let usedTips = $state(loadUsed());
+  /** The operator used a feature, so its tip has nothing left to teach. */
+  function used(id: string) {
+    if (usedTips.has(id)) return;
+    usedTips = new Set([...usedTips, id]);
+    saveUsed(usedTips);
+  }
+  function dismissTip(id: string) {
+    dismissedTips = new Set([...dismissedTips, id]);
+    saveDismissed(dismissedTips);
+  }
+  /** The order as groups: each header with the items under it. Items before
+   *  the first header form a group with no header. */
+  let groups = $derived.by(() => {
+    type Entry = { item: (typeof items)[number]; i: number };
+    const out: { section: SectionView | null; rows: Entry[] }[] = [];
+    items.forEach((item, i) => {
+      const section = live.loaded?.sections.find((s) => s.header === item.id) ?? null;
+      if (section) out.push({ section, rows: [] });
+      else {
+        if (out.length === 0) out.push({ section: null, rows: [] });
+        out[out.length - 1].rows.push({ item, i });
+      }
+    });
+    return out;
+  });
+  /** Turn a group's loop on (at its last or the default interval) or off. */
+  async function toggleLoop(section: SectionView) {
+    try {
+      await request(
+        { area: "Service", request: { SetLiveLoop: { header: section.header, seconds: section.seconds === null ? 8 : null } } },
+        "Ok",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
+  let tip = $derived(
+    nextTip(
+      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo },
+      new Set([...dismissedTips, ...usedTips]),
+    ),
+  );
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
   // A deck on air gets the presenter view, whose Next is the next click.
   let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
@@ -361,6 +419,22 @@
       const current = await request({ area: "Settings", request: "Get" }, "Settings");
       const s = await request({ area: "Settings", request: { Put: { ...current, clicker_mode: !clicker } } }, "Settings");
       clicker = s.clicker_mode;
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // The logo bug follows the logo set in Setup › Church look; this flips it
+  // on or off during a service and keeps the corner, size and opacity.
+  let bugReady = $derived(!!live.settings?.brand?.logo);
+  let bugOn = $derived(bugReady && !!live.settings?.brand?.bug.enabled);
+
+  async function toggleBug() {
+    const brand = live.settings?.brand;
+    if (!brand?.logo) return;
+    try {
+      live.settings = await request({ area: "Settings", request: { SetLogoBug: { ...brand.bug, enabled: !brand.bug.enabled } } }, "Settings");
+      used("logo-bug");
     } catch (e) {
       report(e);
     }
@@ -484,10 +558,13 @@
       <MoreMenu
         guide={showGuide}
         {clicker}
+        bug={bugOn}
+        {bugReady}
         obs={!!pill}
         {mod}
-        onguide={() => (showGuide = !showGuide)}
+        onguide={() => { showGuide = !showGuide; used("safe-area"); }}
         onclicker={toggleClicker}
+        onbug={toggleBug}
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
         onclose={askClose}
@@ -512,31 +589,69 @@
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head">
           <h2>Service order</h2>
-          <Button size="small" icon="plus" shortcut="/" onclick={() => (quickAddOpen = true)} title="Quick add a song or scripture after what is on air">Quick add</Button>
+          <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
         </div>
         {#if live.loaded && liveSection}
           <LiveLoop loaded={live.loaded} section={liveSection} />
         {/if}
-        <ol class="plain pane-body">
-          {#each items as item, i (item.id)}
-            {@const kind = kindOf(item.id)}
-            <ListRow
-              title={item.title}
-              subtitle={item.slides.length === 0 ? "Nothing to show" : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
-              accent={i === liveIndex}
-              active={item.id === viewed?.id && i !== liveIndex}
-              dim={liveIndex >= 0 && i < liveIndex}
-              onclick={() => (viewing = item.id)}
-            >
-              {#snippet leading()}
-                <span class="num index" class:current={i === liveIndex}>{i + 1}</span>
-                <span class:current={i === liveIndex}>
-                  <Icon name={kind ? kindIcon[kind] : "file"} label={kind ? kindLabel[kind] : undefined} />
-                </span>
-              {/snippet}
-            </ListRow>
+        {#if tip}
+          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} />
+        {/if}
+        <div class="pane-body groups">
+          {#each groups as group (group.section?.header ?? "ungrouped")}
+            {@const section = group.section}
+            <section class="group" class:boxed={!!section} class:looping={!!section?.seconds} aria-label={section?.title}>
+              {#if section}
+                <div class="eyebrow-row">
+                  <button
+                    type="button"
+                    class="eyebrow fold"
+                    class:folded={collapsed.has(section.header)}
+                    aria-expanded={!collapsed.has(section.header)}
+                    title={collapsed.has(section.header) ? "Expand" : "Collapse"}
+                    onclick={() => toggleSection(section.header)}
+                  >
+                    <Icon name="chevronDown" size={14} />{section.title}
+                  </button>
+                  <button
+                    type="button"
+                    class="loop-toggle"
+                    class:on={section.seconds !== null}
+                    aria-pressed={section.seconds !== null}
+                    title={section.seconds === null ? "Loop this group" : "Stop looping this group"}
+                    onclick={() => toggleLoop(section)}
+                  >
+                    <Icon name="loop" size={14} />{section.seconds === null ? "Loop" : `Looping · ${section.seconds} s`}
+                  </button>
+                </div>
+              {/if}
+              {#if !section || !collapsed.has(section.header)}
+                <ul class="plain">
+                  {#each group.rows as { item, i } (item.id)}
+                    {@const kind = kindOf(item.id)}
+                    <ListRow
+                      title={item.title}
+                      subtitle={item.slides.length === 0 ? "Nothing to show" : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
+                      accent={i === liveIndex}
+                      active={item.id === viewed?.id && i !== liveIndex}
+                      dim={liveIndex >= 0 && i < liveIndex}
+                      onclick={() => (viewing = item.id)}
+                    >
+                      {#snippet leading()}
+                        <span class="num index" class:current={i === liveIndex}>{i + 1}</span>
+                        <span class:current={i === liveIndex}>
+                          <Icon name={kind ? kindIcon[kind] : "file"} label={kind ? kindLabel[kind] : undefined} />
+                        </span>
+                      {/snippet}
+                    </ListRow>
+                  {/each}
+                </ul>
+              {:else if liveSection?.header === section.header}
+                <p class="muted folded-note">Folded, with the live slide inside.</p>
+              {/if}
+            </section>
           {/each}
-        </ol>
+        </div>
       </nav>
 
       <section class="pane centre" aria-label="Live screen">
@@ -580,6 +695,9 @@
               brand={look.brand}
               empty="Nothing on air. Press Space to start."
             />
+            {#if live.live && live.overlay === "None" && liveSection?.seconds}
+              <LoopProgress seconds={liveSection.seconds} slideKey="{live.live.item}:{live.live.slide}:{live.live.step}" />
+            {/if}
           </div>
           <div class="transport">
             <Button icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
@@ -879,7 +997,76 @@
     font-weight: 700;
     letter-spacing: 0.04em;
   }
+  .groups {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0 0.5rem 0.5rem;
+  }
+  .group.boxed {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    padding: 0.25rem 0.25rem 0.35rem;
+  }
+  .group.looping {
+    border-color: var(--text);
+  }
+  .eyebrow-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.2rem 0.25rem 0.35rem 0.5rem;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0.2rem 0;
+    cursor: pointer;
+  }
+  .eyebrow :global(.icon) {
+    transition: transform 150ms var(--ease);
+  }
+  .eyebrow.folded :global(.icon) {
+    transform: rotate(-90deg);
+  }
+  .loop-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .loop-toggle.on {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: var(--on-gold);
+    font-weight: 600;
+  }
+  .folded-note {
+    margin: 0;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+  }
   .live-screen {
+    position: relative;
     border-radius: var(--radius-lg);
     overflow: hidden;
     box-shadow: 0 0 0 2px var(--line);

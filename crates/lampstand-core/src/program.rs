@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::brand::{BugCorner, BugSize};
 use crate::deck::DeckId;
 use crate::geom::Color;
 use crate::id::{BlobHash, Timestamp};
@@ -95,6 +96,25 @@ pub struct Logo {
     pub background: Color,
     /// The colour of the ring.
     pub accent: Color,
+    /// The logo bug to draw in a corner over what is on air, for outputs
+    /// that show it (audience and stream). `None` when it is off, there is
+    /// no logo, or the output does not show it.
+    #[serde(default)]
+    pub bug: Option<Bug>,
+}
+
+/// The logo drawn small in a corner of the screen. The compositor shows it
+/// unless Black or Logo covers the screen, or the idle screen is the logo.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bug {
+    pub image: BlobHash,
+    /// The picture's width over its height, so it is drawn tight to the
+    /// corner.
+    pub aspect: f32,
+    pub corner: BugCorner,
+    pub size: BugSize,
+    /// 0 to 1.
+    pub opacity: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

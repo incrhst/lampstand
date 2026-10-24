@@ -42,16 +42,6 @@
 <section class="live-loop" aria-label="Loop {section.title}">
   <div class="head">
     <span class="name">{section.title}</span>
-    <button
-      type="button"
-      class="switch"
-      role="switch"
-      aria-checked={section.seconds !== null}
-      aria-label="Loop {section.title}"
-      onclick={() => set(section.seconds === null ? lastSeconds : null)}
-    >
-      <span class="knob"></span>
-    </button>
   </div>
   <div class="segments" class:off={section.seconds === null} role="group" aria-label="Seconds per still slide">
     {#each choices as n (n)}
@@ -86,26 +76,6 @@
   }
   .name {
     font-weight: 600;
-  }
-  .switch {
-    width: 2.6rem;
-    height: 1.5rem;
-    padding: 0.15rem;
-    border: none;
-    border-radius: 999px;
-    background: var(--line-strong);
-    display: flex;
-    cursor: pointer;
-  }
-  .switch[aria-checked="true"] {
-    background: var(--gold);
-    justify-content: flex-end;
-  }
-  .knob {
-    width: 1.2rem;
-    height: 1.2rem;
-    border-radius: 50%;
-    background: var(--canvas);
   }
   .segments {
     display: flex;
