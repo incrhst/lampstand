@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type { DeviceView, DriveView, PresenterView, TeamStatus } from "./api";
 import {
   driveBarText,
-  driveChoice,
   driverOffline,
   drivenBy,
   isDriving,
@@ -54,6 +53,7 @@ const team = (p: PresenterView, paired: DeviceView[]): TeamStatus => ({
   paired,
   nearby: [],
   presenter: p,
+  roles: [],
   sync: { state: "Synced", paired: paired.length, connected: paired.length, reason: null, last_in_ms: null, last_out_ms: null },
 });
 const pill = { tone: "ready" as const, text: "Synced with 1 device", title: "Shared" };
@@ -98,14 +98,3 @@ test("each device shows Presenting, Driving or Planning", () => {
   assert.equal(ownRole(null), "Presenting");
 });
 
-test("the drive button follows the state of the ask", () => {
-  assert.deepEqual(driveChoice(null, "Sanctuary PC"), { kind: "none" });
-  assert.deepEqual(driveChoice(quiet, "Sanctuary PC"), { kind: "none" });
-  assert.equal(driveChoice({ ...quiet, can_drive: true }, "Sanctuary PC").kind, "ask");
-  assert.match((driveChoice({ ...quiet, can_drive: true, asking: "Waiting" }, "Sanctuary PC") as { label: string }).label, /Waiting for Sanctuary PC/);
-  assert.equal(driveChoice({ ...quiet, asking: "Declined" }, "Sanctuary PC").kind, "declined");
-  const busy = driveChoice({ ...quiet, asking: { Busy: { by: "Sam's tablet" } } }, "Sanctuary PC");
-  assert.equal(busy.kind, "busy");
-  assert.match((busy as { label: string }).label, /Sam's tablet is driving/);
-  assert.equal(driveChoice({ ...quiet, driving: { presenter: "aa", name: "Sanctuary PC", online: true } }, "Sanctuary PC").kind, "driving");
-});

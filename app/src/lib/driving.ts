@@ -3,7 +3,7 @@
 // own screen. This turns what it reports into the labels, prompts and
 // choices the screens show.
 
-import type { DeviceView, DriveView, DrivingView, TeamStatus } from "./api";
+import type { DeviceView, DrivingView, TeamStatus } from "./api";
 
 /** What a device's role reads as in Setup › Devices and the status bar. */
 export type DeviceRole = "Presenting" | "Driving" | "Planning";
@@ -69,11 +69,6 @@ export function ownRoleLine(team: TeamStatus): string {
   }
 }
 
-/** What the presenting device says when another device asks to drive. */
-export function drivePrompt(name: string): string {
-  return `${name || "Another device"} wants to drive. It can press Next, jump to a verse and take items live from its own screen; the screens stay here.`;
-}
-
 /** What a driver's bar says. */
 export function driveBarText(d: DrivingView): string {
   return d.online
@@ -89,32 +84,4 @@ export function drivenBarText(by: string): string {
 /** Said once on a device that was driving when the presenter took control back. */
 export function takenBackNotice(by: string): string {
   return `${by} took control back. This device is no longer driving.`;
-}
-
-/** The one button for driving from this device. */
-export type DriveChoice =
-  | { kind: "ask"; label: string }
-  | { kind: "waiting"; label: string }
-  | { kind: "declined"; label: string; again: string }
-  | { kind: "busy"; label: string; again: string }
-  | { kind: "driving"; label: string }
-  | { kind: "none" };
-
-/**
- * `ask` when this device could drive, with the state of its ask after;
- * `none` where driving makes no sense (this device presents, or the
- * presenter is not connected).
- */
-export function driveChoice(drive: DriveView | null | undefined, presenter: string): DriveChoice {
-  if (!drive) return { kind: "none" };
-  const who = presenter || "the presenting device";
-  if (drive.driving) return { kind: "driving", label: `Driving ${drive.driving.name}` };
-  const asking = drive.asking;
-  if (asking === "Waiting") return { kind: "waiting", label: `Waiting for ${who} to allow…` };
-  if (asking === "Declined") return { kind: "declined", label: `${who} said not now`, again: "Ask again" };
-  if (asking && typeof asking === "object") {
-    return { kind: "busy", label: `${asking.Busy.by} is driving ${who} now`, again: "Ask again" };
-  }
-  if (drive.can_drive) return { kind: "ask", label: presenter ? `Drive ${presenter} from here` : "Drive from this device" };
-  return { kind: "none" };
 }

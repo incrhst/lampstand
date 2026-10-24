@@ -147,7 +147,7 @@
       <div class="saved">
         <Banner tone="warn" icon="monitor">
           <span>{PLANNING_SCREENS}</span>
-          <PresentAction present="Present from here" />
+          <PresentAction />
         </Banner>
       </div>
     {/if}

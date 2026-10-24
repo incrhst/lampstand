@@ -13,8 +13,8 @@
     disabled = false,
     title,
     label,
-    shortcut,
     describedby,
+    shortcut,
   }: {
     onclick: () => void;
     children?: Snippet;
@@ -27,10 +27,10 @@
     title?: string;
     /** Accessible name, needed when there is no visible text. */
     label?: string;
+    /** The id of the text that says more, such as why the button is greyed out. */
+    describedby?: string;
     /** Shown after the label, e.g. "Space". */
     shortcut?: string;
-    /** The id of text that explains the button, e.g. why it is greyed out. */
-    describedby?: string;
   } = $props();
 </script>
 
@@ -41,8 +41,8 @@
   {onclick}
   {disabled}
   {title}
-  aria-describedby={describedby}
   aria-label={label}
+  aria-describedby={describedby}
   aria-pressed={pressed}
 >
   {#if icon}<Icon name={icon} size={size === "small" ? 14 : 16} />{/if}

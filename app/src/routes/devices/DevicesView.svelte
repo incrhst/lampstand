@@ -8,7 +8,8 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
-  import DriveAction from "../../lib/kit/DriveAction.svelte";
+  import RoleTake from "../../lib/kit/RoleTake.svelte";
+  import { ALWAYS_ALLOWED, PANEL_TITLE, ROLES, holderLine, roleOf, runFromHere, runs, stopAlways } from "../../lib/roles";
   import { ownRoleLine, roleLine } from "../../lib/driving";
   import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
@@ -142,8 +143,8 @@
           {PLANNING_SCREENS}
         </p>
         <div class="actions">
-          <PresentAction present="Make this device the presenter" />
-          <DriveAction />
+          <PresentAction />
+          <RoleTake role="Operator" label={runFromHere("Operator")} />
         </div>
         {#if presenter.drive.driving}
           <p class="muted">This device operates {presenter.drive.driving.name} from its own screen. Present is the place to do it. {presenter.drive.driving.name} keeps the screens and the sound.</p>
@@ -173,6 +174,29 @@
           If the presenting device is offline this long, another device can present without its permission. Never while it is connected. Set on each device.
         </small>
       </label>
+    </Panel>
+  {/if}
+
+  {#if status && status.paired.length > 0}
+    <Panel title={PANEL_TITLE}>
+      <ul class="list roles">
+        {#each ROLES as name (name)}
+          {@const r = roleOf(status, name)}
+          {#if r}
+            <li>
+              <span>
+                <strong>{runs(name)}</strong>
+                <span class="muted">{holderLine(r)}</span>
+                {#each r.always as d (d.device)}
+                  <small class="muted">{ALWAYS_ALLOWED}: {d.name}</small>
+                  <Button size="small" variant="ghost" onclick={() => team({ RoleAlways: { role: name, device: d.device, always: false } })}>{stopAlways(d.name)}</Button>
+                {/each}
+              </span>
+              <RoleTake role={name} size="small" />
+            </li>
+          {/if}
+        {/each}
+      </ul>
     </Panel>
   {/if}
 

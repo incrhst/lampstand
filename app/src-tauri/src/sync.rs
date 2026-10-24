@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 use lampstand_api::{
     AskingView, DeviceView, DriveAskingView, DriveView, DriverView, DrivingView, Event,
     LoadedService, NearbyView, ObsRequest, PairingView, PresentRequestView, PresenterRole,
-    PresenterStanding, PresenterView, Request, Response, ServiceRequest, SyncState, SyncSummary,
-    TeamRequest, TeamStatus,
+    PresenterStanding, PresenterView, Request, Response, RoleAskingView, RoleBlocked, RoleName,
+    RoleStanding, RoleView, ServiceRequest, SyncState, SyncSummary, TeamRequest, TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -33,10 +33,11 @@ use lampstand_render::Renderer;
 use lampstand_server::{Backend, SceneHub, Server};
 use lampstand_sync::net::{
     local_addresses, DriveAsking as Asking, DriveHooks, DriveNotice, DriveStatus, NodeConfig,
-    NodeStatus, PresenterStatus, SyncNode,
+    NodeStatus, PresenterStatus, RolesStatus, SyncNode,
 };
-use lampstand_sync::roles::{AskState, Mode, Named, Notice, Standing};
+use lampstand_sync::roles::{AskState, Blocked, Mode, Named, Notice, Role, Standing};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
+use lampstand_sync::wording;
 
 use crate::handler::{EventSink, SyncLink};
 
@@ -240,11 +241,20 @@ impl AddressWatch {
     }
 }
 
+/// Called when this device stops being the Audio holder, so the music it was
+/// playing stops ("Allow and stop the music"). The shell sets it once the
+/// app can play sound (#136); until then nothing is playing to stop.
+pub type MusicStop = Arc<dyn Fn() + Send + std::marker::Sync>;
+
 /// The sync node and the server it listens on.
 pub struct Sync {
     node: Arc<SyncNode>,
-    server: Server,
+    server: Mutex<Option<Server>>,
+    /// Where the server listens, kept for [`Sync::restore`].
+    addr: SocketAddr,
+    backend: Arc<AppBackend>,
     mirrored: Arc<Mirrored>,
+    music_stop: Arc<Mutex<Option<MusicStop>>>,
 }
 
 struct AppBackend {
@@ -345,7 +355,7 @@ impl Sync {
                     "lampstand: port {} is taken; the local server uses another",
                     config.port
                 );
-                Server::start(SocketAddr::from(([0, 0, 0, 0], 0)), backend)
+                Server::start(SocketAddr::from(([0, 0, 0, 0], 0)), backend.clone())
                     .await
                     .map_err(|e| e.to_string())?
             }
@@ -403,7 +413,10 @@ impl Sync {
         let watched = node.clone();
         let mut presenting = watched.role() == Mode::Presenter;
         on_role(presenting);
+        let music_stop: Arc<Mutex<Option<MusicStop>>> = Arc::default();
+        let stop_music = music_stop.clone();
         tokio::spawn(async move {
+            let mut plays = watched.roles_status().audio.holds;
             let mut last = None;
             let mut busy = false;
             loop {
@@ -429,6 +442,17 @@ impl Sync {
                     );
                     on_role(presenting);
                 }
+                // Losing Audio, by an allow or by yielding to a newer record,
+                // stops what this device was playing.
+                let plays_now = watched.roles_status().audio.holds;
+                if plays && !plays_now {
+                    eprintln!("lampstand: this device no longer runs the sound");
+                    let hook = stop_music.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    if let Some(stop) = hook {
+                        stop();
+                    }
+                }
+                plays = plays_now;
                 let status = watched.status();
                 let sync = summarize(&status, now_ms());
                 busy = sync.state == SyncState::Syncing;
@@ -440,11 +464,43 @@ impl Sync {
                 }
             }
         });
+        let addr = server.local_addr();
         Ok(Self {
             node,
-            server,
+            server: Mutex::new(Some(server)),
+            addr,
+            backend,
             mirrored,
+            music_stop,
         })
+    }
+
+    /// For tests: the network is cut. Stops listening and drops every
+    /// connection; paired devices reconnect with backoff once
+    /// [`Sync::restore`] listens again.
+    #[doc(hidden)]
+    pub fn cut(&self) {
+        // Offline first: from here no connection can register, whichever
+        // way it was on its way (accepted, or dialled by this node).
+        self.node.set_offline(true);
+        *self.server.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// For tests: listens again on the same port after [`Sync::cut`].
+    #[doc(hidden)]
+    pub async fn restore(&self) -> Result<(), String> {
+        let server = Server::start(self.addr, self.backend.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        *self.server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server);
+        self.node.set_offline(false);
+        Ok(())
+    }
+
+    /// What to do when this device hands the sound to another (or is told it
+    /// lost it): stop the music. Replaces any earlier hook.
+    pub fn on_music_stop(&self, stop: MusicStop) {
+        *self.music_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop);
     }
 
     /// What the handler needs of the node, for the settings shared with
@@ -458,7 +514,7 @@ impl Sync {
     }
 
     pub fn local_addr(&self) -> SocketAddr {
-        self.server.local_addr()
+        self.addr
     }
 
     /// `host:port` for URLs other machines (OBS) open: this machine's LAN
@@ -565,24 +621,28 @@ impl Sync {
                 .map_err(|e| format!("Cannot connect: {e}")),
             TeamRequest::Unpair { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.unpair(key).map(|_| ()).map_err(|e| e.to_string()),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
-            TeamRequest::PresenterClaim => self.node.claim_presenter().map_err(|e| e.to_string()),
-            TeamRequest::PresenterAsk => self.node.ask_to_present().map_err(|e| e.to_string()),
+            TeamRequest::PresenterClaim => self.node.claim_presenter().map_err(|e| {
+                wording::denied(Role::Projection, &e, &self.holder_name(Role::Projection))
+            }),
+            TeamRequest::PresenterAsk => self.node.ask_to_present().map_err(|e| {
+                wording::denied(Role::Projection, &e, &self.holder_name(Role::Projection))
+            }),
             TeamRequest::PresenterCancel => {
                 self.node.cancel_ask();
                 Ok(())
             }
             TeamRequest::PresenterAllow { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.allow_presenter(key),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::PresenterDecline { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => {
                     self.node.decline_presenter(key);
                     Ok(())
                 }
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::PresenterDismiss => {
                 self.node.dismiss_presenter_notice();
@@ -604,14 +664,14 @@ impl Sync {
             }
             TeamRequest::DriveAllow { device, always } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.drive_allow(key, always),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::DriveDecline { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => {
                     self.node.drive_decline(key);
                     Ok(())
                 }
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::DriveTakeBack => {
                 self.node.drive_take_back();
@@ -619,7 +679,53 @@ impl Sync {
             }
             TeamRequest::DriveAlways { device, always } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.drive_set_always(key, always),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
+            },
+            TeamRequest::RoleClaim { role } => {
+                let role = role_of(role);
+                self.node
+                    .claim_role(role)
+                    .map_err(|e| wording::denied(role, &e, &self.holder_name(role)))
+            }
+            TeamRequest::RoleAsk { role } => {
+                let role = role_of(role);
+                self.node
+                    .ask_role(role)
+                    .map_err(|e| wording::denied(role, &e, &self.holder_name(role)))
+            }
+            TeamRequest::RoleCancel { role } => {
+                self.node.cancel_role_ask(role_of(role));
+                Ok(())
+            }
+            TeamRequest::RoleAllow {
+                role,
+                device,
+                always,
+            } => match DeviceKey::from_hex(&device) {
+                // What the hand-over takes off air follows: the screens
+                // clear as this device becomes Planning, the music stops as
+                // it stops being the Audio holder.
+                Some(key) => self.node.allow_role(role_of(role), key, always).map(|_| ()),
+                None => Err("That is not a paired device.".into()),
+            },
+            TeamRequest::RoleDecline { role, device } => match DeviceKey::from_hex(&device) {
+                Some(key) => {
+                    self.node.decline_role(role_of(role), key);
+                    Ok(())
+                }
+                None => Err("That is not a paired device.".into()),
+            },
+            TeamRequest::RoleDismiss { role } => {
+                self.node.dismiss_role_notice(role_of(role));
+                Ok(())
+            }
+            TeamRequest::RoleAlways {
+                role,
+                device,
+                always,
+            } => match DeviceKey::from_hex(&device) {
+                Some(key) => self.node.set_role_always(role_of(role), key, always),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::CreateInvite { .. } => Err("team invites arrive with T18".into()),
             TeamRequest::SetRelay { .. } => Err("the relay arrives with T19".into()),
@@ -628,6 +734,10 @@ impl Sync {
             Ok(()) => Response::Team(self.status()),
             Err(message) => Response::Error { message },
         }
+    }
+
+    fn holder_name(&self, role: Role) -> String {
+        self.node.roles_status().of(role).record.name.clone()
     }
 
     pub fn status(&self) -> TeamStatus {
@@ -719,8 +829,81 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
             })
             .collect(),
         presenter: presenter_view(&status.presenter),
+        roles: roles_view(&status.roles),
         sync: summarize(status, now_ms),
     }
+}
+
+fn role_of(r: RoleName) -> Role {
+    match r {
+        RoleName::Projection => Role::Projection,
+        RoleName::Operator => Role::Operator,
+        RoleName::Stream => Role::Stream,
+        RoleName::Audio => Role::Audio,
+    }
+}
+
+fn role_name(r: Role) -> RoleName {
+    match r {
+        Role::Projection => RoleName::Projection,
+        Role::Operator => RoleName::Operator,
+        Role::Stream => RoleName::Stream,
+        Role::Audio => RoleName::Audio,
+    }
+}
+
+/// The four roles in order, as the screens read them.
+fn roles_view(r: &RolesStatus) -> Vec<RoleView> {
+    Role::ALL
+        .into_iter()
+        .map(|role| {
+            let s = r.of(role);
+            let (standing, offline_secs, wait_secs) = match s.standing {
+                Standing::Holding => (RoleStanding::Holding, None, None),
+                Standing::Open => (RoleStanding::Open, None, None),
+                Standing::Ask => (RoleStanding::Ask, None, None),
+                Standing::TakeOver { offline } => {
+                    (RoleStanding::TakeOver, Some(offline.as_secs()), None)
+                }
+                Standing::Wait { offline, remaining } => (
+                    RoleStanding::Wait,
+                    Some(offline.as_secs()),
+                    Some(remaining.as_secs() + 1),
+                ),
+            };
+            let named = |n: &Named| DriverView {
+                device: n.device.to_hex(),
+                name: n.name.clone(),
+            };
+            RoleView {
+                role: role_name(role),
+                holds: s.holds,
+                standing,
+                holder: s.record.holder.map(|h| h.to_hex()),
+                holder_name: s.record.name.clone(),
+                offline_secs,
+                wait_secs,
+                blocked: s.blocked.map(|b| match b {
+                    Blocked::NoScreens => RoleBlocked::NoScreens,
+                    Blocked::NeedsProjection => RoleBlocked::NeedsProjection,
+                }),
+                request: s.request.as_ref().map(|n| PresentRequestView {
+                    device: n.device.to_hex(),
+                    name: n.name.clone(),
+                }),
+                asking: s.asking.as_ref().map(|a| match &a.state {
+                    AskState::Waiting => RoleAskingView::Waiting,
+                    AskState::Declined => RoleAskingView::Declined,
+                    AskState::Busy { by } => RoleAskingView::Busy { by: by.clone() },
+                }),
+                replaced_by: s.notice.as_ref().map(|n| match n {
+                    Notice::Replaced { by } => by.clone(),
+                }),
+                always: s.always.iter().map(named).collect(),
+                offers_always: role.offers_always(),
+            }
+        })
+        .collect()
 }
 
 fn presenter_view(p: &PresenterStatus) -> PresenterView {

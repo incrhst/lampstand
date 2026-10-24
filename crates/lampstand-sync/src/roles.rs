@@ -468,24 +468,17 @@ impl From<Blocked> for Denied {
 impl std::fmt::Display for Denied {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Denied::MustAsk => write!(
-                f,
-                "the presenting device is connected: ask it to allow this"
-            ),
+            Denied::MustAsk => write!(f, "the holder is connected: ask it to allow this"),
             Denied::TooSoon { remaining, .. } => write!(
                 f,
-                "the presenting device went offline only recently; you can take over in {}s",
+                "the holder went offline only recently; you can take over in {}s",
                 remaining.as_secs().max(1)
             ),
-            Denied::Already => write!(f, "this device is already presenting"),
-            Denied::NobodyToAsk => write!(
-                f,
-                "the presenting device is not connected, so it cannot be asked"
-            ),
-            Denied::NotNeeded => write!(f, "nobody needs to allow this: present from here"),
+            Denied::Already => write!(f, "this device already holds that role"),
+            Denied::NobodyToAsk => write!(f, "the holder is not connected, so it cannot be asked"),
+            Denied::NotNeeded => write!(f, "nobody needs to allow this: take it from here"),
             Denied::NoScreens => write!(f, "No screens are set up on this device"),
-            // The wording the driver's bar already used when nothing presents.
-            Denied::NeedsProjection => write!(f, "nobody is presenting"),
+            Denied::NeedsProjection => write!(f, "nobody runs the screens"),
             Denied::NotPermitted => write!(f, "this device may not hold that role"),
             // What the bar said in 0.7.0 before it had heard who presents.
             Denied::Settling => write!(f, "nobody is presenting"),
@@ -538,9 +531,9 @@ pub enum NotAllowed {
 impl std::fmt::Display for NotAllowed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NotAllowed::NotHolding => write!(f, "this device is not presenting"),
+            NotAllowed::NotHolding => write!(f, "this device does not hold that role"),
             NotAllowed::NotAsking => write!(f, "that device is no longer asking"),
-            NotAllowed::NeedsProjection => write!(f, "nobody is presenting"),
+            NotAllowed::NeedsProjection => write!(f, "nobody runs the screens"),
             NotAllowed::NotPermitted => write!(f, "that device may not hold that role"),
         }
     }
