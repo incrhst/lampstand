@@ -63,9 +63,10 @@ the three duties *roles* only because the app does.
    switches OBS itself while Stream is held, so two devices never both
    switch. With nobody holding Stream, Projection keeps the OBS duty as
    today, so a one-machine church sees nothing new.
-7. **Audio stays out of Lampstand for now, and belongs to no role.** Its source may be any device, several, or none. The recommended set-up is a
-   house feed from the mixing board straight into the Stream holder (a USB
-   audio interface), used as the Zoom microphone and as an OBS audio source.
+7. **Audio is the mixer's concern, not Lampstand's, and belongs to no
+   role.** Each set-up sorts out sound with its own mixer; the source may be
+   any device, several, or none. The docs give one example (a house feed from
+   the mixing board into a USB interface on the stream machine) and no more.
    Decision 0005 stands: audio stays on the desk.
 
 Defaults and details that the map did not grill, proposed here for approval:

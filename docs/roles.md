@@ -41,7 +41,9 @@ Operator is disabled if A drops, and wakes when Projection is held again. C keep
 
 ### Sound for the stream
 
-Sound is independent of Lampstand and of the roles. Lampstand sends no sound to OBS or Zoom, and the source of the sound may be any device, several, or none (a mixing board with microphones and no computer at all). No role owns it. **We recommend a house feed from the mixing board straight into the stream machine** through a USB audio interface: use it as the Zoom microphone (with "Original sound" on) and as an OBS audio source. The mix should carry service playback and the microphones. The stream machine's mutes belong to the Stream holder.
+Sound is not Lampstand's concern. Each set-up sorts it out with its own mixer, and Lampstand sends no sound to OBS or Zoom. The source may be any device, several, or none (a mixing board with microphones and no computer at all), and no role owns it. Whatever the mixer sends, it has to reach the machine running Zoom and the OBS Virtual Camera.
+
+One common way, offered as an example and not a requirement: a house feed from the mixing board into a USB audio interface on the stream machine, used as the Zoom microphone (with "Original sound" on) and as an OBS audio source. The stream machine's OBS mutes belong to the Stream holder.
 
 ### Phones and tablets
 
