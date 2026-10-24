@@ -22,7 +22,9 @@
 //! the default output device from a given point. The caller starts it only
 //! where it should be heard.
 
+mod player;
 mod sound;
+pub use player::{default_output, load as load_sound, output_devices, Player, Playing, Voice};
 pub use sound::Sound;
 
 use std::path::Path;
