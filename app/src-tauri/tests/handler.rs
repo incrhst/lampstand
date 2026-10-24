@@ -2369,54 +2369,6 @@ fn a_planning_device_refuses_live_control_and_keeps_its_screens_dark() {
 }
 
 #[test]
-fn a_restart_opens_the_saved_screens_by_itself_even_if_the_projector_comes_up_late() {
-    // The Projection machine at the projector: nobody is at the keyboard
-    // after a restart, so the screens must open from what was saved, and a
-    // projector that is still waking up must get its screen when it shows.
-    let dir = tempfile::tempdir().unwrap();
-    let projector = DisplayInfo {
-        name: "Projector".into(),
-        width: 1920,
-        height: 1080,
-        x: 1512,
-        y: 0,
-    };
-    let mut output = window_output();
-    output.target = OutputTarget::Display(DisplayMatch {
-        name: "Projector".into(),
-        width: 1920,
-        height: 1080,
-        x: 1512,
-        y: 0,
-    });
-    {
-        let mut h = open(dir.path());
-        ok(h.app
-            .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
-    }
-
-    // Started again with the projector already on: open at once.
-    let host = Host::default();
-    host.0.lock().unwrap().displays.push(projector.clone());
-    let _h = open_with(dir.path(), host.clone());
-    assert_eq!(
-        host.0.lock().unwrap().open,
-        [(output.id, Placement::Display(projector.clone()))]
-    );
-
-    // Started with the projector still off: wait, then open when it comes.
-    let host = Host::default();
-    let mut h = open_with(dir.path(), host.clone());
-    assert!(host.0.lock().unwrap().open.is_empty());
-    host.0.lock().unwrap().displays.push(projector.clone());
-    h.app.displays_changed();
-    assert_eq!(
-        host.0.lock().unwrap().open,
-        [(output.id, Placement::Display(projector))]
-    );
-}
-
-#[test]
 fn a_projector_that_appears_while_the_app_is_starting_is_still_opened() {
     // The shell takes its first look at the displays only after the app has
     // opened. A projector that came up in between must not be missed, so

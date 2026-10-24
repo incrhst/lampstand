@@ -176,16 +176,27 @@ pub struct AddressWatch {
     polled: Instant,
 }
 
+/// `host:port` for URLs other machines open on `port`: this machine's LAN
+/// address now, else localhost. Needs nothing but the port.
+pub fn public_address_on(port: u16) -> String {
+    local_addresses(port)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| format!("127.0.0.1:{port}"))
+}
+
 /// Whether other machines could open `address` (`host:port`).
 fn usable(address: &str) -> bool {
     let host = address.rsplit_once(':').map_or(address, |(h, _)| h);
     let host = host.trim_matches(|c| c == '[' || c == ']').to_lowercase();
+    // An IPv4-mapped address is judged by the IPv4 address inside it.
+    let host = host.strip_prefix("::ffff:").unwrap_or(&host);
     !(host.starts_with("127.")
         || host.starts_with("169.254.")
+        || host == "0.0.0.0"
+        || host == "::"
         || host == "::1"
-        || host.starts_with("fe80:")
-        || host.starts_with("::ffff:127.")
-        || host.starts_with("::ffff:169.254."))
+        || host.starts_with("fe80:"))
 }
 
 impl AddressWatch {
@@ -436,11 +447,7 @@ impl Sync {
     /// `host:port` for URLs other machines (OBS) open: this machine's LAN
     /// address, else localhost.
     pub fn public_address(&self) -> String {
-        let port = self.local_addr().port();
-        local_addresses(port)
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| format!("127.0.0.1:{port}"))
+        public_address_on(self.local_addr().port())
     }
 
     /// On a device driving another: carries `request` to the presenting
@@ -826,10 +833,18 @@ mod tests {
                 "[fe80::1]:7340",
                 "[::1]:7340",
                 "[::1]:7340",
+                "0.0.0.0:7340",
+                "0.0.0.0:7340",
+                "[::]:7340",
+                "[::]:7340",
+                "[::ffff:0.0.0.0]:7340",
+                "[::ffff:0.0.0.0]:7340",
+                "[::ffff:169.254.1.1]:7340",
+                "[::ffff:169.254.1.1]:7340",
             ],
         );
         let t = w.polled;
-        for i in 1..=6 {
+        for i in 1..=14 {
             assert_eq!(w.check(later(t, 5 * i)), None);
         }
     }

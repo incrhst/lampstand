@@ -59,7 +59,9 @@ use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
-use crate::sync::{mirroring, AddressWatch, DriveSinks, NodeCell, Obs, Sync, SyncConfig};
+use crate::sync::{
+    mirroring, public_address_on, AddressWatch, DriveSinks, NodeCell, Obs, Sync, SyncConfig,
+};
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -579,8 +581,8 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             lock(&app).set_server_address(address.clone());
             lock(&app).set_sync_link(sync.link());
             let sync = Arc::new(sync);
-            let probe = sync.clone();
-            address_watch = Some(AddressWatch::new(address, move || probe.public_address()));
+            let port = sync.local_addr().port();
+            address_watch = Some(AddressWatch::new(address, move || public_address_on(port)));
             (Some(sync), None)
         }
         Err(e) => {
