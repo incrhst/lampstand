@@ -164,14 +164,28 @@ pub struct Obs {
 /// projector room before its network is up first sees only itself, and
 /// must not hand out `127.0.0.1` for the rest of the day.
 ///
-/// It changes only toward a better answer. An address that is already the
-/// machine's network address is kept when the network drops for a moment,
-/// and a machine whose address never changes (one computer, or a network
-/// that was up at start) is never told anything.
+/// It changes only toward a usable address (not loopback, not link-local
+/// such as 169.254.x.x), and only once the same answer comes twice in a
+/// row, so a Wi-Fi or VPN swap that flips back does not flap. A machine
+/// whose address never changes is never told anything.
 pub struct AddressWatch {
     probe: Box<dyn Fn() -> String + Send>,
     current: String,
+    /// A usable answer seen once, waiting to be seen again.
+    pending: Option<String>,
     polled: Instant,
+}
+
+/// Whether other machines could open `address` (`host:port`).
+fn usable(address: &str) -> bool {
+    let host = address.rsplit_once(':').map_or(address, |(h, _)| h);
+    let host = host.trim_matches(|c| c == '[' || c == ']').to_lowercase();
+    !(host.starts_with("127.")
+        || host.starts_with("169.254.")
+        || host == "::1"
+        || host.starts_with("fe80:")
+        || host.starts_with("::ffff:127.")
+        || host.starts_with("::ffff:169.254."))
 }
 
 impl AddressWatch {
@@ -182,22 +196,28 @@ impl AddressWatch {
         Self {
             probe: Box::new(probe),
             current,
+            pending: None,
             polled: Instant::now(),
         }
     }
 
-    /// The new address, when it is time to look and it has become a
-    /// better one.
+    /// The new address, when it is time to look and a better one has
+    /// answered twice.
     pub fn check(&mut self, now: Instant) -> Option<String> {
         if now.saturating_duration_since(self.polled) < Self::EVERY {
             return None;
         }
         self.polled = now;
         let found = (self.probe)();
-        let loopback = |a: &str| a.starts_with("127.");
-        if found == self.current || (loopback(&found) && !loopback(&self.current)) {
+        if found == self.current || !usable(&found) {
+            self.pending = None;
             return None;
         }
+        if self.pending.as_deref() != Some(found.as_str()) {
+            self.pending = Some(found);
+            return None;
+        }
+        self.pending = None;
         self.current = found.clone();
         Some(found)
     }
@@ -780,33 +800,73 @@ mod tests {
             None,
             "too soon: the probe is not asked"
         );
-        assert_eq!(w.check(later(t, 5)), Some("10.0.0.5:7340".into()));
+        assert_eq!(w.check(later(t, 5)), None, "seen once");
     }
 
     #[test]
     fn a_network_that_arrives_after_start_replaces_localhost() {
-        let mut w = watch("127.0.0.1:7340", &["127.0.0.1:7340", "192.168.1.20:7340"]);
+        let mut w = watch(
+            "127.0.0.1:7340",
+            &["127.0.0.1:7340", "192.168.1.20:7340", "192.168.1.20:7340"],
+        );
         let t = w.polled;
         assert_eq!(w.check(later(t, 5)), None, "still no network");
-        assert_eq!(w.check(later(t, 10)), Some("192.168.1.20:7340".into()));
+        assert_eq!(w.check(later(t, 10)), None, "seen once");
+        assert_eq!(w.check(later(t, 15)), Some("192.168.1.20:7340".into()));
+    }
+
+    #[test]
+    fn link_local_and_loopback_addresses_are_never_adopted() {
+        let mut w = watch(
+            "127.0.0.1:7340",
+            &[
+                "169.254.3.4:7340",
+                "169.254.3.4:7340",
+                "[fe80::1]:7340",
+                "[fe80::1]:7340",
+                "[::1]:7340",
+                "[::1]:7340",
+            ],
+        );
+        let t = w.polled;
+        for i in 1..=6 {
+            assert_eq!(w.check(later(t, 5 * i)), None);
+        }
     }
 
     #[test]
     fn a_dropped_network_does_not_put_localhost_back() {
         let mut w = watch(
             "192.168.1.20:7340",
-            &["127.0.0.1:7340", "192.168.1.20:7340"],
+            &["127.0.0.1:7340", "127.0.0.1:7340", "169.254.1.1:7340"],
         );
         let t = w.polled;
-        assert_eq!(w.check(later(t, 5)), None);
-        assert_eq!(w.check(later(t, 10)), None);
+        for i in 1..=3 {
+            assert_eq!(w.check(later(t, 5 * i)), None);
+        }
     }
 
     #[test]
-    fn a_moved_network_address_is_followed() {
-        let mut w = watch("192.168.1.20:7340", &["192.168.1.31:7340"]);
+    fn a_swap_that_flips_straight_back_is_not_followed() {
+        let mut w = watch(
+            "192.168.1.20:7340",
+            &["10.8.0.2:7340", "192.168.1.20:7340", "10.8.0.2:7340"],
+        );
         let t = w.polled;
-        assert_eq!(w.check(later(t, 5)), Some("192.168.1.31:7340".into()));
+        for i in 1..=3 {
+            assert_eq!(w.check(later(t, 5 * i)), None, "poll {i}");
+        }
+    }
+
+    #[test]
+    fn a_moved_network_address_is_followed_once_it_stays() {
+        let mut w = watch(
+            "192.168.1.20:7340",
+            &["192.168.1.31:7340", "192.168.1.31:7340"],
+        );
+        let t = w.polled;
+        assert_eq!(w.check(later(t, 5)), None);
+        assert_eq!(w.check(later(t, 10)), Some("192.168.1.31:7340".into()));
     }
     use lampstand_sync::net::PeerStatus;
 

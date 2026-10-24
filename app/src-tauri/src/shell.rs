@@ -703,7 +703,6 @@ fn app_thread(
     mut address: Option<AddressWatch>,
 ) {
     const TICK: Duration = Duration::from_millis(100);
-    let mut displays = host.displays();
     let mut polled = Instant::now();
     let mut ticked = Instant::now();
     let mut clicker = Clicker {
@@ -726,7 +725,6 @@ fn app_thread(
                 &mut clicker,
                 message,
                 &changes,
-                &mut displays,
                 &mut polled,
                 &mut ticked,
                 address.as_mut(),
@@ -752,7 +750,6 @@ fn app_step(
     clicker: &mut Clicker,
     message: Result<Internal, RecvTimeoutError>,
     changes: &Receiver<DocChanged>,
-    displays: &mut Vec<DisplayInfo>,
     polled: &mut Instant,
     ticked: &mut Instant,
     address: Option<&mut AddressWatch>,
@@ -820,11 +817,10 @@ fn app_step(
         if polled.elapsed() >= DISPLAY_POLL {
             *polled = Instant::now();
             // Tauri has no monitor hot-plug event, so poll.
+            // Against what the windows were placed for, so a display that
+            // appeared while the app was starting is not missed.
             let now = host.displays();
-            if now != *displays {
-                *displays = now;
-                lock(app).displays_changed();
-            }
+            lock(app).displays_polled(now);
         }
         // A network that came up after the start gives OBS a better
         // address. The probe takes no lock.

@@ -2417,6 +2417,49 @@ fn a_restart_opens_the_saved_screens_by_itself_even_if_the_projector_comes_up_la
 }
 
 #[test]
+fn a_projector_that_appears_while_the_app_is_starting_is_still_opened() {
+    // The shell takes its first look at the displays only after the app has
+    // opened. A projector that came up in between must not be missed, so
+    // the look is compared with what the windows were placed against.
+    let dir = tempfile::tempdir().unwrap();
+    let projector = DisplayInfo {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    };
+    let mut output = window_output();
+    output.target = OutputTarget::Display(DisplayMatch {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    });
+    {
+        let mut h = open(dir.path());
+        ok(h.app
+            .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    }
+    let host = Host::default();
+    let mut h = open_with(dir.path(), host.clone());
+    assert!(host.0.lock().unwrap().open.is_empty());
+
+    // The projector comes up before the shell's first look.
+    host.0.lock().unwrap().displays.push(projector.clone());
+    let seen = host.0.lock().unwrap().displays.clone();
+    h.app.displays_polled(seen.clone());
+    assert_eq!(
+        host.0.lock().unwrap().open,
+        [(output.id, Placement::Display(projector))]
+    );
+    // Looking again at the same displays changes nothing.
+    h.app.displays_polled(seen);
+    assert_eq!(host.0.lock().unwrap().open.len(), 1);
+}
+
+#[test]
 fn the_address_obs_is_given_follows_the_network_but_the_key_stays() {
     // A machine that starts before its network is up first knows only
     // itself. When the address improves, the URL changes and the key, which
