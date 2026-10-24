@@ -480,8 +480,10 @@ impl Sync {
     /// [`Sync::restore`] listens again.
     #[doc(hidden)]
     pub fn cut(&self) {
+        // Offline first: from here no connection can register, whichever
+        // way it was on its way (accepted, or dialled by this node).
+        self.node.set_offline(true);
         *self.server.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        self.node.drop_connections();
     }
 
     /// For tests: listens again on the same port after [`Sync::cut`].
@@ -491,6 +493,7 @@ impl Sync {
             .await
             .map_err(|e| e.to_string())?;
         *self.server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server);
+        self.node.set_offline(false);
         Ok(())
     }
 

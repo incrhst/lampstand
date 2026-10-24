@@ -239,6 +239,47 @@ fn get_song(d: &mut Device, id: SongId) -> Song {
     }
 }
 
+/// What each device knows, for the failure message of a wait that timed out:
+/// who is connected, and for each role who holds it, how it stands, how long
+/// the holder has been offline and where an ask stands.
+fn dump(devices: &[&Device]) -> String {
+    let mut out = String::new();
+    for d in devices {
+        let t = d.sync.status();
+        out += &format!(
+            "{}: connected {}/{}\n",
+            t.name, t.sync.connected, t.sync.paired
+        );
+        for r in &t.roles {
+            out += &format!(
+                "  {:?}: holds {} holder {:?} standing {:?} offline {:?} asking {:?} request {:?} replaced_by {:?}\n",
+                r.role, r.holds, r.holder_name, r.standing, r.offline_secs, r.asking,
+                r.request.as_ref().map(|q| &q.name), r.replaced_by
+            );
+        }
+    }
+    out
+}
+
+/// [`until`], with [`dump`] of the devices in the failure message.
+async fn until_diag(
+    devices: &[&Device],
+    limit: Duration,
+    what: &str,
+    mut check: impl FnMut() -> bool,
+) -> Duration {
+    let start = Instant::now();
+    while !check() {
+        assert!(
+            start.elapsed() < limit,
+            "timed out waiting for {what}\n{}",
+            dump(devices)
+        );
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    start.elapsed()
+}
+
 async fn until(limit: Duration, what: &str, mut check: impl FnMut() -> bool) -> Duration {
     let start = Instant::now();
     while !check() {
@@ -1407,20 +1448,27 @@ async fn cut_takeover_and_return(both_dial: bool) {
         },
     )
     .await;
-    until(Duration::from_secs(20), "the laptop to hear", || {
-        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to hear",
+        || role(&laptop, RoleName::Stream).standing == RoleStanding::Ask,
+    )
     .await;
     // A claim against a device is judged by that device's own takeover time.
     send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
     send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
 
     // Cut both ways, as a dead network would.
+    let cut_at = Instant::now();
     main.sync.cut();
     laptop.sync.cut();
-    until(Duration::from_secs(20), "the laptop to see it", || {
-        laptop.sync.node().status().connected() == 0
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to see it",
+        || laptop.sync.node().status().connected() == 0,
+    )
     .await;
     // Not yet: and with the holder away there is nobody to ask.
     let soon = send_err(
@@ -1441,12 +1489,25 @@ async fn cut_takeover_and_return(both_dial: bool) {
     .await;
     assert_eq!(nobody, "Sanctuary is not connected, so it cannot be asked.");
 
-    until(Duration::from_secs(15), "takeover to open", || {
-        role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
-            && role(&laptop, RoleName::Audio).standing == RoleStanding::TakeOver
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(15),
+        "takeover to open",
+        || {
+            role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
+                && role(&laptop, RoleName::Audio).standing == RoleStanding::TakeOver
+        },
+    )
     .await;
     assert!(role(&laptop, RoleName::Stream).offline_secs.unwrap() >= 2);
+    // Each device counts a silence from the last frame it heard, and frames
+    // come every five seconds, so the laptop's "offline for two seconds" can
+    // begin up to five seconds before the cut while the main machine counts
+    // the laptop's absence from its own last frame. The main machine only
+    // believes a claim made by a device that really was out of reach for the
+    // takeover time, so the claim waits until it was, by either count: two
+    // seconds (the takeover time) after the cut itself.
+    tokio::time::sleep_until((cut_at + Duration::from_secs(3)).into()).await;
     send_ok(
         &laptop,
         TeamRequest::RoleClaim {
@@ -1475,9 +1536,12 @@ async fn cut_takeover_and_return(both_dial: bool) {
             send(&main, TeamRequest::Connect { address: to_laptop }),
         );
     }
-    until(Duration::from_secs(60), "the old holder to yield", || {
-        !role(&main, RoleName::Stream).holds && !role(&main, RoleName::Audio).holds
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(60),
+        "the old holder to yield",
+        || !role(&main, RoleName::Stream).holds && !role(&main, RoleName::Audio).holds,
+    )
     .await;
     assert_eq!(
         role(&main, RoleName::Stream).replaced_by.as_deref(),
@@ -1491,9 +1555,12 @@ async fn cut_takeover_and_return(both_dial: bool) {
     assert!(role(&main, RoleName::Projection).holds && role(&main, RoleName::Operator).holds);
     assert!(role(&main, RoleName::Projection).replaced_by.is_none());
     // Audio was playing here: it stops.
-    until(Duration::from_secs(10), "the music to stop", || {
-        main.stopped.load(std::sync::atomic::Ordering::SeqCst) == 1
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(10),
+        "the music to stop",
+        || main.stopped.load(std::sync::atomic::Ordering::SeqCst) == 1,
+    )
     .await;
     // It never resumes by itself, and the notice goes once dismissed.
     send_ok(
@@ -1853,9 +1920,12 @@ async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() 
         },
     )
     .await;
-    until(Duration::from_secs(20), "the laptop to hear", || {
-        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to hear",
+        || role(&laptop, RoleName::Stream).standing == RoleStanding::Ask,
+    )
     .await;
     send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
     send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
@@ -1866,9 +1936,12 @@ async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() 
         },
     )
     .await;
-    until(Duration::from_secs(20), "the prompt", || {
-        role(&main, RoleName::Stream).request.is_some()
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the prompt",
+        || role(&main, RoleName::Stream).request.is_some(),
+    )
     .await;
     assert_eq!(
         role(&laptop, RoleName::Stream).asking,
@@ -1878,14 +1951,20 @@ async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() 
     main.sync.cut();
     laptop.sync.cut();
     // The holder's prompt goes when the asker disconnects.
-    until(Duration::from_secs(20), "the prompt to go", || {
-        role(&main, RoleName::Stream).request.is_none()
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the prompt to go",
+        || role(&main, RoleName::Stream).request.is_none(),
+    )
     .await;
     // The asker is still "waiting", but the standing now says what to do.
-    until(Duration::from_secs(20), "takeover to open", || {
-        role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
-    })
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "takeover to open",
+        || role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver,
+    )
     .await;
     assert_eq!(
         role(&laptop, RoleName::Stream).asking,

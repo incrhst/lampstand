@@ -44,6 +44,16 @@ impl Peer {
 
     /// Stops listening and drops every connection: the network is cut.
     fn cut(&self) {
+        // Offline first: no connection, accepted or dialled, can register
+        // after this, so none survives the cut.
+        self.node.set_offline(true);
+        self.server.abort();
+    }
+
+    /// Stops listening and drops every connection, but the node can still
+    /// dial out (an unplugged cable on one side only): for the test that has
+    /// the sanctuary find the office PC again through an address.
+    fn cut_listener(&self) {
         self.server.abort();
         self.node.drop_connections();
     }
@@ -52,6 +62,7 @@ impl Peer {
     async fn restore(&mut self) {
         let listener = TcpListener::bind(self.addr).await.unwrap();
         self.server = serve(self.node.clone(), listener);
+        self.node.set_offline(false);
     }
 }
 
@@ -859,6 +870,7 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
     // A cut network cuts both ways: if the office kept listening, the
     // sanctuary's own dialler could reach it again and every reconnect
     // would restart the offline clock.
+    let cut_at = Instant::now();
     sanctuary.cut();
     office.cut();
     until(Duration::from_secs(20), "disconnected", || {
@@ -902,6 +914,11 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
+    // The sanctuary only believes a claim from a device that was out of its
+    // reach for the takeover time, counted from its own last frame; with a
+    // two-second takeover and a five-second heartbeat the two counts differ,
+    // so wait until two seconds after the cut itself.
+    tokio::time::sleep_until((cut_at + Duration::from_secs(3)).into()).await;
     office.node.claim_presenter().unwrap();
     assert_eq!(office.node.role(), Mode::Presenter);
     assert_eq!(presenter_of(&office).lease.epoch, 2);
@@ -2178,7 +2195,7 @@ async fn a_device_cut_off_during_hand_overs_catches_up_when_it_meets_them_again(
         t.node.status().connected() == 1 && holder_of(&t, Role::Audio) == Some(s.node.device())
     })
     .await;
-    s.cut();
+    s.cut_listener();
     t.cut();
     until(Duration::from_secs(20), "the tablet to be cut off", || {
         t.node.status().connected() == 0

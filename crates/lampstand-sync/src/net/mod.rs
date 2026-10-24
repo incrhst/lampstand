@@ -374,6 +374,9 @@ struct Peers {
     /// frames have just made the device "heard", which must not read as
     /// "never away".
     recent_away: HashMap<DeviceKey, (Duration, Instant)>,
+    /// The network is cut (see [`SyncNode::set_offline`]): no connection may
+    /// be registered.
+    offline: bool,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -737,6 +740,27 @@ impl SyncNode {
         Ok(removed)
     }
 
+    /// Cuts this node off, or reconnects it. While offline every connection
+    /// is closed and none may be registered: a connection that was being
+    /// accepted or dialled when this was called is dropped when it tries to
+    /// register, under the same lock that closed the others, so nothing
+    /// survives a cut. Diallers keep trying and succeed once it is back.
+    #[doc(hidden)]
+    pub fn set_offline(&self, offline: bool) {
+        {
+            let mut peers = lock(&self.peers);
+            peers.offline = offline;
+            if offline {
+                for session in peers.sessions.values_mut() {
+                    if let Some(stop) = session.stop.take() {
+                        let _ = stop.send(());
+                    }
+                }
+            }
+        }
+        self.bump();
+    }
+
     /// Closes every connection, for tests of catching up after a cut.
     /// Diallers reconnect with backoff.
     pub fn drop_connections(&self) {
@@ -889,6 +913,33 @@ impl SyncNode {
         }
     }
 
+    /// Notes, as a connection for `device` opens, how long it had been out
+    /// of reach (from what was heard before this connection, kept across a
+    /// restart; nothing known counts as not away at all, so a claim made on
+    /// no evidence is refused however long this process has run) and when
+    /// the connection began.
+    ///
+    /// A connection that opens within the fresh-session window of an earlier
+    /// one for the same device (two devices dialling each other at once, one
+    /// connection dropped for the other) inherits the earlier away time: the
+    /// first connection's frames have just made the device "heard", which
+    /// must not read as "never away". The inheritance keeps the *original*
+    /// time stamp, so it lasts at most one fresh-session window from the
+    /// connection that really measured it; a device that drops and redials
+    /// again and again cannot keep the window open.
+    fn note_session_begin(&self, peers: &mut Peers, device: DeviceKey) {
+        let now = Instant::now();
+        let measured = self.silence_in(peers, device).unwrap_or(Duration::ZERO);
+        let window = *lock(&self.fresh_session);
+        let (away, since) = match peers.recent_away.get(&device) {
+            Some((before, at)) if at.elapsed() <= window => (measured.max(*before), *at),
+            _ => (measured, now),
+        };
+        peers.recent_away.insert(device, (away, since));
+        peers.away_before.insert(device, away);
+        peers.session_started.insert(device, now);
+    }
+
     /// Registers a session for `peer` and spawns it, unless a connection
     /// that wins the tie-break is already open.
     async fn begin(
@@ -901,6 +952,9 @@ impl SyncNode {
         loop {
             let old = {
                 let mut peers = lock(&self.peers);
+                if peers.offline {
+                    return None;
+                }
                 match peers.sessions.get(&peer.device) {
                     Some(s) if s.client <= client => return None,
                     Some(_) => peers.sessions.remove(&peer.device),
@@ -928,19 +982,7 @@ impl SyncNode {
                         // restart). Nothing known: not away at all, so a
                         // claim made on no evidence is refused rather than
                         // believed, however long this process has run.
-                        let mut away = self
-                            .silence_in(&peers, peer.device)
-                            .unwrap_or(Duration::ZERO);
-                        if let Some((before, at)) = peers.recent_away.get(&peer.device) {
-                            if at.elapsed() <= *lock(&self.fresh_session) {
-                                away = away.max(*before);
-                            }
-                        }
-                        peers
-                            .recent_away
-                            .insert(peer.device, (away, Instant::now()));
-                        peers.away_before.insert(peer.device, away);
-                        peers.session_started.insert(peer.device, Instant::now());
+                        self.note_session_begin(&mut peers, peer.device);
                         drop(peers);
                         self.bump();
                         self.driving_changed();
@@ -2440,6 +2482,72 @@ mod tests {
         let stream = node.roles_status().stream;
         assert_eq!(stream.record.holder, Some(id(7)), "it yields");
         assert!(stream.notice.is_some());
+    }
+
+    /// Opens a connection for device 7 as `begin` does, and returns how long
+    /// it had been out of reach.
+    fn begin_for_7(node: &SyncNode) -> Duration {
+        let mut peers = lock(&node.peers);
+        node.note_session_begin(&mut peers, id(7));
+        peers.away_before[&id(7)]
+    }
+
+    #[test]
+    fn a_connection_that_replaces_another_keeps_how_long_the_device_was_away() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        // Last heard a minute ago: the first connection measures that.
+        lock(&node.contacts).insert(id(7), now_ms() - 60_000);
+        node.forget_this_runs_contacts();
+        let first = begin_for_7(&node);
+        assert!(first >= Duration::from_secs(60), "{first:?}");
+        // Its frames make the device "heard"; a second connection opens at
+        // once (the first was dropped for it) and must not read as no time.
+        node.heard(id(7));
+        assert!(begin_for_7(&node) >= Duration::from_secs(60));
+    }
+
+    #[test]
+    fn a_device_that_was_never_away_stays_never_away() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        node.heard(id(7));
+        assert!(begin_for_7(&node) < Duration::from_secs(2));
+        node.heard(id(7));
+        assert!(begin_for_7(&node) < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn dropping_and_redialling_cannot_keep_the_window_open() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        node.set_fresh_session(Duration::from_millis(300));
+        lock(&node.contacts).insert(id(7), now_ms() - 60_000);
+        node.forget_this_runs_contacts();
+        assert!(begin_for_7(&node) >= Duration::from_secs(60));
+        // A flapping device redials every 200 ms: the first redial inherits,
+        // but the inheritance is stamped from the connection that measured
+        // it, so a few redials later it has run out.
+        for _ in 0..4 {
+            std::thread::sleep(Duration::from_millis(200));
+            node.heard(id(7));
+            begin_for_7(&node);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        node.heard(id(7));
+        assert!(
+            begin_for_7(&node) < Duration::from_secs(2),
+            "the window must not renew itself"
+        );
+    }
+
+    #[test]
+    fn an_offline_node_registers_no_connection() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.set_offline(true);
+        assert!(lock(&node.peers).offline);
+        node.set_offline(false);
+        assert!(!lock(&node.peers).offline);
     }
 
     #[test]
