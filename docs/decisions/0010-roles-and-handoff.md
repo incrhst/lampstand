@@ -27,7 +27,7 @@ the three duties *roles* only because the app does.
    - **Operator**, "runs the service": next, previous, jump, take an item
      live. Today's driver seat, as a role of its own.
    - **Stream**, "runs what goes out online": the OBS program scene, mutes
-     and preview, and the audio duty for now.
+     and preview. Sound itself belongs to no role (item 7).
    Audio, Stage display, Planner and a video switcher are deferred, not
    rejected.
 2. **A device holds a role, not a person.** The roster shows the device's
