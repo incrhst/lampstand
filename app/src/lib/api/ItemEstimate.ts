@@ -25,4 +25,15 @@ self_loop: boolean,
 /**
  * Something with no fixed length, such as a countdown.
  */
-open_ended: boolean, };
+open_ended: boolean, 
+/**
+ * How long a music-only item plays; `None` for anything else, and for
+ * a sound whose length the file did not give.
+ */
+sound_ms: number | null, 
+/**
+ * A music-only item. The live engine skips an item with no slides, so a
+ * loop does not play it (until Audio exists), and a pass does not count
+ * it.
+ */
+sound: boolean, };

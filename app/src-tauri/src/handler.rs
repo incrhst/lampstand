@@ -36,7 +36,7 @@ use std::sync::Arc;
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
     OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
-    SlideView, SongDatabase, SongHit,
+    SlideView, SongDatabase, SongHit, SoundSlot,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -65,6 +65,7 @@ use lampstand_sync::DocChanged;
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
 
 mod church;
+mod sound;
 
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
@@ -74,6 +75,7 @@ use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
 use church::ChurchSync;
 pub use church::SyncLink;
+use sound::SoundSync;
 
 /// Where an output window goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +151,8 @@ pub struct App {
     settings: SettingsStore,
     /// Bookkeeping for the settings shared with the church's other devices.
     church_sync: ChurchSync,
+    /// Bookkeeping for sound files that travel by sync.
+    sound_sync: SoundSync,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -237,6 +241,7 @@ impl App {
             outputs,
             settings,
             church_sync: ChurchSync::default(),
+            sound_sync: SoundSync::default(),
             sink,
             windows,
             emit,
@@ -502,6 +507,9 @@ impl App {
             LibraryRequest::AddMediaFile { path } => {
                 Response::Media(decks::add_media_file(lib, &path)?)
             }
+            LibraryRequest::AddSoundFile { path } => {
+                Response::SoundFile(decks::add_sound_file(lib, &path)?)
+            }
             LibraryRequest::DeckThumbnail { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("deck thumbnails are drawn by the app shell".into());
@@ -526,25 +534,14 @@ impl App {
                 .ok_or("no such service".into())
         };
         Ok(match request {
-            ServiceRequest::List => {
-                let mut services: Vec<ServiceSummary> = lib
-                    .services()
-                    .map_err(err)?
-                    .into_iter()
-                    .map(|s| ServiceSummary {
-                        id: s.id,
-                        title: s.title,
-                        starts_at: s.starts_at,
-                        time_zone: s.time_zone,
-                        items: s
-                            .items
-                            .values()
-                            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                            .count() as u32,
-                    })
-                    .collect();
-                sort_services(&mut services, now());
-                Response::Services(services)
+            ServiceRequest::List => Response::Services(summaries(lib.services().map_err(err)?)),
+            ServiceRequest::ListChecked => {
+                let scan = lib.services_checked().map_err(err)?;
+                Response::ServiceList(lampstand_api::ServiceList {
+                    services: summaries(scan.services),
+                    newer: scan.newer as u32,
+                    damaged: scan.damaged,
+                })
             }
             ServiceRequest::Get(id) => Response::Service(get(id)?),
             ServiceRequest::Create {
@@ -748,6 +745,45 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetSound {
+                service,
+                item,
+                slot,
+                sound,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                let sound = sound.map(|mut sound| {
+                    sound.name = sound.name.trim().to_string();
+                    sound
+                });
+                if sound.as_ref().is_some_and(|sound| sound.name.is_empty()) {
+                    return Err("Give the sound a name.".into());
+                }
+                match (slot, sound) {
+                    (SoundSlot::Item, Some(sound)) => match &mut entry.kind {
+                        ItemKind::Sound { sound: slot } => *slot = sound,
+                        _ => return Err("That item is not a music-only item.".into()),
+                    },
+                    (SoundSlot::Item, None) => {
+                        return Err("A music-only item needs its sound.".into())
+                    }
+                    (SoundSlot::Backing, sound) => {
+                        if !matches!(entry.kind, ItemKind::Song { .. }) {
+                            return Err("Only a song can have a backing track.".into());
+                        }
+                        entry.backing = sound;
+                    }
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                // A new file may need fetching from the other devices.
+                self.sound_sync.service_changed(service.uuid());
+                Response::Service(s)
+            }
+            ServiceRequest::SoundStatus(service) => {
+                Response::SoundStatus(self.sound_status(service)?)
+            }
             ServiceRequest::SetLiveLoop { header, seconds } => {
                 let Some(service) = self.loaded.as_ref().map(|l| l.view.service) else {
                     return Err("no service is open for live".into());
@@ -924,7 +960,14 @@ impl App {
                 video_ms: None,
                 self_loop: false,
                 open_ended: false,
+                sound_ms: None,
+                sound: false,
             };
+            if let ItemKind::Sound { sound } = &item.kind {
+                // Reported, but not part of a loop's length: nothing plays it.
+                e.sound = true;
+                e.sound_ms = sound.length_ms;
+            }
             for slide in &loaded.slides {
                 match &slide.content {
                     Content::Video { blob, looped } => {
@@ -1106,6 +1149,9 @@ impl App {
         };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
+            // Sound has no picture: the screens stay as they are. Playing
+            // it is the Audio role's job.
+            ItemKind::Sound { sound } => item(sound.name.clone(), Vec::new()),
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
                 Some(s) => {
                     let slides = paginate_song(&s, arrangement.as_deref(), theme)
@@ -1956,6 +2002,19 @@ impl App {
         crate::update::blocker(self.live.is_idle(), next_service, now)
     }
 
+    /// Something to ask before installing an update, which does not refuse it:
+    /// some services cannot be read here (a newer Lampstand saved them), so
+    /// when the next one starts is not known. Refusing would trap the person,
+    /// since installing is how they become readable.
+    pub fn update_caution(&self) -> Option<String> {
+        let scan = self.library.services_checked().ok()?;
+        (scan.newer > 0).then(|| {
+            "Some services were saved by a newer Lampstand, so this one cannot tell when the next \
+             service starts. Make sure none is about to begin."
+                .to_string()
+        })
+    }
+
     /// Drives announcement loops and countdowns. Call every 100 ms or so;
     /// the engine reports events only when something on air changed.
     pub fn tick(&mut self) {
@@ -1971,6 +2030,7 @@ impl App {
         // The heartbeat while live, and an fsync a burst of clicks put off.
         self.write_journal(now);
         self.church_tick();
+        self.sound_tick(now);
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -2100,6 +2160,14 @@ impl App {
             .any(|c| c.kind == lampstand_sync::DocKind::Theme)
         {
             self.present();
+        }
+        // A service changed: it may name sound files this device lacks. Only
+        // that service is read.
+        for change in changes
+            .iter()
+            .filter(|c| c.kind == lampstand_sync::DocKind::Service)
+        {
+            self.sound_sync.service_changed(change.id);
         }
         if changes
             .iter()
@@ -2263,6 +2331,26 @@ fn local_utc_offset_minutes() -> i32 {
 /// A new browser-source key: what `SceneHub` makes, 32 hex digits.
 fn fresh_key() -> String {
     uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// The services as the list shows them, in order.
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services
+        .into_iter()
+        .map(|s| ServiceSummary {
+            id: s.id,
+            title: s.title,
+            starts_at: s.starts_at,
+            time_zone: s.time_zone,
+            items: s
+                .items
+                .values()
+                .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+                .count() as u32,
+        })
+        .collect();
+    sort_services(&mut services, now());
+    services
 }
 
 fn now() -> Timestamp {

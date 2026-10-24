@@ -48,10 +48,9 @@ pub struct Service {
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(
-    feature = "automerge",
-    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
-)]
+// `Reconcile` is written by hand below, so that an item with no backing
+// track writes no `backing` key (a derived `None` writes a null).
+#[cfg_attr(feature = "automerge", derive(autosurgeon::Hydrate))]
 pub struct ServiceItem {
     pub position: Position,
     pub kind: ItemKind,
@@ -70,6 +69,54 @@ pub struct ServiceItem {
     #[serde(default)]
     #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
     pub loop_seconds: Option<u16>,
+    /// A song's backing track, which plays with the song (decision 0010).
+    /// Stored on the item, not as an item of its own, so a song and its
+    /// track cannot be pulled apart by a reorder. Items saved before sound
+    /// existed lack the key and read as `None`; an item without one writes
+    /// no key at all, so a service with no sound is the document it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub backing: Option<Sound>,
+}
+
+/// Sound in the order of the service: a music-only item (walk-in music, a
+/// sound cue) or a song's backing track. The audio file is a blob and
+/// travels by sync; the cue only names it. Playing it is the Audio role's
+/// job and is not decided here (decision 0010).
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
+pub struct Sound {
+    /// Shown in the order list: "Walk-in music", "Amazing Grace (track)".
+    pub name: String,
+    /// The audio file, in the blob store.
+    pub file: BlobHash,
+    /// How long it plays, in milliseconds, as read from the file when it
+    /// was added. `None` when the file did not say.
+    pub length_ms: Option<u32>,
+    pub start: SoundStart,
+    /// "Don't send this sound to the stream" (for copyright, or because it
+    /// reaches the stream another way). Off unless set; the house is
+    /// unaffected. Sending sound to the stream is a later ticket.
+    pub keep_off_stream: bool,
+}
+
+/// How a sound starts when its item goes live.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
+pub enum SoundStart {
+    /// Plays by itself when the item goes live.
+    OnItsOwn,
+    /// Waits for somebody to press play.
+    Waits,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -118,6 +165,48 @@ pub enum ItemKind {
         slides: Vec<BlobHash>,
         seconds_each: u16,
     },
+    /// Music with no picture: walk-in music, a sound cue. It has no slides;
+    /// the screens stay as they are when it goes live.
+    Sound {
+        sound: Sound,
+    },
+}
+
+/// Writes the item field by field as the derive does, except `backing`: an
+/// item without one leaves the key out, and drops it when the track is taken
+/// off. A service with no sound is so the document it was, and opening an
+/// old one writes nothing.
+#[cfg(feature = "automerge")]
+impl autosurgeon::Reconcile for ServiceItem {
+    type Key<'a> = autosurgeon::reconcile::NoKey;
+
+    fn reconcile<R: autosurgeon::Reconciler>(&self, mut reconciler: R) -> Result<(), R::Error> {
+        use autosurgeon::reconcile::MapReconciler;
+        let mut m = reconciler.map()?;
+        m.put("position", &self.position)?;
+        m.put("kind", &self.kind)?;
+        m.put("notes", &self.notes)?;
+        m.put("obs_scene", &self.obs_scene)?;
+        m.put("loop_seconds", self.loop_seconds)?;
+        match &self.backing {
+            Some(sound) => m.put("backing", sound)?,
+            None if m.entry("backing").is_some() => m.delete("backing")?,
+            None => {}
+        }
+        Ok(())
+    }
+}
+
+impl ServiceItem {
+    /// The sound this item brings: its own, if it is a sound item, and a
+    /// song's backing track.
+    pub fn sounds(&self) -> impl Iterator<Item = &Sound> {
+        let own = match &self.kind {
+            ItemKind::Sound { sound } => Some(sound),
+            _ => None,
+        };
+        own.into_iter().chain(self.backing.iter())
+    }
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -250,6 +339,7 @@ impl Service {
             notes: String::new(),
             obs_scene: None,
             loop_seconds: None,
+            backing: None,
         };
         self.items.insert(id, item);
         id
@@ -275,6 +365,29 @@ impl Service {
             item.position = position;
         }
         true
+    }
+
+    /// How long the sound in the order plays, in milliseconds, and whether
+    /// that is all of it: `false` when some file did not give its length.
+    /// Music-only items follow one another, so they add up. A backing track
+    /// plays with its song, which is not timed, so it adds nothing here.
+    pub fn sound_ms(&self) -> (u64, bool) {
+        let mut total = 0u64;
+        let mut known = true;
+        for item in self.items.values() {
+            if let ItemKind::Sound { sound } = &item.kind {
+                match sound.length_ms {
+                    Some(ms) => total += u64::from(ms),
+                    None => known = false,
+                }
+            }
+        }
+        (total, known)
+    }
+
+    /// Whether anything in the order is, or carries, sound.
+    pub fn has_sound(&self) -> bool {
+        self.items.values().any(|i| i.sounds().next().is_some())
     }
 
     pub fn remove(&mut self, id: ItemId) -> Option<ServiceItem> {
@@ -366,6 +479,7 @@ mod tests {
                 notes: String::new(),
                 obs_scene: None,
                 loop_seconds: None,
+                backing: None,
             };
             s.items.insert(ItemId::generate(), item);
         }
@@ -427,6 +541,125 @@ mod tests {
         copy.remove(last);
         assert_eq!(s, before);
         assert_eq!(copy.items.len(), 2);
+    }
+
+    fn sound(name: &str, ms: Option<u32>) -> Sound {
+        Sound {
+            name: name.into(),
+            file: BlobHash::of(name.as_bytes()),
+            length_ms: ms,
+            start: SoundStart::Waits,
+            keep_off_stream: false,
+        }
+    }
+
+    #[test]
+    fn music_only_items_add_up_and_a_backing_track_adds_nothing() {
+        let mut s = Service::new("Sunday");
+        assert_eq!(s.sound_ms(), (0, true));
+        assert!(!s.has_sound());
+        s.insert(
+            0,
+            ItemKind::Sound {
+                sound: sound("Walk-in", Some(185_000)),
+            },
+        );
+        s.insert(
+            1,
+            ItemKind::Sound {
+                sound: sound("Offering", Some(60_000)),
+            },
+        );
+        let song = s.insert(
+            2,
+            ItemKind::Song {
+                song: SongId::generate(),
+                arrangement: None,
+            },
+        );
+        s.items.get_mut(&song).unwrap().backing = Some(sound("Track", Some(240_000)));
+        assert_eq!(s.sound_ms(), (245_000, true));
+        assert!(s.has_sound());
+        // A file that gave no length makes the total a minimum.
+        s.insert(
+            3,
+            ItemKind::Sound {
+                sound: sound("Unknown", None),
+            },
+        );
+        assert_eq!(s.sound_ms(), (245_000, false));
+    }
+
+    #[test]
+    fn an_item_lists_its_own_sound_and_its_backing_track() {
+        let mut s = Service::new("Sunday");
+        let own = s.insert(
+            0,
+            ItemKind::Sound {
+                sound: sound("Walk-in", None),
+            },
+        );
+        let song = s.insert(
+            1,
+            ItemKind::Song {
+                song: SongId::generate(),
+                arrangement: None,
+            },
+        );
+        let plain = s.insert(2, header("H"));
+        s.items.get_mut(&song).unwrap().backing = Some(sound("Track", None));
+        let names =
+            |id: ItemId| -> Vec<String> { s.items[&id].sounds().map(|x| x.name.clone()).collect() };
+        assert_eq!(names(own), ["Walk-in"]);
+        assert_eq!(names(song), ["Track"]);
+        assert!(names(plain).is_empty());
+    }
+
+    #[test]
+    fn duplicate_keeps_sound_and_backing_tracks() {
+        let mut s = Service::new("Sunday");
+        s.insert(
+            0,
+            ItemKind::Sound {
+                sound: sound("Walk-in", Some(1000)),
+            },
+        );
+        let song = s.insert(
+            1,
+            ItemKind::Song {
+                song: SongId::generate(),
+                arrangement: None,
+            },
+        );
+        s.items.get_mut(&song).unwrap().backing = Some(sound("Track", Some(2000)));
+        let copy = s.duplicate("Next week");
+        let kept = |svc: &Service| -> Vec<ServiceItem> {
+            svc.ordered().into_iter().map(|(_, i)| i.clone()).collect()
+        };
+        assert_eq!(kept(&copy), kept(&s));
+    }
+
+    /// A service with no sound reads and writes as it did: the item has no
+    /// `backing` key in JSON (the API and backups), and JSON written before
+    /// sound existed reads back.
+    #[test]
+    fn an_item_without_sound_serialises_as_before() {
+        let mut s = Service::new("Sunday");
+        let id = s.insert(0, header("Welcome"));
+        let json = serde_json::to_value(&s.items[&id]).unwrap();
+        assert!(json.get("backing").is_none(), "{json}");
+        let mut keys: Vec<_> = json.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            ["kind", "loop_seconds", "notes", "obs_scene", "position"]
+        );
+        let old = serde_json::json!({
+            "position": s.items[&id].position.as_str(), "kind": {"Header": {"title": "Welcome"}},
+            "notes": "", "obs_scene": null, "loop_seconds": null
+        });
+        let read: ServiceItem = serde_json::from_value(old).unwrap();
+        assert_eq!(read, s.items[&id]);
     }
 
     #[test]

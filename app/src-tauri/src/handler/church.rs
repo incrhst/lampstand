@@ -177,6 +177,11 @@ impl App {
         self.tell_screens();
     }
 
+    /// The link to the sync node, once sync is running.
+    pub(super) fn sync_link(&self) -> Option<std::sync::Arc<dyn SyncLink>> {
+        self.church_sync.link.clone()
+    }
+
     /// Tells sync whether this device has screens set up.
     pub(super) fn tell_screens(&self) {
         if let Some(link) = &self.church_sync.link {
@@ -262,6 +267,7 @@ impl App {
     pub(super) fn put_device_settings(&mut self, sent: DeviceSettings) -> Result<()> {
         let mut own = self.settings.get().clone();
         own.clicker_mode = sent.clicker_mode;
+        own.use_sound = sent.use_sound;
         own.default_translation = sent.default_translation;
         if own != *self.settings.get() {
             self.settings.put(own).map_err(err)?;

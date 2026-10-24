@@ -5,7 +5,7 @@
      Themes (T51) holds the library's themes and Church look (the brand
      quick start) makes a first one; Team (T54) joins them here. -->
 <script module lang="ts">
-  export type SetupTab = "screens" | "themes" | "brand" | "idle" | "scripture" | "devices" | "obs";
+  export type SetupTab = "screens" | "themes" | "brand" | "idle" | "scripture" | "devices" | "obs" | "sound";
 </script>
 
 <script lang="ts">
@@ -18,6 +18,8 @@
   import ThemesSetup from "./ThemesSetup.svelte";
   import BrandSetup from "./BrandSetup.svelte";
   import IdleSetup from "./IdleSetup.svelte";
+  import SoundSetup from "./SoundSetup.svelte";
+  import { words as soundWords } from "../../lib/sound";
 
   let { tab, onchange }: { tab: SetupTab; onchange: (tab: SetupTab) => void } = $props();
 
@@ -29,6 +31,7 @@
     { id: "scripture", label: "Scripture", subtitle: "Bible versions and the default", icon: "scripture" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
     { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
+    { id: "sound", label: soundWords.setupTab, subtitle: soundWords.setupTabSubtitle, icon: "sound" },
   ] as const;
 </script>
 
@@ -55,6 +58,8 @@
       <IdleSetup onscreens={() => onchange("screens")} />
     {:else if tab === "obs"}
       <ObsSetup />
+    {:else if tab === "sound"}
+      <SoundSetup />
     {:else if tab === "scripture"}
       <ScriptureSetup />
     {:else}

@@ -11,6 +11,8 @@
   import StatusPill from "../../lib/kit/StatusPill.svelte";
 
   let checking = $state(false);
+  /** The person has been told the caution and is being asked to go on. */
+  let asking = $state(false);
 
   // Know the version and what the last check found as the page opens.
   refreshUpdate();
@@ -53,12 +55,18 @@
     {#if version}
       {#if notes}<pre class="notes">{notes}</pre>{/if}
       <div class="buttons">
-        <Button variant="primary" onclick={installUpdate} disabled={!canInstall(status) || installing}>
-          {installing ? "Installing…" : `Install ${version} and restart`}
+        <Button
+          variant="primary"
+          onclick={() => (status?.caution && !asking ? (asking = true) : installUpdate())}
+          disabled={!canInstall(status) || installing}
+        >
+          {installing ? "Installing…" : asking ? "Install anyway" : `Install ${version} and restart`}
         </Button>
+        {#if asking}<Button variant="ghost" onclick={() => (asking = false)}>Not yet</Button>{/if}
         <Button variant="ghost" onclick={check} disabled={checking || installing}>Check again</Button>
       </div>
       {#if status?.blocked}<p class="warn">{status.blocked}</p>{/if}
+      {#if status?.caution}<p class="warn" role="status">{status.caution}</p>{/if}
       {#if onAir}
         <div class="buttons">
           <Button onclick={endService}>End service now</Button>

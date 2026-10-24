@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use lampstand_api::MediaFile;
+use lampstand_api::{MediaFile, SoundFile};
 use lampstand_connectors::links::{self, Link};
 use lampstand_connectors::{FetchError, Fetched};
 use lampstand_core::deck::{Deck, DeckId, DeckSource, Version};
@@ -230,6 +230,36 @@ pub fn add_media_file(library: &Library, path: &str) -> Result<MediaFile, String
         blob,
         name,
         on_device: true,
+    })
+}
+
+/// `LibraryRequest::AddSoundFile`: streams the file into the blob store and
+/// reads how long it plays. A file that is not audio is refused, so a
+/// picture or a text file never becomes a silent sound item.
+pub fn add_sound_file(library: &Library, path: &str) -> Result<SoundFile, String> {
+    let path = Path::new(path);
+    let name = file_name(path);
+    // One read of the file for both questions.
+    let Some(length) = lampstand_media::sound_length(path) else {
+        return Err(format!(
+            "{name} does not have sound that Lampstand can read"
+        ));
+    };
+    let blob = library
+        .repo()
+        .blobs()
+        .import(path)
+        .map_err(|e| format!("{name}: {e}"))?;
+    let stem = Path::new(&name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&name)
+        .to_string();
+    Ok(SoundFile {
+        file: blob,
+        name: stem,
+        length_ms: length.map(|seconds| (seconds * 1000.0).round() as u32),
     })
 }
 

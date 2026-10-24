@@ -13,6 +13,8 @@ export const icons = {
   header: '<path d="M6 4v16M18 4v16M6 12h12"/>',
   countdown: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M10 2h4"/>',
   text: '<path d="M5 6h14M12 6v13M9 19h6"/>',
+  sound:
+    '<path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/>',
   announcements: '<path d="M4 10v4h3l7 4V6L7 10H4z"/><path d="M18 9a4 4 0 0 1 0 6"/>',
 
   // Actions

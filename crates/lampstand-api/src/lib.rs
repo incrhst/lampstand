@@ -15,7 +15,7 @@ use lampstand_core::output::{DisplayMatch, IdleScreen, OutputConfig};
 use lampstand_core::program::Overlay;
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scripture::{Passage, Translation, TranslationId};
-use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId, Sound};
 use lampstand_core::song::{Song, SongId};
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_live::{Command, Cursor};
@@ -76,6 +76,11 @@ pub struct UpdateStatus {
     pub state: UpdateState,
     /// Why `Install` would be refused right now, if it would be.
     pub blocked: Option<String>,
+    /// Something to ask the person before installing, which does not refuse
+    /// it: the next service's start cannot be known. The screen asks, and
+    /// then `Install` goes ahead.
+    #[serde(default)]
+    pub caution: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -177,6 +182,13 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
+    /// Setup › Sound › "Use sound in services": this device offers music-only
+    /// items and backing tracks in Plan. Off by default. A service that
+    /// already has sound shows it whatever this says. Kept on this device
+    /// (not in the synced church settings): a service with sound turns the
+    /// controls on for every device that has it anyway.
+    #[serde(default)]
+    pub use_sound: bool,
     /// The Bible version scripture is read from when a reference does not
     /// name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
     /// longer on this device, means the first version by name.
@@ -351,6 +363,13 @@ pub enum LibraryRequest {
     AddMediaFile {
         path: String,
     },
+    /// An audio file picked from disk, copied into the blob store for a
+    /// sound item or a song's backing track. Answers `Response::SoundFile`
+    /// with the blob, a name to start from and the length the file gives;
+    /// the caller inserts the item.
+    AddSoundFile {
+        path: String,
+    },
     /// A small picture of an image or video in the blob store, `width`
     /// pixels wide, for the library and the service order. For a video it
     /// is the first frame that is not blank (a fade-in from black is
@@ -430,6 +449,21 @@ pub enum ServiceRequest {
     /// Takes the open service off air: a clean screen and nothing loaded.
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
+    /// Sets the sound of an item: the `sound` of a sound item (`Item`, which
+    /// needs `Some`) or a song's backing track (`Backing`, where `None`
+    /// takes it off). Answers `Response::Service`.
+    SetSound {
+        service: ServiceId,
+        item: ItemId,
+        slot: SoundSlot,
+        sound: Option<Sound>,
+    },
+    /// Where each sound file of a service stands on this device, as
+    /// `Response::SoundStatus`: Plan says which are not here yet.
+    SoundStatus(ServiceId),
+    /// Like `List`, and also says which services cannot be shown, as
+    /// `Response::ServiceList`: one read of every service for both.
+    ListChecked,
     /// Plays a media item once or on repeat. A video that repeats by itself
     /// holds a looping section on it for good. Answers `Response::Service`.
     SetMediaLooped {
@@ -1195,6 +1229,10 @@ pub enum Response {
     /// A file added to the blob store by `AddMediaFile`.
     Media(MediaFile),
     MediaFiles(Vec<MediaFile>),
+    /// A file added to the blob store by `AddSoundFile`.
+    SoundFile(SoundFile),
+    SoundStatus(Vec<SoundFileStatus>),
+    ServiceList(ServiceList),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
@@ -1217,6 +1255,53 @@ pub enum Response {
     Settings(DeviceSettings),
     Church(ChurchStatus),
     Update(UpdateStatus),
+}
+
+/// The services, and the ones that cannot be shown.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServiceList {
+    pub services: Vec<ServiceSummary>,
+    /// Saved by a newer Lampstand than this one.
+    pub newer: u32,
+    /// Files that could not be loaded. `ServiceRequest::Delete` reaches them.
+    pub damaged: Vec<ServiceId>,
+}
+
+/// Which sound of an item `SetSound` changes.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SoundSlot {
+    /// The sound of a music-only item.
+    Item,
+    /// A song's backing track.
+    Backing,
+}
+
+/// An audio file added to the blob store by `AddSoundFile`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundFile {
+    pub file: BlobHash,
+    /// The file's name without its extension: "Walk-in music".
+    pub name: String,
+    /// How long it plays, if the file says.
+    pub length_ms: Option<u32>,
+}
+
+/// Where one sound file of a service stands on this device.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundFileStatus {
+    pub item: ItemId,
+    /// A song's backing track rather than a sound item.
+    pub backing: bool,
+    pub file: BlobHash,
+    /// Whether its bytes are on this device.
+    pub on_device: bool,
+    /// Not here, and being fetched from the other devices: somebody is
+    /// connected and the service is one that is fetched ahead.
+    pub coming: bool,
 }
 
 /// An image or video in the blob store, as a `Media` item names it.
@@ -1285,6 +1370,15 @@ pub struct ItemEstimate {
     pub self_loop: bool,
     /// Something with no fixed length, such as a countdown.
     pub open_ended: bool,
+    /// How long a music-only item plays; `None` for anything else, and for
+    /// a sound whose length the file did not give.
+    #[serde(default)]
+    pub sound_ms: Option<u32>,
+    /// A music-only item. The live engine skips an item with no slides, so a
+    /// loop does not play it (until Audio exists), and a pass does not count
+    /// it.
+    #[serde(default)]
+    pub sound: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

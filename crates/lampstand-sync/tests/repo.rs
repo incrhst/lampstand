@@ -12,7 +12,9 @@ use lampstand_core::scene::{
     Direction, HAlign, Outline, Shadow, Transition, TransitionKind, VAlign,
 };
 use lampstand_core::scripture::{Book, ChapterVerse, Licence, Passage, Translation, TranslationId};
-use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Position, Service, ServiceItem};
+use lampstand_core::service::{
+    CountdownTarget, ItemId, ItemKind, Position, Service, ServiceItem, Sound, SoundStart,
+};
 use lampstand_core::song::{Section, Song};
 use lampstand_core::theme::{Background, TextStyle, Theme, ThemeId};
 use lampstand_sync::team::DeviceKeypair;
@@ -66,6 +68,7 @@ fn header(position: &str, title: &str) -> ServiceItem {
         notes: String::new(),
         obs_scene: None,
         loop_seconds: None,
+        backing: None,
     }
 }
 
@@ -141,6 +144,16 @@ fn theme() -> Theme {
     }
 }
 
+fn sound(name: &str, length_ms: Option<u32>, start: SoundStart) -> Sound {
+    Sound {
+        name: name.into(),
+        file: BlobHash::of(name.as_bytes()),
+        length_ms,
+        start,
+        keep_off_stream: false,
+    }
+}
+
 fn every_item_kind() -> Service {
     let mut s = Service::new("Sunday 10am");
     s.starts_at = Some(Timestamp(1_790_000_000_000));
@@ -203,6 +216,15 @@ fn every_item_kind() -> Service {
             slides: vec![blob, BlobHash::of(b"other")],
             seconds_each: 8,
         },
+        ItemKind::Sound {
+            sound: sound("Walk-in music", Some(185_000), SoundStart::OnItsOwn),
+        },
+        ItemKind::Sound {
+            sound: Sound {
+                keep_off_stream: true,
+                ..sound("Cue", None, SoundStart::Waits)
+            },
+        },
     ];
     for (i, kind) in kinds.into_iter().enumerate() {
         let item = ServiceItem {
@@ -211,6 +233,8 @@ fn every_item_kind() -> Service {
             notes: format!("note {i}"),
             obs_scene: (i % 2 == 0).then(|| format!("Scene {i}")),
             loop_seconds: None,
+            // The first song carries a backing track.
+            backing: (i == 1).then(|| sound("Track", Some(240_000), SoundStart::Waits)),
         };
         s.items.insert(ItemId::generate(), item);
     }
@@ -304,6 +328,207 @@ fn an_item_saved_before_obs_scenes_reads_without_one() {
     let read: Service = autosurgeon::hydrate(&doc).unwrap();
     assert_eq!(read, service);
     assert_eq!(read.items[&id].obs_scene, None);
+}
+
+/// What Lampstand 0.7.0 and the 0.8.0 builds before sound read and write: the
+/// service as it was, with no `backing` on an item and no `Sound` kind. Used
+/// to say what an older version does with a document that has sound in it.
+mod before_sound {
+    use std::collections::BTreeMap;
+
+    use lampstand_core::id::{BlobHash, Timestamp};
+    use lampstand_core::service::{ItemId, Position, ServiceId};
+    use lampstand_core::song::SongId;
+    use lampstand_core::theme::ThemeId;
+
+    #[derive(Debug, Clone, PartialEq, autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    pub struct Service {
+        pub id: ServiceId,
+        pub title: String,
+        pub starts_at: Option<Timestamp>,
+        #[autosurgeon(missing = "Option::default")]
+        pub time_zone: Option<String>,
+        pub theme: Option<ThemeId>,
+        #[autosurgeon(with = "autosurgeon::map_with_parseable_keys")]
+        pub items: BTreeMap<ItemId, Item>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    pub struct Item {
+        pub position: Position,
+        pub kind: Kind,
+        pub notes: String,
+        #[autosurgeon(missing = "Option::default")]
+        pub obs_scene: Option<String>,
+        #[autosurgeon(missing = "Option::default")]
+        pub loop_seconds: Option<u16>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    pub enum Kind {
+        Header {
+            title: String,
+        },
+        Song {
+            song: SongId,
+            arrangement: Option<Vec<String>>,
+        },
+        Media {
+            blob: BlobHash,
+            name: String,
+            looped: bool,
+        },
+    }
+}
+
+/// A service with no sound in it is the document it was: the item map has
+/// no `backing` key, putting it again after a read writes nothing, and a
+/// document written before sound existed reads back and re-saves unchanged.
+#[test]
+fn a_service_without_sound_is_the_document_it_was() {
+    use automerge::transaction::Transactable;
+    use automerge::ReadDoc;
+    let mut service = Service::new("Old");
+    let header = service.insert(
+        0,
+        ItemKind::Header {
+            title: "Welcome".into(),
+        },
+    );
+    service.insert(
+        1,
+        ItemKind::Song {
+            song: Song::new("x").id,
+            arrangement: None,
+        },
+    );
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    let (_, items) = doc.get(automerge::ROOT, "items").unwrap().unwrap();
+    for key in doc.keys(&items).collect::<Vec<String>>() {
+        let (_, item) = doc.get(&items, key).unwrap().unwrap();
+        let keys: Vec<String> = doc.keys(&item).collect();
+        assert!(!keys.contains(&"backing".to_string()), "{keys:?}");
+    }
+
+    // The same document with the key an older writer never had: reading and
+    // reconciling it again adds no operation.
+    let (_, item) = doc.get(&items, header.to_string()).unwrap().unwrap();
+    let _ = doc.delete(&item, "backing");
+    let heads = doc.get_heads();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+    autosurgeon::reconcile(&mut doc, &read).unwrap();
+    assert_eq!(
+        doc.get_heads(),
+        heads,
+        "re-saving an unchanged service wrote something"
+    );
+}
+
+/// What an older version does with sound. A backing track on a song is an
+/// extra key the old reader does not know: it reads the song as before, can
+/// edit it, and the track is still there afterwards. A music-only item is a
+/// kind the old reader does not know: it cannot read that service (an
+/// error, not a wrong answer), and it cannot overwrite what it cannot read.
+#[test]
+fn an_older_version_loses_no_sound() {
+    let mut service = Service::new("Sunday");
+    let song = service.insert(
+        0,
+        ItemKind::Song {
+            song: Song::new("x").id,
+            arrangement: None,
+        },
+    );
+    service.items.get_mut(&song).unwrap().backing =
+        Some(sound("Track", Some(240_000), SoundStart::Waits));
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+
+    // The old reader reads the song and edits its notes, as 0.7.0 would.
+    let mut old: before_sound::Service = autosurgeon::hydrate(&doc).unwrap();
+    old.items.get_mut(&song).unwrap().notes = "capo 2".into();
+    autosurgeon::reconcile(&mut doc, &old).unwrap();
+
+    // The current reader still has the track, and the edit.
+    let back: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(back.items[&song].notes, "capo 2");
+    assert_eq!(
+        back.items[&song].backing,
+        Some(sound("Track", Some(240_000), SoundStart::Waits))
+    );
+
+    // With a music-only item in the order, the old reader fails to read.
+    service.insert(
+        1,
+        ItemKind::Sound {
+            sound: sound("Walk-in", Some(1000), SoundStart::OnItsOwn),
+        },
+    );
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    assert!(autosurgeon::hydrate::<_, before_sound::Service>(&doc).is_err());
+    // The data is untouched in the document for the current reader.
+    let still: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(still.items.len(), 2);
+}
+
+#[test]
+fn sound_items_and_backing_tracks_sync_between_two_devices() {
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (a, b) = (open(da.path()), open(db.path()));
+    let mut service = Service::new("Sunday");
+    service.insert(
+        0,
+        ItemKind::Sound {
+            sound: sound("Walk-in music", Some(185_000), SoundStart::OnItsOwn),
+        },
+    );
+    let song = service.insert(
+        1,
+        ItemKind::Song {
+            song: Song::new("x").id,
+            arrangement: None,
+        },
+    );
+    service.items.get_mut(&song).unwrap().backing =
+        Some(sound("Track", Some(240_000), SoundStart::Waits));
+    a.put(&service).unwrap();
+    sync(&a, &b);
+    let on_b: Service = b.get(service.id.uuid()).unwrap().unwrap();
+    assert_eq!(on_b, service);
+    assert_eq!(on_b.sound_ms(), (185_000, true));
+
+    // B changes how the track starts; A sees it, and the rest stays.
+    let mut edited = on_b.clone();
+    edited
+        .items
+        .get_mut(&song)
+        .unwrap()
+        .backing
+        .as_mut()
+        .unwrap()
+        .start = SoundStart::OnItsOwn;
+    edited
+        .items
+        .get_mut(&song)
+        .unwrap()
+        .backing
+        .as_mut()
+        .unwrap()
+        .keep_off_stream = true;
+    b.put(&edited).unwrap();
+    sync(&a, &b);
+    let on_a: Service = a.get(service.id.uuid()).unwrap().unwrap();
+    assert_eq!(on_a, edited);
+
+    // A takes the track off while B renames it: both ends converge.
+    let mut off = on_a.clone();
+    off.items.get_mut(&song).unwrap().backing = None;
+    a.put(&off).unwrap();
+    sync(&a, &b);
+    let on_b: Service = b.get(service.id.uuid()).unwrap().unwrap();
+    assert_eq!(on_b.items[&song].backing, None);
 }
 
 #[test]

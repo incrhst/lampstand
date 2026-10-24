@@ -206,6 +206,19 @@ pub fn duration(path: &Path) -> Option<f64> {
     (seconds.is_finite() && seconds > 0.0).then_some(seconds)
 }
 
+/// Reads the file at `path` once and says whether it has sound Lampstand can
+/// decode (an audio file, or a video with an audio track): `None` when it
+/// has not, otherwise its length in seconds if the file gives one.
+pub fn sound_length(path: &Path) -> Option<Option<f64>> {
+    let bytes = Arc::new(std::fs::read(path).ok()?);
+    let info = deckcraft_media::probe(&bytes).ok()?;
+    if !info.audio.as_ref().is_some_and(|audio| audio.decodable) {
+        return None;
+    }
+    let seconds = info.duration();
+    Some((seconds.is_finite() && seconds > 0.0).then_some(seconds))
+}
+
 /// Where in a video of `duration` seconds to look for a picture: the start,
 /// then points through it. A duration the file does not give tries the first
 /// few seconds.
