@@ -2400,3 +2400,120 @@ async fn an_ask_that_was_lost_is_made_again_when_the_connection_comes_back() {
     })
     .await;
 }
+
+// ---- The Stream holder owns OBS: scene cues -------------------------------------
+
+use lampstand_sync::net::CueRoute;
+use std::sync::Mutex as StdMutex;
+
+/// Records the scenes a device is told to switch OBS to.
+fn applying_cues(p: &Peer) -> Arc<StdMutex<Vec<Option<String>>>> {
+    let applied = Arc::new(StdMutex::new(Vec::new()));
+    let a = applied.clone();
+    p.node
+        .set_scene_cue_hook(Arc::new(move |scene| a.lock().unwrap().push(scene)));
+    applied
+}
+
+fn scenes(applied: &StdMutex<Vec<Option<String>>>) -> Vec<Option<String>> {
+    applied.lock().unwrap().clone()
+}
+
+/// The sanctuary holds Projection; the office takes Stream.
+async fn stream_at_the_office() -> (Peer, Peer, Arc<StdMutex<Vec<Option<String>>>>) {
+    let (sanctuary, office) = paired_and_leased().await;
+    let applied = applying_cues(&office);
+    office.node.claim_role(Role::Stream).unwrap();
+    until(
+        Duration::from_secs(5),
+        "both to know who runs the stream",
+        || holder_of(&sanctuary, Role::Stream) == Some(office.node.device()),
+    )
+    .await;
+    (sanctuary, office, applied)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cue_reaches_the_stream_holder_which_answers_and_projection_does_not_switch() {
+    let (sanctuary, office, applied) = stream_at_the_office().await;
+    assert!(office.node.obs_here() && !sanctuary.node.obs_here());
+    assert_eq!(
+        sanctuary.node.route_scene_cue(Some("Worship".into())),
+        CueRoute::Sent,
+        "Projection hands it on and does not switch its own OBS"
+    );
+    until(Duration::from_secs(5), "the cue", || {
+        scenes(&applied) == [Some("Worship".to_string())]
+    })
+    .await;
+    until(Duration::from_secs(5), "the answer", || {
+        !sanctuary.node.scene_cue_waiting()
+    })
+    .await;
+    // The next item has no scene: still a cue, so a hand pick ends.
+    assert_eq!(sanctuary.node.route_scene_cue(None), CueRoute::Sent);
+    until(Duration::from_secs(5), "the second cue", || {
+        scenes(&applied).len() == 2
+    })
+    .await;
+    assert_eq!(scenes(&applied)[1], None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cue_waits_while_the_stream_holder_is_away_and_only_the_latest_is_applied_on_return() {
+    let (mut sanctuary, mut office, applied) = stream_at_the_office().await;
+    // Both devices dial each other, so both listeners go for the network to
+    // be cut between them (the Projection machine still holds its roles).
+    office.cut();
+    sanctuary.cut();
+    until(
+        Duration::from_secs(20),
+        "the stream desk to be away",
+        || sanctuary.node.status().connected() == 0 && office.node.status().connected() == 0,
+    )
+    .await;
+    for scene in ["Worship", "Sermon", "Wide"] {
+        assert_eq!(
+            sanctuary.node.route_scene_cue(Some(scene.into())),
+            CueRoute::Sent,
+            "never a switch on the Projection machine"
+        );
+    }
+    assert!(sanctuary.node.scene_cue_waiting());
+    assert!(scenes(&applied).is_empty());
+    office.restore().await;
+    sanctuary.restore().await;
+    until(Duration::from_secs(30), "the cue on return", || {
+        !scenes(&applied).is_empty()
+    })
+    .await;
+    until(Duration::from_secs(5), "the answer", || {
+        !sanctuary.node.scene_cue_waiting()
+    })
+    .await;
+    assert_eq!(scenes(&applied), [Some("Wide".to_string())]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_nobody_on_stream_projection_keeps_the_duty_and_nothing_is_sent() {
+    let (sanctuary, office) = paired_and_leased().await;
+    let applied = applying_cues(&office);
+    assert_eq!(holder_of(&sanctuary, Role::Stream), None);
+    assert!(sanctuary.node.obs_here());
+    assert!(
+        !office.node.obs_here(),
+        "a device with no role has no OBS duty"
+    );
+    assert_eq!(
+        sanctuary.node.route_scene_cue(Some("Worship".into())),
+        CueRoute::Local
+    );
+    // A device with no role has no cue to give.
+    assert_eq!(
+        office.node.route_scene_cue(Some("Worship".into())),
+        CueRoute::Dropped
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(scenes(&applied).is_empty());
+    assert!(!sanctuary.node.scene_cue_waiting());
+}
