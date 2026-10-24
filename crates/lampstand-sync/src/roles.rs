@@ -1314,6 +1314,12 @@ impl Roles {
         self.unverified = [true; 4];
     }
 
+    /// Some role is still waiting to be taught again after its state was
+    /// lost.
+    pub fn reseeding(&self) -> bool {
+        self.reseed.iter().any(|r| *r)
+    }
+
     /// Roles this device has asked `holder` for and still waits on: to be
     /// asked again when a connection to it opens, in case the ask was lost.
     pub fn waiting_asks(&self, holder: DeviceKey) -> Vec<Role> {
@@ -1347,8 +1353,12 @@ impl Roles {
                 self.seed_heard = [false; 4];
             }
         }
-        if merged.changed {
-            self.reseed[role.index()] = false;
+        let i = role.index();
+        // Taught again: by a record that took, or by a device that has the
+        // same or less to say.
+        if self.reseed[i] && (merged.changed || !remote.beats(&self.records[i])) {
+            self.reseed[i] = false;
+            self.unverified[i] = false;
         }
         merged
     }
