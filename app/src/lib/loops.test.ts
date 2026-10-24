@@ -22,6 +22,7 @@ const est = (id: string, over: Partial<ItemEstimate> = {}): ItemEstimate => ({
   self_loop: false,
   open_ended: false,
   sound_ms: null,
+  sound: false,
   ...over,
 });
 
@@ -93,19 +94,13 @@ const passRows = [row("slides"), row("video"), row("deck")];
     assert.equal(formatLength(5000), "0:05");
   });
 
-test("music-only items add their length to a pass", () => {
+test("music-only items are not part of a loop's length", () => {
   const pass = estimatePass(
     [row("slide"), row("walk-in")],
-    { slide: est("slide", { stills: 2 }), "walk-in": est("walk-in", { sound_ms: 185_000 }) },
+    { slide: est("slide", { stills: 2 }), "walk-in": est("walk-in", { sound: true, sound_ms: 185_000 }) },
     10,
   );
-  assert.equal(pass.ms, 2 * 10_000 + 185_000);
-  assert.equal(formatLength(pass.ms), "3:25");
-  assert.equal(passLabel(pass), "≈ 3:25");
-  assert.equal(describeLine(pass.lines[1], 10), "music, 3:05");
-});
-
-test("a sound whose length is unknown makes the pass a minimum", () => {
-  const pass = estimatePass([row("a")], { a: est("a", { sound_ms: null, open_ended: true }) }, 5);
-  assert.equal(passLabel(pass), "At least 0:00");
+  assert.equal(pass.ms, 2 * 10_000);
+  assert.equal(passLabel(pass), "≈ 0:20");
+  assert.equal(describeLine(pass.lines[1], 10), "Music, not part of the loop");
 });

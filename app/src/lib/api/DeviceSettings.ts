@@ -11,6 +11,14 @@ export type DeviceSettings = {
  */
 clicker_mode: boolean, 
 /**
+ * Setup › Sound › "Use sound in services": this device offers music-only
+ * items and backing tracks in Plan. Off by default. A service that
+ * already has sound shows it whatever this says. Kept on this device
+ * (not in the synced church settings): a service with sound turns the
+ * controls on for every device that has it anyway.
+ */
+use_sound: boolean, 
+/**
  * The Bible version scripture is read from when a reference does not
  * name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
  * longer on this device, means the first version by name.

@@ -12,4 +12,9 @@ backing: boolean, file: BlobHash,
 /**
  * Whether its bytes are on this device.
  */
-on_device: boolean, };
+on_device: boolean, 
+/**
+ * Not here, and being fetched from the other devices: somebody is
+ * connected and the service is one that is fetched ahead.
+ */
+coming: boolean, };

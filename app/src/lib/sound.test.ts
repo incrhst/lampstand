@@ -5,10 +5,11 @@ import {
   audioExtensions,
   hasSound,
   isAudio,
+  isComing,
   isMissing,
   lengthLabel,
   missingFiles,
-  soundInUse,
+  offerSound,
   soundSubtitle,
   soundTotalLabel,
   startLabel,
@@ -61,15 +62,17 @@ test("a service with no sound shows no sound total and is not 'in use'", () => {
   const plain = service({ h: header });
   assert.equal(hasSound(plain), false);
   assert.equal(soundTotalLabel(plain), null);
-  // No localStorage under node: nothing remembered.
-  assert.equal(soundInUse(plain), false);
-  assert.equal(soundInUse(null), false);
+  // Off: nothing is offered for a service without sound, or for no service.
+  assert.equal(offerSound(plain, false), false);
+  assert.equal(offerSound(plain, undefined), false);
+  assert.equal(offerSound(null, false), false);
 });
 
 test("music-only items add up in the service's sound total", () => {
   const s = service({ h: header, a: musicItem(), b: musicItem({ length_ms: 60_000 }) });
   assert.equal(hasSound(s), true);
-  assert.equal(soundInUse(s), true);
+  // A service with sound offers it even with the switch off.
+  assert.equal(offerSound(s, false), true);
   assert.equal(soundTotalLabel(s), "Sound: 4:05");
   const unknown = service({ a: musicItem(), b: musicItem({ length_ms: null }) });
   assert.equal(soundTotalLabel(unknown), "Sound: at least 3:05");
@@ -91,13 +94,23 @@ test("a backing track counts as sound but adds no time", () => {
 
 test("the files that are not here are named by item", () => {
   const status: SoundFileStatus[] = [
-    { item: "a", backing: false, file: "1", on_device: true },
-    { item: "b", backing: false, file: "2", on_device: false },
-    { item: "c", backing: true, file: "3", on_device: false },
+    { item: "a", backing: false, file: "1", on_device: true, coming: false },
+    { item: "b", backing: false, file: "2", on_device: false, coming: true },
+    { item: "c", backing: true, file: "3", on_device: false, coming: false },
   ];
   assert.deepEqual([...missingFiles(status)].sort(), ["b", "c"]);
   assert.equal(isMissing(status, "b", false), true);
   assert.equal(isMissing(status, "c", false), false);
   assert.equal(isMissing(status, "c", true), true);
   assert.equal(isMissing(status, "a", false), false);
+  // Only a missing file that is on its way is "coming".
+  assert.equal(isComing(status, "b", false), true);
+  assert.equal(isComing(status, "c", true), false);
+  assert.equal(isComing(status, "a", false), false);
+});
+
+test("the Setup switch turns the offer on for any service", () => {
+  const plain = service({ h: header });
+  assert.equal(offerSound(plain, true), true);
+  assert.equal(offerSound(null, true), true);
 });

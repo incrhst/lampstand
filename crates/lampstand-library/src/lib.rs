@@ -158,8 +158,30 @@ impl Library {
         self.repo.get(id.uuid())
     }
 
+    /// The services this version can read. One it cannot (written by a
+    /// newer Lampstand, say) is left out and logged, not fatal; see
+    /// [`Library::services_checked`] for how many.
     pub fn services(&self) -> Result<Vec<Service>, SyncError> {
-        all(&self.repo)
+        Ok(self.services_checked()?.0)
+    }
+
+    /// The readable services, and how many service documents could not be
+    /// read. Other errors (a failing disk) still fail.
+    pub fn services_checked(&self) -> Result<(Vec<Service>, usize), SyncError> {
+        let mut out = Vec::new();
+        let mut unreadable = 0;
+        for id in self.repo.list(DocKind::Service) {
+            match self.repo.get::<Service>(id) {
+                Ok(Some(service)) => out.push(service),
+                Ok(None) => {}
+                Err(SyncError::Corrupt(why)) => {
+                    eprintln!("lampstand: cannot read service {id}: {why}");
+                    unreadable += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok((out, unreadable))
     }
 
     pub fn put_service(&self, service: &Service) -> Result<(), SyncError> {
@@ -465,6 +487,50 @@ mod tests {
         lib.put_service(&s).unwrap();
         assert_eq!(lib.service(s.id).unwrap(), Some(s.clone()));
         assert_eq!(lib.services().unwrap(), vec![s]);
+    }
+
+    /// A service document this version cannot hydrate, as a newer version's
+    /// would be: the stored `starts_at` is not a time.
+    #[derive(autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    struct FromTheFuture {
+        id: ServiceId,
+        title: String,
+        starts_at: String,
+    }
+
+    impl Doc for FromTheFuture {
+        const KIND: DocKind = DocKind::Service;
+        fn doc_id(&self) -> Uuid {
+            self.id.uuid()
+        }
+    }
+
+    #[test]
+    fn one_unreadable_service_does_not_take_the_list_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let good = Service::new("Sunday");
+        lib.put_service(&good).unwrap();
+        let other = Service::new("Wednesday");
+        lib.put_service(&other).unwrap();
+        lib.repo()
+            .put(&FromTheFuture {
+                id: ServiceId::generate(),
+                title: "Newer".into(),
+                starts_at: "tomorrow".into(),
+            })
+            .unwrap();
+        // The direct read still says why; the list skips it and counts it.
+        assert_eq!(lib.services().unwrap().len(), 2);
+        let (services, unreadable) = lib.services_checked().unwrap();
+        assert_eq!(unreadable, 1);
+        assert!(services.iter().any(|s| s.id == good.id));
+        assert!(services.iter().any(|s| s.id == other.id));
+        // A library with only readable services reports none.
+        let clean = tempfile::tempdir().unwrap();
+        let lib = open(clean.path());
+        lib.put_service(&good).unwrap();
+        assert_eq!(lib.services_checked().unwrap().1, 0);
     }
 
     #[test]

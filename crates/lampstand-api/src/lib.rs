@@ -177,6 +177,13 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
+    /// Setup › Sound › "Use sound in services": this device offers music-only
+    /// items and backing tracks in Plan. Off by default. A service that
+    /// already has sound shows it whatever this says. Kept on this device
+    /// (not in the synced church settings): a service with sound turns the
+    /// controls on for every device that has it anyway.
+    #[serde(default)]
+    pub use_sound: bool,
     /// The Bible version scripture is read from when a reference does not
     /// name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
     /// longer on this device, means the first version by name.
@@ -449,6 +456,9 @@ pub enum ServiceRequest {
     /// Where each sound file of a service stands on this device, as
     /// `Response::SoundStatus`: Plan says which are not here yet.
     SoundStatus(ServiceId),
+    /// How many services this version cannot read (a newer Lampstand wrote
+    /// them), as `Response::Unreadable`. They are left out of `List`.
+    Unreadable,
     /// Plays a media item once or on repeat. A video that repeats by itself
     /// holds a looping section on it for good. Answers `Response::Service`.
     SetMediaLooped {
@@ -1217,6 +1227,7 @@ pub enum Response {
     /// A file added to the blob store by `AddSoundFile`.
     SoundFile(SoundFile),
     SoundStatus(Vec<SoundFileStatus>),
+    Unreadable(u32),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
@@ -1272,6 +1283,9 @@ pub struct SoundFileStatus {
     pub file: BlobHash,
     /// Whether its bytes are on this device.
     pub on_device: bool,
+    /// Not here, and being fetched from the other devices: somebody is
+    /// connected and the service is one that is fetched ahead.
+    pub coming: bool,
 }
 
 /// An image or video in the blob store, as a `Media` item names it.
@@ -1341,10 +1355,14 @@ pub struct ItemEstimate {
     /// Something with no fixed length, such as a countdown.
     pub open_ended: bool,
     /// How long a music-only item plays; `None` for anything else, and for
-    /// a sound whose length the file did not give (that one is also
-    /// `open_ended`).
+    /// a sound whose length the file did not give.
     #[serde(default)]
     pub sound_ms: Option<u32>,
+    /// A music-only item. The live engine skips an item with no slides, so a
+    /// loop does not play it (until Audio exists), and a pass does not count
+    /// it.
+    #[serde(default)]
+    pub sound: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

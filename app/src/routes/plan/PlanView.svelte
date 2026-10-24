@@ -22,6 +22,7 @@
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
@@ -32,9 +33,9 @@
   import {
     audioExtensions,
     isAudio,
+    isComing,
     isMissing,
-    markSoundUsed,
-    soundInUse,
+    offerSound,
     soundSubtitle,
     soundTotalLabel,
     words as soundWords,
@@ -86,9 +87,13 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
+  /** Services this version cannot read, written by a newer Lampstand. */
+  let unreadable = $state(0);
+
   async function refresh() {
     try {
       services = await request({ area: "Service", request: "List" }, "Services");
+      unreadable = await request({ area: "Service", request: "Unreadable" }, "Unreadable");
     } catch (e) {
       report(e);
     }
@@ -413,20 +418,12 @@
             { name: "Video and images", extensions: [...videoExtensions, ...imageExtensions] },
             { name: "Video", extensions: videoExtensions },
             { name: "Images", extensions: imageExtensions },
-            { name: soundWords.pickFilter, extensions: audioExtensions },
           ],
         }),
       );
       if (!path) return;
       busy = true;
       live.status = "Copying into the library…";
-      if (isAudio(path)) {
-        const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
-        markSoundUsed();
-        await addItem({ Sound: { sound: newSound(file) } });
-        live.status = `Added ${file.name}`;
-        return;
-      }
       const file = await request({ area: "Library", request: { AddMediaFile: { path } } }, "Media");
       await addMedia(file);
       live.status = `Added ${file.name}`;
@@ -450,9 +447,31 @@
         { area: "Service", request: { SetSound: { service: selected.id, item, slot, sound } } },
         "Service",
       );
-      if (slot === "Backing" && sound) markSoundUsed();
     } catch (e) {
       report(e);
+    }
+  }
+
+  /** Picks an audio file and adds it as a music-only item. */
+  async function pickSound() {
+    if (!selected) return;
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: soundWords.pickTitle,
+          filters: [{ name: soundWords.pickFilter, extensions: audioExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+      await addItem({ Sound: { sound: newSound(file) } });
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
     }
   }
 
@@ -477,6 +496,9 @@
       busy = false;
     }
   }
+
+  /** The song whose backing track is being asked about before it goes. */
+  let confirmBacking: string | null = $state(null);
 
   /** Where each sound file of the open service stands on this device. */
   let soundStatus: SoundFileStatus[] = $state([]);
@@ -964,6 +986,11 @@
         </li>
       {/if}
     </ul>
+    {#if unreadable > 0}
+      <Banner tone="warn">
+        {unreadable === 1 ? "1 service needs" : `${unreadable} services need`} a newer Lampstand to open. Update Lampstand to see {unreadable === 1 ? "it" : "them"}.
+      </Banner>
+    {/if}
   </aside>
 
   <section class="pane order" aria-labelledby="service-title">
@@ -1000,6 +1027,9 @@
           </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
+          {#if offerSound(selected, live.settings?.use_sound)}
+            <Button icon="sound" onclick={pickSound} disabled={busy}>{soundWords.addSound}</Button>
+          {/if}
           <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
@@ -1143,6 +1173,7 @@
                               sound={item.kind.Sound.sound}
                               label={itemTitle(item)}
                               missing={isMissing(soundStatus, id, false)}
+                              coming={isComing(soundStatus, id, false)}
                               onchange={(sound) => setSound(id, "Item", sound)}
                             />
                           </div>
@@ -1154,11 +1185,17 @@
                               sound={item.backing}
                               label="{soundWords.backing} of {itemTitle(item)}"
                               missing={isMissing(soundStatus, id, true)}
+                              coming={isComing(soundStatus, id, true)}
                               onchange={(sound) => setSound(id, "Backing", sound)}
                             />
-                            <Button variant="ghost" size="small" icon="trash" onclick={() => setSound(id, "Backing", null)}>{soundWords.removeBacking}</Button>
+                            {#if confirmBacking === id}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => { confirmBacking = null; setSound(id, "Backing", null); }}>{soundWords.removeBackingSure}</Button>
+                              <Button variant="ghost" size="small" onclick={() => (confirmBacking = null)}>Keep it</Button>
+                            {:else}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => (confirmBacking = id)}>{soundWords.removeBacking}</Button>
+                            {/if}
                           </div>
-                        {:else if "Song" in item.kind && soundInUse(selected)}
+                        {:else if "Song" in item.kind && offerSound(selected, live.settings?.use_sound)}
                           <div class="option">
                             <Button size="small" icon="sound" onclick={() => addBacking(id)} disabled={busy}>{soundWords.addBacking}</Button>
                           </div>

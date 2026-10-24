@@ -787,8 +787,11 @@ impl App {
                 lib.put_service(&s).map_err(err)?;
                 self.reload_if_open(service)?;
                 // A new file may need fetching from the other devices.
-                self.sound_sync.service_changed();
+                self.sound_sync.service_changed(service.uuid());
                 Response::Service(s)
+            }
+            ServiceRequest::Unreadable => {
+                Response::Unreadable(lib.services_checked().map_err(err)?.1 as u32)
             }
             ServiceRequest::SoundStatus(service) => {
                 Response::SoundStatus(self.sound_status(service)?)
@@ -970,12 +973,12 @@ impl App {
                 self_loop: false,
                 open_ended: false,
                 sound_ms: None,
+                sound: false,
             };
             if let ItemKind::Sound { sound } = &item.kind {
-                // Music-only items follow one another, so they add up; a
-                // file that did not give its length makes the total a minimum.
+                // Reported, but not part of a loop's length: nothing plays it.
+                e.sound = true;
                 e.sound_ms = sound.length_ms;
-                e.open_ended |= sound.length_ms.is_none();
             }
             for slide in &loaded.slides {
                 match &slide.content {
@@ -2000,15 +2003,22 @@ impl App {
 
     /// `update_blocker` with the time given, for tests.
     pub fn update_blocker_at(&self, now: Timestamp) -> Option<String> {
-        let next_service = self
-            .library
-            .services()
-            .ok()?
+        // A service this version cannot read (written by a newer one) might
+        // be about to start, and its time is unknown: fail safe, and say so.
+        let (services, unreadable) = self.library.services_checked().ok()?;
+        let next_service = services
             .iter()
             .filter_map(|s| s.starts_at)
             .filter(|t| *t > now)
             .min();
-        crate::update::blocker(self.live.is_idle(), next_service, now)
+        if let Some(why) = crate::update::blocker(self.live.is_idle(), next_service, now) {
+            return Some(why);
+        }
+        (unreadable > 0).then(|| {
+            "Some services need a newer Lampstand, so it cannot tell when the next one starts. \
+             Update when no service is near."
+                .to_string()
+        })
     }
 
     /// Drives announcement loops and countdowns. Call every 100 ms or so;
@@ -2157,12 +2167,13 @@ impl App {
         {
             self.present();
         }
-        if changes
+        // A service changed: it may name sound files this device lacks. Only
+        // that service is read.
+        for change in changes
             .iter()
-            .any(|c| c.kind == lampstand_sync::DocKind::Service)
+            .filter(|c| c.kind == lampstand_sync::DocKind::Service)
         {
-            // A service changed: it may name sound files this device lacks.
-            self.sound_sync.service_changed();
+            self.sound_sync.service_changed(change.id);
         }
         if changes
             .iter()

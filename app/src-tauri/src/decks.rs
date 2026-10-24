@@ -239,11 +239,12 @@ pub fn add_media_file(library: &Library, path: &str) -> Result<MediaFile, String
 pub fn add_sound_file(library: &Library, path: &str) -> Result<SoundFile, String> {
     let path = Path::new(path);
     let name = file_name(path);
-    let length = lampstand_media::duration(path);
-    let has_sound = lampstand_media::has_sound(path);
-    if !has_sound {
-        return Err(format!("{name} is not a sound file Lampstand can play"));
-    }
+    // One read of the file for both questions.
+    let Some(length) = lampstand_media::sound_length(path) else {
+        return Err(format!(
+            "{name} does not have sound that Lampstand can read"
+        ));
+    };
     let blob = library
         .repo()
         .blobs()

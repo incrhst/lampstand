@@ -35,9 +35,21 @@ export const words = {
   keptOffStreamTag: "Not sent to the stream",
   /** proposed: the file is not on this device. */
   missingTag: "File missing",
-  missing: "This sound file is not on this device yet. It will come from your other devices when they are connected.",
+  missingComing: "This sound file is not on this device yet. It is being fetched from your other devices.",
+  /** proposed: not fetched (a past or undated service, or no other device). */
+  missingHere: "This sound file is not on this device.",
   /** proposed: shown on a card that has a backing track. */
   backingTag: "Backing track",
+  /** proposed: Setup › Sound. */
+  setupTab: "Sound",
+  setupTabSubtitle: "Music and backing tracks in services",
+  setupTitle: "Sound",
+  setupPanel: "In the order of the service",
+  setupSwitch: "Use sound in services",
+  setupSentence:
+    "Adds music-only items and backing tracks to Plan. Sound already in a service always shows, whether this is on or not.",
+  /** proposed: the button that adds a music-only item. */
+  addSound: "Add sound",
   /** proposed: the picker's title. */
   pickTitle: "Add music or a backing track",
   pickFilter: "Sound",
@@ -46,6 +58,7 @@ export const words = {
   startLabel: "When it goes live",
   addBacking: "Add a backing track",
   removeBacking: "Remove the backing track",
+  removeBackingSure: "Yes, remove the backing track",
   /** proposed: "Sound: 12:30" on the service's heading. */
   total: "Sound",
 };
@@ -75,6 +88,11 @@ export function isMissing(status: SoundFileStatus[], item: string, backing: bool
   return status.some((s) => s.item === item && s.backing === backing && !s.on_device);
 }
 
+/** Whether the file of this item's sound is missing and being fetched. */
+export function isComing(status: SoundFileStatus[], item: string, backing: boolean): boolean {
+  return status.some((s) => s.item === item && s.backing === backing && s.coming);
+}
+
 /** Whether a service has any sound in it. */
 export function hasSound(service: Service): boolean {
   return Object.values(service.items).some((item) => item && ("Sound" in item.kind || item.backing != null));
@@ -101,28 +119,12 @@ export function soundTotalLabel(service: Service): string | null {
   return `${words.total}: ${known ? "" : "at least "}${formatLength(total)}`;
 }
 
-const SEEN = "lampstand.sound.used";
-
 /**
- * Whether sound is in use on this device: a service has some, or the planner
- * has added a sound file here before. Until then the planner offers no
- * sound controls beyond the file picker's "Sound" filter, so a church that
- * does not use sound sees nothing new.
+ * Whether Plan offers to add sound: the device's Setup switch is on, or the
+ * service already has some. Sound already in a service is always shown (its
+ * items and tracks are data, not an offer); this only decides the buttons
+ * that add more.
  */
-export function soundInUse(service: Service | null): boolean {
-  if (service && hasSound(service)) return true;
-  try {
-    return localStorage.getItem(SEEN) === "1";
-  } catch {
-    return false;
-  }
-}
-
-/** Remembers that this device has used sound. */
-export function markSoundUsed() {
-  try {
-    localStorage.setItem(SEEN, "1");
-  } catch {
-    // Without storage the controls show while a service has sound.
-  }
+export function offerSound(service: Service | null, useSound: boolean | undefined): boolean {
+  return !!useSound || (service != null && hasSound(service));
 }

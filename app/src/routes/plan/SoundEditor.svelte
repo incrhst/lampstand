@@ -13,6 +13,7 @@
     sound,
     label,
     missing,
+    coming,
     onchange,
   }: {
     sound: Sound;
@@ -20,12 +21,17 @@
     label: string;
     /** Its file is not on this device. */
     missing: boolean;
+    /** Missing, and on its way from the other devices. */
+    coming: boolean;
     onchange: (sound: Sound) => void;
   } = $props();
 
   let name = $state("");
+  // A change that syncs in does not overwrite a name being typed.
+  let typing = $state(false);
   $effect(() => {
-    name = sound.name;
+    const synced = sound.name;
+    if (!typing) name = synced;
   });
 
   const starts: readonly { id: SoundStart; label: string }[] = [
@@ -50,6 +56,11 @@
       type="text"
       aria-label="{words.nameLabel} of {label}"
       bind:value={name}
+      onfocus={() => (typing = true)}
+      onblur={() => {
+        typing = false;
+        commitName();
+      }}
       onchange={commitName}
     />
   </label>
@@ -73,12 +84,13 @@
   <p class="file muted">
     <span>Length {lengthLabel(sound.length_ms)}</span>
   </p>
-  {#if missing}
-    <p class="file missing" role="status">
+  <!-- Always in the page, so a screen reader hears it when it fills. -->
+  <p class="file" class:missing role="status">
+    {#if missing}
       <Icon name="alert" size={14} />
-      <span>{words.missing}</span>
-    </p>
-  {/if}
+      <span>{coming ? words.missingComing : words.missingHere}</span>
+    {/if}
+  </p>
 </div>
 
 <style>

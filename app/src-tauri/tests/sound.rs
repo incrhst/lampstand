@@ -5,11 +5,13 @@
 //! the real network does, and a fake link says who is connected and records
 //! the files asked for.
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use lampstand_api::{
-    Event, ItemEstimate, LibraryRequest, Request, Response, ServiceRequest, SoundFileStatus,
-    SoundSlot,
+    Event, ItemEstimate, LibraryRequest, Request, Response, ServiceRequest, SettingsRequest,
+    SoundFileStatus, SoundSlot,
 };
 use lampstand_app::handler::{App, Placement, SyncLink, WindowHost};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -249,7 +251,10 @@ fn adding_a_sound_file_reads_its_name_and_length_and_refuses_what_is_not_sound()
         path: text.to_str().unwrap().into(),
     })) {
         Response::Error { message } => {
-            assert_eq!(message, "notes.txt is not a sound file Lampstand can play")
+            assert_eq!(
+                message,
+                "notes.txt does not have sound that Lampstand can read"
+            )
         }
         other => panic!("{other:?}"),
     }
@@ -397,12 +402,12 @@ fn music_only_items_count_in_the_timing_and_a_service_without_sound_is_unchanged
     };
     let walk = by_name("Walk-in");
     assert_eq!(walk.sound_ms, Some(185_000));
-    assert!(!walk.open_ended && walk.stills == 0 && walk.video_ms.is_none());
+    assert!(walk.sound && !walk.open_ended && walk.stills == 0 && walk.video_ms.is_none());
     let unknown = by_name("Unknown");
     assert_eq!(unknown.sound_ms, None);
     assert!(
-        unknown.open_ended,
-        "a length the file did not give is a minimum"
+        unknown.sound && !unknown.open_ended,
+        "sound is not part of a loop"
     );
     assert_eq!(s.sound_ms(), (185_000, false));
 }
@@ -471,35 +476,46 @@ fn plan_says_which_sound_files_are_not_on_this_device() {
     assert!(d.status(&s).iter().all(|f| f.on_device));
 }
 
-/// Sound is in the service document, so a second device gets the items with
-/// the service. Its files do not travel inside documents: the device asks
-/// the connected ones for what it lacks, once, and tells Plan when they come.
-#[test]
-fn sound_syncs_with_the_service_and_its_files_are_asked_for_ahead_of_the_service() {
-    let mut a = device(true);
-    let mut b = device(true);
-    let s = a.create();
-    let on_a = a
-        .app
-        .library()
-        .repo()
-        .blobs()
-        .put(b"walk-in music")
-        .unwrap();
-    let s = a.insert(
+/// The moment the fetch tests run at (the real clock, which Plan's status
+/// also reads), and an hour.
+fn real_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+const HOUR: i64 = 3_600_000;
+
+/// A service starting at `starts` with one music-only item whose file is
+/// `bytes`, on `d`.
+fn dated_with_sound(d: &mut Device, starts: Option<i64>, bytes: &[u8]) -> Service {
+    let s = d.service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: starts.map(Timestamp),
+        time_zone: None,
+    });
+    d.insert(
         &s,
         ItemKind::Sound {
-            sound: Sound {
-                file: on_a,
-                ..sound(
-                    "Walk-in",
-                    b"walk-in music",
-                    Some(185_000),
-                    SoundStart::OnItsOwn,
-                )
-            },
+            sound: sound("Walk-in", bytes, Some(1000), SoundStart::Waits),
         },
-    );
+    )
+}
+
+fn asked(d: &Device) -> Vec<BlobHash> {
+    d.link.fetched.lock().unwrap().clone()
+}
+
+/// Sound is in the service document, so a second device gets the items with
+/// the service. Its files do not travel inside documents: the device asks
+/// the connected ones for what it lacks, a few at a time, again after a
+/// growing wait, and tells Plan when they come.
+#[test]
+fn sound_syncs_with_the_service_and_its_files_are_asked_for_ahead_of_the_service() {
+    let now_ms = real_now();
+    let mut a = device(true);
+    let mut b = device(true);
+    let s = dated_with_sound(&mut a, Some(now_ms + HOUR), b"walk-in music");
     let s = a.insert(
         &s,
         ItemKind::Song {
@@ -527,87 +543,173 @@ fn sound_syncs_with_the_service_and_its_files_are_asked_for_ahead_of_the_service
         other => panic!("{other:?}"),
     };
     assert_eq!(on_b, s, "the items arrive with the service");
-    assert_eq!(on_b.sound_ms(), (185_000, true));
+    assert_eq!(on_b.sound_ms(), (1000, true));
 
     // B has neither file: it asks for both, once.
-    b.app.tick_at(Timestamp(1));
-    let mut asked = b.link.fetched.lock().unwrap().clone();
-    asked.sort();
-    let mut want = vec![on_a, BlobHash::of(b"the track")];
+    let t0 = Instant::now();
+    let now = Timestamp(now_ms);
+    b.app.sound_tick_at(now, t0);
+    let mut got = asked(&b);
+    got.sort();
+    let mut want = vec![BlobHash::of(b"walk-in music"), BlobHash::of(b"the track")];
     want.sort();
-    // The track's blob is not on A either, but it is asked for: B cannot
-    // know who has it.
-    assert_eq!(asked, want);
-    b.app.tick_at(Timestamp(2));
-    assert_eq!(b.link.fetched.lock().unwrap().len(), 2, "asked once");
-    assert!(b.status(&s).iter().all(|f| !f.on_device));
-    let heard = b.heard_sound();
+    assert_eq!(got, want);
+    // Plan: both are missing and on their way.
+    assert!(b.status(&s).iter().all(|f| !f.on_device && f.coming));
 
-    // One file arrives; Plan is told, and the status moves.
-    b.app
-        .library()
-        .repo()
-        .blobs()
-        .put(b"walk-in music")
-        .unwrap();
-    // B looks again when a service changes (or, while it still waits, every
-    // few seconds); here A changes the track's start.
-    let s2 = a.service(ServiceRequest::SetSound {
-        service: s.id,
-        item: song,
-        slot: SoundSlot::Backing,
-        sound: Some(sound(
-            "Track",
-            b"the track",
-            Some(240_000),
-            SoundStart::OnItsOwn,
-        )),
-    });
-    exchange(&a.app, &b.app);
-    b.pump();
-    b.app.tick_at(Timestamp(3));
+    // Inside the first wait nothing is asked again; after it, it is, and the
+    // wait before the next ask doubles.
+    let at = |secs: u64| t0 + Duration::from_secs(secs);
+    b.app.sound_tick_at(now, at(3));
+    b.app.sound_tick_at(now, at(8));
+    assert_eq!(asked(&b).len(), 2, "asked once");
+    b.app.sound_tick_at(now, at(11));
+    assert_eq!(asked(&b).len(), 4, "asked again after 10 s");
+    b.app.sound_tick_at(now, at(25));
+    assert_eq!(asked(&b).len(), 4, "the next wait is 20 s");
+    b.app.sound_tick_at(now, at(32));
+    assert_eq!(asked(&b).len(), 6);
+
+    // One file arrives, verified against its hash: Plan is told and the
+    // status moves. Bytes that do not hash to the name are refused.
+    let walk = BlobHash::of(b"walk-in music");
+    let blobs = b.app.library().repo().blobs();
+    assert!(blobs.put_verified(&walk, &b"not the music"[..]).is_err());
+    assert!(blobs.path(&walk).is_none(), "a wrong file is not kept");
+    blobs.put_verified(&walk, &b"walk-in music"[..]).unwrap();
+    let heard = b.heard_sound();
+    b.app.sound_tick_at(now, at(40));
     assert!(b.heard_sound() > heard, "Plan is told a file arrived");
-    let status = b.status(&s2);
+    let status = b.status(&s);
     assert!(status.iter().any(|f| !f.backing && f.on_device));
-    assert!(status.iter().any(|f| f.backing && !f.on_device));
+    assert!(status.iter().any(|f| f.backing && !f.on_device && f.coming));
 }
 
 #[test]
-fn a_device_on_its_own_asks_for_nothing_and_a_past_service_is_not_fetched() {
-    // Nobody connected: nothing is asked, whatever the services name.
-    let mut alone = device(false);
-    let s = alone.create();
-    alone.insert(
-        &s,
-        ItemKind::Sound {
-            sound: sound("Walk-in", b"walk", Some(1000), SoundStart::Waits),
-        },
-    );
-    alone.pump();
-    alone.app.tick_at(Timestamp(1));
-    assert!(alone.link.fetched.lock().unwrap().is_empty());
-    assert_eq!(alone.heard_sound(), 0);
-
-    // A service that started last month is not fetched ahead.
+fn only_a_few_files_are_outstanding_at_once() {
+    let now_ms = real_now();
     let mut b = device(true);
-    let old = b.service(ServiceRequest::Create {
-        title: "Last month".into(),
-        starts_at: Some(Timestamp(1_000_000)),
+    let s = b.service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: Some(Timestamp(now_ms + HOUR)),
         time_zone: None,
     });
-    b.insert(
-        &old,
-        ItemKind::Sound {
-            sound: sound("Old music", b"old", Some(1000), SoundStart::Waits),
-        },
-    );
+    let mut s = s;
+    for n in 0..6 {
+        s = b.insert(
+            &s,
+            ItemKind::Sound {
+                sound: sound(
+                    &format!("Track {n}"),
+                    format!("t{n}").as_bytes(),
+                    Some(1),
+                    SoundStart::Waits,
+                ),
+            },
+        );
+    }
     b.pump();
-    b.app.tick_at(Timestamp(1_000_000_000_000));
-    assert!(b.link.fetched.lock().unwrap().is_empty());
+    b.app.sound_tick_at(Timestamp(now_ms), Instant::now());
+    assert_eq!(asked(&b).len(), 4);
+}
+
+/// Which services are fetched: those that started less than 36 hours ago or
+/// start later. An undated one is not, and neither is a past one.
+#[test]
+fn only_services_in_the_window_are_fetched() {
+    let now_ms = real_now();
+    let hours = |n: i64| now_ms + n * HOUR;
+    for (starts, fetched) in [
+        (Some(hours(2)), true),
+        (Some(hours(-35)), true),
+        (Some(hours(-36)), true), // exactly 36 h ago is still in
+        (Some(hours(-36) - 1), false),
+        (Some(hours(-24 * 30)), false),
+        (None, false),
+    ] {
+        let mut b = device(true);
+        let s = dated_with_sound(&mut b, starts, b"music");
+        b.pump();
+        b.app.sound_tick_at(Timestamp(now_ms), Instant::now());
+        assert_eq!(!asked(&b).is_empty(), fetched, "starts {starts:?}");
+        // Plan only says a missing file is coming for one that is fetched.
+        if starts != Some(hours(-36)) {
+            // (The edge itself depends on the millisecond Plan reads the clock.)
+            assert_eq!(b.status(&s)[0].coming, fetched, "starts {starts:?}");
+        }
+        assert!(!b.status(&s)[0].on_device);
+    }
+}
+
+#[test]
+fn a_device_on_its_own_asks_for_nothing_reads_nothing_and_says_nothing_is_coming() {
+    let now_ms = real_now();
+    let mut alone = device(false);
+    let s = dated_with_sound(&mut alone, Some(now_ms + HOUR), b"walk");
+    alone.pump();
+    let t0 = Instant::now();
+    for secs in [0, 3, 30, 300] {
+        alone
+            .app
+            .sound_tick_at(Timestamp(now_ms), t0 + Duration::from_secs(secs));
+    }
+    assert!(asked(&alone).is_empty());
+    assert_eq!(alone.heard_sound(), 0);
+    assert_eq!(alone.app.sound_scans(), 0, "no service was read for it");
+    let status = alone.status(&s);
+    assert!(
+        !status[0].on_device && !status[0].coming,
+        "nobody to send it"
+    );
+}
+
+/// A church with other devices but no sound reads each service once when it
+/// meets them, a few at a time, and then nothing again until one changes.
+#[test]
+fn a_church_without_sound_does_no_repeated_scan() {
+    let now_ms = real_now();
+    let mut d = device(true);
+    for n in 0..20 {
+        d.service(ServiceRequest::Create {
+            title: format!("Service {n}"),
+            starts_at: Some(Timestamp(now_ms + HOUR)),
+            time_zone: None,
+        });
+    }
+    d.pump();
+    let t0 = Instant::now();
+    let now = Timestamp(now_ms);
+    // The first look reads at most eight services, so the live tick that
+    // calls this never waits on all of them.
+    d.app.sound_tick_at(now, t0);
+    assert_eq!(d.app.sound_scans(), 8);
+    d.app.sound_tick_at(now, t0 + Duration::from_secs(3));
+    d.app.sound_tick_at(now, t0 + Duration::from_secs(6));
+    assert_eq!(d.app.sound_scans(), 20, "each service once");
+    for secs in [9, 20, 60, 600] {
+        d.app.sound_tick_at(now, t0 + Duration::from_secs(secs));
+    }
+    assert_eq!(d.app.sound_scans(), 20, "nothing changed, nothing read");
+    assert!(asked(&d).is_empty());
+    assert_eq!(d.heard_sound(), 0);
+
+    // One service changes: only that one is read.
+    let first = match d.ok(Request::Service(ServiceRequest::List)) {
+        Response::Services(s) => s[0].id,
+        other => panic!("{other:?}"),
+    };
+    d.service(ServiceRequest::Rename {
+        service: first,
+        title: "Renamed".into(),
+    });
+    d.pump();
+    d.app.sound_tick_at(now, t0 + Duration::from_secs(700));
+    assert_eq!(d.app.sound_scans(), 21);
 }
 
 #[test]
 fn a_church_that_does_not_use_sound_sees_nothing_new() {
+    let now_ms = real_now();
     let mut d = device(true);
     let s = d.create();
     let s = d.insert(
@@ -618,10 +720,10 @@ fn a_church_that_does_not_use_sound_sees_nothing_new() {
         },
     );
     d.pump();
-    d.app.tick_at(Timestamp(1));
+    d.app.sound_tick_at(Timestamp(now_ms), Instant::now());
     // Nothing asked for, nothing announced, no sound files to report, no
     // sound in the document or in what the UI is sent.
-    assert!(d.link.fetched.lock().unwrap().is_empty());
+    assert!(asked(&d).is_empty());
     assert_eq!(d.heard_sound(), 0);
     assert!(d.status(&s).is_empty());
     assert!(!s.has_sound());
@@ -631,5 +733,100 @@ fn a_church_that_does_not_use_sound_sees_nothing_new() {
         "{json}"
     );
     // The estimate has no sound either.
-    assert!(d.estimates(&s).iter().all(|e| e.sound_ms.is_none()));
+    assert!(d
+        .estimates(&s)
+        .iter()
+        .all(|e| e.sound_ms.is_none() && !e.sound));
+}
+
+/// Every common audio container goes through `AddSoundFile`: name from the
+/// file, a length near the real 1.5 s, and the file in the store. (The Ogg is
+/// FLAC in an Ogg container; no Vorbis encoder was at hand.)
+#[test]
+fn mp3_flac_m4a_and_ogg_files_are_added_with_their_length() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sound");
+    for ext in ["mp3", "flac", "m4a", "ogg"] {
+        let mut d = device(false);
+        let path = dir.join(format!("tone.{ext}"));
+        let file = match d.ok(Request::Library(LibraryRequest::AddSoundFile {
+            path: path.to_str().unwrap().into(),
+        })) {
+            Response::SoundFile(f) => f,
+            other => panic!("{ext}: {other:?}"),
+        };
+        assert_eq!(file.name, "tone", "{ext}");
+        let ms = file.length_ms.unwrap_or_else(|| panic!("{ext}: no length"));
+        assert!((1300..=1800).contains(&ms), "{ext}: {ms} ms");
+        assert!(d.app.library().repo().blobs().path(&file.file).is_some());
+    }
+}
+
+/// A service document this version cannot read (a newer Lampstand's) does
+/// not take the list down: it is left out, counted, and an update is held
+/// back because its start time is unknown.
+#[test]
+fn a_service_from_a_newer_version_is_left_out_counted_and_holds_updates() {
+    let now_ms = real_now();
+    #[derive(autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    struct FromTheFuture {
+        id: lampstand_core::service::ServiceId,
+        title: String,
+        starts_at: String,
+    }
+    impl lampstand_sync::Doc for FromTheFuture {
+        const KIND: lampstand_sync::DocKind = lampstand_sync::DocKind::Service;
+        fn doc_id(&self) -> Uuid {
+            self.id.uuid()
+        }
+    }
+
+    let mut d = device(false);
+    d.create();
+    // Nothing unreadable yet: nothing holds an update.
+    assert_eq!(d.app.update_blocker_at(Timestamp(now_ms)), None);
+    d.app
+        .library()
+        .repo()
+        .put(&FromTheFuture {
+            id: lampstand_core::service::ServiceId::generate(),
+            title: "Newer".into(),
+            starts_at: "tomorrow".into(),
+        })
+        .unwrap();
+    match d.ok(Request::Service(ServiceRequest::List)) {
+        Response::Services(list) => assert_eq!(list.len(), 1),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(
+        d.ok(Request::Service(ServiceRequest::Unreadable)),
+        Response::Unreadable(1)
+    ));
+    // The media list reads every service too, and still answers.
+    d.ok(Request::Library(LibraryRequest::ListMedia));
+    let why = d
+        .app
+        .update_blocker_at(Timestamp(now_ms))
+        .expect("held back");
+    assert!(why.contains("newer Lampstand"), "{why}");
+}
+
+/// The Setup switch is off until somebody turns it on, is this device's own,
+/// and survives other settings being saved.
+#[test]
+fn the_sound_switch_is_off_by_default_and_kept_with_the_device_settings() {
+    let mut d = device(false);
+    let get = |d: &mut Device| match d.ok(Request::Settings(SettingsRequest::Get)) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let mut settings = get(&mut d);
+    assert!(!settings.use_sound, "off by default");
+    settings.use_sound = true;
+    d.ok(Request::Settings(SettingsRequest::Put(settings)));
+    let mut settings = get(&mut d);
+    assert!(settings.use_sound);
+    // Saving something else with the switch as read keeps it.
+    settings.clicker_mode = true;
+    d.ok(Request::Settings(SettingsRequest::Put(settings)));
+    assert!(get(&mut d).use_sound);
 }

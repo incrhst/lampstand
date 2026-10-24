@@ -124,3 +124,7 @@ them.
   is not sandboxed. Add an entitlement only if a notarised build fails without
   it, and say why.
 - The bundle settings are under `bundle` in `app/src-tauri/tauri.conf.json`.
+
+### Sound in the order of the service, and going back
+
+A service can hold music-only items from 0.8.0. A version without them cannot read that service; it lists the rest and (once it has the fix) shows "N services need a newer Lampstand to open". Before releasing a version that reads a new kind of item, field or document, check what the previous release does with it. To roll back past this change, remove the music-only items from the services first; backing tracks on songs are ignored harmlessly. The auto-update guard holds an update back while a service cannot be read, because its start time is unknown, so install by hand if it never clears.
