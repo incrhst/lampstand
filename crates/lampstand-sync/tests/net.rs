@@ -374,8 +374,12 @@ async fn a_cut_off_peer_is_offline_without_a_problem() {
     })
     .await;
     // The device is reachable by address but refusing connections: that
-    // is a reason to show, not a refusal.
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    // is a reason to show, not a refusal. The first failed attempt can
+    // take a while to be recorded (Windows is slow to refuse), so wait.
+    until(Duration::from_secs(15), "a reason to show", || {
+        office.node.status().paired[0].problem.is_some()
+    })
+    .await;
     let st = office.node.status();
     assert!(!st.paired[0].refused);
     assert!(st.paired[0].problem.is_some());
