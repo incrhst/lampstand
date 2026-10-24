@@ -2674,4 +2674,118 @@ mod tests {
         node.session_opened(id(9));
         assert!(cues_in(&mut frames).is_empty());
     }
+
+    #[test]
+    fn a_cue_from_a_displaced_former_projection_holder_is_ignored() {
+        let (node, _, _, _dir) = node_with_hooks();
+        let taken = taking_cues(&node);
+        paired(&node, 9);
+        paired(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let (mut seven, projection) = claimed(7, Role::Projection);
+        node.record_received(id(7), Role::Projection, projection);
+        node.scene_cue_received(id(7), 1, 1, Some("Worship".into()));
+        assert_eq!(lock(&taken).len(), 1);
+        // Projection is handed on to device 9: 7 is a former holder.
+        let next = handed(&mut seven, Role::Projection, 9);
+        node.record_received(id(7), Role::Projection, next);
+        node.scene_cue_received(id(7), 1, 2, Some("Late".into()));
+        assert_eq!(lock(&taken).len(), 1, "the former holder's cue is ignored");
+        node.scene_cue_received(id(9), 1, 1, Some("Sermon".into()));
+        assert_eq!(lock(&taken).len(), 2);
+    }
+
+    #[test]
+    fn a_cue_before_the_app_is_ready_is_not_taken_or_answered_and_counts_when_resent() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let mut frames = connected_to(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let (_, projection) = claimed(7, Role::Projection);
+        node.record_received(id(7), Role::Projection, projection);
+        // No hook yet.
+        node.scene_cue_received(id(7), 1, 1, Some("Worship".into()));
+        assert!(
+            cues_in(&mut frames).is_empty(),
+            "no ack, so it is sent again"
+        );
+        // The app is ready; the sender's resend of the same cue is applied.
+        let taken = taking_cues(&node);
+        node.scene_cue_received(id(7), 1, 1, Some("Worship".into()));
+        assert_eq!(*lock(&taken), vec![Some("Worship".to_string())]);
+        assert_eq!(
+            cues_in(&mut frames),
+            vec![Frame::ObsCueAck { run: 1, seq: 1 }]
+        );
+    }
+
+    #[test]
+    fn a_scene_name_of_1024_bytes_is_believed_and_one_of_1025_is_not() {
+        let (node, _, _, _dir) = node_with_hooks();
+        let taken = taking_cues(&node);
+        paired(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let (_, projection) = claimed(7, Role::Projection);
+        node.record_received(id(7), Role::Projection, projection);
+        node.scene_cue_received(id(7), 1, 1, Some("x".repeat(1024)));
+        assert_eq!(lock(&taken).len(), 1);
+        node.scene_cue_received(id(7), 1, 2, Some("x".repeat(1025)));
+        assert_eq!(lock(&taken).len(), 1);
+    }
+
+    #[test]
+    fn an_oversized_scene_name_is_not_sent_or_kept_to_be_sent_again() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.set_screens(true);
+        paired(&node, 7);
+        node.claim_role(Role::Projection).unwrap();
+        let (_, held) = claimed(7, Role::Stream);
+        node.record_received(id(7), Role::Stream, held);
+        let mut frames = connected_to(&node, 7);
+        assert_eq!(
+            node.route_scene_cue(Some("x".repeat(cue::MAX_SCENE + 1))),
+            CueRoute::Sent
+        );
+        let run = lock(&node.cue).run;
+        // The item still goes live, without a scene, and that is what is
+        // kept and sent.
+        assert_eq!(
+            cues_in(&mut frames),
+            vec![Frame::ObsCue {
+                run,
+                seq: 1,
+                scene: None
+            }]
+        );
+        node.scene_cue_ack_received(id(7), run, 1);
+        assert!(!node.scene_cue_waiting());
+        // The largest name is sent as it is.
+        node.route_scene_cue(Some("x".repeat(cue::MAX_SCENE)));
+        assert!(matches!(
+            cues_in(&mut frames).as_slice(),
+            [Frame::ObsCue { scene: Some(s), .. }] if s.len() == cue::MAX_SCENE
+        ));
+    }
+
+    #[test]
+    fn an_ack_from_the_old_stream_holder_after_stream_moved_clears_nothing() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.set_screens(true);
+        paired(&node, 7);
+        paired(&node, 9);
+        node.claim_role(Role::Projection).unwrap();
+        let (mut seven, held) = claimed(7, Role::Stream);
+        node.record_received(id(7), Role::Stream, held);
+        node.route_scene_cue(Some("Worship".into()));
+        let run = lock(&node.cue).run;
+        let next = handed(&mut seven, Role::Stream, 9);
+        node.record_received(id(7), Role::Stream, next);
+        // The next item is for the new holder, and the old one's late ack
+        // for the first cue does not clear it.
+        assert_eq!(node.route_scene_cue(Some("Sermon".into())), CueRoute::Sent);
+        node.scene_cue_ack_received(id(7), run, 2);
+        assert!(node.scene_cue_waiting());
+        node.scene_cue_ack_received(id(9), run, 2);
+        assert!(!node.scene_cue_waiting());
+    }
 }

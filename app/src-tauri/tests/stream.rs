@@ -307,9 +307,38 @@ fn next(d: &mut Device) {
     d.request(Request::Live(Command::NextItem));
 }
 
-/// Waits for the cue router (a task) to have handled what the app sent.
-async fn settle() {
-    tokio::time::sleep(Duration::from_millis(200)).await;
+/// Takes the next item live and waits until the cue router has handled it
+/// on this device: every item makes exactly one cue here (the scene when
+/// this device's OBS applies it, or the "new item, no scene" cue that clears
+/// whatever it was waiting to do when the Stream holder's OBS applies it).
+/// A positive barrier, so what is asserted next is not racing the router.
+async fn next_item_cued(d: &mut Device) {
+    let before = d.all_cues().len();
+    next(d);
+    until(Duration::from_secs(5), "the cue to be routed", || {
+        d.all_cues().len() > before
+    })
+    .await;
+}
+
+/// Pairs two devices without the pairing device taking any roles in a test
+/// that already has them set up, and waits for them to connect.
+async fn pair_plain(shows: &Device, joins: &Device) {
+    let code = match shows.sync.handle(TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    joins
+        .sync
+        .handle(TeamRequest::Join {
+            invite: code,
+            address: Some(shows.address()),
+        })
+        .await;
+    until(Duration::from_secs(10), "the pair to connect", || {
+        shows.node().status().connected() >= 1 && joins.node().status().connected() >= 1
+    })
+    .await;
 }
 
 /// A church with one device and nothing paired: its own OBS follows its
@@ -319,9 +348,8 @@ async fn settle() {
 async fn a_church_with_one_device_and_no_pairing_drives_its_own_obs_as_before() {
     let mut lone = device("Sanctuary").await;
     service_with_scenes(&mut lone);
-    next(&mut lone);
-    next(&mut lone);
-    settle().await;
+    next_item_cued(&mut lone).await;
+    next_item_cued(&mut lone).await;
     assert_eq!(
         lone.all_cues(),
         [Some("Worship".to_string()), Some("Sermon".to_string())]
@@ -348,8 +376,7 @@ async fn with_nobody_holding_stream_projection_keeps_the_obs_duty() {
     let office = device("Office PC").await;
     pair_up(&main, &office).await;
     service_with_scenes(&mut main);
-    next(&mut main);
-    settle().await;
+    next_item_cued(&mut main).await;
     assert_eq!(main.switched(), ["Worship"]);
     assert!(office.switched().is_empty());
     assert!(!main.node().scene_cue_waiting());
@@ -362,24 +389,31 @@ async fn the_stream_holder_applies_each_cue_and_projection_never_switches_obs() 
     let mut main = device("Sanctuary").await;
     let stream = device("Stream PC").await;
     pair_up(&main, &stream).await;
+    let heard = main.obs_views().len();
     stream.node().claim_role(Role::Stream).unwrap();
     until(Duration::from_secs(20), "Projection to know", || {
         main.node().stream_elsewhere().is_some()
     })
     .await;
+    // The router has noticed the duty moved (it tells the screen last).
+    until(
+        Duration::from_secs(5),
+        "the projector's screen to hear",
+        || main.obs_views().len() > heard,
+    )
+    .await;
 
     service_with_scenes(&mut main);
-    next(&mut main);
+    next_item_cued(&mut main).await;
     until(Duration::from_secs(5), "the first cue", || {
         stream.switched() == ["Worship"]
     })
     .await;
-    next(&mut main);
+    next_item_cued(&mut main).await;
     until(Duration::from_secs(5), "the second cue", || {
         stream.switched() == ["Worship", "Sermon"]
     })
     .await;
-    settle().await;
     assert!(
         main.switched().is_empty(),
         "Projection never switches OBS while Stream is held: {:?}",
@@ -421,6 +455,7 @@ async fn when_stream_moves_to_the_projector_machine_the_duty_moves_with_it() {
     })
     .await;
     // The projector machine asks for Stream; the stream machine allows.
+    let heard = main.obs_views().len();
     let began = Instant::now();
     while stream.node().roles_status().stream.request.is_none() {
         assert!(began.elapsed() < Duration::from_secs(15), "no prompt");
@@ -436,17 +471,19 @@ async fn when_stream_moves_to_the_projector_machine_the_duty_moves_with_it() {
     })
     .await;
     assert!(!stream.node().obs_here());
-    settle().await;
+    // The router tells the screen last, once it has dealt with the move.
+    until(
+        Duration::from_secs(5),
+        "the projector's screen to hear",
+        || main.obs_views().len() > heard,
+    )
+    .await;
     // Passing Stream leaves OBS where it is: nothing was replayed.
     assert!(main.switched().is_empty());
     // The next item is Projection's own again, and the stream machine's OBS
     // hears nothing more.
-    next(&mut main);
-    until(Duration::from_secs(5), "its own cue", || {
-        main.switched() == ["Sermon"]
-    })
-    .await;
-    settle().await;
+    next_item_cued(&mut main).await;
+    assert_eq!(main.switched(), ["Sermon"]);
     assert_eq!(stream.switched(), ["Worship"]);
     // The screens were told when the duty moved.
     until(
@@ -516,11 +553,17 @@ async fn three_apps_cue_reaches_the_stream_machine_when_the_operator_presses_nex
     .await;
     // While nobody holds Stream the projector's OBS state is the operator's:
     // mirrored to its screen, as in 0.7.0.
-    (main.emit)(Event::Obs(Box::new(main.obs.view())));
+    let obs = main.obs.clone();
+    let relevant = move || {
+        let mut v = obs.view();
+        v.relevant = true;
+        v
+    };
+    (main.emit)(Event::Obs(Box::new(relevant())));
     until(
         Duration::from_secs(5),
         "the OBS state to be mirrored",
-        || !laptop.obs_views().is_empty(),
+        || laptop.obs_views().last().is_some_and(|v| v.relevant),
     )
     .await;
     // The stream machine takes Stream.
@@ -529,6 +572,12 @@ async fn three_apps_cue_reaches_the_stream_machine_when_the_operator_presses_nex
         !main.node().obs_here()
             && main.node().stream_elsewhere().is_some()
             && laptop.node().stream_elsewhere().is_some()
+    })
+    .await;
+    // The operator's screen is told its OBS strip is gone: the last view it
+    // has is "not relevant".
+    until(Duration::from_secs(5), "the operator's strip to go", || {
+        laptop.obs_views().last().is_some_and(|v| !v.relevant)
     })
     .await;
 
@@ -557,7 +606,6 @@ async fn three_apps_cue_reaches_the_stream_machine_when_the_operator_presses_nex
         }
         other => panic!("{other:?}"),
     }
-    settle().await;
     main.pump();
     assert!(main.driven.lock().unwrap().is_empty());
     // And were one to arrive, the projector would not act on it.
@@ -565,8 +613,68 @@ async fn three_apps_cue_reaches_the_stream_machine_when_the_operator_presses_nex
 
     // The projector's OBS state is not the operator's business now: it is not
     // mirrored, and the operator's screen shows no OBS strip.
+    // A stale "relevant" view from the projector is not mirrored; the "not
+    // relevant" one sent after it is, which is the barrier: nothing was
+    // mirrored before it.
     let before = laptop.obs_views().len();
-    (main.emit)(Event::Obs(Box::new(main.obs.view())));
-    settle().await;
-    assert_eq!(laptop.obs_views().len(), before);
+    (main.emit)(Event::Obs(Box::new(relevant())));
+    let mut gone = main.obs.view();
+    gone.relevant = false;
+    (main.emit)(Event::Obs(Box::new(gone)));
+    until(Duration::from_secs(5), "the barrier view", || {
+        laptop.obs_views().len() > before
+    })
+    .await;
+    let views = laptop.obs_views();
+    assert_eq!(views.len(), before + 1, "the stale view was not mirrored");
+    assert!(!views.last().unwrap().relevant);
+}
+
+/// Stream moves from one device to a third while the projector is live: the
+/// next cue goes to the new holder, and the old holder hears nothing more.
+#[tokio::test(flavor = "multi_thread")]
+async fn when_stream_moves_to_a_third_device_the_next_cue_goes_there() {
+    let mut main = device("Sanctuary").await;
+    let first = device("Stream PC").await;
+    let second = device("Back room").await;
+    pair_up(&main, &first).await;
+    pair_up(&main, &second).await;
+    pair_plain(&first, &second).await;
+    first.node().claim_role(Role::Stream).unwrap();
+    until(Duration::from_secs(20), "Projection to know", || {
+        main.node().stream_elsewhere().map(|s| s.0) == Some(first.node().device())
+    })
+    .await;
+    service_with_scenes(&mut main);
+    next_item_cued(&mut main).await;
+    until(Duration::from_secs(5), "the first holder's cue", || {
+        first.switched() == ["Worship"]
+    })
+    .await;
+    // The back room asks for Stream and the first holder allows.
+    let began = Instant::now();
+    while first.node().roles_status().stream.request.is_none() {
+        assert!(began.elapsed() < Duration::from_secs(15), "no prompt");
+        second.node().ask_role(Role::Stream).unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    first
+        .node()
+        .allow_role(Role::Stream, second.node().device(), false)
+        .unwrap();
+    until(Duration::from_secs(10), "Projection to know", || {
+        main.node().stream_elsewhere().map(|s| s.0) == Some(second.node().device())
+    })
+    .await;
+    next_item_cued(&mut main).await;
+    until(Duration::from_secs(5), "the new holder's cue", || {
+        second.switched() == ["Sermon"]
+    })
+    .await;
+    assert_eq!(
+        first.switched(),
+        ["Worship"],
+        "the old holder hears no more"
+    );
+    assert!(main.switched().is_empty());
 }

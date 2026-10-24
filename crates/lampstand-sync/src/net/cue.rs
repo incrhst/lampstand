@@ -119,6 +119,18 @@ impl SyncNode {
     /// An item went live on this device with `scene` (or none). Decides who
     /// switches OBS; see [`CueRoute`].
     pub fn route_scene_cue(&self, scene: Option<String>) -> CueRoute {
+        // A name the other side would not believe is not sent, and not kept
+        // to be sent again: the item is still a new item, without a scene.
+        let scene = match scene {
+            Some(s) if s.len() > MAX_SCENE && !self.obs_here() => {
+                eprintln!(
+                    "lampstand: an OBS scene name of {} bytes is too long to send; the item goes live without a scene",
+                    s.len()
+                );
+                None
+            }
+            other => other,
+        };
         if self.obs_here() {
             lock(&self.cue).pending = None;
             return CueRoute::Local;
@@ -184,7 +196,7 @@ impl SyncNode {
         scene: Option<String>,
     ) {
         let has_peers = !lock(&self.trust).devices().is_empty();
-        let allowed = has_peers && {
+        let allowed = has_peers && lock(&self.trust).is_paired(from) && {
             let r = lock(&self.roles);
             r.holds(Role::Stream) && r.record(Role::Projection).holder == Some(from)
         };
@@ -201,6 +213,13 @@ impl SyncNode {
         }
         let hook = {
             let mut cue = lock(&self.cue);
+            // Nothing to hand the cue to yet (the app has not said where
+            // cues go): do not take it or answer, so the sender keeps it and
+            // sends it again at the next connection.
+            if cue.hook.is_none() {
+                eprintln!("lampstand: a scene cue arrived before anything was ready for it");
+                return;
+            }
             let fresh = match cue.taken {
                 Some((device, r, s)) if device == from && r == run => seq > s,
                 _ => true,
