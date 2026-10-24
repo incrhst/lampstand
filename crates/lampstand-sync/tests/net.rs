@@ -848,6 +848,8 @@ async fn declining_keeps_the_presenter_and_tells_the_asker() {
 #[tokio::test(flavor = "multi_thread")]
 async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
+    // A claim against a device is judged by that device's own takeover time.
+    sanctuary.node.set_takeover_after(Duration::from_secs(2));
     office.node.set_takeover_after(Duration::from_secs(2));
 
     // A cut network cuts both ways: if the office kept listening, the
@@ -1540,6 +1542,8 @@ async fn a_cut_network_cannot_split_a_role_between_two_devices() {
 #[tokio::test(flavor = "multi_thread")]
 async fn takeover_of_any_role_waits_for_the_timeout_and_the_old_holder_yields_on_return() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
+    // A claim against a device is judged by that device's own takeover time.
+    sanctuary.node.set_takeover_after(Duration::from_secs(2));
     office.node.set_takeover_after(Duration::from_secs(2));
     sanctuary.cut();
     office.cut();
@@ -2080,4 +2084,68 @@ async fn stopping_while_the_projection_holder_is_away_lets_the_seat_go_at_once()
         drive_of(&office).driving.is_some_and(|d| d.online)
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hand_over_between_two_devices_reaches_a_third_paired_with_only_one_of_them() {
+    // t is paired only with s. o and x are paired with s, and with each other.
+    let s = peer("Sanctuary").await;
+    let o = peer("Office PC").await;
+    let x = peer("Back room").await;
+    let t = peer("Tablet").await;
+    for (shows, joins) in [(&s, &o), (&s, &x), (&s, &t), (&o, &x)] {
+        let code = shows.node.start_pairing();
+        joins
+            .node
+            .pair(&code.code, Some(&shows.address()))
+            .await
+            .unwrap();
+    }
+    until(Duration::from_secs(10), "everyone connected", || {
+        s.node.status().connected() == 3
+            && o.node.status().connected() == 2
+            && x.node.status().connected() == 2
+            && t.node.status().connected() == 1
+    })
+    .await;
+    // s takes Stream; o asks and is allowed; x asks o and is allowed.
+    s.node.claim_role(Role::Stream).unwrap();
+    until(Duration::from_secs(5), "Stream to be known", || {
+        holder_of(&o, Role::Stream) == Some(s.node.device())
+            && holder_of(&x, Role::Stream) == Some(s.node.device())
+    })
+    .await;
+    o.node.ask_role(Role::Stream).unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        role_status(&s, Role::Stream).request.is_some()
+    })
+    .await;
+    s.node
+        .allow_role(Role::Stream, o.node.device(), false)
+        .unwrap();
+    until(Duration::from_secs(5), "the tablet to hear of o", || {
+        holder_of(&t, Role::Stream) == Some(o.node.device())
+    })
+    .await;
+    x.node.ask_role(Role::Stream).unwrap();
+    until(Duration::from_secs(5), "the prompt on o", || {
+        role_status(&o, Role::Stream).request.is_some()
+    })
+    .await;
+    o.node
+        .allow_role(Role::Stream, x.node.device(), false)
+        .unwrap();
+    // The tablet knows neither o nor x; s passes the news on.
+    until(Duration::from_secs(10), "the tablet to hear of x", || {
+        holder_of(&t, Role::Stream) == Some(x.node.device())
+    })
+    .await;
+    assert_eq!(role_status(&t, Role::Stream).record.epoch, 3);
+    assert!(!role_status(&t, Role::Stream).unverified);
+    assert_eq!(
+        role_status(&t, Role::Stream).record.name,
+        "",
+        "no name for a device it has not paired with"
+    );
+    assert_eq!(holder_of(&s, Role::Stream), Some(x.node.device()));
 }

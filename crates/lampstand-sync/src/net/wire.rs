@@ -63,8 +63,11 @@ pub(crate) enum Frame {
     Role {
         role: Role,
         holder: Option<[u8; 32]>,
-        name: String,
         epoch: u64,
+        /// The signed steps that led here, newest first (empty for a state
+        /// moved over from 0.7.0). Names are never sent: each device uses
+        /// the one it has from pairing.
+        steps: Vec<crate::roles::Link>,
     },
     /// The sender asks the receiver, the holder of `role`, to hand it over.
     RoleAsk {
@@ -284,8 +287,15 @@ mod tests {
             Frame::Role {
                 role: Role::Operator,
                 holder: Some([8; 32]),
-                name: "Mary's laptop".into(),
                 epoch: 3,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::HandOver,
+                    holder: Some(crate::team::DeviceKey([8; 32])),
+                    epoch: 3,
+                    prev_holder: Some(crate::team::DeviceKey([7; 32])),
+                    prev_epoch: 2,
+                    sig: vec![5; 64],
+                }],
             },
             Frame::RoleAsk { role: Role::Audio },
             Frame::RoleCancel { role: Role::Stream },

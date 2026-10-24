@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::roles::{Record, Roles, DEFAULT_TAKEOVER};
+use crate::roles::{Record, Roles, Signer, DEFAULT_TAKEOVER};
 use crate::team::DeviceKey;
 
 pub(super) const FILE: &str = "roles.json";
@@ -98,7 +98,7 @@ impl RolesFile {
         file
     }
 
-    pub fn into_roles(self, me: DeviceKey, name: String) -> Roles {
+    pub fn into_roles(self, me: DeviceKey, name: String, signer: Signer) -> Roles {
         let always = |list: &[(String, String)]| -> BTreeMap<DeviceKey, String> {
             list.iter()
                 .filter_map(|(hex, name)| Some((DeviceKey::from_hex(hex)?, name.clone())))
@@ -115,6 +115,7 @@ impl RolesFile {
                 always(&self.always.stream),
                 BTreeMap::new(),
             ],
+            signer,
         )
     }
 

@@ -70,7 +70,7 @@ pub use wire::Link;
 
 use crate::roles::{
     Answer, AskState, Asked, Asking, Blocked, Denied, Holder, Mode, Named, Net, Notice, OnAir,
-    Record, Role, Roles, Standing,
+    Record, Role, Roles, Signer, Standing,
 };
 use crate::team::{DeviceKey, DeviceKeypair};
 use crate::Repo;
@@ -177,6 +177,9 @@ pub struct RoleStatus {
     pub notice: Option<Notice>,
     /// Devices this one hands the role to without asking.
     pub always: Vec<Named>,
+    /// A newer record was seen whose steps do not join this device's state
+    /// (it missed more than eight): it waits for one that does.
+    pub unverified: bool,
 }
 
 /// All four roles.
@@ -338,6 +341,9 @@ struct Peers {
     dialling: HashSet<DeviceKey>,
     /// When each device was last heard from, once its session has run.
     last_contact: HashMap<DeviceKey, Instant>,
+    /// How long each connected device had been out of reach when its
+    /// present connection began.
+    away_before: HashMap<DeviceKey, Duration>,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -382,6 +388,7 @@ struct Reach {
     paired: HashSet<DeviceKey>,
     connected: HashSet<DeviceKey>,
     silent: HashMap<DeviceKey, Duration>,
+    away_before: HashMap<DeviceKey, Duration>,
 }
 
 impl Reach {
@@ -408,6 +415,16 @@ impl Net for Reach {
     fn holder(&self, device: DeviceKey) -> Holder {
         Reach::holder(self, device)
     }
+
+    fn away(&self, device: DeviceKey) -> Option<Duration> {
+        if !self.paired.contains(&device) {
+            None
+        } else if self.connected.contains(&device) {
+            self.away_before.get(&device).copied()
+        } else {
+            self.silent.get(&device).copied()
+        }
+    }
 }
 
 impl SyncNode {
@@ -429,7 +446,12 @@ impl SyncNode {
                 eprintln!("lampstand: cannot save the roles: {e}");
             }
         }
-        let roles = loaded.file.into_roles(key.public(), config.name.clone());
+        let secret = key.secret_bytes();
+        let signer =
+            Signer::new(move |message| DeviceKeypair::from_secret_bytes(secret).sign(message));
+        let roles = loaded
+            .file
+            .into_roles(key.public(), config.name.clone(), signer);
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -679,6 +701,7 @@ impl SyncNode {
         if peer.paired_now {
             self.bump();
             self.ensure_dialler(peer.device);
+            self.start_over_if_unverified();
             // The device that showed the code is the main machine: it takes
             // the roles nobody holds (Projection, Operator and Audio).
             let reach = self.reach();
@@ -759,6 +782,7 @@ impl SyncNode {
         if peer.paired_now {
             self.bump();
             self.ensure_dialler(peer.device);
+            self.start_over_if_unverified();
         }
         match self
             .begin(link, &peer, self.device(), Some(address.to_string()))
@@ -804,6 +828,13 @@ impl SyncNode {
                             },
                         );
                         peers.problems.remove(&peer.device);
+                        let since = peers
+                            .last_contact
+                            .get(&peer.device)
+                            .copied()
+                            .unwrap_or(self.started);
+                        let away = since.elapsed();
+                        peers.away_before.insert(peer.device, away);
                         drop(peers);
                         self.bump();
                         self.driving_changed();
@@ -873,6 +904,7 @@ impl SyncNode {
             })
             .collect();
         Reach {
+            away_before: peers.away_before.clone(),
             paired,
             connected,
             silent,
@@ -895,6 +927,7 @@ impl SyncNode {
             asking: r.asking(role).cloned(),
             notice: r.notice(role).cloned(),
             always: r.always(role),
+            unverified: r.unverified(role),
         };
         RolesStatus {
             projection: one(Role::Projection),
@@ -1133,6 +1166,16 @@ impl SyncNode {
         }
         self.driving_changed();
         self.bump();
+    }
+
+    /// Pairing with a device is the way out of a role state that could not
+    /// be verified: start those roles over, to be seeded by what the new
+    /// device sends.
+    fn start_over_if_unverified(&self) {
+        if lock(&self.roles).forget_unverified() {
+            self.save_roles();
+            self.bump();
+        }
     }
 
     fn save_roles(&self) {
@@ -1377,7 +1420,7 @@ impl SyncNode {
     }
 
     /// A device sent its record for a role: the newer of the two stands.
-    pub(crate) fn record_received(&self, role: Role, mut record: Record) {
+    pub(crate) fn record_received(&self, from: DeviceKey, role: Role, mut record: Record) {
         let known = record
             .holder
             .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
@@ -1398,9 +1441,14 @@ impl SyncNode {
                 }
             }
         };
-        let merged = lock(&self.roles).merge(role, &record, known);
+        let reach = self.reach();
+        let merged = lock(&self.roles).merge(role, &record, from, &reach);
         if merged.changed {
             self.role_changed(role, &record);
+        } else {
+            // A newer record that does not join this device's state is
+            // shown as such, not taken in.
+            self.bump();
         }
     }
 
@@ -1663,8 +1711,8 @@ fn record_frame(role: Role, record: &Record) -> Frame {
     Frame::Role {
         role,
         holder: record.holder.map(|h| h.0),
-        name: record.name.clone(),
         epoch: record.epoch,
+        steps: record.chain.clone(),
     }
 }
 
@@ -1766,103 +1814,228 @@ mod tests {
         (node, commands, live, dir)
     }
 
-    fn record(holder: DeviceKey, epoch: u64) -> Record {
-        Record {
-            holder: Some(holder),
-            name: "x".into(),
-            epoch,
+    /// A device's keys, for signing steps the way it would.
+    fn kp(n: u8) -> DeviceKeypair {
+        DeviceKeypair::from_secret_bytes([n; 32])
+    }
+
+    fn id(n: u8) -> DeviceKey {
+        kp(n).public()
+    }
+
+    /// Nobody is paired with the device that signs: every holder is "gone".
+    struct Strangers;
+
+    impl Net for Strangers {
+        fn has_peers(&self) -> bool {
+            true
         }
+        fn holder(&self, _: DeviceKey) -> Holder {
+            Holder::Gone
+        }
+        fn away(&self, _: DeviceKey) -> Option<Duration> {
+            None
+        }
+    }
+
+    /// A device `n` that has screens, as it would sign for itself.
+    fn device(n: u8) -> Roles {
+        let mut r = Roles::new(
+            id(n),
+            format!("Device {n}"),
+            Default::default(),
+            Duration::from_secs(120),
+            Default::default(),
+            Signer::new(move |m| kp(n).sign(m)),
+        );
+        r.set_screens(true);
+        r
+    }
+
+    /// Device `n` takes `role` and shows the record it would send.
+    fn claimed(n: u8, role: Role) -> (Roles, Record) {
+        let mut d = device(n);
+        if role == Role::Operator {
+            // The Operator seat needs Projection held by somebody.
+            d.claim(Role::Projection, &Strangers).unwrap();
+        }
+        let record = d.claim(role, &Strangers).unwrap();
+        (d, record)
+    }
+
+    /// `holder` hands `role` to `to`, as it would when allowing an ask.
+    fn handed(holder: &mut Roles, role: Role, to: u8) -> Record {
+        holder.receive_ask(role, id(to), format!("Device {to}"));
+        holder
+            .allow(role, id(to), false, &Strangers)
+            .unwrap()
+            .record
     }
 
     #[test]
     fn a_command_counts_only_from_the_operator_and_only_where_projection_is_held() {
         let (node, commands, _, _dir) = node_with_hooks();
         let me = node.device();
-        let (operator, other) = (DeviceKey([7; 32]), DeviceKey([8; 32]));
-        node.record_received(Role::Projection, record(me, 1));
-        node.record_received(Role::Operator, record(operator, 1));
-        node.drive_command_received(operator, b"a".to_vec());
-        node.drive_command_received(other, b"b".to_vec());
+        node.claim_role(Role::Projection).unwrap();
+        let (mut seven, op) = claimed(7, Role::Operator);
+        node.record_received(id(7), Role::Operator, op);
+        node.drive_command_received(id(7), b"a".to_vec());
+        node.drive_command_received(id(8), b"b".to_vec());
         node.drive_command_received(me, b"c".to_vec());
-        assert_eq!(*lock(&commands), vec![operator], "only the Operator counts");
-        // Projection moves away: this device carries out nothing, from
-        // anybody.
-        node.record_received(Role::Projection, record(other, 2));
-        node.drive_command_received(operator, b"d".to_vec());
+        assert_eq!(*lock(&commands), vec![id(7)], "only the Operator counts");
+        // An Operator that is replaced, by the hand-over it signed, no
+        // longer counts.
+        let next = handed(&mut seven, Role::Operator, 8);
+        node.record_received(id(7), Role::Operator, next);
+        node.drive_command_received(id(7), b"d".to_vec());
         assert_eq!(lock(&commands).len(), 1);
-        // And an Operator that is replaced no longer counts.
-        node.record_received(Role::Projection, record(me, 3));
-        node.record_received(Role::Operator, record(other, 2));
-        node.drive_command_received(operator, b"e".to_vec());
-        assert_eq!(lock(&commands).len(), 1);
-        node.drive_command_received(other, b"f".to_vec());
-        assert_eq!(lock(&commands).len(), 2);
+        node.drive_command_received(id(8), b"e".to_vec());
+        assert_eq!(*lock(&commands), vec![id(7), id(8)]);
+    }
+
+    #[test]
+    fn a_command_is_carried_out_only_where_projection_is_held() {
+        let (node, commands, _, _dir) = node_with_hooks();
+        let (_, op) = claimed(7, Role::Operator);
+        node.record_received(id(7), Role::Operator, op);
+        // Projection is somebody else's.
+        let (_, proj) = claimed(9, Role::Projection);
+        node.record_received(id(9), Role::Projection, proj);
+        node.drive_command_received(id(7), b"a".to_vec());
+        assert!(lock(&commands).is_empty());
+    }
+
+    #[test]
+    fn live_state_counts_only_from_the_projection_holder_this_device_operates() {
+        let (node, _, live, _dir) = node_with_hooks();
+        // The roles must have a paired device to mean anything.
+        lock(&node.trust).add(id(9), "Back room", None).unwrap();
+        let (_, proj) = claimed(9, Role::Projection);
+        node.record_received(id(9), Role::Projection, proj);
+        node.claim_role(Role::Operator).unwrap();
+        node.drive_live_received(id(9), b"a".to_vec());
+        node.drive_live_received(id(8), b"b".to_vec());
+        assert_eq!(*lock(&live), vec![b"a".to_vec()]);
     }
 
     #[test]
     fn a_name_in_a_record_is_never_taken_from_the_sender() {
         let (node, _, _, _dir) = node_with_hooks();
-        let mary = DeviceKey([7; 32]);
-        lock(&node.trust).add(mary, "Mary's laptop", None).unwrap();
-        let forged = Record {
-            holder: Some(mary),
-            name: "The pastor's phone".into(),
-            epoch: 1,
-        };
-        node.record_received(Role::Stream, forged.clone());
+        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        let (mut seven, mut forged) = claimed(7, Role::Stream);
+        forged.name = "The pastor's phone".into();
+        node.record_received(id(7), Role::Stream, forged);
         assert_eq!(node.roles_status().stream.record.name, "Mary's laptop");
-        // A holder it has no name for gets none; and a clear has no name.
-        node.record_received(
-            Role::Audio,
-            Record {
-                holder: Some(DeviceKey([9; 32])),
-                name: "Somebody".into(),
-                epoch: 1,
-            },
-        );
+        // A holder it has no name for gets none.
+        let (_, unknown) = claimed(9, Role::Audio);
+        node.record_received(id(9), Role::Audio, unknown);
         assert_eq!(node.roles_status().audio.record.name, "");
-        node.record_received(
-            Role::Stream,
-            Record {
-                holder: None,
-                name: "Somebody".into(),
-                epoch: 2,
-            },
-        );
+        // And a release has no name.
+        let released = seven.release(Role::Stream).unwrap();
+        node.record_received(id(7), Role::Stream, released);
+        assert_eq!(node.roles_status().stream.record.holder, None);
         assert_eq!(node.roles_status().stream.record.name, "");
     }
 
     #[test]
     fn a_record_with_an_epoch_nothing_could_beat_is_ignored() {
         let (node, _, _, _dir) = node_with_hooks();
-        node.record_received(
-            Role::Projection,
-            Record {
-                holder: Some(DeviceKey([7; 32])),
-                name: String::new(),
-                epoch: u64::MAX,
-            },
-        );
+        let (_, mut record) = claimed(7, Role::Projection);
+        record.epoch = u64::MAX;
+        node.record_received(id(7), Role::Projection, record);
         assert_eq!(node.roles_status().projection.record.epoch, 0);
     }
 
     #[test]
-    fn live_state_counts_only_from_the_projection_holder_this_device_operates() {
-        let (node, _, live, _dir) = node_with_hooks();
-        let me = node.device();
-        let (projection, other) = (DeviceKey([7; 32]), DeviceKey([8; 32]));
-        // The roles must have a paired device to mean anything.
-        lock(&node.trust)
-            .add(projection, "Back room", None)
-            .unwrap();
-        node.record_received(Role::Projection, record(projection, 1));
-        node.record_received(Role::Operator, record(me, 1));
-        node.drive_live_received(projection, b"a".to_vec());
-        node.drive_live_received(other, b"b".to_vec());
-        assert_eq!(*lock(&live), vec![b"a".to_vec()]);
-        // Not the Operator: the state means nothing here.
-        node.record_received(Role::Operator, record(other, 2));
-        node.drive_live_received(projection, b"c".to_vec());
-        assert_eq!(lock(&live).len(), 1);
+    fn a_record_without_steps_changes_nothing_here() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.claim_role(Role::Stream).unwrap();
+        let before = node.roles_status().stream.record;
+        node.record_received(
+            id(7),
+            Role::Stream,
+            Record {
+                holder: Some(id(7)),
+                epoch: 9,
+                ..Default::default()
+            },
+        );
+        assert_eq!(node.roles_status().stream.record, before);
+    }
+
+    #[test]
+    fn forged_records_from_a_paired_device_change_nothing() {
+        let (node, _, _, _dir) = node_with_hooks();
+        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        // This device holds Stream, handed to it by a first claim.
+        node.claim_role(Role::Stream).unwrap();
+        let held = node.roles_status().stream.record;
+        assert_eq!(held.epoch, 1);
+        let forged_into = |role: Role, record: Record| {
+            node.record_received(id(7), role, record);
+            assert_eq!(node.roles_status().stream.record, held);
+        };
+        // A paired device says it holds it now, with nothing to show.
+        forged_into(
+            Role::Stream,
+            Record {
+                holder: Some(id(7)),
+                epoch: 2,
+                ..Default::default()
+            },
+        );
+        // A paired device clears it, with nothing to show.
+        forged_into(
+            Role::Stream,
+            Record {
+                holder: None,
+                epoch: 2,
+                ..Default::default()
+            },
+        );
+        // A genuine step of its own for another role, replayed here: the
+        // signature covers the role.
+        let (_, audio) = claimed(7, Role::Audio);
+        forged_into(Role::Stream, audio.clone());
+        // A claim at a later epoch, signed by a stranger, against the holder
+        // this device can see: refused.
+        let mut stranger = device(9);
+        stranger.merge(Role::Stream, &held, id(9), &Strangers);
+        let take = stranger.claim(Role::Stream, &Strangers);
+        // (the stranger sees the holder as gone and takes it)
+        let take = take.unwrap();
+        assert_eq!(take.epoch, 2);
+        forged_into(Role::Stream, take);
+        // A hand-over this device signed, with the holder swapped for the
+        // paired device: the signature no longer fits.
+        node.record_received(id(7), Role::Audio, audio);
+        let mut swapped = node.roles_status().audio.record;
+        swapped.holder = Some(id(7));
+        swapped.chain[0].holder = Some(id(8));
+        node.record_received(id(7), Role::Audio, swapped);
+        assert_eq!(node.roles_status().audio.record.holder, Some(id(7)));
+    }
+
+    #[test]
+    fn what_a_node_sends_is_what_another_node_would_take() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.claim_role(Role::Projection).unwrap();
+        let frames = node.record_frames();
+        assert_eq!(frames.len(), 4);
+        let Frame::Role {
+            steps,
+            holder,
+            epoch,
+            ..
+        } = &frames[0]
+        else {
+            panic!("a record")
+        };
+        assert_eq!((holder.is_some(), *epoch, steps.len()), (true, 1, 1));
+        // Unheld roles carry no steps, and no name travels at all.
+        let Frame::Role { steps, holder, .. } = &frames[2] else {
+            panic!("a record")
+        };
+        assert!(holder.is_none() && steps.is_empty());
     }
 }

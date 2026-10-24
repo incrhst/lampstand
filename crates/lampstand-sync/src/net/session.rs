@@ -279,14 +279,16 @@ impl State {
             Frame::Role {
                 role,
                 holder,
-                name,
                 epoch,
+                steps,
             } => self.node.record_received(
+                self.peer,
                 role,
                 Record {
                     holder: holder.map(DeviceKey),
-                    name,
+                    name: String::new(),
                     epoch,
+                    chain: steps,
                 },
             ),
             Frame::RoleAsk { role } => self.node.role_ask_received(self.peer, role),
