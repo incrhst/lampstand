@@ -281,7 +281,7 @@ function api(req: any): any {
   }
   return { type: "Error", data: { message: `mock: unhandled ${area}.${key}` } };
 }
-const obsOff = () => ({ host: "127.0.0.1", port: 4455, has_password: false, connection: { Disconnected: { reason: "not running" } }, problem: null, relevant: true, stream: null, record: null, scenes: [], program_scene: null, held: false, scene_problem: null, audio: [] });
+const obsOff = () => ({ host: "127.0.0.1", port: 4455, has_password: false, connection: { Disconnected: { reason: "not running" } }, problem: null, relevant: true, stream: null, record: null, scenes: [], program_scene: null, held: false, scene_problem: null, audio: [], remote: false, addresses: [], pinned_address: null });
 export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_version: "30.2", websocket_version: "5.5" } }, stream: { active: true, reconnecting: false, timecode: "00:12:41", skipped_frames: 0, total_frames: 45678 }, record: null, scenes: ["Wide", "Speaker", "Lyrics"], program_scene: "Lyrics", audio: [{ name: "Mic", muted: false }] });
 // Pretends a device was paired: the "connect another device" prompt goes away.
 (window as any).__pairDevice = () => {
