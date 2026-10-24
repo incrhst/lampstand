@@ -27,20 +27,7 @@ You can start with one machine and add the others later. Nothing about the servi
 
 One computer runs the screens, the service and OBS. It holds Projection, Operator, Stream and Audio (it holds them automatically; there is nothing to set up). OBS and Zoom, if used, run on the same computer. The house sound is whatever that computer plays, so for Zoom use a mixer feed into the computer. Nothing is paired.
 
-```mermaid
-flowchart LR
-  subgraph PC["One computer: Projection, Operator, Stream, Audio"]
-    L["Lampstand"]
-    O["OBS + Zoom (optional)"]
-  end
-  L -->|video out| P["Projector and screens"]
-  L -->|sound out| M["Mixer"]
-  L -->|browser source| O
-  M --> S["House speakers"]
-  M -->|"microphones and band"| O
-  Cam["Cameras"] --> O
-  O -->|Virtual Camera| Z["Zoom call"]
-```
+![One computer holds all four roles](diagrams/roles-one-machine.svg)
 
 ### 2. Two machines
 
@@ -51,25 +38,7 @@ Pair B with A. B asks for Stream; A allows (and can say "always allow this devic
 
 Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
-```mermaid
-flowchart LR
-  subgraph A["Machine A at the projector: Projection, Operator, Audio"]
-    LA["Lampstand"]
-  end
-  subgraph B["Machine B, the stream machine: Stream"]
-    LB["Lampstand"]
-    OB["OBS + Zoom"]
-  end
-  LA -->|video out| P["Projector and screens"]
-  LA -->|sound out| M["Mixer"]
-  M --> S["House speakers"]
-  M -->|"microphones and band (USB interface)"| OB
-  LA <-->|"sync on the church network"| LB
-  LA -->|"browser source (graphics)"| OB
-  LB -->|"scene control"| OB
-  Cam["Cameras"] --> OB
-  OB -->|Virtual Camera| Z["Zoom call"]
-```
+![Two machines: the projector machine and the stream machine](diagrams/roles-two-machines.svg)
 
 ### 3. Three machines
 
@@ -79,61 +48,13 @@ flowchart LR
 
 Operator is disabled if A drops, and wakes when Projection is held again. C keeps working without A. Phones and tablets act as helpers on any of these set-ups (below).
 
-```mermaid
-flowchart LR
-  subgraph A["A at the projector: Projection, Audio (unattended)"]
-    LA["Lampstand"]
-  end
-  subgraph B["B at the back: Operator"]
-    LB["Lampstand"]
-  end
-  subgraph C["C, the stream machine: Stream"]
-    LC["Lampstand"]
-    OC["OBS + Zoom"]
-  end
-  LA -->|video out| P["Projector and screens"]
-  LA -->|sound out| M["Mixer"]
-  M --> S["House speakers"]
-  M -->|"microphones and band"| OC
-  LB -->|"Next, jump, take live"| LA
-  LA -->|"what is on air"| LB
-  LA -->|"browser source and scene cues"| OC
-  LC -->|"scene control"| OC
-  Cam["Cameras"] --> OC
-  OC -->|Virtual Camera| Z["Zoom call"]
-  T["Phone or tablet (helper)"] -.->|"remote"| LA
-```
+![Three machines: projector, operator and stream](diagrams/roles-three-machines.svg)
 
 ### 4. Four machines, with the sound desk
 
 Where the mixer is far from the projector, add a machine at the desk that holds Audio. Backing tracks and video sound then play from there, straight into the mixer.
 
-```mermaid
-flowchart LR
-  subgraph A["A at the projector: Projection"]
-    LA["Lampstand"]
-  end
-  subgraph B["B at the back: Operator"]
-    LB["Lampstand"]
-  end
-  subgraph C["C, the stream machine: Stream"]
-    LC["Lampstand"]
-    OC["OBS + Zoom"]
-  end
-  subgraph D["D at the sound desk: Audio"]
-    LD["Lampstand"]
-  end
-  LA -->|video out| P["Projector and screens"]
-  LD -->|"sound out (backing tracks, video sound)"| M["Mixer"]
-  M --> S["House speakers"]
-  M -->|"microphones and band"| OC
-  LB -->|"Next, jump, take live"| LA
-  LA -->|"sound cues"| LD
-  LA -->|"browser source and scene cues"| OC
-  LC -->|"scene control"| OC
-  Cam["Cameras"] --> OC
-  OC -->|Virtual Camera| Z["Zoom call"]
-```
+![Four machines: with Audio at the sound desk](diagrams/roles-four-machines.svg)
 
 ### Audio at the sound desk
 
@@ -182,15 +103,7 @@ A confidence screen (speaker's notes, next slide, clock) is not a role. It can b
 
 The browser stage page is the planned stage display (PRD LV-5, PS-7; decision 0006 lists it as a later page) and is built separately from the roles work. A native stage output on a second Lampstand machine would be a later Stage display role; it would not be single-holder, since a church can have several stage screens.
 
-```mermaid
-flowchart LR
-  subgraph A["A at the projector: Projection"]
-    LA["Lampstand"]
-  end
-  LA -->|video out| P["Projector and screens"]
-  LA -->|"stage output (a second display)"| S1["Confidence screen on a cable"]
-  LA -.->|"stage page over the church network"| T["Tablet or phone (helper)"]
-```
+![A confidence screen as a second display or a tablet page](diagrams/roles-confidence-screen.svg)
 
 ### Phones and tablets
 
