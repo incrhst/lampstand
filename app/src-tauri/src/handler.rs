@@ -1890,6 +1890,7 @@ impl App {
         if let Some(mut config) = self.outputs.get(id).cloned() {
             config.enabled = false;
             if self.outputs.put(config).is_ok() {
+                self.tell_screens();
                 (self.emit)(Event::Changed {
                     kind: "outputs".into(),
                     id: id.uuid().to_string(),

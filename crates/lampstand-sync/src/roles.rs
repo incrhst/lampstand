@@ -247,7 +247,13 @@ pub enum Denied {
     NoScreens,
     /// Nobody holds Projection, so Operator cannot be taken.
     NeedsProjection,
+    /// Teams (T18) does not let this device hold the role.
+    NotPermitted,
 }
+
+/// Teams (T18) does not let a device hold a role. Never returned until T18.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotPermitted;
 
 impl From<Blocked> for Denied {
     fn from(b: Blocked) -> Self {
@@ -279,6 +285,7 @@ impl std::fmt::Display for Denied {
             Denied::NoScreens => write!(f, "No screens are set up on this device"),
             // The wording the driver's bar already used when nothing presents.
             Denied::NeedsProjection => write!(f, "nobody is presenting"),
+            Denied::NotPermitted => write!(f, "this device may not hold that role"),
         }
     }
 }
@@ -321,6 +328,8 @@ pub enum NotAllowed {
     NotAsking,
     /// Operator cannot move while nobody holds Projection.
     NeedsProjection,
+    /// Teams (T18) does not let that device hold the role.
+    NotPermitted,
 }
 
 impl std::fmt::Display for NotAllowed {
@@ -329,6 +338,7 @@ impl std::fmt::Display for NotAllowed {
             NotAllowed::NotHolding => write!(f, "this device is not presenting"),
             NotAllowed::NotAsking => write!(f, "that device is no longer asking"),
             NotAllowed::NeedsProjection => write!(f, "nobody is presenting"),
+            NotAllowed::NotPermitted => write!(f, "that device may not hold that role"),
         }
     }
 }
@@ -581,7 +591,7 @@ impl Roles {
     /// `role`. Both ways of getting a role pass through here: a device
     /// taking it for itself ([`Roles::claim`]) and a holder handing it to a
     /// device that asked ([`Roles::allow`]).
-    fn check_teams(&self, _role: Role, _device: DeviceKey) -> Result<(), Denied> {
+    fn check_teams(&self, _role: Role, _device: DeviceKey) -> Result<(), NotPermitted> {
         Ok(())
     }
 
@@ -605,7 +615,8 @@ impl Roles {
                 return Err(Denied::TooSoon { offline, remaining })
             }
         }
-        self.check_teams(role, self.me)?;
+        self.check_teams(role, self.me)
+            .map_err(|_| Denied::NotPermitted)?;
         Ok(self.take(role))
     }
 
@@ -614,7 +625,7 @@ impl Roles {
         self.records[i] = Record {
             holder: Some(self.me),
             name: self.name.clone(),
-            epoch: self.records[i].epoch + 1,
+            epoch: self.records[i].epoch.saturating_add(1),
         };
         self.asking[i] = None;
         self.pending[i] = None;
@@ -634,7 +645,11 @@ impl Roles {
             let open = self.record(role).holder.is_none();
             // The sound stays where the screens are, as it does today.
             let with_screens = role != Role::Audio || self.holds(Role::Projection);
-            if open && with_screens && self.blocked(role, net).is_none() {
+            if open
+                && with_screens
+                && self.blocked(role, net).is_none()
+                && self.check_teams(role, self.me).is_ok()
+            {
                 taken.push((role, self.take(role)));
             }
         }
@@ -737,14 +752,14 @@ impl Roles {
             return Err(NotAllowed::NeedsProjection);
         }
         self.check_teams(role, device)
-            .map_err(|_| NotAllowed::NotAsking)?;
+            .map_err(|_| NotAllowed::NotPermitted)?;
         if always && role.offers_always() {
             self.always[i].insert(asker.device, asker.name.clone());
         }
         self.records[i] = Record {
             holder: Some(asker.device),
             name: asker.name,
-            epoch: self.records[i].epoch + 1,
+            epoch: self.records[i].epoch.saturating_add(1),
         };
         self.pending[i] = None;
         Ok(Allowed {
@@ -786,6 +801,24 @@ impl Roles {
         held
     }
 
+    /// This device lets go of a role it holds with nobody to hand it to
+    /// (an Operator stopping while the Projection holder is away): the role
+    /// becomes unheld. Not a grant. Returns the new record.
+    pub fn release(&mut self, role: Role) -> Option<Record> {
+        if !self.holds(role) {
+            return None;
+        }
+        let i = role.index();
+        self.records[i] = Record {
+            holder: None,
+            name: String::new(),
+            epoch: self.records[i].epoch.saturating_add(1),
+        };
+        self.yielding[i] = false;
+        self.pending[i] = None;
+        Some(self.records[i].clone())
+    }
+
     // ---- Meeting another device's record -----------------------------------
 
     /// Takes in a record from another device: the newer one wins. `known`:
@@ -793,7 +826,9 @@ impl Roles {
     /// is not worth a notice).
     pub fn merge(&mut self, role: Role, remote: &Record, known: bool) -> Merged {
         let i = role.index();
-        if !remote.beats(&self.records[i]) {
+        // An epoch that no claim could ever beat would lock the role for
+        // good: it is nonsense, not a record.
+        if remote.epoch == u64::MAX || !remote.beats(&self.records[i]) {
             return Merged::default();
         }
         let was_holder = self.holds(role);
@@ -1498,6 +1533,45 @@ mod tests {
         assert!(b.asking(Role::Operator).is_some(), "a waiting ask stays");
         assert!(b.cancel_ask(Role::Operator));
         assert!(!b.cancel_ask(Role::Operator));
+    }
+
+    #[test]
+    fn an_epoch_nothing_could_beat_is_not_taken_in() {
+        let (_, mut b) = pair();
+        let forged = Record {
+            holder: Some(key(9)),
+            name: "x".into(),
+            epoch: u64::MAX,
+        };
+        for role in Role::ALL {
+            assert!(!b.merge(role, &forged, true).changed, "{role:?}");
+        }
+        assert_eq!(b.record(Role::Projection).epoch, 1);
+        // Taking at the top of the range stays at the top: no wrap to zero.
+        let mut top = device(3, "Laptop");
+        top.merge(
+            Role::Stream,
+            &Record {
+                holder: Some(key(4)),
+                name: "x".into(),
+                epoch: u64::MAX - 1,
+            },
+            true,
+        );
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let taken = top.claim(Role::Stream, &net(true, &off)).unwrap();
+        assert_eq!(taken.epoch, u64::MAX);
+    }
+
+    #[test]
+    fn letting_go_with_nobody_to_hand_to_leaves_the_role_unheld() {
+        let (mut a, mut b) = pair();
+        assert!(b.release(Role::Operator).is_none(), "not held");
+        let record = a.release(Role::Operator).unwrap();
+        assert_eq!((record.holder, record.epoch), (None, 2));
+        assert!(!a.holds(Role::Operator));
+        assert!(b.merge(Role::Operator, &record, true).changed);
+        assert_eq!(a.notice(Role::Operator), None);
     }
 
     #[test]

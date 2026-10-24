@@ -1156,8 +1156,10 @@ impl SyncNode {
         lock(&self.drive_hooks).clone()
     }
 
+    /// Connected now, and still paired: a session that is closing after an
+    /// unpair is already gone.
     fn connected(&self, device: DeviceKey) -> bool {
-        lock(&self.peers).sessions.contains_key(&device)
+        lock(&self.trust).is_paired(device) && lock(&self.peers).sessions.contains_key(&device)
     }
 
     fn paired_name(&self, device: DeviceKey) -> String {
@@ -1238,16 +1240,25 @@ impl SyncNode {
     }
 
     /// Stops driving, or withdraws the ask to drive. Stopping gives the
-    /// Operator seat back to the Projection holder, which takes it.
+    /// Operator seat back to the Projection holder, which takes it; if that
+    /// device is not connected, the seat is simply let go here, so stopping
+    /// works at once as it always did.
     pub fn drive_cancel(&self) {
         if let Some((presenter, _)) = self.driven_device() {
-            if lock(&self.roles).yield_role(Role::Operator) {
-                self.send_to(
-                    presenter,
-                    Frame::RoleYield {
-                        role: Role::Operator,
-                    },
-                );
+            if self.connected(presenter) {
+                if lock(&self.roles).yield_role(Role::Operator) {
+                    self.send_to(
+                        presenter,
+                        Frame::RoleYield {
+                            role: Role::Operator,
+                        },
+                    );
+                }
+            } else {
+                let released = lock(&self.roles).release(Role::Operator);
+                if let Some(record) = released {
+                    self.role_changed(Role::Operator, &record);
+                }
             }
         } else {
             self.cancel_role_ask(Role::Operator);
@@ -1366,10 +1377,27 @@ impl SyncNode {
     }
 
     /// A device sent its record for a role: the newer of the two stands.
-    pub(crate) fn record_received(&self, role: Role, record: Record) {
+    pub(crate) fn record_received(&self, role: Role, mut record: Record) {
         let known = record
             .holder
             .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
+        // A name travelling in a record is the sender's word, not a fact:
+        // the name shown is the one this device has for the holder from
+        // pairing (as for an ask), or what it already showed for that holder.
+        record.name = match record.holder {
+            None => String::new(),
+            Some(h) if h == self.device() => self.name.clone(),
+            Some(h) if known => self.paired_name(h),
+            Some(h) => {
+                let r = lock(&self.roles);
+                let old = r.record(role);
+                if old.holder == Some(h) {
+                    old.name.clone()
+                } else {
+                    String::new()
+                }
+            }
+        };
         let merged = lock(&self.roles).merge(role, &record, known);
         if merged.changed {
             self.role_changed(role, &record);
@@ -1385,6 +1413,8 @@ impl SyncNode {
                 eprintln!("lampstand: {name} may take {role:?}: remembered");
                 if let Err(e) = self.allow_role(role, from, false) {
                     eprintln!("lampstand: could not hand {role:?} to {name}: {e}");
+                    // Nobody is shown a prompt for it, so do not keep it.
+                    lock(&self.roles).decline(role, from);
                 }
                 self.bump();
             }
@@ -1767,6 +1797,53 @@ mod tests {
         assert_eq!(lock(&commands).len(), 1);
         node.drive_command_received(other, b"f".to_vec());
         assert_eq!(lock(&commands).len(), 2);
+    }
+
+    #[test]
+    fn a_name_in_a_record_is_never_taken_from_the_sender() {
+        let (node, _, _, _dir) = node_with_hooks();
+        let mary = DeviceKey([7; 32]);
+        lock(&node.trust).add(mary, "Mary's laptop", None).unwrap();
+        let forged = Record {
+            holder: Some(mary),
+            name: "The pastor's phone".into(),
+            epoch: 1,
+        };
+        node.record_received(Role::Stream, forged.clone());
+        assert_eq!(node.roles_status().stream.record.name, "Mary's laptop");
+        // A holder it has no name for gets none; and a clear has no name.
+        node.record_received(
+            Role::Audio,
+            Record {
+                holder: Some(DeviceKey([9; 32])),
+                name: "Somebody".into(),
+                epoch: 1,
+            },
+        );
+        assert_eq!(node.roles_status().audio.record.name, "");
+        node.record_received(
+            Role::Stream,
+            Record {
+                holder: None,
+                name: "Somebody".into(),
+                epoch: 2,
+            },
+        );
+        assert_eq!(node.roles_status().stream.record.name, "");
+    }
+
+    #[test]
+    fn a_record_with_an_epoch_nothing_could_beat_is_ignored() {
+        let (node, _, _, _dir) = node_with_hooks();
+        node.record_received(
+            Role::Projection,
+            Record {
+                holder: Some(DeviceKey([7; 32])),
+                name: String::new(),
+                epoch: u64::MAX,
+            },
+        );
+        assert_eq!(node.roles_status().projection.record.epoch, 0);
     }
 
     #[test]

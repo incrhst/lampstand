@@ -155,11 +155,31 @@ fn read<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
 
 /// `roles.json` if there is one; else what 0.7.0's files say.
 pub(super) fn load(dir: &Path) -> Loaded {
-    if let Some(file) = read::<RolesFile>(&dir.join(FILE)) {
-        return Loaded {
-            file,
-            migrated: false,
-        };
+    let path = dir.join(FILE);
+    match std::fs::read(&path) {
+        Ok(bytes) => match serde_json::from_slice::<RolesFile>(&bytes) {
+            Ok(file) => {
+                return Loaded {
+                    file,
+                    migrated: false,
+                }
+            }
+            Err(e) => {
+                // Kept, not overwritten: set aside like paired.json, and
+                // said, before falling back to what 0.7.0 left.
+                let bad = path.with_extension("json.bad");
+                eprintln!(
+                    "lampstand: {} is unreadable ({e}); set aside as {} and starting from the older files",
+                    path.display(),
+                    bad.display()
+                );
+                if let Err(e) = std::fs::rename(&path, &bad) {
+                    eprintln!("lampstand: cannot set it aside: {e}");
+                }
+            }
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => eprintln!("lampstand: cannot read {}: {e}", path.display()),
     }
     let presenter = read(&dir.join("presenter.json"));
     let driver = read(&dir.join("driver.json"));
@@ -172,11 +192,36 @@ pub(super) fn load(dir: &Path) -> Loaded {
     }
 }
 
+/// Writes `roles.json` through a temporary file of its own, readable only by
+/// this user on Unix, flushed before it replaces the old one.
 pub(super) fn save(dir: &Path, file: &RolesFile) -> io::Result<()> {
-    let tmp = dir.join(format!("{FILE}.tmp"));
+    use std::io::Write as _;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SAVES: AtomicU64 = AtomicU64::new(0);
     let json = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
-    std::fs::write(&tmp, json)?;
-    std::fs::rename(&tmp, dir.join(FILE))
+    let tmp = dir.join(format!(
+        "{FILE}.{}.{}.tmp",
+        std::process::id(),
+        SAVES.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let written = options.open(&tmp).and_then(|mut f| {
+        f.write_all(&json)?;
+        f.sync_all()
+    });
+    match written.and_then(|()| std::fs::rename(&tmp, dir.join(FILE))) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -250,5 +295,30 @@ mod tests {
         let loaded = load(dir.path());
         assert!(loaded.migrated);
         assert_eq!(loaded.file.projection.epoch, 2);
+        // The unreadable file is kept, not overwritten.
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("roles.json.bad")).unwrap(),
+            "{not json"
+        );
+        assert!(!dir.path().join(FILE).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn roles_json_is_private_and_leaves_no_temporary_file() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), &RolesFile::unheld()).unwrap();
+        save(dir.path(), &RolesFile::unheld()).unwrap();
+        let mode = std::fs::metadata(dir.path().join(FILE))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "{mode:o}");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, vec![FILE.to_string()]);
     }
 }

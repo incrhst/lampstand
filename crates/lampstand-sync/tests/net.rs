@@ -1713,7 +1713,10 @@ async fn the_operator_controls_wait_without_projection_and_the_seat_is_kept() {
     assert!(office.node.drive_send(b"x".to_vec()).is_err());
     // The office has screens, so it may take Projection itself; with
     // Projection held again the controls wake.
-    office.node.claim_role(Role::Projection).unwrap();
+    office
+        .node
+        .claim_role(Role::Projection)
+        .expect("the office claims Projection");
     assert!(office.node.roles_status().operator_ready);
     assert!(role_status(&office, Role::Operator).holds);
 }
@@ -2044,4 +2047,37 @@ async fn only_the_operator_can_send_commands() {
     })
     .await;
     assert_eq!(on_sanctuary.commands.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stopping_while_the_projection_holder_is_away_lets_the_seat_go_at_once() {
+    let (mut sanctuary, office, ..) = driving_pair().await;
+    sanctuary.cut();
+    until(
+        Duration::from_secs(10),
+        "the presenter to be offline",
+        || drive_of(&office).driving.is_some_and(|d| !d.online),
+    )
+    .await;
+    office.node.drive_cancel();
+    assert!(drive_of(&office).driving.is_none(), "at once, as in 0.7.0");
+    assert_eq!(holder_of(&office, Role::Operator), None);
+    assert_eq!(drive_of(&office).notice, None);
+    // The seat is open for anyone when they meet again, and nothing is
+    // left stuck: the office can ask to drive again.
+    sanctuary.restore().await;
+    until(Duration::from_secs(15), "reconnecting", || {
+        sanctuary.node.status().connected() == 1 && office.node.status().connected() == 1
+    })
+    .await;
+    until(Duration::from_secs(10), "the seat to be open", || {
+        holder_of(&sanctuary, Role::Operator).is_none()
+    })
+    .await;
+    assert!(!sanctuary.node.driven());
+    office.node.drive_ask().unwrap();
+    until(Duration::from_secs(10), "driving again", || {
+        drive_of(&office).driving.is_some_and(|d| d.online)
+    })
+    .await;
 }
