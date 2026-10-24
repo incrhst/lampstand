@@ -68,6 +68,17 @@ struct Search {
     index: SongIndex,
 }
 
+/// What a pass over every service found.
+#[derive(Debug, Default)]
+pub struct ServiceScan {
+    pub services: Vec<Service>,
+    /// Written by a newer Lampstand, so not understood here.
+    pub newer: usize,
+    /// Could not be loaded (a damaged file). `Library::delete_service`
+    /// still reaches them.
+    pub damaged: Vec<ServiceId>,
+}
+
 pub struct Library {
     repo: Arc<Repo>,
     search: Mutex<Search>,
@@ -158,30 +169,33 @@ impl Library {
         self.repo.get(id.uuid())
     }
 
-    /// The services this version can read. One it cannot (written by a
-    /// newer Lampstand, say) is left out and logged, not fatal; see
-    /// [`Library::services_checked`] for how many.
+    /// The services this version can read. One it cannot is left out and
+    /// logged, not fatal; see [`Library::services_checked`].
     pub fn services(&self) -> Result<Vec<Service>, SyncError> {
-        Ok(self.services_checked()?.0)
+        Ok(self.services_checked()?.services)
     }
 
-    /// The readable services, and how many service documents could not be
-    /// read. Other errors (a failing disk) still fail.
-    pub fn services_checked(&self) -> Result<(Vec<Service>, usize), SyncError> {
-        let mut out = Vec::new();
-        let mut unreadable = 0;
+    /// The readable services, and the ones that are not, told apart:
+    /// `newer` could not be understood (written by a newer Lampstand), and
+    /// `damaged` could not be loaded at all. A failing disk still fails.
+    pub fn services_checked(&self) -> Result<ServiceScan, SyncError> {
+        let mut scan = ServiceScan::default();
         for id in self.repo.list(DocKind::Service) {
             match self.repo.get::<Service>(id) {
-                Ok(Some(service)) => out.push(service),
+                Ok(Some(service)) => scan.services.push(service),
                 Ok(None) => {}
+                Err(SyncError::Unreadable(why)) => {
+                    eprintln!("lampstand: service {id} needs a newer Lampstand: {why}");
+                    scan.newer += 1;
+                }
                 Err(SyncError::Corrupt(why)) => {
-                    eprintln!("lampstand: cannot read service {id}: {why}");
-                    unreadable += 1;
+                    eprintln!("lampstand: service {id} is damaged: {why}");
+                    scan.damaged.push(ServiceId::from_uuid(id));
                 }
                 Err(e) => return Err(e),
             }
         }
-        Ok((out, unreadable))
+        Ok(scan)
     }
 
     pub fn put_service(&self, service: &Service) -> Result<(), SyncError> {
@@ -522,15 +536,50 @@ mod tests {
             .unwrap();
         // The direct read still says why; the list skips it and counts it.
         assert_eq!(lib.services().unwrap().len(), 2);
-        let (services, unreadable) = lib.services_checked().unwrap();
-        assert_eq!(unreadable, 1);
-        assert!(services.iter().any(|s| s.id == good.id));
-        assert!(services.iter().any(|s| s.id == other.id));
+        let scan = lib.services_checked().unwrap();
+        assert_eq!((scan.newer, scan.damaged.len()), (1, 0));
+        assert!(scan.services.iter().any(|s| s.id == good.id));
+        assert!(scan.services.iter().any(|s| s.id == other.id));
         // A library with only readable services reports none.
         let clean = tempfile::tempdir().unwrap();
         let lib = open(clean.path());
         lib.put_service(&good).unwrap();
-        assert_eq!(lib.services_checked().unwrap().1, 0);
+        assert_eq!(lib.services_checked().unwrap().newer, 0);
+    }
+
+    /// A damaged file is not "needs a newer Lampstand": it is counted
+    /// apart, named so it can be deleted, and the rest still list.
+    #[test]
+    fn a_damaged_service_is_told_apart_from_a_newer_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = Service::new("Sunday");
+        let bad = Service::new("Wednesday");
+        {
+            let lib = open(dir.path());
+            lib.put_service(&good).unwrap();
+            lib.put_service(&bad).unwrap();
+        }
+        // Overwrite every chunk of the second service's document.
+        let docs = dir.path().join("repo/docs").join(bad.id.uuid().to_string());
+        let mut damaged = 0;
+        for entry in std::fs::read_dir(&docs).unwrap() {
+            let path = entry.unwrap().path();
+            if path.file_name().is_some_and(|n| n != "kind") {
+                std::fs::write(&path, b"this is not an automerge chunk").unwrap();
+                damaged += 1;
+            }
+        }
+        assert!(damaged > 0, "no chunk found to damage");
+        let lib = open(dir.path());
+        let scan = lib.services_checked().unwrap();
+        assert_eq!(scan.newer, 0, "a damaged file is not a newer one");
+        assert_eq!(scan.damaged, vec![bad.id]);
+        assert_eq!(scan.services.len(), 1);
+        assert_eq!(scan.services[0].id, good.id);
+        // It can still be deleted.
+        lib.delete_service(bad.id).unwrap();
+        let scan = lib.services_checked().unwrap();
+        assert!(scan.damaged.is_empty() && scan.services.len() == 1);
     }
 
     #[test]

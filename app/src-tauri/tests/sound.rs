@@ -5,6 +5,7 @@
 //! the real network does, and a fake link says who is connected and records
 //! the files asked for.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -40,7 +41,7 @@ impl WindowHost for Host {
 }
 
 struct Link {
-    connected: bool,
+    peers: Mutex<Vec<String>>,
     fetched: Mutex<Vec<BlobHash>>,
 }
 
@@ -52,11 +53,7 @@ impl SyncLink for Link {
         "a".into()
     }
     fn connected(&self) -> Vec<String> {
-        if self.connected {
-            vec!["peer".into()]
-        } else {
-            Vec::new()
-        }
+        self.peers.lock().unwrap().clone()
     }
     fn fetch(&self, hashes: Vec<BlobHash>) {
         self.fetched.lock().unwrap().extend(hashes);
@@ -88,7 +85,11 @@ fn device_in(dir: tempfile::TempDir, connected: bool) -> Device {
     )
     .unwrap();
     let link = Arc::new(Link {
-        connected,
+        peers: Mutex::new(if connected {
+            vec!["peer".to_string()]
+        } else {
+            Vec::new()
+        }),
         fetched: Mutex::new(Vec::new()),
     });
     app.set_sync_link(link.clone());
@@ -307,7 +308,7 @@ fn a_music_only_item_and_a_backing_track_are_planned_and_edited() {
             slot: SoundSlot::Backing,
             sound: Some(blank),
         })),
-        Response::Error { message } if message == "a sound needs a name"
+        Response::Error { message } if message == "Give the sound a name."
     ));
 
     // Changing how the music-only item starts, and keeping it off the stream.
@@ -329,8 +330,12 @@ fn a_music_only_item_and_a_backing_track_are_planned_and_edited() {
 
     // The wrong place is refused in words.
     for (item, slot, why) in [
-        (music, SoundSlot::Backing, "only a song has a backing track"),
-        (song, SoundSlot::Item, "that item is not a sound"),
+        (
+            music,
+            SoundSlot::Backing,
+            "Only a song can have a backing track.",
+        ),
+        (song, SoundSlot::Item, "That item is not a music-only item."),
     ] {
         match d.app.handle(Request::Service(ServiceRequest::SetSound {
             service: s.id,
@@ -349,7 +354,7 @@ fn a_music_only_item_and_a_backing_track_are_planned_and_edited() {
             slot: SoundSlot::Item,
             sound: None,
         })),
-        Response::Error { message } if message == "a sound item needs its sound"
+        Response::Error { message } if message == "A music-only item needs its sound."
     ));
 
     // Taking the track off leaves the song as it was.
@@ -679,14 +684,15 @@ fn a_church_without_sound_does_no_repeated_scan() {
     d.pump();
     let t0 = Instant::now();
     let now = Timestamp(now_ms);
-    // The first look reads at most eight services, so the live tick that
-    // calls this never waits on all of them.
+    // A look reads at most three services, so the live tick that calls this
+    // never waits on all of them.
     d.app.sound_tick_at(now, t0);
-    assert_eq!(d.app.sound_scans(), 8);
-    d.app.sound_tick_at(now, t0 + Duration::from_secs(3));
-    d.app.sound_tick_at(now, t0 + Duration::from_secs(6));
+    assert_eq!(d.app.sound_scans(), 3);
+    for look in 1..=6u64 {
+        d.app.sound_tick_at(now, t0 + Duration::from_secs(look * 3));
+    }
     assert_eq!(d.app.sound_scans(), 20, "each service once");
-    for secs in [9, 20, 60, 600] {
+    for secs in [30, 60, 600, 1200] {
         d.app.sound_tick_at(now, t0 + Duration::from_secs(secs));
     }
     assert_eq!(d.app.sound_scans(), 20, "nothing changed, nothing read");
@@ -703,7 +709,7 @@ fn a_church_without_sound_does_no_repeated_scan() {
         title: "Renamed".into(),
     });
     d.pump();
-    d.app.sound_tick_at(now, t0 + Duration::from_secs(700));
+    d.app.sound_tick_at(now, t0 + Duration::from_secs(1300));
     assert_eq!(d.app.sound_scans(), 21);
 }
 
@@ -797,17 +803,155 @@ fn a_service_from_a_newer_version_is_left_out_counted_and_holds_updates() {
         Response::Services(list) => assert_eq!(list.len(), 1),
         other => panic!("{other:?}"),
     }
-    assert!(matches!(
-        d.ok(Request::Service(ServiceRequest::Unreadable)),
-        Response::Unreadable(1)
-    ));
+    // One read gives the list and what could not be shown.
+    match d.ok(Request::Service(ServiceRequest::ListChecked)) {
+        Response::ServiceList(list) => {
+            assert_eq!(list.services.len(), 1);
+            assert_eq!((list.newer, list.damaged.len()), (1, 0));
+        }
+        other => panic!("{other:?}"),
+    }
     // The media list reads every service too, and still answers.
     d.ok(Request::Library(LibraryRequest::ListMedia));
-    let why = d
-        .app
-        .update_blocker_at(Timestamp(now_ms))
-        .expect("held back");
+    // An update is not refused (that would trap the person: installing is how
+    // the service becomes readable); they are asked first.
+    assert_eq!(d.app.update_blocker_at(Timestamp(now_ms)), None);
+    let why = d.app.update_caution().expect("asked first");
     assert!(why.contains("newer Lampstand"), "{why}");
+}
+
+/// A church with sound items and nothing else odd is not cautioned.
+#[test]
+fn no_caution_when_every_service_can_be_read() {
+    let mut d = device(false);
+    dated_with_sound(&mut d, Some(real_now() + HOUR), b"x");
+    assert_eq!(d.app.update_caution(), None);
+}
+
+/// Four files nobody has must not hold every slot for good: once they wait,
+/// the fifth is asked for, and Plan only calls a file "coming" once it has
+/// been asked for.
+#[test]
+fn files_nobody_has_do_not_starve_the_rest() {
+    let now_ms = real_now();
+    let mut b = device(true);
+    let mut s = b.service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: Some(Timestamp(now_ms + HOUR)),
+        time_zone: None,
+    });
+    for n in 0..5 {
+        s = b.insert(
+            &s,
+            ItemKind::Sound {
+                sound: sound(
+                    &format!("T{n}"),
+                    format!("t{n}").as_bytes(),
+                    Some(1),
+                    SoundStart::Waits,
+                ),
+            },
+        );
+    }
+    b.pump();
+    let now = Timestamp(now_ms);
+    let t0 = Instant::now();
+    let at = |secs: u64| t0 + Duration::from_secs(secs);
+    b.app.sound_tick_at(now, at(0));
+    assert_eq!(asked(&b).len(), 4);
+    let coming = |b: &mut Device| b.status(&s).iter().filter(|f| f.coming).count();
+    assert_eq!(coming(&mut b), 4, "the fifth is not within the slots yet");
+    b.app.sound_tick_at(now, at(3));
+    assert_eq!(asked(&b).len(), 4, "the four are still fresh");
+    // Their first wait is over: the fifth goes first, then some re-asks.
+    b.app.sound_tick_at(now, at(11));
+    let all: HashSet<BlobHash> = asked(&b).into_iter().collect();
+    assert_eq!(all.len(), 5, "every file has been asked for");
+    assert_eq!(coming(&mut b), 5);
+}
+
+/// A service that ages out of the window, or is deleted, stops being asked
+/// for, and the work stops with it.
+#[test]
+fn an_aged_out_or_deleted_service_stops_asking() {
+    let now_ms = real_now();
+    let mut b = device(true);
+    let aging = dated_with_sound(&mut b, Some(now_ms + HOUR), b"aging");
+    let deleted = dated_with_sound(&mut b, Some(now_ms + HOUR), b"deleted");
+    b.pump();
+    let t0 = Instant::now();
+    let at = |secs: u64| t0 + Duration::from_secs(secs);
+    b.app.sound_tick_at(Timestamp(now_ms), at(0));
+    b.app.sound_tick_at(Timestamp(now_ms), at(3));
+    assert_eq!(asked(&b).len(), 2);
+
+    // The second is deleted: nothing more is asked for it.
+    b.ok(Request::Service(ServiceRequest::Delete(deleted.id)));
+    b.pump();
+    // The first is now 40 hours past.
+    let later = Timestamp(now_ms + 41 * HOUR);
+    b.app.sound_tick_at(later, at(100));
+    b.app.sound_tick_at(later, at(200));
+    let seen = asked(&b).len();
+    let scans = b.app.sound_scans();
+    for secs in [400, 800, 2000, 5000] {
+        b.app.sound_tick_at(later, at(secs));
+    }
+    assert_eq!(asked(&b).len(), seen, "nothing is asked for again");
+    assert_eq!(b.app.sound_scans(), scans, "and nothing is read");
+    assert!(!b.status(&aging)[0].coming);
+}
+
+/// When the connected devices change, the waits start over, so a file nobody
+/// had is asked for as soon as a new device appears.
+#[test]
+fn a_new_device_ends_the_wait_for_a_file() {
+    let now_ms = real_now();
+    let mut b = device(true);
+    dated_with_sound(&mut b, Some(now_ms + HOUR), b"music");
+    b.pump();
+    let now = Timestamp(now_ms);
+    let t0 = Instant::now();
+    let at = |secs: u64| t0 + Duration::from_secs(secs);
+    b.app.sound_tick_at(now, at(0));
+    b.app.sound_tick_at(now, at(11));
+    b.app.sound_tick_at(now, at(32));
+    assert_eq!(asked(&b).len(), 3, "10 s, then 20 s, then 40 s waits");
+    b.app.sound_tick_at(now, at(40));
+    assert_eq!(asked(&b).len(), 3);
+    // A second device appears: ask at once.
+    b.link.peers.lock().unwrap().push("other".into());
+    b.app.sound_tick_at(now, at(42));
+    assert_eq!(asked(&b).len(), 4);
+}
+
+/// Nothing is asked for while a service is on air.
+#[test]
+fn nothing_is_fetched_while_a_service_is_on_air() {
+    let now_ms = real_now();
+    let mut b = device(true);
+    dated_with_sound(&mut b, Some(now_ms + HOUR), b"music");
+    let live = b.create();
+    let live = b.insert(
+        &live,
+        ItemKind::Text {
+            title: "Welcome".into(),
+            body: "Hello".into(),
+            attribution: None,
+        },
+    );
+    b.ok(Request::Service(ServiceRequest::Open(live.id)));
+    b.ok(Request::Live(lampstand_live::Command::Next));
+    b.pump();
+    let now = Timestamp(now_ms);
+    let t0 = Instant::now();
+    b.app.sound_tick_at(now, t0);
+    b.app.sound_tick_at(now, t0 + Duration::from_secs(30));
+    assert!(asked(&b).is_empty(), "on air: the live engine comes first");
+    assert_eq!(b.app.sound_scans(), 0);
+    b.ok(Request::Live(lampstand_live::Command::EndService));
+    b.app.sound_tick_at(now, t0 + Duration::from_secs(60));
+    assert_eq!(asked(&b).len(), 1);
 }
 
 /// The Setup switch is off until somebody turns it on, is this device's own,

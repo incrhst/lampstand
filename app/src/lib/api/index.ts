@@ -78,6 +78,7 @@ export * from "./Section";
 export * from "./SectionView";
 export * from "./Service";
 export * from "./ServiceItem";
+export * from "./ServiceList";
 export * from "./ServiceRequest";
 export * from "./ServiceSummary";
 export * from "./SettingsRequest";

@@ -76,6 +76,11 @@ pub struct UpdateStatus {
     pub state: UpdateState,
     /// Why `Install` would be refused right now, if it would be.
     pub blocked: Option<String>,
+    /// Something to ask the person before installing, which does not refuse
+    /// it: the next service's start cannot be known. The screen asks, and
+    /// then `Install` goes ahead.
+    #[serde(default)]
+    pub caution: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -456,9 +461,9 @@ pub enum ServiceRequest {
     /// Where each sound file of a service stands on this device, as
     /// `Response::SoundStatus`: Plan says which are not here yet.
     SoundStatus(ServiceId),
-    /// How many services this version cannot read (a newer Lampstand wrote
-    /// them), as `Response::Unreadable`. They are left out of `List`.
-    Unreadable,
+    /// Like `List`, and also says which services cannot be shown, as
+    /// `Response::ServiceList`: one read of every service for both.
+    ListChecked,
     /// Plays a media item once or on repeat. A video that repeats by itself
     /// holds a looping section on it for good. Answers `Response::Service`.
     SetMediaLooped {
@@ -1227,7 +1232,7 @@ pub enum Response {
     /// A file added to the blob store by `AddSoundFile`.
     SoundFile(SoundFile),
     SoundStatus(Vec<SoundFileStatus>),
-    Unreadable(u32),
+    ServiceList(ServiceList),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
@@ -1250,6 +1255,17 @@ pub enum Response {
     Settings(DeviceSettings),
     Church(ChurchStatus),
     Update(UpdateStatus),
+}
+
+/// The services, and the ones that cannot be shown.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServiceList {
+    pub services: Vec<ServiceSummary>,
+    /// Saved by a newer Lampstand than this one.
+    pub newer: u32,
+    /// Files that could not be loaded. `ServiceRequest::Delete` reaches them.
+    pub damaged: Vec<ServiceId>,
 }
 
 /// Which sound of an item `SetSound` changes.

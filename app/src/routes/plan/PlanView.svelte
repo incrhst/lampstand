@@ -87,13 +87,26 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
-  /** Services this version cannot read, written by a newer Lampstand. */
-  let unreadable = $state(0);
+  /** Services saved by a newer Lampstand, and files that could not be loaded. */
+  let newer = $state(0);
+  let damaged: string[] = $state([]);
+
+  /** Deletes a service file that could not be loaded. */
+  async function removeDamaged(id: string) {
+    try {
+      await request({ area: "Service", request: { Delete: id } }, "Ok");
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
 
   async function refresh() {
     try {
-      services = await request({ area: "Service", request: "List" }, "Services");
-      unreadable = await request({ area: "Service", request: "Unreadable" }, "Unreadable");
+      const list = await request({ area: "Service", request: "ListChecked" }, "ServiceList");
+      services = list.services;
+      newer = list.newer;
+      damaged = list.damaged;
     } catch (e) {
       report(e);
     }
@@ -986,11 +999,17 @@
         </li>
       {/if}
     </ul>
-    {#if unreadable > 0}
+    {#if newer > 0}
       <Banner tone="warn">
-        {unreadable === 1 ? "1 service needs" : `${unreadable} services need`} a newer Lampstand to open. Update Lampstand to see {unreadable === 1 ? "it" : "them"}.
+        {newer === 1 ? "1 service was" : `${newer} services were`} saved by a newer Lampstand and can't be opened here. Update Lampstand to see {newer === 1 ? "it" : "them"}.
       </Banner>
     {/if}
+    {#each damaged as id (id)}
+      <Banner tone="warn">
+        A service file is damaged and can't be shown.
+        <Button variant="ghost" size="small" icon="trash" onclick={() => removeDamaged(id)}>Delete it</Button>
+      </Banner>
+    {/each}
   </aside>
 
   <section class="pane order" aria-labelledby="service-title">

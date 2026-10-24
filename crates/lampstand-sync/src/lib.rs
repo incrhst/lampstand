@@ -145,6 +145,9 @@ pub struct DocChanged {
 pub enum SyncError {
     Io(std::io::Error),
     Corrupt(String),
+    /// The document loaded, but this version cannot make sense of it (an
+    /// item kind or field it does not know, from a newer Lampstand).
+    Unreadable(String),
     /// The local role may not write this kind of document.
     Forbidden(DocKind),
 }
@@ -154,6 +157,7 @@ impl fmt::Display for SyncError {
         match self {
             SyncError::Io(e) => write!(f, "sync store I/O: {e}"),
             SyncError::Corrupt(why) => write!(f, "corrupt sync data: {why}"),
+            SyncError::Unreadable(why) => write!(f, "not understood by this version: {why}"),
             SyncError::Forbidden(kind) => write!(f, "this device may not write {}", kind.as_str()),
         }
     }

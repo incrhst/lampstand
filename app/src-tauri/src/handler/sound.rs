@@ -12,20 +12,26 @@
 //!
 //! - **Which services.** Those that started less than 36 hours ago or start
 //!   later. An undated service is not fetched (give it a date to get its
-//!   files ahead of time), and neither is a past one.
-//! - **When.** Only while a paired device is connected. A device on its own
-//!   does nothing, so a church that does not sync pays nothing.
+//!   files ahead of time), and neither is a past one. A service that ages
+//!   out of the window, or is deleted, stops being asked for.
+//! - **When.** Only while a paired device is connected, and not while a
+//!   service is on air. A device on its own does nothing, so a church that
+//!   does not sync pays nothing.
 //! - **What it reads.** A service is read only when its document changed
 //!   (the `DocChanged` id), plus one pass over every service when this
-//!   device starts or meets a device. The pass is spread over ticks, eight
-//!   services at most per look, and looks are two seconds apart, so the tick
-//!   that drives the live engine never waits on it. Nothing is read again
-//!   while nothing changes.
-//! - **How much.** At most four files are outstanding at once (a document
-//!   does not say how big its files are, so the number of files is the
-//!   bound, not their size; each travels in 256 KiB chunks and is verified
-//!   against its hash on arrival). A file nobody has is asked for again
-//!   after 10 s, then 20 s, 40 s and so on up to ten minutes.
+//!   device starts or meets a device. The pass is spread over looks: three
+//!   services at most per look, looks two seconds apart, so the tick that
+//!   drives the live engine never waits on it. Nothing is read again while
+//!   nothing changes. (Whether a service is in the window is known only by
+//!   reading it; a past service is read once and then forgotten.)
+//! - **How much.** At most four files are on their first ask at once. A
+//!   document does not say how big its files are, so the number of files is
+//!   the bound, not their size; each travels in 256 KiB chunks and is
+//!   verified against its hash on arrival. Soonest service first.
+//! - **A file nobody has** is asked for again after 10 s, 20 s, 40 s and so
+//!   on up to ten minutes, and while it waits it does not hold a slot, so
+//!   other files are not starved. When the connected devices change, the wait
+//!   starts over.
 //!
 //! Plan asks `ServiceRequest::SoundStatus` which files are here, and whether
 //! a missing one is on its way.
@@ -44,8 +50,8 @@ use super::{err, App, Result};
 /// How far apart looks are.
 const LOOK: Duration = Duration::from_secs(2);
 /// Services read per look.
-const PER_LOOK: usize = 8;
-/// Files asked for and not yet here, at most.
+const PER_LOOK: usize = 3;
+/// Files on their first ask at once, at most.
 const OUTSTANDING: usize = 4;
 /// The first re-ask delay for a file that did not arrive; it doubles.
 const ASK_AGAIN: Duration = Duration::from_secs(10);
@@ -55,8 +61,8 @@ const ASK_AGAIN_MAX: Duration = Duration::from_secs(600);
 const PAST: i64 = 36 * 60 * 60 * 1000;
 
 /// Whether a service's sound files are fetched ahead of it.
-pub(super) fn fetched_ahead(service: &Service, now: Timestamp) -> bool {
-    service.starts_at.is_some_and(|t| t.0 >= now.0 - PAST)
+pub(super) fn fetched_ahead(starts_at: Option<Timestamp>, now: Timestamp) -> bool {
+    starts_at.is_some_and(|t| t.0 >= now.0 - PAST)
 }
 
 /// How a file was asked for.
@@ -65,18 +71,24 @@ struct Ask {
     tries: u32,
 }
 
+/// What a service still lacks.
+struct Wanted {
+    starts_at: Timestamp,
+    files: Vec<BlobHash>,
+}
+
 /// The app's bookkeeping about sound files.
 #[derive(Default)]
 pub struct SoundSync {
     /// Services whose documents changed, waiting to be read.
     queue: VecDeque<Uuid>,
     queued: HashSet<Uuid>,
-    /// Whether a device was connected at the last look.
-    was_connected: bool,
+    /// The devices connected at the last look.
+    connected: Vec<String>,
     next_look: Option<Instant>,
-    /// Files each service names that this device lacks (fetched-ahead
-    /// services only).
-    wanted: HashMap<Uuid, Vec<BlobHash>>,
+    conn_next: Option<Instant>,
+    /// Files each fetched-ahead service names that this device lacks.
+    wanted: HashMap<Uuid, Wanted>,
     asks: HashMap<BlobHash, Ask>,
     /// Files that were awaited at the last look.
     waiting: HashSet<BlobHash>,
@@ -90,6 +102,14 @@ impl SoundSync {
         if self.queued.insert(id) {
             self.queue.push_back(id);
         }
+    }
+
+    /// Whether a first ask is still fresh, so it holds one of the slots.
+    fn fresh(&self, at: Instant) -> usize {
+        self.asks
+            .values()
+            .filter(|a| a.tries == 0 && at < a.next)
+            .count()
     }
 }
 
@@ -107,12 +127,13 @@ impl App {
             .map_err(err)?
             .ok_or("no such service")?;
         let blobs = self.library.repo().blobs();
-        // A missing file is on its way only if somebody is there to send it
-        // and this service is one that is fetched ahead.
+        // A missing file is on its way only if somebody is connected, the
+        // service is one that is fetched ahead, and the file has been asked
+        // for (it is within the slots).
         let connected = self
             .sync_link()
             .is_some_and(|link| !link.connected().is_empty());
-        let coming = connected && fetched_ahead(&service, super::now());
+        let ahead = connected && fetched_ahead(service.starts_at, super::now());
         let mut out = Vec::new();
         for (id, item) in service.ordered() {
             let mut files = Vec::new();
@@ -129,7 +150,7 @@ impl App {
                     backing,
                     file,
                     on_device,
-                    coming: !on_device && coming,
+                    coming: !on_device && ahead && self.sound_sync.asks.contains_key(&file),
                 });
             }
         }
@@ -140,30 +161,33 @@ impl App {
     /// this device lacks.
     fn sound_read(&mut self, id: Uuid, now: Timestamp) {
         self.sound_sync.scans += 1;
-        let service = self
+        let service: Option<Service> = self
             .library
             .service(ServiceId::from_uuid(id))
             .ok()
             .flatten();
         let blobs = self.library.repo().blobs();
-        let files: Vec<BlobHash> = match service {
-            Some(service) if fetched_ahead(&service, now) => {
-                let mut files = Vec::new();
-                for item in service.items.values() {
-                    for sound in item.sounds() {
-                        if blobs.path(&sound.file).is_none() && !files.contains(&sound.file) {
-                            files.push(sound.file);
-                        }
+        let wanted = service.and_then(|service| {
+            let starts_at = service
+                .starts_at
+                .filter(|_| fetched_ahead(service.starts_at, now))?;
+            let mut files = Vec::new();
+            for item in service.items.values() {
+                for sound in item.sounds() {
+                    if blobs.path(&sound.file).is_none() && !files.contains(&sound.file) {
+                        files.push(sound.file);
                     }
                 }
-                files
             }
-            _ => Vec::new(),
-        };
-        if files.is_empty() {
-            self.sound_sync.wanted.remove(&id);
-        } else {
-            self.sound_sync.wanted.insert(id, files);
+            (!files.is_empty()).then_some(Wanted { starts_at, files })
+        });
+        match wanted {
+            Some(w) => {
+                self.sound_sync.wanted.insert(id, w);
+            }
+            None => {
+                self.sound_sync.wanted.remove(&id);
+            }
         }
     }
 
@@ -179,16 +203,32 @@ impl App {
         let Some(link) = self.sync_link() else {
             return;
         };
-        let connected = !link.connected().is_empty();
-        if connected && !self.sound_sync.was_connected {
-            // On starting, and on meeting a device: every service once.
-            for id in self.library.repo().list(DocKind::Service) {
-                self.sound_sync.service_changed(id);
+        // Who is connected is asked about once a second, not on every tick.
+        if self.sound_sync.conn_next.is_none_or(|t| at >= t) {
+            self.sound_sync.conn_next = Some(at + Duration::from_secs(1));
+            let mut connected = link.connected();
+            connected.sort();
+            if connected != self.sound_sync.connected {
+                if !connected.is_empty() {
+                    // Meeting a device: every service once, and every wait over.
+                    for id in self.library.repo().list(DocKind::Service) {
+                        self.sound_sync.service_changed(id);
+                    }
+                    for ask in self.sound_sync.asks.values_mut() {
+                        ask.next = at;
+                        ask.tries = 0;
+                    }
+                    self.sound_sync.next_look = None;
+                }
+                self.sound_sync.connected = connected;
             }
         }
-        self.sound_sync.was_connected = connected;
         let busy = !self.sound_sync.queue.is_empty() || !self.sound_sync.waiting.is_empty();
-        if !connected || !busy {
+        if self.sound_sync.connected.is_empty() || !busy {
+            return;
+        }
+        // Never while a service is on air: the live engine comes first.
+        if !self.live.is_idle() {
             return;
         }
         if self.sound_sync.next_look.is_some_and(|t| at < t) {
@@ -204,10 +244,24 @@ impl App {
             self.sound_read(id, now);
         }
 
+        // A service that has aged out of the window stops being asked for.
         let blobs = self.library.repo().blobs();
+        self.sound_sync
+            .wanted
+            .retain(|_, w| fetched_ahead(Some(w.starts_at), now));
+
+        // What is still missing, soonest service first.
+        let mut services: Vec<&Wanted> = self.sound_sync.wanted.values().collect();
+        services.sort_by_key(|w| {
+            if w.starts_at.0 >= now.0 {
+                (0, w.starts_at.0)
+            } else {
+                (1, -w.starts_at.0)
+            }
+        });
         let mut wanted: Vec<BlobHash> = Vec::new();
-        for files in self.sound_sync.wanted.values() {
-            for file in files {
+        for w in services {
+            for file in &w.files {
                 if blobs.path(file).is_none() && !wanted.contains(file) {
                     wanted.push(*file);
                 }
@@ -223,29 +277,34 @@ impl App {
             .asks
             .retain(|blob, _| wanted_set.contains(blob));
 
-        // Ask for what is due, a few at a time.
-        let mut outstanding = self.sound_sync.asks.len();
+        // New files first, then the ones whose wait is over, within the
+        // slots that are free. A file in its wait holds no slot.
+        let mut budget = OUTSTANDING.saturating_sub(self.sound_sync.fresh(at));
         let mut ask = Vec::new();
         for blob in &wanted {
-            match self.sound_sync.asks.get_mut(blob) {
-                Some(a) if at >= a.next => {
+            if budget > 0 && !self.sound_sync.asks.contains_key(blob) {
+                budget -= 1;
+                self.sound_sync.asks.insert(
+                    *blob,
+                    Ask {
+                        next: at + again(0),
+                        tries: 0,
+                    },
+                );
+                ask.push(*blob);
+            }
+        }
+        for blob in &wanted {
+            if budget == 0 {
+                break;
+            }
+            if let Some(a) = self.sound_sync.asks.get_mut(blob) {
+                if at >= a.next {
+                    budget -= 1;
                     a.tries += 1;
                     a.next = at + again(a.tries);
                     ask.push(*blob);
                 }
-                Some(_) => {}
-                None if outstanding < OUTSTANDING => {
-                    outstanding += 1;
-                    self.sound_sync.asks.insert(
-                        *blob,
-                        Ask {
-                            next: at + again(0),
-                            tries: 0,
-                        },
-                    );
-                    ask.push(*blob);
-                }
-                None => {}
             }
         }
         if !ask.is_empty() {

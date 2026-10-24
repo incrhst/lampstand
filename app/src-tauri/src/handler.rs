@@ -534,25 +534,14 @@ impl App {
                 .ok_or("no such service".into())
         };
         Ok(match request {
-            ServiceRequest::List => {
-                let mut services: Vec<ServiceSummary> = lib
-                    .services()
-                    .map_err(err)?
-                    .into_iter()
-                    .map(|s| ServiceSummary {
-                        id: s.id,
-                        title: s.title,
-                        starts_at: s.starts_at,
-                        time_zone: s.time_zone,
-                        items: s
-                            .items
-                            .values()
-                            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                            .count() as u32,
-                    })
-                    .collect();
-                sort_services(&mut services, now());
-                Response::Services(services)
+            ServiceRequest::List => Response::Services(summaries(lib.services().map_err(err)?)),
+            ServiceRequest::ListChecked => {
+                let scan = lib.services_checked().map_err(err)?;
+                Response::ServiceList(lampstand_api::ServiceList {
+                    services: summaries(scan.services),
+                    newer: scan.newer as u32,
+                    damaged: scan.damaged,
+                })
             }
             ServiceRequest::Get(id) => Response::Service(get(id)?),
             ServiceRequest::Create {
@@ -769,17 +758,19 @@ impl App {
                     sound
                 });
                 if sound.as_ref().is_some_and(|sound| sound.name.is_empty()) {
-                    return Err("a sound needs a name".into());
+                    return Err("Give the sound a name.".into());
                 }
                 match (slot, sound) {
                     (SoundSlot::Item, Some(sound)) => match &mut entry.kind {
                         ItemKind::Sound { sound: slot } => *slot = sound,
-                        _ => return Err("that item is not a sound".into()),
+                        _ => return Err("That item is not a music-only item.".into()),
                     },
-                    (SoundSlot::Item, None) => return Err("a sound item needs its sound".into()),
+                    (SoundSlot::Item, None) => {
+                        return Err("A music-only item needs its sound.".into())
+                    }
                     (SoundSlot::Backing, sound) => {
                         if !matches!(entry.kind, ItemKind::Song { .. }) {
-                            return Err("only a song has a backing track".into());
+                            return Err("Only a song can have a backing track.".into());
                         }
                         entry.backing = sound;
                     }
@@ -789,9 +780,6 @@ impl App {
                 // A new file may need fetching from the other devices.
                 self.sound_sync.service_changed(service.uuid());
                 Response::Service(s)
-            }
-            ServiceRequest::Unreadable => {
-                Response::Unreadable(lib.services_checked().map_err(err)?.1 as u32)
             }
             ServiceRequest::SoundStatus(service) => {
                 Response::SoundStatus(self.sound_status(service)?)
@@ -2003,20 +1991,26 @@ impl App {
 
     /// `update_blocker` with the time given, for tests.
     pub fn update_blocker_at(&self, now: Timestamp) -> Option<String> {
-        // A service this version cannot read (written by a newer one) might
-        // be about to start, and its time is unknown: fail safe, and say so.
-        let (services, unreadable) = self.library.services_checked().ok()?;
-        let next_service = services
+        let next_service = self
+            .library
+            .services()
+            .ok()?
             .iter()
             .filter_map(|s| s.starts_at)
             .filter(|t| *t > now)
             .min();
-        if let Some(why) = crate::update::blocker(self.live.is_idle(), next_service, now) {
-            return Some(why);
-        }
-        (unreadable > 0).then(|| {
-            "Some services need a newer Lampstand, so it cannot tell when the next one starts. \
-             Update when no service is near."
+        crate::update::blocker(self.live.is_idle(), next_service, now)
+    }
+
+    /// Something to ask before installing an update, which does not refuse it:
+    /// some services cannot be read here (a newer Lampstand saved them), so
+    /// when the next one starts is not known. Refusing would trap the person,
+    /// since installing is how they become readable.
+    pub fn update_caution(&self) -> Option<String> {
+        let scan = self.library.services_checked().ok()?;
+        (scan.newer > 0).then(|| {
+            "Some services were saved by a newer Lampstand, so this one cannot tell when the next \
+             service starts. Make sure none is about to begin."
                 .to_string()
         })
     }
@@ -2337,6 +2331,26 @@ fn local_utc_offset_minutes() -> i32 {
 /// A new browser-source key: what `SceneHub` makes, 32 hex digits.
 fn fresh_key() -> String {
     uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// The services as the list shows them, in order.
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services
+        .into_iter()
+        .map(|s| ServiceSummary {
+            id: s.id,
+            title: s.title,
+            starts_at: s.starts_at,
+            time_zone: s.time_zone,
+            items: s
+                .items
+                .values()
+                .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+                .count() as u32,
+        })
+        .collect();
+    sort_services(&mut services, now());
+    services
 }
 
 fn now() -> Timestamp {

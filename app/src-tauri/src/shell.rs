@@ -684,6 +684,7 @@ async fn update_request(
             current: app.package_info().version.to_string(),
             state: u.state.clone(),
             blocked: lock(&state.app).update_blocker(),
+            caution: lock(&state.app).update_caution(),
         })
     };
 

@@ -127,4 +127,8 @@ them.
 
 ### Sound in the order of the service, and going back
 
-A service can hold music-only items from 0.8.0. A version without them cannot read that service; it lists the rest and (once it has the fix) shows "N services need a newer Lampstand to open". Before releasing a version that reads a new kind of item, field or document, check what the previous release does with it. To roll back past this change, remove the music-only items from the services first; backing tracks on songs are ignored harmlessly. The auto-update guard holds an update back while a service cannot be read, because its start time is unknown, so install by hand if it never clears.
+A service can hold music-only items from 0.8.0. A build older than the fix that shipped with this (any 0.8.0 build before it, on sync protocol 5) cannot list **any** service while one of them holds a music-only item, and the Setup switch "Use sound in services" does not protect it, because the item still syncs from the device that added it. Update such a device before anyone adds sound. Released 0.7.0 is on protocol 4 and never receives these documents.
+
+From the fix on, a version that cannot understand a service leaves it out of the list and says "N services were saved by a newer Lampstand and can't be opened here. Update Lampstand to see them." Installing an update is never refused for that reason: About asks "Install anyway?" because the next service's start time is unknown. Before releasing a version that reads a new kind of item, field or document, check what the previous release does with it.
+
+To roll back past this change, remove the music-only items from the services first; backing tracks on songs are ignored harmlessly.
