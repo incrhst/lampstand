@@ -91,6 +91,11 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const BLOB_TIMEOUT: Duration = Duration::from_secs(120);
 const BACKOFF_START: Duration = Duration::from_millis(500);
 const BACKOFF_MAX: Duration = Duration::from_secs(10);
+/// How long after a connection opens a claim made while apart is believed.
+const FRESH_SESSION: Duration = Duration::from_secs(10);
+/// How long a device is taken to have been away when this device has no
+/// record of ever hearing from it.
+const LONG_AWAY: Duration = Duration::from_secs(365 * 24 * 3600);
 
 #[derive(Debug)]
 pub enum NetError {
@@ -344,6 +349,8 @@ struct Peers {
     /// How long each connected device had been out of reach when its
     /// present connection began.
     away_before: HashMap<DeviceKey, Duration>,
+    /// When each connected device's present connection began.
+    session_started: HashMap<DeviceKey, Instant>,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -376,6 +383,17 @@ pub struct SyncNode {
     /// Whether another device was operating this one at the last check, so
     /// the app is told when that changes.
     last_driven: Mutex<bool>,
+    /// When each paired device was last heard from (Unix ms), kept on disk
+    /// so a restart does not forget how long a device has been away.
+    contacts: Mutex<HashMap<DeviceKey, i64>>,
+    contacts_dirty: std::sync::atomic::AtomicBool,
+    /// Roles are saved one at a time, newest last.
+    save_lock: Mutex<()>,
+    /// What is on disk may be replaced (see [`saved::Loaded`]).
+    persist_roles: bool,
+    /// How long after a connection opens a claim made while apart is
+    /// believed; one that arrives later cannot have been made out of reach.
+    fresh_session: Mutex<Duration>,
     drive_hooks: Mutex<Option<Arc<DriveHooks>>>,
     /// When this node was made: how long a never-seen presenter has been
     /// silent.
@@ -389,6 +407,9 @@ struct Reach {
     connected: HashSet<DeviceKey>,
     silent: HashMap<DeviceKey, Duration>,
     away_before: HashMap<DeviceKey, Duration>,
+    /// How long each connected device's present connection has been open.
+    session_age: HashMap<DeviceKey, Duration>,
+    fresh_session: Duration,
 }
 
 impl Reach {
@@ -420,7 +441,16 @@ impl Net for Reach {
         if !self.paired.contains(&device) {
             None
         } else if self.connected.contains(&device) {
-            self.away_before.get(&device).copied()
+            // Only a connection that has just opened can bring a claim made
+            // while apart; one that has been up for a while has been in
+            // reach all along.
+            let fresh = self
+                .session_age
+                .get(&device)
+                .is_some_and(|age| *age <= self.fresh_session);
+            fresh
+                .then(|| self.away_before.get(&device).copied())
+                .flatten()
         } else {
             self.silent.get(&device).copied()
         }
@@ -452,6 +482,7 @@ impl SyncNode {
         let roles = loaded
             .file
             .into_roles(key.public(), config.name.clone(), signer);
+        let dir = config.dir.clone();
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -466,6 +497,11 @@ impl SyncNode {
             discovery: Mutex::new(None),
             roles: Mutex::new(roles),
             last_driven: Mutex::new(false),
+            contacts: Mutex::new(saved::load_contacts(&dir)),
+            contacts_dirty: std::sync::atomic::AtomicBool::new(false),
+            save_lock: Mutex::new(()),
+            persist_roles: loaded.writable,
+            fresh_session: Mutex::new(FRESH_SESSION),
             drive_hooks: Mutex::new(None),
             started: Instant::now(),
             me: me.clone(),
@@ -702,6 +738,7 @@ impl SyncNode {
             self.bump();
             self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
+            lock(&self.roles).seed_from(peer.device);
             // The device that showed the code is the main machine: it takes
             // the roles nobody holds (Projection, Operator and Audio).
             let reach = self.reach();
@@ -783,6 +820,7 @@ impl SyncNode {
             self.bump();
             self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
+            lock(&self.roles).seed_from(peer.device);
         }
         match self
             .begin(link, &peer, self.device(), Some(address.to_string()))
@@ -828,13 +866,12 @@ impl SyncNode {
                             },
                         );
                         peers.problems.remove(&peer.device);
-                        let since = peers
-                            .last_contact
-                            .get(&peer.device)
-                            .copied()
-                            .unwrap_or(self.started);
-                        let away = since.elapsed();
+                        // How long it had been out of reach, from what was
+                        // heard before this connection (kept across a
+                        // restart); never heard of: a long time.
+                        let away = self.silence_in(&peers, peer.device).unwrap_or(LONG_AWAY);
                         peers.away_before.insert(peer.device, away);
+                        peers.session_started.insert(peer.device, Instant::now());
                         drop(peers);
                         self.bump();
                         self.driving_changed();
@@ -868,16 +905,21 @@ impl SyncNode {
         if peers.sessions.get(&device).is_some_and(|s| s.id == id) {
             peers.sessions.remove(&device);
             peers.last_contact.insert(device, Instant::now());
+            peers.session_started.remove(&device);
             // Under the peers lock, so a new session cannot start before
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
-            // An ask from a device that went away is withdrawn.
+            lock(&self.contacts).insert(device, now_ms());
+            self.save_contacts();
+            // An ask from a device that went away is withdrawn, and so is a
+            // hand-back that was on its way to it.
             {
                 let mut roles = lock(&self.roles);
                 for role in Role::ALL {
                     roles.receive_cancel(role, device);
                 }
+                roles.forget_yields();
             }
             // An Operator that went away is no longer driving anything.
             self.driving_changed();
@@ -899,11 +941,20 @@ impl SyncNode {
             .iter()
             .filter(|d| !connected.contains(d))
             .map(|d| {
-                let since = peers.last_contact.get(d).copied().unwrap_or(self.started);
-                (*d, since.elapsed())
+                let silent = self
+                    .silence_in(&peers, *d)
+                    .unwrap_or_else(|| self.started.elapsed());
+                (*d, silent)
             })
             .collect();
+        let session_age = peers
+            .session_started
+            .iter()
+            .map(|(d, at)| (*d, at.elapsed()))
+            .collect();
         Reach {
+            session_age,
+            fresh_session: *lock(&self.fresh_session),
             away_before: peers.away_before.clone(),
             paired,
             connected,
@@ -1179,6 +1230,12 @@ impl SyncNode {
     }
 
     fn save_roles(&self) {
+        if !self.persist_roles {
+            return;
+        }
+        // The snapshot is taken under the same lock the write is made
+        // under, so an older one cannot land after a newer one.
+        let _one_at_a_time = lock(&self.save_lock);
         let file = RolesFile::from_roles(&lock(&self.roles));
         if let Err(e) = saved::save(&self.dir, &file) {
             eprintln!("lampstand: cannot save the roles: {e}");
@@ -1447,7 +1504,13 @@ impl SyncNode {
             self.role_changed(role, &record);
         } else {
             // A newer record that does not join this device's state is
-            // shown as such, not taken in.
+            // shown as such, not taken in. One that this device's own beats
+            // is answered with it, so the other device learns where things
+            // stand.
+            let ours = lock(&self.roles).record(role).clone();
+            if ours.beats(&record) {
+                self.send_to(from, record_frame(role, &ours));
+            }
             self.bump();
         }
     }
@@ -1461,8 +1524,21 @@ impl SyncNode {
                 eprintln!("lampstand: {name} may take {role:?}: remembered");
                 if let Err(e) = self.allow_role(role, from, false) {
                     eprintln!("lampstand: could not hand {role:?} to {name}: {e}");
-                    // Nobody is shown a prompt for it, so do not keep it.
-                    lock(&self.roles).decline(role, from);
+                    // Nobody is shown a prompt for it, so do not keep it, and
+                    // do not leave the asker waiting.
+                    let epoch = {
+                        let mut r = lock(&self.roles);
+                        r.decline(role, from);
+                        r.record(role).epoch
+                    };
+                    self.send_to(
+                        from,
+                        Frame::RoleAnswer {
+                            role,
+                            epoch,
+                            answer: wire::RoleAnswer::Declined,
+                        },
+                    );
                 }
                 self.bump();
             }
@@ -1530,6 +1606,44 @@ impl SyncNode {
         lock(&self.peers)
             .last_contact
             .insert(device, Instant::now());
+        lock(&self.contacts).insert(device, now_ms());
+        self.contacts_dirty
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// How long ago `device` was last heard from: by the clock of this run
+    /// if it was, else by what was kept on disk. `None`: never.
+    fn silence_in(&self, peers: &Peers, device: DeviceKey) -> Option<Duration> {
+        if let Some(at) = peers.last_contact.get(&device) {
+            return Some(at.elapsed());
+        }
+        let ms = *lock(&self.contacts).get(&device)?;
+        Some(Duration::from_millis(
+            u64::try_from(now_ms() - ms).unwrap_or(0),
+        ))
+    }
+
+    fn save_contacts(&self) {
+        let contacts = lock(&self.contacts).clone();
+        if let Err(e) = saved::save_contacts(&self.dir, &contacts) {
+            eprintln!("lampstand: cannot save when devices were last heard: {e}");
+        }
+        self.contacts_dirty
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// How long after a connection opens a claim made while apart is
+    /// believed (ten seconds unless set).
+    pub fn set_fresh_session(&self, window: Duration) {
+        *lock(&self.fresh_session) = window;
+    }
+
+    /// For tests: forgets what this run has heard, as a restart does, and
+    /// reads when devices were last heard from back from disk.
+    #[doc(hidden)]
+    pub fn forget_this_runs_contacts(&self) {
+        lock(&self.peers).last_contact.clear();
+        *lock(&self.contacts) = saved::load_contacts(&self.dir);
     }
 
     /// While the presenter is offline, the time since it was heard from
@@ -1543,6 +1657,12 @@ impl SyncNode {
                 let Some(node) = node.upgrade() else {
                     return;
                 };
+                if node
+                    .contacts_dirty
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    node.save_contacts();
+                }
                 if matches!(
                     node.presenter_status().standing,
                     Standing::Wait { .. } | Standing::TakeOver { .. }
@@ -1838,6 +1958,27 @@ mod tests {
         }
     }
 
+    /// Pairs the node with device `n`, which then seeds it.
+    fn paired(node: &SyncNode, n: u8) {
+        lock(&node.trust).add(id(n), "Paired", None).unwrap();
+        lock(&node.roles).seed_from(id(n));
+    }
+
+    /// Everyone is paired and online.
+    struct Friends;
+
+    impl Net for Friends {
+        fn has_peers(&self) -> bool {
+            true
+        }
+        fn holder(&self, _: DeviceKey) -> Holder {
+            Holder::Online
+        }
+        fn away(&self, _: DeviceKey) -> Option<Duration> {
+            Some(Duration::from_secs(999))
+        }
+    }
+
     /// A device `n` that has screens, as it would sign for itself.
     fn device(n: u8) -> Roles {
         let mut r = Roles::new(
@@ -1877,6 +2018,8 @@ mod tests {
         let (node, commands, _, _dir) = node_with_hooks();
         let me = node.device();
         node.claim_role(Role::Projection).unwrap();
+        paired(&node, 8);
+        paired(&node, 7);
         let (mut seven, op) = claimed(7, Role::Operator);
         node.record_received(id(7), Role::Operator, op);
         node.drive_command_received(id(7), b"a".to_vec());
@@ -1896,6 +2039,8 @@ mod tests {
     #[test]
     fn a_command_is_carried_out_only_where_projection_is_held() {
         let (node, commands, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        paired(&node, 9);
         let (_, op) = claimed(7, Role::Operator);
         node.record_received(id(7), Role::Operator, op);
         // Projection is somebody else's.
@@ -1909,7 +2054,7 @@ mod tests {
     fn live_state_counts_only_from_the_projection_holder_this_device_operates() {
         let (node, _, live, _dir) = node_with_hooks();
         // The roles must have a paired device to mean anything.
-        lock(&node.trust).add(id(9), "Back room", None).unwrap();
+        paired(&node, 9);
         let (_, proj) = claimed(9, Role::Projection);
         node.record_received(id(9), Role::Projection, proj);
         node.claim_role(Role::Operator).unwrap();
@@ -1922,11 +2067,13 @@ mod tests {
     fn a_name_in_a_record_is_never_taken_from_the_sender() {
         let (node, _, _, _dir) = node_with_hooks();
         lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        lock(&node.roles).seed_from(id(7));
         let (mut seven, mut forged) = claimed(7, Role::Stream);
         forged.name = "The pastor's phone".into();
         node.record_received(id(7), Role::Stream, forged);
         assert_eq!(node.roles_status().stream.record.name, "Mary's laptop");
         // A holder it has no name for gets none.
+        lock(&node.roles).seed_from(id(9));
         let (_, unknown) = claimed(9, Role::Audio);
         node.record_received(id(9), Role::Audio, unknown);
         assert_eq!(node.roles_status().audio.record.name, "");
@@ -1966,7 +2113,7 @@ mod tests {
     #[test]
     fn forged_records_from_a_paired_device_change_nothing() {
         let (node, _, _, _dir) = node_with_hooks();
-        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        paired(&node, 7);
         // This device holds Stream, handed to it by a first claim.
         node.claim_role(Role::Stream).unwrap();
         let held = node.roles_status().stream.record;
@@ -2000,7 +2147,8 @@ mod tests {
         // A claim at a later epoch, signed by a stranger, against the holder
         // this device can see: refused.
         let mut stranger = device(9);
-        stranger.merge(Role::Stream, &held, id(9), &Strangers);
+        stranger.seed_from(node.device());
+        stranger.merge(Role::Stream, &held, node.device(), &Friends);
         let take = stranger.claim(Role::Stream, &Strangers);
         // (the stranger sees the holder as gone and takes it)
         let take = take.unwrap();
@@ -2037,5 +2185,84 @@ mod tests {
             panic!("a record")
         };
         assert!(holder.is_none() && steps.is_empty());
+    }
+
+    /// A claim signed by device `n` against the node's Stream, as `n` would
+    /// have made it after learning the node holds it.
+    fn claim_against(node: &SyncNode, n: u8) -> Record {
+        let mut d = device(n);
+        d.seed_from(node.device());
+        let held = node.roles_status().stream.record;
+        assert!(
+            d.merge(Role::Stream, &held, node.device(), &Friends)
+                .changed
+        );
+        // It sees the holder as long gone.
+        struct Gone(DeviceKey);
+        impl Net for Gone {
+            fn has_peers(&self) -> bool {
+                true
+            }
+            fn holder(&self, d: DeviceKey) -> Holder {
+                if d == self.0 {
+                    Holder::Offline(Duration::from_secs(999))
+                } else {
+                    Holder::Online
+                }
+            }
+            fn away(&self, _: DeviceKey) -> Option<Duration> {
+                Some(Duration::from_secs(999))
+            }
+        }
+        d.claim(Role::Stream, &Gone(node.device())).unwrap()
+    }
+
+    #[test]
+    fn a_claim_over_a_live_connection_does_not_take_a_role_from_a_connected_holder() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let claim = claim_against(&node, 7);
+        // Device 7 was heard from just now: it was not away.
+        node.heard(id(7));
+        node.record_received(id(7), Role::Stream, claim.clone());
+        assert_eq!(
+            node.roles_status().stream.record.holder,
+            Some(node.device())
+        );
+        assert!(node.roles_status().stream.notice.is_none());
+    }
+
+    #[test]
+    fn after_a_restart_a_claimant_that_was_away_longer_than_the_takeover_time_is_believed() {
+        let (node, _, _, dir) = node_with_hooks();
+        paired(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let claim = claim_against(&node, 7);
+        // What the last run kept: device 7 was last heard from ten minutes
+        // ago. This run has heard nothing.
+        let ten_minutes_ago = now_ms() - 600_000;
+        saved::save_contacts(
+            &dir.path().join("sync"),
+            &HashMap::from([(id(7), ten_minutes_ago)]),
+        )
+        .unwrap();
+        node.forget_this_runs_contacts();
+        assert!(lock(&node.peers).last_contact.is_empty());
+        node.record_received(id(7), Role::Stream, claim);
+        let stream = node.roles_status().stream;
+        assert_eq!(stream.record.holder, Some(id(7)), "it yields");
+        assert!(stream.notice.is_some());
+    }
+
+    #[test]
+    fn when_devices_were_last_heard_survives_a_restart() {
+        let (node, _, _, dir) = node_with_hooks();
+        paired(&node, 7);
+        node.heard(id(7));
+        node.save_contacts();
+        let kept = saved::load_contacts(&dir.path().join("sync"));
+        assert!(kept.contains_key(&id(7)));
+        assert!(now_ms() - kept[&id(7)] < 5_000);
     }
 }

@@ -2086,6 +2086,17 @@ async fn stopping_while_the_projection_holder_is_away_lets_the_seat_go_at_once()
     .await;
 }
 
+/// `asker` asks `holder` for `role`, again if a connection changed under the
+/// ask, until the holder shows the prompt.
+async fn ask_until_prompted(asker: &Peer, holder: &Peer, role: Role) {
+    let began = Instant::now();
+    while role_status(holder, role).request.is_none() {
+        assert!(began.elapsed() < Duration::from_secs(15), "no prompt");
+        asker.node.ask_role(role).unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_hand_over_between_two_devices_reaches_a_third_paired_with_only_one_of_them() {
     // t is paired only with s. o and x are paired with s, and with each other.
@@ -2115,11 +2126,7 @@ async fn a_hand_over_between_two_devices_reaches_a_third_paired_with_only_one_of
             && holder_of(&x, Role::Stream) == Some(s.node.device())
     })
     .await;
-    o.node.ask_role(Role::Stream).unwrap();
-    until(Duration::from_secs(5), "the prompt", || {
-        role_status(&s, Role::Stream).request.is_some()
-    })
-    .await;
+    ask_until_prompted(&o, &s, Role::Stream).await;
     s.node
         .allow_role(Role::Stream, o.node.device(), false)
         .unwrap();
@@ -2127,11 +2134,7 @@ async fn a_hand_over_between_two_devices_reaches_a_third_paired_with_only_one_of
         holder_of(&t, Role::Stream) == Some(o.node.device())
     })
     .await;
-    x.node.ask_role(Role::Stream).unwrap();
-    until(Duration::from_secs(5), "the prompt on o", || {
-        role_status(&o, Role::Stream).request.is_some()
-    })
-    .await;
+    ask_until_prompted(&x, &o, Role::Stream).await;
     o.node
         .allow_role(Role::Stream, x.node.device(), false)
         .unwrap();
@@ -2148,4 +2151,117 @@ async fn a_hand_over_between_two_devices_reaches_a_third_paired_with_only_one_of
         "no name for a device it has not paired with"
     );
     assert_eq!(holder_of(&s, Role::Stream), Some(x.node.device()));
+}
+
+/// A device cut off while two others hand a role back and forth, and then
+/// catching up when it meets them. The helper network cannot cut a device
+/// that dials out, so the tablet is paired only with the sanctuary and the
+/// sanctuary is cut with it: the sanctuary finds the office PC again through
+/// the address it was given (`connect`), and the tablet has nobody to reach.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_cut_off_during_hand_overs_catches_up_when_it_meets_them_again() {
+    let (mut s, o) = paired_and_leased().await;
+    let mut t = peer("Tablet").await;
+    let code = s.node.start_pairing();
+    t.node.pair(&code.code, Some(&s.address())).await.unwrap();
+    // The sanctuary can dial the office PC, not only be dialled by it.
+    s.node.connect(&o.address()).await.unwrap();
+    until(Duration::from_secs(10), "the tablet to know", || {
+        t.node.status().connected() == 1 && holder_of(&t, Role::Audio) == Some(s.node.device())
+    })
+    .await;
+    s.cut();
+    t.cut();
+    until(Duration::from_secs(20), "the tablet to be cut off", || {
+        t.node.status().connected() == 0
+    })
+    .await;
+    until(
+        Duration::from_secs(30),
+        "the sanctuary and office to meet",
+        || s.node.status().connected() == 1 && o.node.status().connected() == 1,
+    )
+    .await;
+    // While the tablet is away Audio goes s -> o -> s -> o.
+    let mut at_s = true;
+    for _ in 0..3 {
+        let (from, to) = if at_s { (&s, &o) } else { (&o, &s) };
+        // The ask is made again if the connection changed under it.
+        let began = Instant::now();
+        while role_status(from, Role::Audio).request.is_none() {
+            assert!(began.elapsed() < Duration::from_secs(15), "no prompt");
+            to.node.ask_role(Role::Audio).unwrap();
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        from.node
+            .allow_role(Role::Audio, to.node.device(), false)
+            .unwrap();
+        until(Duration::from_secs(5), "the hand-over to be known", || {
+            holder_of(to, Role::Audio) == Some(to.node.device())
+        })
+        .await;
+        at_s = !at_s;
+    }
+    assert_eq!(holder_of(&t, Role::Audio), Some(s.node.device()));
+    t.restore().await;
+    s.restore().await;
+    until(Duration::from_secs(30), "the tablet to catch up", || {
+        holder_of(&t, Role::Audio) == Some(o.node.device())
+    })
+    .await;
+    assert_eq!(role_status(&t, Role::Audio).record.epoch, 4);
+    assert!(!role_status(&t, Role::Audio).unverified);
+    // The tablet knows the sanctuary (paired), not the office PC.
+    assert_eq!(role_status(&t, Role::Audio).record.name, "");
+}
+
+/// The sanctuary goes down and comes back as a new process: it remembers
+/// nothing of this run, only what it kept on disk about when it last heard
+/// from the office PC. The office PC took the screens, the service and the
+/// sound while it was gone, and the sanctuary must yield all three.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_holder_that_restarted_yields_every_role_taken_while_it_was_down() {
+    let (mut sanctuary, mut office) = paired_and_leased().await;
+    sanctuary.node.set_takeover_after(Duration::from_secs(2));
+    office.node.set_takeover_after(Duration::from_secs(2));
+    sanctuary.cut();
+    office.cut();
+    until(Duration::from_secs(20), "disconnected", || {
+        office.node.status().connected() == 0 && sanctuary.node.status().connected() == 0
+    })
+    .await;
+    let began = Instant::now();
+    while !matches!(
+        role_status(&office, Role::Projection).standing,
+        Standing::TakeOver { .. }
+    ) {
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "takeover never opened"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    for role in [Role::Projection, Role::Operator, Role::Audio] {
+        office.node.claim_role(role).unwrap();
+    }
+    // The sanctuary restarts: this run knows nothing of the office PC.
+    sanctuary.node.forget_this_runs_contacts();
+    office.restore().await;
+    sanctuary.restore().await;
+    until(Duration::from_secs(20), "the sanctuary to yield", || {
+        [Role::Projection, Role::Operator, Role::Audio]
+            .iter()
+            .all(|r| !role_status(&sanctuary, *r).holds)
+    })
+    .await;
+    for role in [Role::Projection, Role::Operator, Role::Audio] {
+        assert_eq!(
+            holder_of(&sanctuary, role),
+            Some(office.node.device()),
+            "{role:?}"
+        );
+        assert!(role_status(&sanctuary, role).notice.is_some(), "{role:?}");
+    }
+    assert_eq!(sanctuary.node.role(), Mode::Planning);
+    assert_eq!(office.node.role(), Mode::Presenter);
 }

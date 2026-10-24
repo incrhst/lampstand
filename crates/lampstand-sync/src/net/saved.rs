@@ -148,39 +148,76 @@ pub(super) struct Loaded {
     pub file: RolesFile,
     /// It came from 0.7.0's files and is not on disk yet.
     pub migrated: bool,
+    /// What is on disk may be replaced. False when `roles.json` could not be
+    /// read or set aside: it is left exactly as it is.
+    pub writable: bool,
 }
 
 fn read<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
 }
 
-/// `roles.json` if there is one; else what 0.7.0's files say.
+impl RolesFile {
+    /// Every device key in it is well formed.
+    fn sound(&self) -> bool {
+        self.always
+            .operator
+            .iter()
+            .chain(&self.always.stream)
+            .all(|(hex, _)| DeviceKey::from_hex(hex).is_some())
+    }
+}
+
+/// `roles.json` if there is one; else what 0.7.0's files say. A
+/// `roles.json` that cannot be read is never rebuilt from the older files
+/// (they are staler) and never overwritten: it is set aside as
+/// `roles.json.bad`, or left where it is if that fails, and the roles start
+/// out unheld, to be taught by the devices this one meets.
 pub(super) fn load(dir: &Path) -> Loaded {
     let path = dir.join(FILE);
     match std::fs::read(&path) {
         Ok(bytes) => match serde_json::from_slice::<RolesFile>(&bytes) {
-            Ok(file) => {
+            Ok(file) if file.sound() => {
                 return Loaded {
                     file,
                     migrated: false,
+                    writable: true,
                 }
             }
-            Err(e) => {
-                // Kept, not overwritten: set aside like paired.json, and
-                // said, before falling back to what 0.7.0 left.
-                let bad = path.with_extension("json.bad");
+            bad => {
+                let why = match bad {
+                    Err(e) => e.to_string(),
+                    Ok(_) => "a device key in it is not valid".to_string(),
+                };
+                let aside = path.with_extension("json.bad");
+                let moved = std::fs::rename(&path, &aside);
                 eprintln!(
-                    "lampstand: {} is unreadable ({e}); set aside as {} and starting from the older files",
+                    "lampstand: {} is unreadable ({why}); {}. The roles start unheld.",
                     path.display(),
-                    bad.display()
+                    match &moved {
+                        Ok(()) => format!("set aside as {}", aside.display()),
+                        Err(e) => format!("it could not be set aside ({e}) and is left alone"),
+                    }
                 );
-                if let Err(e) = std::fs::rename(&path, &bad) {
-                    eprintln!("lampstand: cannot set it aside: {e}");
-                }
+                return Loaded {
+                    file: RolesFile::unheld(),
+                    migrated: false,
+                    writable: moved.is_ok(),
+                };
             }
         },
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => eprintln!("lampstand: cannot read {}: {e}", path.display()),
+        Err(e) => {
+            eprintln!(
+                "lampstand: cannot read {}: {e}. The roles start unheld and it is left alone.",
+                path.display()
+            );
+            return Loaded {
+                file: RolesFile::unheld(),
+                migrated: false,
+                writable: false,
+            };
+        }
     }
     let presenter = read(&dir.join("presenter.json"));
     let driver = read(&dir.join("driver.json"));
@@ -190,18 +227,18 @@ pub(super) fn load(dir: &Path) -> Loaded {
     Loaded {
         file: RolesFile::migrate(presenter, driver),
         migrated,
+        writable: true,
     }
 }
 
-/// Writes `roles.json` through a temporary file of its own, readable only by
-/// this user on Unix, flushed before it replaces the old one.
-pub(super) fn save(dir: &Path, file: &RolesFile) -> io::Result<()> {
+/// Writes `name` in `dir` through a temporary file of its own, readable
+/// only by this user on Unix, flushed before it replaces the old one.
+fn write_private(dir: &Path, name: &str, json: &[u8]) -> io::Result<()> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
     static SAVES: AtomicU64 = AtomicU64::new(0);
-    let json = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
     let tmp = dir.join(format!(
-        "{FILE}.{}.{}.tmp",
+        "{name}.{}.{}.tmp",
         std::process::id(),
         SAVES.fetch_add(1, Ordering::Relaxed)
     ));
@@ -213,16 +250,41 @@ pub(super) fn save(dir: &Path, file: &RolesFile) -> io::Result<()> {
         options.mode(0o600);
     }
     let written = options.open(&tmp).and_then(|mut f| {
-        f.write_all(&json)?;
+        f.write_all(json)?;
         f.sync_all()
     });
-    match written.and_then(|()| std::fs::rename(&tmp, dir.join(FILE))) {
+    match written.and_then(|()| std::fs::rename(&tmp, dir.join(name))) {
         Ok(()) => Ok(()),
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
             Err(e)
         }
     }
+}
+
+pub(super) fn save(dir: &Path, file: &RolesFile) -> io::Result<()> {
+    let json = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
+    write_private(dir, FILE, &json)
+}
+
+const CONTACTS: &str = "contact.json";
+
+/// When each paired device was last heard from (Unix ms), kept so that a
+/// restart does not forget how long a device has been away.
+pub(super) fn load_contacts(dir: &Path) -> std::collections::HashMap<DeviceKey, i64> {
+    let list: Vec<(String, i64)> = read(&dir.join(CONTACTS)).unwrap_or_default();
+    list.into_iter()
+        .filter_map(|(hex, ms)| Some((DeviceKey::from_hex(&hex)?, ms)))
+        .collect()
+}
+
+pub(super) fn save_contacts(
+    dir: &Path,
+    contacts: &std::collections::HashMap<DeviceKey, i64>,
+) -> io::Result<()> {
+    let list: Vec<(String, i64)> = contacts.iter().map(|(k, ms)| (k.to_hex(), *ms)).collect();
+    let json = serde_json::to_vec(&list).map_err(io::Error::other)?;
+    write_private(dir, CONTACTS, &json)
 }
 
 #[cfg(test)]
@@ -289,19 +351,64 @@ mod tests {
     }
 
     #[test]
-    fn a_roles_json_that_does_not_parse_falls_back_to_the_old_files() {
+    fn a_roles_json_that_does_not_parse_is_set_aside_not_rebuilt_from_older_files() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(FILE), "{not json").unwrap();
         std::fs::write(dir.path().join("presenter.json"), PRESENTER).unwrap();
         let loaded = load(dir.path());
-        assert!(loaded.migrated);
-        assert_eq!(loaded.file.projection.epoch, 2);
-        // The unreadable file is kept, not overwritten.
+        assert!(!loaded.migrated && loaded.writable);
+        assert_eq!(
+            loaded.file,
+            RolesFile::unheld(),
+            "staler files are not used"
+        );
         assert_eq!(
             std::fs::read_to_string(dir.path().join("roles.json.bad")).unwrap(),
             "{not json"
         );
         assert!(!dir.path().join(FILE).exists());
+    }
+
+    #[test]
+    fn a_device_key_that_is_not_hex_makes_the_file_unreadable_not_nobody() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = RolesFile::unheld();
+        save(dir.path(), &file).unwrap();
+        let good = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        let bad = good.replacen("\"holder\": null", "\"holder\": \"not a key\"", 1);
+        assert_ne!(good, bad);
+        std::fs::write(dir.path().join(FILE), &bad).unwrap();
+        let loaded = load(dir.path());
+        assert_eq!(loaded.file, RolesFile::unheld());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("roles.json.bad")).unwrap(),
+            bad,
+            "kept, not read as nobody"
+        );
+        file.always.operator.push(("zz".into(), "x".into()));
+        save(dir.path(), &file).unwrap();
+        assert!(load(dir.path()).file.always.operator.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_file_that_cannot_be_set_aside_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory where the file should be: reading it fails, not "missing".
+        std::fs::create_dir(dir.path().join(FILE)).unwrap();
+        std::fs::write(dir.path().join("presenter.json"), PRESENTER).unwrap();
+        let loaded = load(dir.path());
+        assert!(!loaded.writable && !loaded.migrated);
+        assert_eq!(loaded.file, RolesFile::unheld());
+    }
+
+    #[test]
+    fn contact_times_survive_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = std::collections::HashMap::new();
+        c.insert(DeviceKey::from_hex(OFFICE).unwrap(), 1_700_000_000_000);
+        save_contacts(dir.path(), &c).unwrap();
+        assert_eq!(load_contacts(dir.path()), c);
+        assert!(load_contacts(tempfile::tempdir().unwrap().path()).is_empty());
     }
 
     #[cfg(unix)]

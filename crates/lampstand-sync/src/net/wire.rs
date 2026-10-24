@@ -67,6 +67,7 @@ pub(crate) enum Frame {
         /// The signed steps that led here, newest first (empty for a state
         /// moved over from 0.7.0). Names are never sent: each device uses
         /// the one it has from pairing.
+        #[serde(deserialize_with = "crate::roles::bounded_chain")]
         steps: Vec<crate::roles::Link>,
     },
     /// The sender asks the receiver, the holder of `role`, to hand it over.
@@ -315,6 +316,30 @@ mod tests {
             assert_eq!(Frame::decode(&frame.encode()).unwrap(), frame);
         }
         assert!(Frame::decode(&[0xff, 0xff]).is_err());
+    }
+
+    #[test]
+    fn a_role_frame_with_too_many_steps_cannot_be_read() {
+        let step = crate::roles::Link {
+            kind: crate::roles::Kind::HandOver,
+            holder: Some(crate::team::DeviceKey([8; 32])),
+            epoch: 3,
+            prev_holder: Some(crate::team::DeviceKey([7; 32])),
+            prev_epoch: 2,
+            sig: vec![5; 64],
+        };
+        let frame = |n: usize| Frame::Role {
+            role: Role::Stream,
+            holder: Some([8; 32]),
+            epoch: 3,
+            steps: vec![step.clone(); n],
+        };
+        assert_eq!(
+            Frame::decode(&frame(crate::roles::CHAIN).encode()).unwrap(),
+            frame(crate::roles::CHAIN)
+        );
+        assert!(Frame::decode(&frame(crate::roles::CHAIN + 1).encode()).is_err());
+        assert!(Frame::decode(&frame(1000).encode()).is_err());
     }
 
     /// Version 1's frames, as they were before T75.

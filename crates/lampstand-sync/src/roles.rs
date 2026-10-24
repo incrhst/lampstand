@@ -143,8 +143,40 @@ pub struct Record {
     /// earlier state to this one, at most [`CHAIN`]. Empty for a record moved
     /// over from 0.7.0, which is trusted once as the state this device starts
     /// from, and for a role nobody has held.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "bounded_chain"
+    )]
     pub chain: Vec<Link>,
+}
+
+/// Reads at most [`CHAIN`] steps, and fails on the first one past that, so
+/// a record cannot make a device read or verify more than it asked for.
+pub fn bounded_chain<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Link>, D::Error> {
+    struct Steps;
+    impl<'de> serde::de::Visitor<'de> for Steps {
+        type Value = Vec<Link>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "at most {CHAIN} steps")
+        }
+
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut steps = Vec::new();
+            while let Some(step) = seq.next_element::<Link>()? {
+                if steps.len() == CHAIN {
+                    return Err(serde::de::Error::custom("too many steps"));
+                }
+                steps.push(step);
+            }
+            Ok(steps)
+        }
+    }
+    d.deserialize_seq(Steps)
 }
 
 /// How many steps a record carries, so a device that missed several
@@ -221,7 +253,7 @@ impl Link {
             Kind::Release => self.holder.is_none(),
         } && self.epoch == self.prev_epoch.wrapping_add(1)
             && self.epoch != 0
-            && self.epoch != u64::MAX;
+            && self.epoch <= EPOCH_LIMIT;
         let (Some(signer), Ok(sig)) = (self.signer(), <[u8; 64]>::try_from(self.sig.as_slice()))
         else {
             return false;
@@ -282,10 +314,27 @@ mod hex_bytes {
 impl Record {
     /// Whether this record replaces `other` when they meet: the higher
     /// epoch, and for claims made at the same moment the higher device key.
+    ///
+    /// For two records at the same epoch the one the holder signed away
+    /// (a hand-over or a release) comes before one somebody took (a claim),
+    /// which comes before one with no steps; after that the higher key.
+    /// Every device applies the same order, so they all end on one record.
     pub fn beats(&self, other: &Record) -> bool {
-        (self.epoch, self.holder) > (other.epoch, other.holder)
+        (self.epoch, self.rank(), self.holder) > (other.epoch, other.rank(), other.holder)
+    }
+
+    fn rank(&self) -> u8 {
+        match self.chain.first().map(|l| l.kind) {
+            Some(Kind::HandOver | Kind::Release) => 2,
+            Some(Kind::Claim) => 1,
+            None => 0,
+        }
     }
 }
+
+/// No epoch past this is believed, and none is ever made: far below the
+/// largest number, so a forged one cannot wedge a role.
+pub const EPOCH_LIMIT: u64 = 1 << 62;
 
 mod opt_hex_key {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -301,7 +350,12 @@ mod opt_hex_key {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DeviceKey>, D::Error> {
         let hex = Option::<String>::deserialize(d)?;
-        Ok(hex.and_then(|h| DeviceKey::from_hex(&h)))
+        match hex {
+            None => Ok(None),
+            Some(h) => DeviceKey::from_hex(&h)
+                .map(Some)
+                .ok_or_else(|| serde::de::Error::custom("not a device key")),
+        }
     }
 }
 
@@ -545,6 +599,12 @@ pub struct Roles {
     /// (it missed more than [`CHAIN`] of them); it waits for one that does.
     unverified: [bool; 4],
     signer: Signer,
+    /// The device this one has just paired with: the only one whose present
+    /// state a device with nothing of its own takes without joining it.
+    seed: Option<DeviceKey>,
+    /// Tests that do not care who seeds.
+    #[cfg(test)]
+    seed_any: bool,
 }
 
 impl Roles {
@@ -558,6 +618,9 @@ impl Roles {
     ) -> Self {
         Self {
             signer,
+            seed: None,
+            #[cfg(test)]
+            seed_any: false,
             unverified: [false; 4],
             me,
             name,
@@ -774,7 +837,7 @@ impl Roles {
     fn step(&mut self, role: Role, kind: Kind, holder: Option<DeviceKey>, name: String) -> Record {
         let i = role.index();
         let old = &self.records[i];
-        let epoch = old.epoch.saturating_add(1);
+        let epoch = old.epoch.saturating_add(1).min(EPOCH_LIMIT);
         let (prev_holder, prev_epoch) = (old.holder, old.epoch);
         let sig = (self.signer.0)(&Link::bytes(
             role,
@@ -993,20 +1056,36 @@ impl Roles {
 
     // ---- Meeting another device's record -----------------------------------
 
-    /// Whether the roles' state of `role` may be taken to `remote`, a record
-    /// that beats this device's: its steps must be signed and must join this
-    /// device's own state (or, for a claim, be one the claim rules allow as
-    /// this device sees things).
+    /// Whether this device may take `remote`, a record that beats its own,
+    /// for `role`. Its steps must be few enough, signed by devices this
+    /// device knows, and join this device's own state. Hand-overs and
+    /// releases then prove themselves (the one who held it signed it away).
+    /// Claims in the past are checked for their signature and place in the
+    /// chain only; only a claim at the head, sent by the claimant itself, is
+    /// judged by this device's view of things ([`Roles::claim_ok`]).
     fn admit(&self, role: Role, remote: &Record, from: DeviceKey, net: &dyn Net) -> Admit {
         let local = self.record(role);
+        let pristine = local.holder.is_none() && local.epoch == 0 && local.chain.is_empty();
         let steps = &remote.chain;
+        // A role handed to this device that it could not hold is not taken.
+        if remote.holder == Some(self.me) && self.blocked(role, net).is_some() {
+            return Admit::No;
+        }
         let Some(head) = steps.first() else {
-            // No steps: a state moved over from 0.7.0, or a role nobody has
-            // held. It is taken only by a device that has none of its own.
-            let pristine = local.holder.is_none() && local.epoch == 0 && local.chain.is_empty();
-            return if pristine { Admit::Yes } else { Admit::No };
+            // No steps: a state moved over from 0.7.0. A device with none of
+            // its own takes it from the device it just paired with. One
+            // that has only moved-over state of its own takes a newer one
+            // (the other device of a 0.7.0 pair was ahead of it).
+            let migrated = local.chain.is_empty() && !pristine;
+            let near = remote.epoch <= local.epoch.saturating_add(CHAIN as u64);
+            return if (pristine && self.seeded_by(from)) || (migrated && near) {
+                Admit::Yes
+            } else {
+                Admit::No
+            };
         };
-        if head.holder != remote.holder || head.epoch != remote.epoch {
+        // Before any signature is looked at.
+        if steps.len() > CHAIN || head.holder != remote.holder || head.epoch != remote.epoch {
             return Admit::No;
         }
         if !steps.iter().all(|l| l.valid(role)) {
@@ -1019,12 +1098,16 @@ impl Roles {
         {
             return Admit::No;
         }
-        // A device with nothing of its own has nothing to join: it takes the
-        // present state from the device it is paired with, steps and all
-        // (trust on first use, as a paired device is trusted at pairing).
-        if local.holder.is_none() && local.epoch == 0 && local.chain.is_empty() {
-            return Admit::Yes;
-        }
+        // Devices whose word counts: this one, the ones it is paired with,
+        // and those already in the state it holds.
+        let in_state = |d: DeviceKey| {
+            local.holder == Some(d)
+                || local
+                    .chain
+                    .iter()
+                    .any(|l| l.holder == Some(d) || l.prev_holder == Some(d))
+        };
+        let known = |d: DeviceKey| d == self.me || net.away(d).is_some() || in_state(d);
         // Where this device's own state sits in the steps.
         let here = |holder: Option<DeviceKey>, epoch: u64| {
             steps
@@ -1032,48 +1115,91 @@ impl Roles {
                 .position(|l| l.holder == holder && l.epoch == epoch)
         };
         let oldest = steps.last().expect("not empty");
+        let migrated = local.chain.is_empty() && !pristine;
         let newer: Option<&[Link]> = if let Some(k) = here(local.holder, local.epoch) {
             Some(&steps[..k])
         } else if oldest.prev_holder == local.holder && oldest.prev_epoch == local.epoch {
             Some(&steps[..])
+        } else if migrated
+            && oldest.prev_epoch >= local.epoch
+            && oldest.prev_epoch - local.epoch <= CHAIN as u64
+        {
+            // The first signed step on a state moved over from 0.7.0, made
+            // on a device that was ahead of this one.
+            Some(&steps[..])
         } else {
             None
         };
-        if let Some(newer) = newer {
-            // Oldest first: every claim among them must be one this device
-            // would have allowed.
-            let ok = newer.iter().rev().all(|l| match l.kind {
-                Kind::Claim => l
-                    .holder
-                    .is_some_and(|c| self.claim_ok(role, c, l.prev_holder, net)),
-                Kind::HandOver | Kind::Release => true,
-            });
-            return if ok { Admit::Yes } else { Admit::No };
+        if newer.is_none() && pristine {
+            // Nothing of its own to join: the present state, from the device
+            // just paired.
+            return if self.seeded_by(from) {
+                Admit::Yes
+            } else {
+                Admit::No
+            };
         }
-        // Two claims made at the same moment from the same state.
-        if head.kind == Kind::Claim {
-            if let Some(mine) = local.chain.first() {
-                if mine.kind == Kind::Claim
-                    && mine.prev_holder == head.prev_holder
-                    && mine.prev_epoch == head.prev_epoch
-                    && head
-                        .holder
-                        .is_some_and(|c| self.claim_ok(role, c, head.prev_holder, net))
-                {
+        if let Some(newer) = newer {
+            // Oldest first. Whoever signs must be known, or have been handed
+            // the role by a step already checked.
+            let mut introduced: Vec<DeviceKey> = Vec::new();
+            for (i, l) in newer.iter().enumerate().rev() {
+                let signer = l.signer().expect("valid steps have a signer");
+                if !known(signer) && !introduced.contains(&signer) {
+                    return Admit::No;
+                }
+                if let Some(h) = l.holder {
+                    introduced.push(h);
+                }
+                if l.kind == Kind::Claim && i == 0 && from == signer {
+                    // The claimant itself says so: as this device sees it.
+                    if !self.claim_ok(role, signer, l.prev_holder, net) {
+                        return Admit::No;
+                    }
+                }
+            }
+            return Admit::Yes;
+        }
+        // The same step from the same state as this device's own, made at the
+        // same moment by someone else: the order of records decides, and it
+        // has already said this one comes first.
+        if let Some(mine) = local.chain.first() {
+            if mine.prev_holder == head.prev_holder
+                && mine.prev_epoch == head.prev_epoch
+                && mine.epoch == head.epoch
+            {
+                let ok = match (head.kind, head.holder) {
+                    (Kind::Claim, Some(claimant)) => {
+                        (from == claimant || known(claimant))
+                            && self.claim_ok(role, claimant, head.prev_holder, net)
+                    }
+                    // Signed by the one who held it; it is in this state.
+                    _ => head.signer().is_some_and(known),
+                };
+                if ok {
                     return Admit::Yes;
                 }
             }
-            // A claim from the device that made it, whatever it missed: judged
-            // as a fresh claim here.
-            if head.holder == Some(from)
-                && head
-                    .holder
-                    .is_some_and(|c| self.claim_ok(role, c, local.holder, net))
+        }
+        // A claim from the device that made it, whatever it missed (within
+        // what could have been missed): judged as a fresh claim here.
+        if let (Kind::Claim, Some(claimant)) = (head.kind, head.holder) {
+            if from == claimant
+                && head.epoch <= local.epoch.saturating_add(CHAIN as u64)
+                && self.claim_ok(role, claimant, local.holder, net)
             {
                 return Admit::Yes;
             }
         }
-        Admit::Unverified
+        // It does not join. If every device that signed is one this device
+        // knows, it has missed more than it can follow and waits; a chain
+        // signed by devices it has never heard of is not a gap, it is not
+        // trusted at all.
+        if steps.iter().all(|l| l.signer().is_some_and(known)) {
+            Admit::Unverified
+        } else {
+            Admit::No
+        }
     }
 
     /// Whether `claimant` taking the role from `prev` is one the claim rules
@@ -1095,6 +1221,12 @@ impl Roles {
         }
         let Some(prev) = prev else { return true };
         if prev == self.me {
+            // A claim against this device: it holds the role, so it cannot
+            // say the holder was away. What it can say is whether the
+            // claimant was out of reach of it for the takeover time before
+            // it reconnected, which is the same outage seen from this end
+            // (the rule a device is held to when it claims). A claimant that
+            // has been connected all along is refused: it can ask instead.
             return net
                 .away(claimant)
                 .is_some_and(|away| away >= self.takeover_after);
@@ -1121,6 +1253,36 @@ impl Roles {
         any
     }
 
+    /// A session ended: a hand-back that was asked for on it will not
+    /// arrive, so the role is no longer being given up quietly.
+    pub fn forget_yields(&mut self) {
+        self.yielding = [false; 4];
+    }
+
+    /// This device's record for `role` if it comes before `other` in the
+    /// order every device uses: what to send back to a device that is behind
+    /// or lost a tie, so it learns where things stand.
+    pub fn better_than(&self, role: Role, other: &Record) -> Option<Record> {
+        self.record(role)
+            .beats(other)
+            .then(|| self.record(role).clone())
+    }
+
+    /// Says which device this one has just paired with. A device with
+    /// nothing of its own takes the present state from that device (trust on
+    /// first use, as at pairing) and from no other.
+    pub fn seed_from(&mut self, device: DeviceKey) {
+        self.seed = Some(device);
+    }
+
+    fn seeded_by(&self, from: DeviceKey) -> bool {
+        #[cfg(test)]
+        if self.seed_any {
+            return true;
+        }
+        self.seed == Some(from)
+    }
+
     /// Whether a newer record for `role` was seen whose steps do not join
     /// this device's state: it waits for one that does.
     pub fn unverified(&self, role: Role) -> bool {
@@ -1133,7 +1295,7 @@ impl Roles {
         let i = role.index();
         // An epoch that no claim could ever beat would lock the role for
         // good: it is nonsense, not a record.
-        if remote.epoch == u64::MAX || !remote.beats(&self.records[i]) {
+        if remote.epoch > EPOCH_LIMIT || !remote.beats(&self.records[i]) {
             return Merged::default();
         }
         match self.admit(role, remote, from, net) {
@@ -1209,6 +1371,8 @@ mod tests {
         has_peers: bool,
         holder: &'a dyn Fn(DeviceKey) -> Holder,
         away: Option<Duration>,
+        /// Devices this one has never paired with.
+        strangers: Vec<DeviceKey>,
     }
 
     impl Net for Peers<'_> {
@@ -1218,8 +1382,12 @@ mod tests {
         fn holder(&self, device: DeviceKey) -> Holder {
             (self.holder)(device)
         }
-        fn away(&self, _: DeviceKey) -> Option<Duration> {
-            self.away
+        fn away(&self, d: DeviceKey) -> Option<Duration> {
+            if self.strangers.contains(&d) {
+                None
+            } else {
+                self.away
+            }
         }
     }
 
@@ -1228,6 +1396,7 @@ mod tests {
             has_peers,
             holder: f,
             away: Some(secs(999)),
+            strangers: Vec::new(),
         }
     }
 
@@ -1237,6 +1406,7 @@ mod tests {
             has_peers: true,
             holder: f,
             away,
+            strangers: Vec::new(),
         }
     }
 
@@ -1254,6 +1424,7 @@ mod tests {
             Signer::new(move |msg| kp(n).sign(msg)),
         );
         r.set_screens(true);
+        r.seed_any = true;
         r
     }
 
@@ -1912,33 +2083,87 @@ mod tests {
     }
 
     #[test]
-    fn an_epoch_nothing_could_beat_is_not_taken_in() {
+    fn an_epoch_nothing_could_beat_is_not_taken_in_and_none_is_made() {
         let (_, mut b) = pair();
-        let forged = Record {
+        let forged = |epoch| Record {
             holder: Some(key(9)),
             name: "x".into(),
-            epoch: u64::MAX,
+            epoch,
             chain: vec![],
         };
         for role in Role::ALL {
-            assert!(!m(&mut b, role, &forged).changed, "{role:?}");
+            for epoch in [u64::MAX, u64::MAX - 1, EPOCH_LIMIT + 1] {
+                assert!(!m(&mut b, role, &forged(epoch)).changed, "{role:?} {epoch}");
+            }
         }
         assert_eq!(b.record(Role::Projection).epoch, 1);
-        // Taking at the top of the range stays at the top: no wrap to zero.
+        // Taking at the top of the range stays at the top: no wrap, and no
+        // epoch past the limit is ever made.
         let mut top = device(3, "Laptop");
-        m(
-            &mut top,
-            Role::Stream,
-            &Record {
-                holder: Some(key(4)),
-                name: "x".into(),
-                epoch: u64::MAX - 1,
-                chain: vec![],
-            },
-        );
+        m(&mut top, Role::Stream, &forged(EPOCH_LIMIT));
         let off = |_: DeviceKey| Holder::Offline(secs(999));
         let taken = top.claim(Role::Stream, &net(true, &off)).unwrap();
-        assert_eq!(taken.epoch, u64::MAX);
+        assert_eq!(taken.epoch, EPOCH_LIMIT);
+    }
+
+    #[test]
+    fn a_claim_that_jumps_far_is_not_taken_on_the_claimants_word() {
+        // The attack: a claim from "nothing" at an epoch just short of the
+        // end, from the device that signs it, would wedge the role.
+        let (mut a, mut b) = pair();
+        let n = net(true, &online);
+        let stream = a.claim(Role::Stream, &n).unwrap();
+        m(&mut b, Role::Stream, &stream);
+        // Mallory signs a claim at a far epoch by hand.
+        let far = EPOCH_LIMIT - 2;
+        let sig = kp(9)
+            .sign(&Link::bytes(
+                Role::Stream,
+                Kind::Claim,
+                Some(key(9)),
+                far,
+                None,
+                far - 1,
+            ))
+            .to_vec();
+        let forged = Record {
+            holder: Some(key(9)),
+            name: "Mallory".into(),
+            epoch: far,
+            chain: vec![Link {
+                kind: Kind::Claim,
+                holder: Some(key(9)),
+                epoch: far,
+                prev_holder: None,
+                prev_epoch: far - 1,
+                sig,
+            }],
+        };
+        let gone = |_: DeviceKey| Holder::Gone;
+        assert!(
+            !b.merge(Role::Stream, &forged, key(9), &net(true, &gone))
+                .changed
+        );
+        assert_eq!(b.record(Role::Stream).epoch, 1);
+        // The same, one step past what could have been missed.
+        let mut near = forged.clone();
+        near.epoch = 1 + CHAIN as u64 + 1;
+        near.chain[0].epoch = near.epoch;
+        near.chain[0].prev_epoch = near.epoch - 1;
+        near.chain[0].sig = kp(9)
+            .sign(&Link::bytes(
+                Role::Stream,
+                Kind::Claim,
+                Some(key(9)),
+                near.epoch,
+                None,
+                near.epoch - 1,
+            ))
+            .to_vec();
+        assert!(
+            !b.merge(Role::Stream, &near, key(9), &net(true, &gone))
+                .changed
+        );
     }
 
     #[test]
@@ -2087,12 +2312,15 @@ mod tests {
                 ),
             )
             .unwrap();
-        // Another device sees the holder online: no.
+        // Another device has never heard of the stranger's key: no. Even
+        // passed on by a paired device, a step signed by an invented key is
+        // not trusted, and it is not a "gap" either.
         let mut b = b;
-        assert!(
-            !b.merge(Role::Projection, &take, key(2), &net(true, &online))
-                .changed
-        );
+        let mut b_net = net(true, &online);
+        b_net.strangers.push(key(9));
+        assert!(!b.merge(Role::Projection, &take, key(2), &b_net).changed);
+        assert!(!b.unverified(Role::Projection));
+        assert!(!b.forget_unverified(), "nothing was wiped");
         // The holder itself: the stranger is not paired with it, so it
         // cannot have been out of reach.
         assert!(
@@ -2286,9 +2514,7 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_that_missed_steps_is_judged_as_a_fresh_claim_by_the_device_that_made_it() {
-        // t is far behind. A device that knows the present takes the role
-        // from a holder that has gone, and sends its claim itself.
+    fn a_claim_after_more_steps_than_a_record_carries_waits_instead_of_being_taken_on_trust() {
         let mut ring = vec![device(1, "O"), device(2, "P"), device(3, "Q")];
         let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
         let mut t = device(8, "T");
@@ -2309,28 +2535,30 @@ mod tests {
             }
         };
         let claim = taker.claim(Role::Stream, &net(true, &off)).unwrap();
-        // From t's side the holder it knows is gone, so the claim stands
-        // when the claimant itself sends it...
+        // T is thirteen steps behind: it cannot tell the claim from a jump
+        // an attacker made up, from the claimant or from anyone else.
         let gone = |_: DeviceKey| Holder::Gone;
+        for from in [key(5), key(7)] {
+            assert!(
+                !t.merge(Role::Stream, &claim, from, &net(true, &gone))
+                    .changed
+            );
+        }
+        assert!(t.unverified(Role::Stream));
+        assert_eq!(t.record(Role::Stream), &first);
+        // Pairing again starts it over, and it takes the present state.
+        assert!(t.forget_unverified());
+        assert_eq!(t.record(Role::Stream), &Record::default());
+        t.seed_any = false;
+        t.seed_from(key(5));
+        assert!(
+            !t.merge(Role::Stream, &claim, key(7), &net(true, &gone))
+                .changed
+        );
         assert!(
             t.merge(Role::Stream, &claim, key(5), &net(true, &gone))
                 .changed
         );
-        assert_eq!(t.record(Role::Stream).holder, Some(key(5)));
-        // ...but not when somebody else relays it.
-        let mut t2 = device(9, "T2");
-        m(&mut t2, Role::Stream, &first);
-        assert!(
-            !t2.merge(Role::Stream, &claim, key(7), &net(true, &gone))
-                .changed
-        );
-        assert!(t2.unverified(Role::Stream));
-        // A device that cannot verify what it holds starts over when it
-        // pairs, and takes the present from the device it pairs with.
-        assert!(t2.forget_unverified());
-        assert_eq!(t2.record(Role::Stream), &Record::default());
-        assert!(m(&mut t2, Role::Stream, &claim).changed);
-        assert!(!t2.forget_unverified());
     }
 
     #[test]
@@ -2398,8 +2626,16 @@ mod tests {
             epoch: 5,
             chain: vec![],
         };
-        assert!(!m(&mut sanctuary, Role::Projection, &other).changed);
-        assert_eq!(sanctuary.record(Role::Projection), &same);
+        // The other 0.7.0 device was ahead (a lease epoch higher): the one
+        // behind takes its moved-over state, as 0.7.0 merged leases. Not a
+        // jump that could not have been missed.
+        let mut far = other.clone();
+        far.epoch = 2 + CHAIN as u64 + 1;
+        assert!(!m(&mut sanctuary, Role::Projection, &far).changed);
+        assert!(m(&mut sanctuary, Role::Projection, &other).changed);
+        assert_eq!(sanctuary.record(Role::Projection), &other);
+        // Back to the shared start for the rest.
+        let mut sanctuary = migrated(1);
         // The first new step is signed and anchored on the migrated state.
         sanctuary.ask(Role::Projection, &n).unwrap();
         office.receive_ask(Role::Projection, key(1), "Sanctuary".into());
@@ -2450,5 +2686,343 @@ mod tests {
         );
         assert!(merged.changed && merged.lost_role);
         assert!(a.notice(Role::Audio).is_some());
+    }
+
+    #[test]
+    fn a_takeover_inside_a_catch_up_chain_is_taken_though_the_old_holder_is_back() {
+        // O holds Stream. O is away; P takes it; O returns and yields; P
+        // hands it to Q. T missed all of it, and sees O online now.
+        let mut ring = [device(1, "O"), device(2, "P"), device(3, "Q")];
+        let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        let mut t = device(8, "T");
+        m(&mut t, Role::Stream, &first);
+        let o_gone = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        m(&mut ring[1], Role::Stream, &first);
+        m(&mut ring[2], Role::Stream, &first);
+        let claim = ring[1].claim(Role::Stream, &net(true, &o_gone)).unwrap();
+        // O comes back and meets the claim: it had been away.
+        assert!(m(&mut ring[0], Role::Stream, &claim).lost_role);
+        assert!(
+            ring[2]
+                .merge(Role::Stream, &claim, key(2), &net(true, &o_gone))
+                .changed
+        );
+        ring[1].receive_ask(Role::Stream, key(3), "Q".into());
+        let to_q = ring[1]
+            .allow(Role::Stream, key(3), false, &net(true, &online))
+            .unwrap()
+            .record;
+        assert_eq!(to_q.chain.len(), 3);
+        assert_eq!(to_q.chain[1].kind, Kind::Claim);
+        // T sees O online: judging the old claim by that would refuse it.
+        let merged = t.merge(Role::Stream, &to_q, key(3), &net(true, &online));
+        assert!(
+            merged.changed,
+            "the old claim is checked for its signature only"
+        );
+        assert_eq!(t.record(Role::Stream).holder, Some(key(3)));
+    }
+
+    #[test]
+    fn a_record_with_more_than_eight_steps_is_refused_before_any_signature_is_checked() {
+        let mut ring = vec![device(1, "O"), device(2, "P"), device(3, "Q")];
+        let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        let mut t = device(8, "T");
+        m(&mut t, Role::Stream, &first);
+        let records = pass_around(&mut ring, 0, Role::Stream, 12);
+        let now = records.last().unwrap().clone();
+        assert_eq!(now.chain.len(), CHAIN);
+        // Eight valid steps that do not join: a gap, not an attack.
+        assert!(!m(&mut t, Role::Stream, &now).changed);
+        assert!(t.unverified(Role::Stream));
+        t.forget_unverified();
+        m(&mut t, Role::Stream, &first);
+        // One more step, every one of them validly signed and chained: no.
+        let mut long = now.clone();
+        long.chain.push(records[4].chain[0].clone());
+        assert_eq!(long.chain.len(), CHAIN + 1);
+        assert!(!m(&mut t, Role::Stream, &long).changed);
+        assert!(!t.unverified(Role::Stream), "refused, not waited for");
+        // And such a record cannot even be read.
+        let json = serde_json::to_string(&long).unwrap();
+        assert!(serde_json::from_str::<Record>(&json).is_err());
+        assert!(serde_json::from_str::<Record>(&serde_json::to_string(&now).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn steps_signed_by_invented_keys_are_refused_outright_and_wipe_nothing() {
+        let mut ring = vec![device(1, "O"), device(2, "P"), device(3, "Q")];
+        let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        let mut t = device(8, "T");
+        m(&mut t, Role::Stream, &first);
+        let records = pass_around(&mut ring, 0, Role::Stream, 12);
+        let now = records.last().unwrap();
+        // P and Q are devices T has never heard of. Which of them signed what
+        // is invisible to it: the chain does not join, and nobody it knows
+        // vouches for the others: no gap flag, no state wiped.
+        let mut n = net(true, &online);
+        n.strangers = vec![key(2), key(3)];
+        assert!(!t.merge(Role::Stream, now, key(7), &n).changed);
+        assert!(!t.unverified(Role::Stream));
+        assert!(!t.forget_unverified());
+        assert_eq!(t.record(Role::Stream), &first);
+        // The same chain from devices T does know is a gap.
+        assert!(!m(&mut t, Role::Stream, now).changed);
+        assert!(t.unverified(Role::Stream));
+
+        // A chain that joins T's state but is signed by a key nobody
+        // introduced is refused too.
+        let mut t2 = device(9, "T2");
+        m(&mut t2, Role::Stream, &first);
+        let mut invented = device(5, "Invented");
+        m(&mut invented, Role::Stream, &first);
+        let take = invented
+            .claim(Role::Stream, &net(true, &|_| Holder::Gone))
+            .unwrap();
+        let mut n2 = net(true, &online);
+        n2.strangers = vec![key(5)];
+        assert!(!t2.merge(Role::Stream, &take, key(7), &n2).changed);
+        assert!(!t2.unverified(Role::Stream));
+    }
+
+    #[test]
+    fn a_device_with_nothing_takes_the_present_only_from_the_device_it_just_paired_with() {
+        let mut ring = vec![device(1, "O"), device(2, "P")];
+        ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        // Long enough that its steps no longer start from nothing.
+        let signed = pass_around(&mut ring, 0, Role::Stream, 10).pop().unwrap();
+        let unsigned = Record {
+            holder: Some(key(2)),
+            name: "P".into(),
+            epoch: 2,
+            chain: vec![],
+        };
+        for record in [&signed, &unsigned] {
+            let mut fresh = device(6, "New laptop");
+            fresh.seed_any = false;
+            // Nobody it paired with a while ago, nor a stranger, seeds it.
+            assert!(
+                !fresh
+                    .merge(Role::Stream, record, key(7), &net(true, &online))
+                    .changed
+            );
+            assert_eq!(fresh.record(Role::Stream), &Record::default());
+            // The device it just paired with does.
+            fresh.seed_from(key(1));
+            assert!(
+                !fresh
+                    .merge(Role::Stream, record, key(7), &net(true, &online))
+                    .changed
+            );
+            assert!(
+                fresh
+                    .merge(Role::Stream, record, key(1), &net(true, &online))
+                    .changed
+            );
+        }
+    }
+
+    #[test]
+    fn a_lagging_0_7_0_device_follows_the_leaders_first_signed_step() {
+        let migrated = |n: u8, holder: u8, epoch: u64| {
+            let mut r = Roles::new(
+                key(n),
+                format!("Device {n}"),
+                [
+                    Record {
+                        holder: Some(key(holder)),
+                        name: "x".into(),
+                        epoch,
+                        chain: vec![],
+                    },
+                    Record::default(),
+                    Record::default(),
+                    Record::default(),
+                ],
+                DEFAULT_TAKEOVER,
+                Default::default(),
+                Signer::new(move |msg| kp(n).sign(msg)),
+            );
+            r.set_screens(true);
+            r
+        };
+        // The office PC took the lease at epoch 3; the sanctuary never heard.
+        let mut leader = migrated(2, 2, 3);
+        let mut lagging = migrated(1, 1, 2);
+        let n = net(true, &online);
+        leader.receive_ask(Role::Projection, key(3), "x".into());
+        let step = leader
+            .allow(Role::Projection, key(3), false, &n)
+            .unwrap()
+            .record;
+        assert_eq!(step.chain[0].prev_epoch, 3);
+        assert!(m(&mut lagging, Role::Projection, &step).changed);
+        assert_eq!(lagging.record(Role::Projection).holder, Some(key(3)));
+    }
+
+    #[test]
+    fn a_hand_over_by_the_holder_beats_a_claim_at_the_same_epoch_and_everyone_agrees() {
+        // S holds Stream. O, seeing S away, claims; at the same moment S
+        // hands it to X. Whatever order devices hear it in, X's wins.
+        let mut ring = [device(1, "S"), device(2, "O"), device(3, "X")];
+        let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        for d in &mut ring[1..] {
+            m(d, Role::Stream, &first);
+        }
+        let s_gone = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        let claim = ring[1].claim(Role::Stream, &net(true, &s_gone)).unwrap();
+        ring[0].receive_ask(Role::Stream, key(3), "X".into());
+        let hand = ring[0]
+            .allow(Role::Stream, key(3), false, &net(true, &online))
+            .unwrap()
+            .record;
+        assert_eq!(claim.epoch, hand.epoch);
+        assert!(hand.beats(&claim) && !claim.beats(&hand));
+        let mut seen = Vec::new();
+        for order in [[&claim, &hand], [&hand, &claim]] {
+            let mut t = device(8, "T");
+            m(&mut t, Role::Stream, &first);
+            for r in order {
+                // From the device that made it, and from a relay.
+                t.merge(Role::Stream, r, r.holder.unwrap(), &net(true, &s_gone));
+            }
+            seen.push(t.record(Role::Stream).clone());
+        }
+        assert_eq!(seen[0], seen[1]);
+        assert_eq!(seen[0].holder, Some(key(3)));
+        // O, who claimed, takes the hand-over (the same step from the same
+        // state, signed by the one who held it), and X ignores the claim and
+        // has the better record to answer with.
+        assert!(m(&mut ring[1], Role::Stream, &hand).changed);
+        assert_eq!(ring[1].record(Role::Stream).holder, Some(key(3)));
+        assert!(m(&mut ring[2], Role::Stream, &hand).changed);
+        assert!(
+            !ring[2]
+                .merge(Role::Stream, &claim, key(2), &net(true, &s_gone))
+                .changed
+        );
+        assert_eq!(
+            ring[2].better_than(Role::Stream, &claim),
+            Some(hand.clone())
+        );
+        assert_eq!(ring[2].better_than(Role::Stream, &hand), None);
+    }
+
+    #[test]
+    fn two_hand_overs_from_the_same_state_end_on_one_record() {
+        let mut s = device(1, "S");
+        let first = s.claim(Role::Stream, &net(true, &online)).unwrap();
+        let mut s2 = s.clone();
+        s.receive_ask(Role::Stream, key(2), "A".into());
+        let to_a = s
+            .allow(Role::Stream, key(2), false, &net(true, &online))
+            .unwrap()
+            .record;
+        s2.receive_ask(Role::Stream, key(3), "B".into());
+        let to_b = s2
+            .allow(Role::Stream, key(3), false, &net(true, &online))
+            .unwrap()
+            .record;
+        let winner = if key(3) > key(2) { &to_b } else { &to_a };
+        for order in [[&to_a, &to_b], [&to_b, &to_a]] {
+            let mut t = device(8, "T");
+            m(&mut t, Role::Stream, &first);
+            for r in order {
+                m(&mut t, Role::Stream, r);
+            }
+            assert_eq!(t.record(Role::Stream), winner);
+        }
+    }
+
+    #[test]
+    fn a_holder_that_restarted_yields_to_a_claim_made_while_it_was_down() {
+        // The sanctuary restarts and so remembers nothing of this run; what
+        // it kept says the office PC had been away for longer than the
+        // takeover time when it reconnected: the net says so, and it yields.
+        let (mut a, mut b) = pair();
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let claim = b.claim(Role::Audio, &net(true, &off)).unwrap();
+        let reconnect = net_away(&online, Some(secs(300)));
+        let merged = a.merge(Role::Audio, &claim, key(2), &reconnect);
+        assert!(merged.changed && merged.lost_role);
+        assert!(a.notice(Role::Audio).is_some());
+    }
+
+    #[test]
+    fn a_claimant_connected_all_along_never_takes_a_role_from_a_connected_holder() {
+        // A paired device that has been connected for hours (its connection
+        // is not a fresh one, so there is no "away") signs a claim.
+        let (mut a, mut b) = pair();
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let claim = b.claim(Role::Audio, &net(true, &off)).unwrap();
+        for role_net in [net_away(&online, None), net_away(&online, Some(secs(3)))] {
+            assert!(!a.merge(Role::Audio, &claim, key(2), &role_net).changed);
+            assert!(a.holds(Role::Audio));
+            assert!(a.notice(Role::Audio).is_none());
+        }
+    }
+
+    #[test]
+    fn a_late_joiner_takes_the_state_after_a_takeover() {
+        let mut ring = vec![device(1, "S"), device(2, "O")];
+        ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        // A long history: the present record no longer starts from nothing.
+        pass_around(&mut ring, 0, Role::Stream, 10);
+        let s_gone = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        let claim = ring[1].claim(Role::Stream, &net(true, &s_gone)).unwrap();
+        // A new device pairs with O after the takeover. It is pristine and
+        // seeded by O; S is a device it has never met.
+        let mut late = device(7, "Late");
+        late.seed_any = false;
+        let unknown_s = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Gone
+            } else {
+                Holder::Online
+            }
+        };
+        assert!(
+            !late
+                .merge(Role::Stream, &claim, key(5), &net(true, &unknown_s))
+                .changed
+        );
+        late.seed_from(key(2));
+        assert!(
+            late.merge(Role::Stream, &claim, key(2), &net(true, &unknown_s))
+                .changed
+        );
+        assert_eq!(late.record(Role::Stream).holder, Some(key(2)));
+    }
+
+    #[test]
+    fn a_role_handed_to_a_device_that_cannot_hold_it_is_not_taken() {
+        let (mut a, mut b) = pair();
+        b.set_screens(false);
+        let n = net(true, &online);
+        a.receive_ask(Role::Projection, key(2), "Office PC".into());
+        let hand = a.allow(Role::Projection, key(2), false, &n).unwrap().record;
+        assert!(
+            !m(&mut b, Role::Projection, &hand).changed,
+            "no screens here"
+        );
+        assert!(!b.holds(Role::Projection));
     }
 }
