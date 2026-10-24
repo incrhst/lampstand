@@ -911,7 +911,7 @@ async fn a_church_with_one_device_and_no_pairing_sees_nothing_new() {
     assert_eq!(t.roles.len(), 4);
     assert!(
         !t.scene_cue_waiting,
-        "no stream cue waits until #150 sets it"
+        "a church with one device has no stream cue waiting"
     );
     for r in &t.roles {
         assert!(r.holds, "{:?}", r.role);

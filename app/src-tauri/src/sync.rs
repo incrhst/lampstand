@@ -741,7 +741,12 @@ impl Sync {
     }
 
     pub fn status(&self) -> TeamStatus {
-        view(&self.node.status(), self.local_addr().port(), now_ms())
+        view(
+            &self.node.status(),
+            self.node.scene_cue_waiting(),
+            self.local_addr().port(),
+            now_ms(),
+        )
     }
 }
 
@@ -795,7 +800,7 @@ pub fn summarize(status: &NodeStatus, now_ms: i64) -> SyncSummary {
     }
 }
 
-fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
+fn view(status: &NodeStatus, scene_cue_waiting: bool, port: u16, now_ms: i64) -> TeamStatus {
     TeamStatus {
         name: status.name.clone(),
         fingerprint: status.device.fingerprint(),
@@ -830,8 +835,7 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
             .collect(),
         presenter: presenter_view(&status.presenter),
         roles: roles_view(&status.roles),
-        // #150 (stream owns OBS) sets this from `SyncNode::scene_cue_waiting()`.
-        scene_cue_waiting: false,
+        scene_cue_waiting,
         sync: summarize(status, now_ms),
     }
 }
