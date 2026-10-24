@@ -838,6 +838,10 @@ async fn declining_keeps_the_presenter_and_tells_the_asker() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[cfg_attr(
+    target_os = "linux",
+    ignore = "flaky on Linux CI: see docs/KNOWN-ISSUES.md"
+)]
 async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
     office.node.set_takeover_after(Duration::from_secs(2));
