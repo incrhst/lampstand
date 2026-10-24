@@ -412,8 +412,9 @@ async fn asking_to_present_moves_the_screens_from_one_app_to_the_other() {
         status(&laptop).role == PresenterRole::Planning
             && status(&sanctuary).role == PresenterRole::Presenting
             // The app is told of a role change on the next tick of the
-            // sync watcher, a moment after the node itself has it.
-            && !laptop.roles.lock().unwrap().is_empty()
+            // sync watcher, a moment after the node itself has it. (It is
+            // also told the role it starts with, so look at the latest.)
+            && laptop.roles.lock().unwrap().last() == Some(&false)
             && laptop.sync.status().paired.iter().any(|p| p.connected)
     })
     .await;
@@ -518,8 +519,9 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
         status(&laptop).role == PresenterRole::Planning
             && status(&sanctuary).role == PresenterRole::Presenting
             // The app is told of a role change on the next tick of the
-            // sync watcher, a moment after the node itself has it.
-            && !laptop.roles.lock().unwrap().is_empty()
+            // sync watcher, a moment after the node itself has it. (It is
+            // also told the role it starts with, so look at the latest.)
+            && laptop.roles.lock().unwrap().last() == Some(&false)
             && laptop.sync.status().paired.iter().any(|p| p.connected)
     })
     .await;
