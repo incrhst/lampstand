@@ -2057,6 +2057,7 @@ fn saving_the_brand_makes_the_default_theme_and_saving_again_updates_it() {
         text: None,
         accent: Color::rgb(240, 190, 60),
         font_family: "Noto Serif".into(),
+        bug: Default::default(),
     };
     let saved = |h: &mut Harness, b: Brand| match ok(h
         .app
@@ -2096,7 +2097,7 @@ fn saving_the_brand_makes_the_default_theme_and_saving_again_updates_it() {
 #[test]
 fn a_brand_file_carries_the_church_look_to_another_computer() {
     use lampstand_api::BrandImportMode;
-    use lampstand_core::brand::Brand;
+    use lampstand_core::brand::{Brand, BugCorner, BugSize, LogoBug};
     use lampstand_core::geom::Color;
     use lampstand_core::output::IdleScreen;
     let (a_dir, b_dir, files) = (
@@ -2115,6 +2116,12 @@ fn a_brand_file_carries_the_church_look_to_another_computer() {
             text: None,
             accent: Color::rgb(240, 190, 60),
             font_family: "Some Font Nobody Has".into(),
+            bug: LogoBug {
+                enabled: true,
+                corner: BugCorner::LowerLeft,
+                size: BugSize::Large,
+                opacity: 40,
+            },
         }))));
     let mut settings = match ok(a.app.handle(Request::Settings(SettingsRequest::Get))) {
         Response::Settings(s) => s,
@@ -2172,6 +2179,16 @@ fn a_brand_file_carries_the_church_look_to_another_computer() {
         other => panic!("{other:?}"),
     };
     assert_eq!(got.brand.as_ref().unwrap().name, "Grace Chapel");
+    assert_eq!(
+        got.brand.as_ref().unwrap().bug,
+        LogoBug {
+            enabled: true,
+            corner: BugCorner::LowerLeft,
+            size: BugSize::Large,
+            opacity: 40,
+        },
+        "the logo bug comes with the brand file"
+    );
     assert!(got.default_theme.is_some() && got.default_theme == got.brand_theme);
     assert!(matches!(got.idle, Some(IdleScreen::Video { .. })));
     assert!(b
@@ -2189,4 +2206,117 @@ fn a_brand_file_carries_the_church_look_to_another_computer() {
         path: junk.to_string_lossy().into_owned(),
     })));
     assert!(msg.contains("not a Lampstand brand file"), "{msg}");
+}
+
+/// A 40x20 PNG, so the logo is twice as wide as it is high.
+fn wide_logo() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image::RgbaImage::from_pixel(40, 20, image::Rgba([240, 190, 60, 255]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    bytes
+}
+
+/// The rectangle of the image node for `blob` in the last scene shown.
+fn bug_in(scene: &Scene, blob: lampstand_core::id::BlobHash) -> Option<lampstand_core::geom::Rect> {
+    scene.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Image(i) if i.blob == blob && i.rect.width < 200.0 => Some(i.rect),
+        _ => None,
+    })
+}
+
+#[test]
+fn the_logo_bug_is_drawn_on_audience_screens_and_follows_black_and_the_toggle() {
+    use lampstand_core::brand::{Brand, BugCorner, BugSize, LogoBug};
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "holy")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+
+    // Nothing to put it on before there is a brand.
+    let none = h.app.handle(Request::Settings(SettingsRequest::SetLogoBug(
+        LogoBug::default(),
+    )));
+    assert!(error_message(none).contains("logo"));
+
+    let logo = blob_with(&h, &wide_logo());
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(Brand {
+            name: "Grace Chapel".into(),
+            logo: Some(logo),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+            bug: Default::default(),
+        }))));
+    h.sink.take();
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was shown").1;
+
+    // Off by default: existing installs do not change.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(bug_in(&last(&h), logo).is_none());
+
+    let bug = LogoBug {
+        enabled: true,
+        ..LogoBug::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(bug))));
+    let scene = last(&h);
+    let rect = bug_in(&scene, logo).expect("the bug is on the screen");
+    assert!((rect.width / rect.height - 2.0).abs() < 0.01, "{rect:?}");
+    assert!((rect.height - 540.0 * 0.07).abs() < 0.5);
+    assert!(rect.x > 480.0 && rect.y > 270.0, "lower right: {rect:?}");
+
+    // The next slide keeps it where it was.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(bug_in(&last(&h), logo), Some(rect));
+
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(LogoBug {
+            corner: BugCorner::LowerLeft,
+            size: BugSize::Large,
+            ..bug
+        }))));
+    let moved = bug_in(&last(&h), logo).unwrap();
+    assert!(moved.x < 480.0 && moved.height > rect.height);
+
+    // Black covers it; turning Black off brings it back.
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert!(bug_in(&last(&h), logo).is_none());
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert!(bug_in(&last(&h), logo).is_some());
+
+    // The toggle is saved in the brand.
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(LogoBug {
+            enabled: false,
+            ..moved_setting()
+        }))));
+    assert!(bug_in(&last(&h), logo).is_none());
+    let saved = match ok(h.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s.brand.unwrap().bug,
+        other => panic!("{other:?}"),
+    };
+    assert!(!saved.enabled && saved.corner == BugCorner::LowerLeft);
+}
+
+fn moved_setting() -> lampstand_core::brand::LogoBug {
+    use lampstand_core::brand::{BugCorner, BugSize, LogoBug};
+    LogoBug {
+        enabled: true,
+        corner: BugCorner::LowerLeft,
+        size: BugSize::Large,
+        opacity: 80,
+    }
 }

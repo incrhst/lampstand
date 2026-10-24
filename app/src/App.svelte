@@ -6,6 +6,7 @@
   import PlanView from "./routes/plan/PlanView.svelte";
   import OperateView from "./routes/operate/OperateView.svelte";
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
+  import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
   import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
@@ -26,10 +27,11 @@
     { id: "plan", label: "Plan", key: "1" },
     { id: "operate", label: "Present", key: "2" },
   ] as const;
-  type Screen = (typeof screens)[number]["id"] | "setup";
+  type Screen = (typeof screens)[number]["id"] | "setup" | "help";
 
   let screen: Screen = $state("plan");
   let setupTab: SetupTab = $state("screens");
+  let helpTab: HelpTab = $state("tips");
 
   // Mod+1 Plan, Mod+2 Present, Mod+\ the other of the two.
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
@@ -44,11 +46,15 @@
     setupTab = tab;
     screen = "setup";
   }
+  function openHelp(tab: HelpTab) {
+    helpTab = tab;
+    screen = "help";
+  }
   let obsStatus = $derived(obsPill(live.obs));
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
-  // the operator, on Setup › About.
+  // the operator, on Help › About.
   let newVersion = $derived(live.update ? availableVersion(live.update.state) : null);
   $effect(() => {
     const first = setTimeout(() => checkForUpdate(), FIRST_CHECK_MS);
@@ -192,6 +198,10 @@
           {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
         </p>
       {/if}
+      <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} onclick={() => (screen = "help")}>
+        <Icon name="info" size={16} />
+        Help
+      </button>
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
         Setup
@@ -205,7 +215,9 @@
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} onplan={() => (screen = "plan")} />
+      <OperateView onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
+    {:else if screen === "help"}
+      <HelpView tab={helpTab} onchange={(tab) => (helpTab = tab)} />
     {:else}
       <SetupView tab={setupTab} onchange={(tab) => (setupTab = tab)} />
     {/if}
@@ -234,7 +246,7 @@
     {/snippet}
     {#snippet end()}
       {#if newVersion}
-        <button class="status-link" onclick={() => openSetup("about")} title="A new version of Lampstand is ready to install. Open Setup › About">
+        <button class="status-link" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
           <Icon name="download" size={14} />
           <span class="update">Update {newVersion} available</span>
         </button>

@@ -5,7 +5,7 @@
      Themes (T51) holds the library's themes and Church look (the brand
      quick start) makes a first one; Team (T54) joins them here. -->
 <script module lang="ts">
-  export type SetupTab = "screens" | "themes" | "brand" | "scripture" | "devices" | "obs" | "about";
+  export type SetupTab = "screens" | "themes" | "brand" | "scripture" | "devices" | "obs";
 </script>
 
 <script lang="ts">
@@ -17,7 +17,6 @@
   import ScriptureSetup from "./ScriptureSetup.svelte";
   import ThemesSetup from "./ThemesSetup.svelte";
   import BrandSetup from "./BrandSetup.svelte";
-  import AboutSetup from "./AboutSetup.svelte";
 
   let { tab, onchange }: { tab: SetupTab; onchange: (tab: SetupTab) => void } = $props();
 
@@ -28,7 +27,6 @@
     { id: "scripture", label: "Scripture", subtitle: "Bible versions and the default", icon: "scripture" },
     { id: "devices", label: "Devices", subtitle: "Pairing and sync", icon: "sync" },
     { id: "obs", label: "OBS", subtitle: "Send pictures, control scenes", icon: "broadcast" },
-    { id: "about", label: "About", subtitle: "Version and updates", icon: "info" },
   ] as const;
 </script>
 
@@ -55,8 +53,6 @@
       <ObsSetup />
     {:else if tab === "scripture"}
       <ScriptureSetup />
-    {:else if tab === "about"}
-      <AboutSetup />
     {:else}
       <div class="page">
         <h1>Devices</h1>

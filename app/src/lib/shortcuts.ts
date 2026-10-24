@@ -3,7 +3,7 @@
 // work from anywhere, even while typing, and never collide with the plain
 // keys Present uses to run a service.
 
-export type ScreenId = "plan" | "operate" | "setup";
+export type ScreenId = "plan" | "operate" | "setup" | "help";
 
 export interface KeyLike {
   key: string;
@@ -30,3 +30,13 @@ export function screenForKey(e: KeyLike, current: ScreenId): ScreenId | null {
 export function modLabel(platform: string): string {
   return /mac|iphone|ipad/i.test(platform) ? "⌘" : "Ctrl+";
 }
+
+/** The keys of the Present screen, for the More menu and the Help screen. */
+export const KEYS: [string, string][] = [
+  ["← → or Space", "Next and previous"],
+  [".", "Blank"],
+  ["1–9", "Jump to a verse"],
+  ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
+  ["⇧↑ ⇧↓ then Enter", "Choose an item, then start it"],
+  ["/", "Quick add a song or scripture"],
+];

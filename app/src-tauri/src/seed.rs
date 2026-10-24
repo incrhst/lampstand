@@ -103,28 +103,38 @@ fn welcome_service(library: &Library) -> Option<Service> {
     let verse = parse_reference("John 3:16-17").ok()?;
 
     let mut service = Service::new("Welcome to Lampstand");
+    // Three groups, to show what an order can do: a section that loops by
+    // itself (turn Loop off in its box to hold it), a plain service section
+    // moved on with Space, and a closing header. Fold a group with its name.
     let kinds = [
         ItemKind::Header {
-            title: "Welcome. Press Space to go live, and again to move on".into(),
+            title: "Pre-service loop. Its slides repeat on their own".into(),
         },
         ItemKind::Song {
-            song: grace,
+            song: holy,
             arrangement: None,
         },
         ItemKind::Scripture {
             passage: verse,
             translation: bible.id,
         },
+        ItemKind::Header {
+            title: "Service. Press Space to go live, and again to move on".into(),
+        },
         ItemKind::Song {
-            song: holy,
+            song: grace,
             arrangement: None,
         },
         ItemKind::Header {
             title: "That is a whole service. Plan your own under Plan".into(),
         },
     ];
+    let mut ids = Vec::new();
     for (i, kind) in kinds.into_iter().enumerate() {
-        service.insert(i, kind);
+        ids.push(service.insert(i, kind));
+    }
+    if let Some(item) = service.items.get_mut(&ids[0]) {
+        item.loop_seconds = Some(6);
     }
     Some(service)
 }
@@ -164,12 +174,15 @@ mod tests {
             .into_iter()
             .map(|(_, i)| &i.kind)
             .collect();
-        assert_eq!(kinds.len(), 5);
+        assert_eq!(kinds.len(), 6);
         assert!(matches!(kinds[0], ItemKind::Header { .. }));
         assert!(matches!(kinds[1], ItemKind::Song { .. }));
         assert!(matches!(kinds[2], ItemKind::Scripture { .. }));
-        assert!(matches!(kinds[3], ItemKind::Song { .. }));
-        assert!(matches!(kinds[4], ItemKind::Header { .. }));
+        assert!(matches!(kinds[3], ItemKind::Header { .. }));
+        assert!(matches!(kinds[4], ItemKind::Song { .. }));
+        assert!(matches!(kinds[5], ItemKind::Header { .. }));
+        let first = welcome.ordered()[0].1;
+        assert_eq!(first.loop_seconds, Some(6), "the first group loops");
     }
 
     #[test]

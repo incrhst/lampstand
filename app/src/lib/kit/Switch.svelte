@@ -1,11 +1,15 @@
 <!-- An on/off switch with its label, e.g. enabling an output. -->
 <script lang="ts">
-  let { checked, onchange, label }: { checked: boolean; onchange: (on: boolean) => void; label: string } =
-    $props();
+  let {
+    checked,
+    onchange,
+    label,
+    disabled = false,
+  }: { checked: boolean; onchange: (on: boolean) => void; label: string; disabled?: boolean } = $props();
 </script>
 
-<label class="switch">
-  <input type="checkbox" role="switch" {checked} onchange={(e) => onchange(e.currentTarget.checked)} />
+<label class="switch" class:disabled>
+  <input type="checkbox" role="switch" {checked} {disabled} onchange={(e) => onchange(e.currentTarget.checked)} />
   <span class="track" aria-hidden="true"><span class="thumb"></span></span>
   <span>{label}</span>
 </label>
@@ -18,6 +22,10 @@
     font-size: 0.85rem;
     cursor: pointer;
     position: relative;
+  }
+  .switch.disabled {
+    cursor: default;
+    opacity: 0.6;
   }
   input {
     position: absolute;

@@ -138,6 +138,7 @@ test("a brand makes the Starter theme in its colours and font", async () => {
     text: null,
     accent: { r: 240, g: 190, b: 60, a: 255 },
     font_family: "Noto Serif",
+    bug: { enabled: false, corner: "LowerRight" as const, size: "Small" as const, opacity: 80 },
   };
   const t = themeFromBrand(brand, starter);
   assert.equal(t.name, "Grace Chapel");
