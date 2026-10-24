@@ -701,7 +701,17 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
             arrangement: None,
         },
     }));
-    laptop.sync.handle(TeamRequest::DriveAsk).await;
+    // The laptop may still be learning who presents when the roles settle (a
+    // slow runner redials): an ask refused for that is asked again, as a
+    // person would press the button again.
+    let start = Instant::now();
+    while let Response::Error { .. } = laptop.sync.handle(TeamRequest::DriveAsk).await {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the ask was refused"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     until(Duration::from_secs(5), "the prompt", || {
         !status(&sanctuary).drive.requests.is_empty()
     })
