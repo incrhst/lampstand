@@ -93,9 +93,6 @@ const BACKOFF_START: Duration = Duration::from_millis(500);
 const BACKOFF_MAX: Duration = Duration::from_secs(10);
 /// How long after a connection opens a claim made while apart is believed.
 const FRESH_SESSION: Duration = Duration::from_secs(10);
-/// How long a device is taken to have been away when this device has no
-/// record of ever hearing from it.
-const LONG_AWAY: Duration = Duration::from_secs(365 * 24 * 3600);
 
 #[derive(Debug)]
 pub enum NetError {
@@ -387,6 +384,10 @@ pub struct SyncNode {
     /// so a restart does not forget how long a device has been away.
     contacts: Mutex<HashMap<DeviceKey, i64>>,
     contacts_dirty: std::sync::atomic::AtomicBool,
+    /// Added to the wall clock for the times kept on disk; tests move it.
+    wall_offset_ms: std::sync::atomic::AtomicI64,
+    /// Contact times are saved one at a time, newest last.
+    contacts_save: Mutex<()>,
     /// Roles are saved one at a time, newest last.
     save_lock: Mutex<()>,
     /// What is on disk may be replaced (see [`saved::Loaded`]).
@@ -437,6 +438,10 @@ impl Net for Reach {
         Reach::holder(self, device)
     }
 
+    fn paired(&self, device: DeviceKey) -> bool {
+        self.paired.contains(&device)
+    }
+
     fn away(&self, device: DeviceKey) -> Option<Duration> {
         if !self.paired.contains(&device) {
             None
@@ -482,6 +487,10 @@ impl SyncNode {
         let roles = loaded
             .file
             .into_roles(key.public(), config.name.clone(), signer);
+        let mut roles = roles;
+        if loaded.damaged {
+            roles.mark_for_reseeding();
+        }
         let dir = config.dir.clone();
         Ok(Arc::new_cyclic(|me| Self {
             repo,
@@ -499,6 +508,8 @@ impl SyncNode {
             last_driven: Mutex::new(false),
             contacts: Mutex::new(saved::load_contacts(&dir)),
             contacts_dirty: std::sync::atomic::AtomicBool::new(false),
+            wall_offset_ms: std::sync::atomic::AtomicI64::new(0),
+            contacts_save: Mutex::new(()),
             save_lock: Mutex::new(()),
             persist_roles: loaded.writable,
             fresh_session: Mutex::new(FRESH_SESSION),
@@ -668,6 +679,16 @@ impl SyncNode {
         let removed = lock(&self.trust).remove(device)?;
         if lock(&self.roles).forget(device) {
             self.save_roles();
+        }
+        // What was kept about when it was last heard goes with it.
+        {
+            let mut peers = lock(&self.peers);
+            peers.last_contact.remove(&device);
+            peers.away_before.remove(&device);
+            peers.session_started.remove(&device);
+        }
+        if lock(&self.contacts).remove(&device).is_some() {
+            self.save_contacts_in_background();
         }
         if let Some(stop) = lock(&self.peers)
             .sessions
@@ -868,8 +889,10 @@ impl SyncNode {
                         peers.problems.remove(&peer.device);
                         // How long it had been out of reach, from what was
                         // heard before this connection (kept across a
-                        // restart); never heard of: a long time.
-                        let away = self.silence_in(&peers, peer.device).unwrap_or(LONG_AWAY);
+                        // restart). Nothing known: no longer than this run
+                        // has lasted, so a claim made on no evidence is
+                        // refused rather than believed.
+                        let away = self.silence_or_run(&peers, peer.device);
                         peers.away_before.insert(peer.device, away);
                         peers.session_started.insert(peer.device, Instant::now());
                         drop(peers);
@@ -910,8 +933,8 @@ impl SyncNode {
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
-            lock(&self.contacts).insert(device, now_ms());
-            self.save_contacts();
+            lock(&self.contacts).insert(device, self.wall_now());
+            self.save_contacts_in_background();
             // An ask from a device that went away is withdrawn, and so is a
             // hand-back that was on its way to it.
             {
@@ -940,12 +963,7 @@ impl SyncNode {
         let silent = paired
             .iter()
             .filter(|d| !connected.contains(d))
-            .map(|d| {
-                let silent = self
-                    .silence_in(&peers, *d)
-                    .unwrap_or_else(|| self.started.elapsed());
-                (*d, silent)
-            })
+            .map(|d| (*d, self.silence_or_run(&peers, *d)))
             .collect();
         let session_age = peers
             .session_started
@@ -1476,6 +1494,16 @@ impl SyncNode {
             .collect()
     }
 
+    /// A connection to `peer` has opened and its records have been sent:
+    /// whatever this device asked of it and is still waiting on is asked
+    /// again, in case the ask was lost when a connection was replaced.
+    pub(crate) fn session_opened(&self, peer: DeviceKey) {
+        let waiting = lock(&self.roles).waiting_asks(peer);
+        for role in waiting {
+            self.send_to(peer, Frame::RoleAsk { role });
+        }
+    }
+
     /// A device sent its record for a role: the newer of the two stands.
     pub(crate) fn record_received(&self, from: DeviceKey, role: Role, mut record: Record) {
         let known = record
@@ -1606,24 +1634,68 @@ impl SyncNode {
         lock(&self.peers)
             .last_contact
             .insert(device, Instant::now());
-        lock(&self.contacts).insert(device, now_ms());
+        lock(&self.contacts).insert(device, self.wall_now());
         self.contacts_dirty
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// How long ago `device` was last heard from: by the clock of this run
     /// if it was, else by what was kept on disk. `None`: never.
+    ///
+    /// The larger of the two clocks: the one that counts time asleep (the
+    /// wall clock) and the one that does not (`Instant`, which stands still
+    /// while a laptop sleeps on macOS and Linux).
     fn silence_in(&self, peers: &Peers, device: DeviceKey) -> Option<Duration> {
-        if let Some(at) = peers.last_contact.get(&device) {
-            return Some(at.elapsed());
+        let by_run = peers.last_contact.get(&device).map(Instant::elapsed);
+        let by_wall = lock(&self.contacts)
+            .get(&device)
+            .map(|ms| Duration::from_millis(u64::try_from(self.wall_now() - ms).unwrap_or(0)));
+        match (by_run, by_wall) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
         }
-        let ms = *lock(&self.contacts).get(&device)?;
-        Some(Duration::from_millis(
-            u64::try_from(now_ms() - ms).unwrap_or(0),
-        ))
+    }
+
+    /// [`SyncNode::silence_in`], or, when nothing is known (the file that
+    /// kept it is gone or unreadable), no longer than this run has lasted:
+    /// the answer errs towards "not away", so a claim made on no evidence is
+    /// refused rather than believed. Every place that needs it uses this one.
+    fn silence_or_run(&self, peers: &Peers, device: DeviceKey) -> Duration {
+        self.silence_in(peers, device)
+            .unwrap_or_else(|| self.started.elapsed())
+    }
+
+    fn wall_now(&self) -> i64 {
+        now_ms()
+            + self
+                .wall_offset_ms
+                .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// For tests: the wall clock jumps forward, as it does over a sleep that
+    /// `Instant` does not see.
+    #[doc(hidden)]
+    pub fn skip_wall_clock(&self, by: Duration) {
+        self.wall_offset_ms.fetch_add(
+            i64::try_from(by.as_millis()).unwrap_or(i64::MAX),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    /// Saves when devices were last heard, off the async runtime when there
+    /// is one: the write is synced.
+    fn save_contacts_in_background(&self) {
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                let node = self.arc();
+                runtime.spawn_blocking(move || node.save_contacts());
+            }
+            Err(_) => self.save_contacts(),
+        }
     }
 
     fn save_contacts(&self) {
+        let _one_at_a_time = lock(&self.contacts_save);
         let contacts = lock(&self.contacts).clone();
         if let Err(e) = saved::save_contacts(&self.dir, &contacts) {
             eprintln!("lampstand: cannot save when devices were last heard: {e}");
@@ -1661,7 +1733,7 @@ impl SyncNode {
                     .contacts_dirty
                     .load(std::sync::atomic::Ordering::Relaxed)
                 {
-                    node.save_contacts();
+                    node.save_contacts_in_background();
                 }
                 if matches!(
                     node.presenter_status().standing,
@@ -1901,26 +1973,31 @@ mod tests {
         tempfile::TempDir,
     );
 
-    /// A node on its own, with a hook that records what it is asked to do.
-    fn node_with_hooks() -> Hooked {
-        let dir = tempfile::tempdir().unwrap();
+    /// A node over the folder `dir`.
+    fn node_at(dir: &std::path::Path) -> Arc<SyncNode> {
         let key = DeviceKeypair::generate();
         let repo = Arc::new(
             Repo::open(
-                dir.path().join("repo"),
+                dir.join("repo"),
                 DeviceKeypair::from_secret_bytes(key.secret_bytes()),
             )
             .unwrap(),
         );
-        let node = SyncNode::new(
+        SyncNode::new(
             repo,
             key,
             NodeConfig {
                 name: "Sanctuary".into(),
-                dir: dir.path().join("sync"),
+                dir: dir.join("sync"),
             },
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A node on its own, with a hook that records what it is asked to do.
+    fn node_with_hooks() -> Hooked {
+        let dir = tempfile::tempdir().unwrap();
+        let node = node_at(dir.path());
         let (commands, live) = (
             Arc::new(Mutex::new(Vec::new())),
             Arc::new(Mutex::new(Vec::new())),
@@ -1953,6 +2030,9 @@ mod tests {
         fn holder(&self, _: DeviceKey) -> Holder {
             Holder::Gone
         }
+        fn paired(&self, _: DeviceKey) -> bool {
+            false
+        }
         fn away(&self, _: DeviceKey) -> Option<Duration> {
             None
         }
@@ -1974,8 +2054,12 @@ mod tests {
         fn holder(&self, _: DeviceKey) -> Holder {
             Holder::Online
         }
+        fn paired(&self, _: DeviceKey) -> bool {
+            true
+        }
         fn away(&self, _: DeviceKey) -> Option<Duration> {
-            Some(Duration::from_secs(999))
+            // Everyone has been connected for a while.
+            None
         }
     }
 
@@ -2210,8 +2294,11 @@ mod tests {
                     Holder::Online
                 }
             }
+            fn paired(&self, _: DeviceKey) -> bool {
+                true
+            }
             fn away(&self, _: DeviceKey) -> Option<Duration> {
-                Some(Duration::from_secs(999))
+                None
             }
         }
         d.claim(Role::Stream, &Gone(node.device())).unwrap()
@@ -2264,5 +2351,119 @@ mod tests {
         let kept = saved::load_contacts(&dir.path().join("sync"));
         assert!(kept.contains_key(&id(7)));
         assert!(now_ms() - kept[&id(7)] < 5_000);
+    }
+
+    #[test]
+    fn a_wall_clock_that_ran_while_the_process_slept_counts_as_time_away() {
+        // The laptop slept: `Instant` stood still, the wall clock did not.
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        node.claim_role(Role::Stream).unwrap();
+        let claim = claim_against(&node, 7);
+        node.heard(id(7));
+        node.record_received(id(7), Role::Stream, claim.clone());
+        assert_eq!(
+            node.roles_status().stream.record.holder,
+            Some(node.device())
+        );
+        node.skip_wall_clock(Duration::from_secs(600));
+        let silence = {
+            let peers = lock(&node.peers);
+            node.silence_or_run(&peers, id(7))
+        };
+        assert!(silence >= Duration::from_secs(600), "{silence:?}");
+        node.record_received(id(7), Role::Stream, claim);
+        assert_eq!(node.roles_status().stream.record.holder, Some(id(7)));
+    }
+
+    #[test]
+    fn nothing_known_about_when_a_device_was_heard_errs_towards_not_away() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let silence = {
+            let peers = lock(&node.peers);
+            assert_eq!(node.silence_in(&peers, id(7)), None);
+            node.silence_or_run(&peers, id(7))
+        };
+        assert!(silence < Duration::from_secs(60), "{silence:?}");
+        // So a claim from it is refused: no evidence of an absence.
+        node.claim_role(Role::Stream).unwrap();
+        let claim = claim_against(&node, 7);
+        node.record_received(id(7), Role::Stream, claim);
+        assert_eq!(
+            node.roles_status().stream.record.holder,
+            Some(node.device())
+        );
+    }
+
+    #[test]
+    fn unpairing_forgets_when_the_device_was_last_heard() {
+        let (node, _, _, dir) = node_with_hooks();
+        paired(&node, 7);
+        node.heard(id(7));
+        node.save_contacts();
+        assert!(saved::load_contacts(&dir.path().join("sync")).contains_key(&id(7)));
+        node.unpair(id(7)).unwrap();
+        assert!(lock(&node.contacts).is_empty());
+        assert!(lock(&node.peers).last_contact.is_empty());
+        // The file follows (off the runtime when there is none, at once).
+        assert!(saved::load_contacts(&dir.path().join("sync")).is_empty());
+    }
+
+    #[test]
+    fn a_lost_ask_is_made_again_when_a_connection_opens() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let (_, held) = claimed(7, Role::Stream);
+        node.record_received(id(7), Role::Stream, held);
+        // A connection to device 7, which this device can see frames on.
+        let (control, mut frames) = mpsc::unbounded_channel();
+        lock(&node.peers).sessions.insert(
+            id(7),
+            Session {
+                id: 1,
+                client: id(7),
+                address: None,
+                control,
+                stop: None,
+                done: None,
+            },
+        );
+        node.ask_role(Role::Stream).unwrap();
+        assert!(matches!(
+            frames.try_recv(),
+            Ok(Control::Frame(Frame::RoleAsk { role: Role::Stream }))
+        ));
+        // The ask was lost with the connection; a new one opens. The ask is
+        // still waiting, so it is sent again, and a device that is not
+        // waiting on anything is sent nothing.
+        node.session_opened(id(7));
+        assert!(matches!(
+            frames.try_recv(),
+            Ok(Control::Frame(Frame::RoleAsk { role: Role::Stream }))
+        ));
+        node.cancel_role_ask(Role::Stream);
+        while frames.try_recv().is_ok() {}
+        node.session_opened(id(7));
+        assert!(frames.try_recv().is_err());
+    }
+
+    #[test]
+    fn roles_that_were_lost_are_flagged_and_any_paired_device_teaches_them_again() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sync")).unwrap();
+        std::fs::write(dir.path().join("sync/roles.json"), "{broken").unwrap();
+        let node = node_at(dir.path());
+        let r = node.roles_status();
+        assert!(r.projection.unverified && r.operator.unverified && r.stream.unverified);
+        assert!(dir.path().join("sync/roles.json.bad").is_file());
+        // A paired device that is not "just paired" can teach it again.
+        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        let (_, held) = claimed(7, Role::Stream);
+        node.record_received(id(7), Role::Stream, held);
+        let r = node.roles_status();
+        assert_eq!(r.stream.record.holder, Some(id(7)));
+        assert!(!r.stream.unverified);
+        assert!(r.projection.unverified, "the others still wait");
     }
 }

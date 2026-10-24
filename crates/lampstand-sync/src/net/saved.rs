@@ -151,6 +151,9 @@ pub(super) struct Loaded {
     /// What is on disk may be replaced. False when `roles.json` could not be
     /// read or set aside: it is left exactly as it is.
     pub writable: bool,
+    /// What the roles were is lost (`roles.json` was unreadable): they wait
+    /// to be taught again by the devices this one is paired with.
+    pub damaged: bool,
 }
 
 fn read<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
@@ -182,6 +185,7 @@ pub(super) fn load(dir: &Path) -> Loaded {
                     file,
                     migrated: false,
                     writable: true,
+                    damaged: false,
                 }
             }
             bad => {
@@ -203,6 +207,7 @@ pub(super) fn load(dir: &Path) -> Loaded {
                     file: RolesFile::unheld(),
                     migrated: false,
                     writable: moved.is_ok(),
+                    damaged: true,
                 };
             }
         },
@@ -216,6 +221,7 @@ pub(super) fn load(dir: &Path) -> Loaded {
                 file: RolesFile::unheld(),
                 migrated: false,
                 writable: false,
+                damaged: true,
             };
         }
     }
@@ -228,6 +234,7 @@ pub(super) fn load(dir: &Path) -> Loaded {
         file: RolesFile::migrate(presenter, driver),
         migrated,
         writable: true,
+        damaged: false,
     }
 }
 

@@ -2265,3 +2265,31 @@ async fn a_holder_that_restarted_yields_every_role_taken_while_it_was_down() {
     assert_eq!(sanctuary.node.role(), Mode::Planning);
     assert_eq!(office.node.role(), Mode::Presenter);
 }
+
+/// Once a connection is older than the window in which a claim made while
+/// apart is believed, a paired device is still a known device: it can take
+/// a role nobody holds, and every device accepts it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_claim_on_a_connection_older_than_ten_seconds_is_still_taken_in() {
+    let (sanctuary, office) = paired_and_leased().await;
+    // The default window, not a shortened one.
+    tokio::time::sleep(Duration::from_secs(11)).await;
+    assert_eq!(sanctuary.node.status().connected(), 1);
+    office.node.claim_role(Role::Stream).unwrap();
+    until(Duration::from_secs(10), "the sanctuary to know", || {
+        holder_of(&sanctuary, Role::Stream) == Some(office.node.device())
+    })
+    .await;
+    assert_eq!(role_status(&sanctuary, Role::Stream).record.epoch, 1);
+    assert!(!role_status(&sanctuary, Role::Stream).unverified);
+    // The sanctuary hands Audio to the office PC, which hands it back.
+    ask_until_prompted(&office, &sanctuary, Role::Audio).await;
+    sanctuary
+        .node
+        .allow_role(Role::Audio, office.node.device(), false)
+        .unwrap();
+    until(Duration::from_secs(5), "the hand-over", || {
+        holder_of(&sanctuary, Role::Audio) == Some(office.node.device())
+    })
+    .await;
+}

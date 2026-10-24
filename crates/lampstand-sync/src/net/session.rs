@@ -79,6 +79,13 @@ pub(crate) async fn run(
         wants: HashMap::new(),
         incoming: HashMap::new(),
     };
+    // The role records go first: how long a connection has been open is
+    // what tells a device that was away from one that never left, and the
+    // sweep of documents below can take a while on a big library.
+    for frame in node.record_frames() {
+        s.send(frame);
+    }
+    node.session_opened(peer);
     // The sweep: offer every document.
     let repo = node.repo.clone();
     let offered = blocking(move || {
@@ -88,9 +95,6 @@ pub(crate) async fn run(
             .collect::<Vec<_>>()
     })
     .await;
-    for frame in node.record_frames() {
-        s.send(frame);
-    }
     s.send_all(offered.unwrap_or_default());
 
     let mut beat = tokio::time::interval(BEAT);

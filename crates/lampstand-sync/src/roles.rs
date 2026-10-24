@@ -393,6 +393,8 @@ pub trait Net {
     /// connection began, or has been since if it is not connected. `None`
     /// for a device that is not paired.
     fn away(&self, device: DeviceKey) -> Option<Duration>;
+    /// Whether the device is paired with this one, connected or not.
+    fn paired(&self, device: DeviceKey) -> bool;
 }
 
 /// How this device could take a role right now.
@@ -602,6 +604,11 @@ pub struct Roles {
     /// The device this one has just paired with: the only one whose present
     /// state a device with nothing of its own takes without joining it.
     seed: Option<DeviceKey>,
+    /// Which roles the seed has spoken about; once all four, it is forgotten.
+    seed_heard: [bool; 4],
+    /// Roles whose state was lost (an unreadable `roles.json`): any paired
+    /// device may seed them again.
+    reseed: [bool; 4],
     /// Tests that do not care who seeds.
     #[cfg(test)]
     seed_any: bool,
@@ -619,6 +626,8 @@ impl Roles {
         Self {
             signer,
             seed: None,
+            seed_heard: [false; 4],
+            reseed: [false; 4],
             #[cfg(test)]
             seed_any: false,
             unverified: [false; 4],
@@ -1078,7 +1087,17 @@ impl Roles {
             // (the other device of a 0.7.0 pair was ahead of it).
             let migrated = local.chain.is_empty() && !pristine;
             let near = remote.epoch <= local.epoch.saturating_add(CHAIN as u64);
-            return if (pristine && self.seeded_by(from)) || (migrated && near) {
+            if pristine {
+                // From anyone else it waits to be taught by the device it
+                // pairs with.
+                return if self.seeded_by(role, from) {
+                    Admit::Yes
+                } else {
+                    Admit::Unverified
+                };
+            }
+            // The device that holds the lease says so itself.
+            return if migrated && near && remote.holder == Some(from) {
                 Admit::Yes
             } else {
                 Admit::No
@@ -1107,7 +1126,7 @@ impl Roles {
                     .iter()
                     .any(|l| l.holder == Some(d) || l.prev_holder == Some(d))
         };
-        let known = |d: DeviceKey| d == self.me || net.away(d).is_some() || in_state(d);
+        let known = |d: DeviceKey| d == self.me || net.paired(d) || in_state(d);
         // Where this device's own state sits in the steps.
         let here = |holder: Option<DeviceKey>, epoch: u64| {
             steps
@@ -1133,8 +1152,13 @@ impl Roles {
         if newer.is_none() && pristine {
             // Nothing of its own to join: the present state, from the device
             // just paired.
-            return if self.seeded_by(from) {
-                Admit::Yes
+            if self.seeded_by(role, from) {
+                return Admit::Yes;
+            }
+            // Not from the device that seeds it: not taken, but waiting for
+            // one that does, unless it is signed by keys nobody knows.
+            return if steps.iter().all(|l| l.signer().is_some_and(known)) {
+                Admit::Unverified
             } else {
                 Admit::No
             };
@@ -1275,12 +1299,33 @@ impl Roles {
         self.seed = Some(device);
     }
 
-    fn seeded_by(&self, from: DeviceKey) -> bool {
+    fn seeded_by(&self, role: Role, from: DeviceKey) -> bool {
         #[cfg(test)]
         if self.seed_any {
             return true;
         }
-        self.seed == Some(from)
+        self.seed == Some(from) || self.reseed[role.index()]
+    }
+
+    /// The state of every role was lost (an unreadable `roles.json`): all
+    /// four wait, flagged, to be taught again by any paired device.
+    pub fn mark_for_reseeding(&mut self) {
+        self.reseed = [true; 4];
+        self.unverified = [true; 4];
+    }
+
+    /// Roles this device has asked `holder` for and still waits on: to be
+    /// asked again when a connection to it opens, in case the ask was lost.
+    pub fn waiting_asks(&self, holder: DeviceKey) -> Vec<Role> {
+        Role::ALL
+            .into_iter()
+            .filter(|r| {
+                self.record(*r).holder == Some(holder)
+                    && self
+                        .asking(*r)
+                        .is_some_and(|a| a.state == AskState::Waiting)
+            })
+            .collect()
     }
 
     /// Whether a newer record for `role` was seen whose steps do not join
@@ -1292,6 +1337,29 @@ impl Roles {
     /// Takes in a record from another device (`from`): the newer one wins,
     /// if its signed steps check out ([`Roles::admit`]).
     pub fn merge(&mut self, role: Role, remote: &Record, from: DeviceKey, net: &dyn Net) -> Merged {
+        let merged = self.merge_record(role, remote, from, net);
+        // The device it just paired with has now told it about this role;
+        // once it has told it about all four, nobody else is "just paired".
+        if self.seed == Some(from) {
+            self.seed_heard[role.index()] = true;
+            if self.seed_heard.iter().all(|h| *h) {
+                self.seed = None;
+                self.seed_heard = [false; 4];
+            }
+        }
+        if merged.changed {
+            self.reseed[role.index()] = false;
+        }
+        merged
+    }
+
+    fn merge_record(
+        &mut self,
+        role: Role,
+        remote: &Record,
+        from: DeviceKey,
+        net: &dyn Net,
+    ) -> Merged {
         let i = role.index();
         // An epoch that no claim could ever beat would lock the role for
         // good: it is nonsense, not a record.
@@ -1360,7 +1428,12 @@ mod tests {
     /// Takes in a record as if its holder had sent it, over a network where
     /// everyone is online and has been away a long time.
     fn m(r: &mut Roles, role: Role, rec: &Record) -> Merged {
-        r.merge(role, rec, rec.holder.unwrap_or(key(0)), &net(true, &online))
+        r.merge(
+            role,
+            rec,
+            rec.holder.unwrap_or(key(0)),
+            &net_away(&online, Some(secs(999))),
+        )
     }
 
     fn secs(n: u64) -> Duration {
@@ -1389,13 +1462,17 @@ mod tests {
                 self.away
             }
         }
+        fn paired(&self, d: DeviceKey) -> bool {
+            !self.strangers.contains(&d)
+        }
     }
 
     fn net(has_peers: bool, f: &dyn Fn(DeviceKey) -> Holder) -> Peers<'_> {
         Peers {
             has_peers,
             holder: f,
-            away: Some(secs(999)),
+            // A connection that has been up for a while: nobody is "away".
+            away: None,
             strangers: Vec::new(),
         }
     }
@@ -2323,10 +2400,7 @@ mod tests {
         assert!(!b.forget_unverified(), "nothing was wiped");
         // The holder itself: the stranger is not paired with it, so it
         // cannot have been out of reach.
-        assert!(
-            !a.merge(Role::Projection, &take, key(2), &net_away(&online, None))
-                .changed
-        );
+        assert!(!a.merge(Role::Projection, &take, key(2), &b_net).changed);
         // And a paired device that had only just reconnected has not been
         // away long enough either.
         assert!(
@@ -3024,5 +3098,111 @@ mod tests {
             "no screens here"
         );
         assert!(!b.holds(Role::Projection));
+    }
+
+    #[test]
+    fn a_paired_claimant_on_an_old_connection_is_a_known_device() {
+        // "Away" is only ever about a fresh connection; whether a device is
+        // known is about pairing. A connection that has been up for hours
+        // (no "away") must not make a paired device a stranger.
+        let mut a = device(1, "A");
+        let mut b = device(2, "B");
+        let n = net(true, &online);
+        assert_eq!(n.away(key(2)), None);
+        assert!(n.paired(key(2)));
+        let claim = b
+            .claim(Role::Stream, &net(true, &|_| Holder::Gone))
+            .unwrap();
+        assert!(a.merge(Role::Stream, &claim, key(2), &n).changed);
+        // And so can the very first claims of the main roles.
+        let first = b
+            .claim(Role::Projection, &net(true, &|_| Holder::Gone))
+            .unwrap();
+        assert!(a.merge(Role::Projection, &first, key(2), &n).changed);
+        let op = b.claim(Role::Operator, &net(true, &online)).unwrap();
+        assert!(a.merge(Role::Operator, &op, key(2), &n).changed);
+    }
+
+    #[test]
+    fn a_device_not_taught_by_the_one_it_just_paired_with_waits_and_is_flagged() {
+        let mut ring = [device(1, "O"), device(2, "P")];
+        ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        let signed = pass_around(&mut ring, 0, Role::Stream, 10).pop().unwrap();
+        let unsigned = Record {
+            holder: Some(key(2)),
+            name: "P".into(),
+            epoch: 2,
+            chain: vec![],
+        };
+        for record in [&signed, &unsigned] {
+            let mut fresh = device(6, "New laptop");
+            fresh.seed_any = false;
+            assert!(
+                !fresh
+                    .merge(Role::Stream, record, key(7), &net(true, &online))
+                    .changed
+            );
+            assert!(fresh.unverified(Role::Stream), "flagged, not silent");
+        }
+        // Chains signed by keys nobody knows are not a gap: no flag.
+        let mut fresh = device(6, "New laptop");
+        fresh.seed_any = false;
+        let mut n = net(true, &online);
+        n.strangers = vec![key(1), key(2)];
+        assert!(!fresh.merge(Role::Stream, &signed, key(7), &n).changed);
+        assert!(!fresh.unverified(Role::Stream));
+    }
+
+    #[test]
+    fn the_first_state_it_is_taught_is_the_only_one_taken_on_trust() {
+        let mut ring = [device(1, "O"), device(2, "P")];
+        ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
+        let signed = pass_around(&mut ring, 0, Role::Stream, 10).pop().unwrap();
+        let mut fresh = device(6, "New laptop");
+        fresh.seed_any = false;
+        fresh.seed_from(key(1));
+        // The device just paired with speaks about every role (most of them
+        // have no holder): after that nobody is "just paired" any more.
+        for role in Role::ALL {
+            fresh.merge(role, &Record::default(), key(1), &net(true, &online));
+        }
+        assert!(
+            !fresh
+                .merge(Role::Stream, &signed, key(1), &net(true, &online))
+                .changed
+        );
+        assert!(fresh.unverified(Role::Stream));
+    }
+
+    #[test]
+    fn moved_over_state_is_taken_from_the_device_that_holds_the_lease_only() {
+        let migrated = |n: u8, holder: u8, epoch: u64| {
+            Roles::new(
+                key(n),
+                format!("Device {n}"),
+                [
+                    Record {
+                        holder: Some(key(holder)),
+                        name: "x".into(),
+                        epoch,
+                        chain: vec![],
+                    },
+                    Record::default(),
+                    Record::default(),
+                    Record::default(),
+                ],
+                DEFAULT_TAKEOVER,
+                Default::default(),
+                Signer::new(move |msg| kp(n).sign(msg)),
+            )
+        };
+        let leader = migrated(2, 2, 3);
+        let mut lagging = migrated(1, 1, 2);
+        let said = leader.record(Role::Projection).clone();
+        let n = net(true, &online);
+        // Relayed by somebody else, or sent by a device that does not hold
+        // it: no.
+        assert!(!lagging.merge(Role::Projection, &said, key(5), &n).changed);
+        assert!(lagging.merge(Role::Projection, &said, key(2), &n).changed);
     }
 }
