@@ -20,6 +20,7 @@ Every scene also takes optional: `durationSec`, `enter` (rise|fade|wipe|pop), `e
 | devices | heading?, link?, machines[1-4]: name, caption?, kind (laptop\|projector\|desk\|phone), roles[] | `{"type":"devices","machines":[{"name":"At the projector","kind":"projector","roles":["projection","audio"]}]}` |
 | diagram | src (`diagrams/*.svg`), heading?, caption? | `{"type":"diagram","src":"diagrams/roles-two-machines.svg"}` |
 | screenshot | src (`shots/*.png`), heading?, ratio (default 1.6), callouts[0-4]: x%, y%, label | `{"type":"screenshot","src":"shots/5-present.png","callouts":[{"x":36,"y":71,"label":"Press Next"}]}` |
+| handover | role, outcome (allow\|decline\|cut), holder{name,kind}, asker{name,kind}, caption? (animated: ask, prompt, job moves or stays) | `{"type":"handover","role":"stream","outcome":"cut","holder":{"name":"Stream desk","kind":"desk"},"asker":{"name":"Mary's laptop"}}` |
 | custom | component, props | one-off components in `custom/` (none yet) |
 
 Roles are `projection`, `operator`, `stream`, `audio`. Their plain wording lives in `roles.ts`, so every scene says it the same way. Role colours: Projection blue, Operator green, Stream purple, Audio orange.

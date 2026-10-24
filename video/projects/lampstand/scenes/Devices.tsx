@@ -2,7 +2,7 @@ import React from "react";
 import { FitText, useEnter, useLayout, useProgress, useSurface, useTheme } from "@video/core";
 import { Pill } from "./Pill";
 
-const Icon: React.FC<{ kind: string; color: string; size: number }> = ({ kind, color, size }) => {
+export const Icon: React.FC<{ kind: string; color: string; size: number }> = ({ kind, color, size }) => {
   const p = { fill: "none", stroke: color, strokeWidth: 5, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
     <svg width={size} height={size} viewBox="0 0 80 80">

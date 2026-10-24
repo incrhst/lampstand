@@ -33,5 +33,5 @@ export const theme: Theme = {
   radius: 6,
   // Calm and a little typewriter-stiff: no bounce, short stagger.
   motion: { spring: { damping: 22, stiffness: 120, mass: 1 }, staggerFrames: 7 },
-  defaultTone: { title: "paper", bullets: "paper", stat: "paper", cta: "paper", quote: "table", roles: "paper", devices: "paper", diagram: "paper", screenshot: "screen" },
+  defaultTone: { title: "paper", bullets: "paper", stat: "paper", cta: "paper", quote: "table", roles: "paper", devices: "paper", diagram: "paper", screenshot: "screen", handover: "paper" },
 };

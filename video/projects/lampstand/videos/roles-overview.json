@@ -1,32 +1,245 @@
 {
-  "aspect": "16:9",
-  "scenes": [
-    { "type": "title", "kicker": "Lampstand 0.8", "heading": "Who runs what", "sub": "Four jobs, shared across your computers", "durationSec": 5 },
-    { "type": "bullets", "heading": "A role is a job", "items": ["A job someone is doing right now", "Each job has one holder at a time", "One computer can hold any mix of jobs", "A computer with no job can still plan"], "durationSec": 8 },
-    { "type": "roles", "heading": "The four jobs", "durationSec": 8 },
-    { "type": "roles", "focus": "projection", "durationSec": 6 },
-    { "type": "roles", "focus": "operator", "durationSec": 6 },
-    { "type": "roles", "focus": "stream", "durationSec": 6 },
-    { "type": "roles", "focus": "audio", "durationSec": 6 },
-    { "type": "devices", "heading": "One computer", "machines": [
-      { "name": "Your one laptop", "caption": "Holds all four jobs. Nothing to set up.", "kind": "laptop", "roles": ["projection", "operator", "stream", "audio"] } ], "durationSec": 6 },
-    { "type": "devices", "heading": "Two computers", "link": "linked over your church network", "machines": [
-      { "name": "At the projector", "kind": "projector", "roles": ["projection", "operator", "audio"] },
-      { "name": "Stream desk", "caption": "OBS and Zoom", "kind": "desk", "roles": ["stream"] } ], "durationSec": 7 },
-    { "type": "devices", "heading": "Three computers", "link": "linked over your church network", "machines": [
-      { "name": "At the projector", "kind": "projector", "roles": ["projection", "audio"] },
-      { "name": "Back of the room", "caption": "Runs the service", "kind": "laptop", "roles": ["operator"] },
-      { "name": "Stream desk", "kind": "desk", "roles": ["stream"] } ], "durationSec": 7 },
-    { "type": "devices", "heading": "Four computers", "link": "linked over your church network", "machines": [
-      { "name": "At the projector", "kind": "projector", "roles": ["projection"] },
-      { "name": "Back of the room", "kind": "laptop", "roles": ["operator"] },
-      { "name": "Stream desk", "kind": "desk", "roles": ["stream"] },
-      { "name": "Sound desk", "caption": "Plays into the mixer", "kind": "desk", "roles": ["audio"] } ], "durationSec": 8 },
-    { "type": "diagram", "src": "diagrams/roles-four-machines.svg", "caption": "The same four computers, drawn out", "durationSec": 6 },
-    { "type": "quote", "text": "Phones and tablets can help, but they never hold a job.", "attribution": "Tablet remote and stage screens", "durationSec": 5 },
-    { "type": "bullets", "heading": "Handing a job over", "items": ["Ask: press Take on the job you want", "Allow: the holder sees Allow or Not now", "Decline: choose Not now and nothing changes", "Cut off: if the holder has been gone two minutes, anyone can take it"], "durationSec": 12 },
-    { "type": "bullets", "heading": "What happens on screen", "items": ["Projection passes: the screens clear", "Audio passes: the music stops", "Operator passes: the slide stays up", "Stream passes: OBS stays on its scene"], "durationSec": 10 },
-    { "type": "quote", "text": "A computer that comes back learns it lost the job, and does not grab it back.", "attribution": "After a cut", "durationSec": 6 },
-    { "type": "cta", "heading": "Read the full roles guide", "action": "docs/roles.md", "url": "github.com/incrhst/lampstand", "durationSec": 4 }
-  ]
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Lampstand 0.8",
+   "heading": "Who runs what",
+   "sub": "Four jobs, shared across your computers",
+   "durationSec": 5
+  },
+  {
+   "type": "bullets",
+   "heading": "A role is a job",
+   "items": [
+    "A job someone is doing right now",
+    "Each job has one holder at a time",
+    "One computer can hold any mix of jobs",
+    "A computer with no job can still plan"
+   ],
+   "durationSec": 8
+  },
+  {
+   "type": "roles",
+   "heading": "The four jobs",
+   "durationSec": 8
+  },
+  {
+   "type": "roles",
+   "focus": "projection",
+   "durationSec": 6
+  },
+  {
+   "type": "roles",
+   "focus": "operator",
+   "durationSec": 6
+  },
+  {
+   "type": "roles",
+   "focus": "stream",
+   "durationSec": 6
+  },
+  {
+   "type": "roles",
+   "focus": "audio",
+   "durationSec": 6
+  },
+  {
+   "type": "devices",
+   "heading": "One computer",
+   "machines": [
+    {
+     "name": "Your one laptop",
+     "caption": "Holds all four jobs. Nothing to set up.",
+     "kind": "laptop",
+     "roles": [
+      "projection",
+      "operator",
+      "stream",
+      "audio"
+     ]
+    }
+   ],
+   "durationSec": 6
+  },
+  {
+   "type": "devices",
+   "heading": "Two computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection",
+      "operator",
+      "audio"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "caption": "OBS and Zoom",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    }
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "devices",
+   "heading": "Three computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection",
+      "audio"
+     ]
+    },
+    {
+     "name": "Back of the room",
+     "caption": "Runs the service",
+     "kind": "laptop",
+     "roles": [
+      "operator"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    }
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "devices",
+   "heading": "Four computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection"
+     ]
+    },
+    {
+     "name": "Back of the room",
+     "kind": "laptop",
+     "roles": [
+      "operator"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    },
+    {
+     "name": "Sound desk",
+     "caption": "Plays into the mixer",
+     "kind": "desk",
+     "roles": [
+      "audio"
+     ]
+    }
+   ],
+   "durationSec": 8
+  },
+  {
+   "type": "diagram",
+   "src": "diagrams/roles-four-machines.svg",
+   "caption": "The same four computers, drawn out",
+   "durationSec": 6
+  },
+  {
+   "type": "quote",
+   "text": "Phones and tablets can help, but they never hold a job.",
+   "attribution": "Tablet remote and stage screens",
+   "durationSec": 5
+  },
+  {
+   "type": "bullets",
+   "heading": "Handing a job over",
+   "items": [
+    "Ask: press Take on the job you want",
+    "Allow: the holder sees Allow or Not now",
+    "Decline: choose Not now and nothing changes",
+    "Cut off: if the holder has been gone two minutes, anyone can take it"
+   ],
+   "durationSec": 9
+  },
+  {
+   "type": "handover",
+   "outcome": "allow",
+   "role": "stream",
+   "holder": {
+    "name": "Back of the room",
+    "kind": "laptop"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   }
+  },
+  {
+   "type": "handover",
+   "outcome": "decline",
+   "role": "stream",
+   "holder": {
+    "name": "Back of the room",
+    "kind": "laptop"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   }
+  },
+  {
+   "type": "handover",
+   "outcome": "cut",
+   "role": "stream",
+   "holder": {
+    "name": "Stream desk",
+    "kind": "desk"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   }
+  },
+  {
+   "type": "bullets",
+   "heading": "What happens on screen",
+   "items": [
+    "Projection passes: the screens clear",
+    "Audio passes: the music stops",
+    "Operator passes: the slide stays up",
+    "Stream passes: OBS stays on its scene"
+   ],
+   "durationSec": 10
+  },
+  {
+   "type": "quote",
+   "text": "A computer that comes back learns it lost the job, and does not grab it back.",
+   "attribution": "After a cut",
+   "durationSec": 6
+  },
+  {
+   "type": "cta",
+   "heading": "Read the full roles guide",
+   "action": "docs/roles.md",
+   "url": "github.com/incrhst/lampstand",
+   "durationSec": 4
+  }
+ ]
 }

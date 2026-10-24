@@ -23,6 +23,7 @@ Videos are data. A normal video is one JSON file; you never write React for it.
 - Honest about status (PRODUCT.md): never say a feature is shipped, give dates, download counts, user numbers or testimonials. The roles design is 0.8 and still being built; label it so ("Lampstand 0.8").
 - One idea per scene, at most 5 bullets, a 60s video is about 8 to 10 scenes. Set `durationSec` to tighten. Alternate `tone` (paper, table, screen) for rhythm.
 - Philosophy lines come from PRODUCT.md principles: Sunday must not fail; built for volunteers; free and open; honest about status.
+- Role handovers have their own animated scene, `handover` (outcomes `allow`, `decline`, `cut`); use it rather than describing the steps in bullets alone.
 - Screenshots are in `video/public/shots/` (`callouts` x and y are percent of the picture). Roles diagrams are in `video/public/diagrams/`. Retake screenshots with `npm run capture` in `video/`; they come from the real UI with a fake bridge, so do not claim a staged projector picture is real.
 
 ## Extend the framework

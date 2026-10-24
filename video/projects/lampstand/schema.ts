@@ -45,5 +45,16 @@ export const Screenshot = z.object({
   ...base,
 });
 
-export const Scene = z.discriminatedUnion("type", [...coreScenes, Quote, Roles, Devices, Diagram, Screenshot, Custom]);
+const Machine = z.object({ name: z.string(), kind: z.enum(["laptop", "projector", "desk", "phone"]).default("laptop") });
+export const Handover = z.object({
+  type: z.literal("handover"),
+  role: Role,
+  outcome: z.enum(["allow", "decline", "cut"]),
+  holder: Machine, // has the job now
+  asker: Machine, // wants it
+  caption: z.string().optional(),
+  ...base,
+});
+
+export const Scene = z.discriminatedUnion("type", [...coreScenes, Quote, Roles, Devices, Diagram, Screenshot, Handover, Custom]);
 export const VideoProps = makeVideoProps(Scene);

@@ -9,8 +9,8 @@ import { execFileSync } from "node:child_process";
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const val = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
-const [projectDir, listFile] = args.filter((a, i) => !a.startsWith("--") && !(i && args[i - 1].startsWith("--") && ["--aspect", "--out"].includes(args[i - 1])));
-if (!projectDir || !listFile) { console.error("usage: render.mjs <project dir> <scene list.json> [--sheet] [--aspect A] [--out F]"); process.exit(2); }
+const [projectDir, listFile] = args.filter((a, i) => !a.startsWith("--") && !(i && args[i - 1].startsWith("--") && ["--aspect", "--out", "--frac"].includes(args[i - 1])));
+if (!projectDir || !listFile) { console.error("usage: render.mjs <project dir> <scene list.json> [--sheet] [--aspect A] [--frac 0.5 (sheet at that point of each scene)] [--out F]"); process.exit(2); }
 
 const dir = resolve(projectDir);
 let props = JSON.parse(readFileSync(listFile, "utf8"));
@@ -35,7 +35,8 @@ if (flag("--sheet")) {
   props = VideoProps.parse(props);
   for (let i = 0; i < props.scenes.length; i++) {
     const n = sceneFrames(props.scenes[i], props.fps ?? 30, defaultSec);
-    const frame = start + Math.max(0, n - 16);
+    const frac = val("--frac");
+    const frame = start + (frac ? Math.round(n * Number(frac)) : Math.max(0, n - 16));
     await renderStill({ composition: comp, serveUrl, inputProps: props, frame, output: join(sheetDir, String(i + 1).padStart(2, "0") + ".png") });
     start += n;
   }
