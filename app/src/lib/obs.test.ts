@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { droppedPercent, isConnected, isPicture, isScreen, notice, obsPill, pictureStatus, pollImages, sceneNotice, upcomingScene } from "./obs.ts";
+import { droppedPercent, isConnected, isPicture, isScreen, notice, obsPill, pictureStatus, pollImages, sceneNotice, setupBlocked, setupPicture, upcomingScene, withAddress } from "./obs.ts";
 import type { ObsOutputView, ObsView } from "./api";
 
 const connected = { Connected: { obs_version: "30.2.3", websocket_version: "5.5.2" } } as const;
@@ -20,6 +20,9 @@ function view(over: Partial<ObsView> = {}): ObsView {
     held: false,
     scene_problem: null,
     audio: [],
+    remote: false,
+    addresses: [],
+    pinned_address: null,
     ...over,
   };
 }
@@ -76,7 +79,8 @@ test("each problem says what to do", () => {
     ["ServerOff", "setup", /WebSocket server is off/],
     ["PasswordRequired", "setup", /password/],
     ["WrongPassword", "setup", /refused/],
-    ["Unreachable", "setup", /localhost:4455 doesn't answer/],
+    ["Unreachable", "setup", /Lampstand can't reach OBS on localhost\. Check that OBS is open there, that its WebSocket server is on \(Tools > WebSocket Server Settings\), and that both computers are on the same network\./],
+    ["RemoteNotListening", "setup", /localhost is on the network, but OBS isn't answering there\. Check that OBS is open/],
   ] as const;
   for (const [problem, action, message] of cases) {
     const n = notice(view({ connection: down, problem }));
@@ -204,4 +208,33 @@ test("a browser source is a picture sent to OBS and not a screen", () => {
   assert.equal(isPicture(picture), true);
   assert.equal(isScreen(picture), false);
   assert.equal(isScreen(window), true);
+});
+
+// OBS on another computer (#133).
+
+const stream = {
+  id: "a",
+  name: "OBS stream",
+  role: "Stream",
+  target: { BrowserSource: { width: 1920, height: 1080 } },
+  enabled: true,
+} as unknown as import("./api").OutputConfig;
+
+test("a pinned address replaces the host in the URL to copy, only for remote OBS", () => {
+  const url = "http://10.0.0.5:7340/obs/abc?k=key";
+  assert.equal(withAddress(url, view({ remote: true, pinned_address: "192.168.1.20" })), "http://192.168.1.20:7340/obs/abc?k=key");
+  assert.equal(withAddress(url, view({ remote: true, pinned_address: "fe80::1" })), "http://[fe80::1]:7340/obs/abc?k=key");
+  assert.equal(withAddress(url, view({ remote: true })), url);
+  assert.equal(withAddress(url, view({ remote: false, pinned_address: "192.168.1.20" })), url);
+  assert.equal(withAddress(url, null), url);
+});
+
+test("Set up OBS picks a stream picture and says why it is greyed out", () => {
+  assert.equal(setupPicture([]), null);
+  assert.equal(setupPicture([{ ...stream, enabled: false }]), null);
+  assert.equal(setupPicture([stream])?.id, "a");
+  assert.match(setupBlocked(view(), null)!, /Add a picture for OBS/);
+  assert.match(setupBlocked(view({ connection: "Connecting" }), stream)!, /isn't connected to OBS yet/);
+  assert.match(setupBlocked(view({ stream: output({ active: true }) }), stream)!, /streaming or recording/);
+  assert.equal(setupBlocked(view(), stream), null);
 });

@@ -5,7 +5,7 @@
      OBS), and needs none of that to work. -->
 <script lang="ts">
   import { request, type OutputConfig } from "../../lib/api";
-  import { isPicture, pictureStatus } from "../../lib/obs";
+  import { isPicture, pictureStatus, withAddress } from "../../lib/obs";
   import { isCalibrated, live, pictures, putOutput, refreshPictures, refreshSettings, refreshThemes, removeOutput, report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
@@ -64,7 +64,7 @@
 
   async function copy(id: string) {
     try {
-      await navigator.clipboard.writeText(urls[id]);
+      await navigator.clipboard.writeText(withAddress(urls[id], live.obs));
       copied = id;
       setTimeout(() => {
         if (copied === id) copied = null;
@@ -124,7 +124,7 @@
         {#if urls[o.id]}
           <p class="muted small">In OBS, add a <strong>Browser</strong> source with this URL{o.enabled ? "" : " (turn it on first)"}:</p>
           <div class="url">
-            <input type="text" readonly value={urls[o.id]} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
+            <input type="text" readonly value={withAddress(urls[o.id], live.obs)} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
             <Button size="small" onclick={() => copy(o.id)}>{copied === o.id ? "Copied" : "Copy"}</Button>
             <Button variant="ghost" size="small" title="Stops the old URL working" onclick={() => newKey(o.id)}>New key</Button>
           </div>

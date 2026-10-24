@@ -681,6 +681,18 @@ pub enum ObsRequest {
     Screenshot { scene: Option<String>, width: u32 },
     /// Mutes or unmutes one of OBS's audio inputs (T91).
     SetMute { input: String, muted: bool },
+    /// "Set up OBS" (T93, #133): makes a "Lampstand" scene collection in
+    /// OBS with starter scenes, each showing the picture `output` (a
+    /// browser-source output). The core makes the picture's address itself;
+    /// the window sends no address. Run again, it changes only that source.
+    /// When OBS is on another computer the address is this computer's
+    /// network address (the pinned one, if there is one), and never
+    /// `localhost`. Answers `Response::Text` with what was done.
+    SetUp { output: OutputId },
+    /// Pins the address OBS on another computer uses to reach this one, for
+    /// a computer that has several ("Use this address"). `None` goes back
+    /// to the address Lampstand picks.
+    UseAddress { address: Option<String> },
 }
 
 /// OBS as the operator and Setup see it. Also pushed as `Event::Obs`
@@ -717,6 +729,14 @@ pub struct ObsView {
     /// OBS's audio inputs (microphones, desktop audio, media with sound)
     /// in OBS's order, while connected, for the mute toggles (T91).
     pub audio: Vec<ObsAudioInput>,
+    /// OBS is on another computer (its host isn't this one). Everything
+    /// below is empty or false for a church with OBS on this computer.
+    pub remote: bool,
+    /// This computer's network addresses, when `remote`, for the "Use this
+    /// address" picker.
+    pub addresses: Vec<String>,
+    /// The address pinned for OBS to reach this computer, when `remote`.
+    pub pinned_address: Option<String>,
 }
 
 /// One of OBS's audio inputs and whether it is muted.
@@ -775,8 +795,13 @@ pub enum ObsProblem {
     ServerOff,
     PasswordRequired,
     WrongPassword,
-    /// OBS is on another machine and doesn't answer.
+    /// OBS is on another machine and doesn't answer: wrong name or address,
+    /// another network, or a firewall.
     Unreachable,
+    /// OBS is on another machine that answers, but nothing is listening on
+    /// OBS's port: OBS isn't open there, its WebSocket server is off, or the
+    /// port differs.
+    RemoteNotListening,
 }
 
 /// Streaming or recording, for the status pill.
