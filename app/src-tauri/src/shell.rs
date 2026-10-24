@@ -59,7 +59,9 @@ use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
-use crate::sync::{mirroring, DriveSinks, NodeCell, Obs, Sync, SyncConfig};
+use crate::sync::{
+    mirroring, public_address_on, AddressWatch, DriveSinks, NodeCell, Obs, Sync, SyncConfig,
+};
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -602,12 +604,17 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         )),
         Err(e) => Err(e.to_string()),
     };
+    let mut address_watch = None;
     let (sync, sync_error) = match sync {
         Ok(sync) => {
             crate::stream_cues::accept(sync.node(), obs_control.cues());
-            lock(&app).set_server_address(sync.public_address());
+            let address = sync.public_address();
+            lock(&app).set_server_address(address.clone());
             lock(&app).set_sync_link(sync.link());
-            (Some(Arc::new(sync)), None)
+            let sync = Arc::new(sync);
+            let port = sync.local_addr().port();
+            address_watch = Some(AddressWatch::new(address, move || public_address_on(port)));
+            (Some(sync), None)
         }
         Err(e) => {
             eprintln!("lampstand: sync is off: {e}");
@@ -629,7 +636,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let thread_app = app.clone();
     std::thread::Builder::new()
         .name("lampstand-app".into())
-        .spawn(move || app_thread(thread_app, host, keys, rx, changes))
+        .spawn(move || app_thread(thread_app, host, keys, rx, changes, address_watch))
         .map_err(|e| e.to_string())?;
     Ok(Shared {
         app,
@@ -726,9 +733,9 @@ fn app_thread(
     keys: Keys<TauriShortcuts>,
     rx: Receiver<Internal>,
     changes: Receiver<DocChanged>,
+    mut address: Option<AddressWatch>,
 ) {
     const TICK: Duration = Duration::from_millis(100);
-    let mut displays = host.displays();
     let mut polled = Instant::now();
     let mut ticked = Instant::now();
     let mut clicker = Clicker {
@@ -751,9 +758,9 @@ fn app_thread(
                 &mut clicker,
                 message,
                 &changes,
-                &mut displays,
                 &mut polled,
                 &mut ticked,
+                address.as_mut(),
             )
         });
         if std::panic::catch_unwind(step).is_err() {
@@ -776,9 +783,9 @@ fn app_step(
     clicker: &mut Clicker,
     message: Result<Internal, RecvTimeoutError>,
     changes: &Receiver<DocChanged>,
-    displays: &mut Vec<DisplayInfo>,
     polled: &mut Instant,
     ticked: &mut Instant,
+    address: Option<&mut AddressWatch>,
 ) {
     const TICK: Duration = Duration::from_millis(100);
     const DISPLAY_POLL: Duration = Duration::from_secs(1);
@@ -843,11 +850,16 @@ fn app_step(
         if polled.elapsed() >= DISPLAY_POLL {
             *polled = Instant::now();
             // Tauri has no monitor hot-plug event, so poll.
+            // Against what the windows were placed for, so a display that
+            // appeared while the app was starting is not missed.
             let now = host.displays();
-            if now != *displays {
-                *displays = now;
-                lock(app).displays_changed();
-            }
+            lock(app).displays_polled(now);
+        }
+        // A network that came up after the start gives OBS a better
+        // address. The probe takes no lock.
+        if let Some(found) = address.and_then(|w| w.check(Instant::now())) {
+            eprintln!("lampstand: the local server is now at {found}");
+            lock(app).set_server_address(found);
         }
         // Without the `App` lock: registering waits on the main thread.
         let mut state = lock(app).key_state();
