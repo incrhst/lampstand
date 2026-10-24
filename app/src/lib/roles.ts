@@ -89,7 +89,7 @@ export function replacedNotice(role: RoleName, by: string): string {
 
 /** Why the button is greyed out, in the spec's words where it has them. */
 export const NO_SCREENS = "No screens are set up on this device";
-export const NOBODY_RUNS_SCREENS = "Nobody runs the screens.";
+export const NOBODY_RUNS_SCREENS = "The service can't be run until someone runs the screens.";
 
 export type RoleChoice =
   | { kind: "none" }
@@ -115,9 +115,12 @@ export function roleChoice(r: RoleView | null | undefined): RoleChoice {
   if (!r || r.holds || r.standing === "Holding") return { kind: "none" };
   const who = r.holder_name || `The device that runs ${job(r.role)}`;
   const a = r.asking;
-  if (a === "Waiting") return { kind: "waiting", label: `Waiting for ${who} to allow…` };
+  // An answer that came back stays until it is dismissed. An ask nobody
+  // has answered stops mattering once the holder is offline: no answer can
+  // come, so the way to take over shows instead.
   if (a === "Declined") return { kind: "declined", label: `${who} said not now.`, again: "Ask again" };
   if (a && typeof a === "object") return { kind: "busy", label: `${a.Busy.by} is already asking.`, again: "Ask again" };
+  if (a === "Waiting" && r.standing === "Ask") return { kind: "waiting", label: `Waiting for ${who} to allow…` };
   if (r.blocked === "NoScreens") return { kind: "blocked", label: TAKE, hint: NO_SCREENS };
   if (r.blocked === "NeedsProjection") return { kind: "blocked", label: TAKE, hint: NOBODY_RUNS_SCREENS };
   switch (r.standing) {
@@ -142,8 +145,23 @@ export function roleChoice(r: RoleView | null | undefined): RoleChoice {
 }
 
 /** The button's accessible name: its visible word plus what it takes. */
-export function takeName(role: RoleName): string {
-  return `${TAKE} ${job(role)}`;
+export function takeName(role: RoleName, visible: string = TAKE): string {
+  return visible === TAKE ? `${TAKE} ${job(role)}` : visible;
+}
+
+/** The Take button's label where it stands alone: "Run the service from here". */
+export function runFromHere(role: RoleName): string {
+  return `Run ${job(role)} from here`;
+}
+
+/**
+ * Allow is not offered for the Operator while nobody runs the screens: the
+ * core would refuse. Says why instead.
+ */
+export function allowBlocked(team: TeamStatus | null | undefined, role: RoleName): string | null {
+  if (role !== "Operator") return null;
+  const p = roleOf(team, "Projection");
+  return p && !p.holds && !p.holder ? NOBODY_RUNS_SCREENS : null;
 }
 
 /** Who has it, for a role's row. */
@@ -152,9 +170,11 @@ export function holderLine(r: RoleView): string {
   return r.holder_name || (r.holder ? "Another device" : "Nobody");
 }
 
+const ASK_STATES: string[] = ["waiting", "declined", "busy"];
+
 /** Roles whose prompt or notice should show across the top of the screens. */
 export function wantsAttention(team: TeamStatus | null | undefined): boolean {
-  return rolesOf(team).some((r) => r.request || r.replaced_by || (r.asking && !r.holds));
+  return rolesOf(team).some((r) => r.request || r.replaced_by || ASK_STATES.includes(roleChoice(r).kind));
 }
 
 /** The panel's heading, from the spec's page title ("Roles: who runs what"). */
@@ -167,13 +187,14 @@ export function stopAlways(name: string): string {
 }
 
 /**
- * The Operator seat went to the device that runs the screens: the driver's
+ * The Operator seat is with the device that runs the screens: the driver's
  * own "took control back" notice says that, so the generic one stays quiet.
+ * Compared by device key, not by name.
  */
 export function operatorTakenBack(team: TeamStatus | null | undefined): boolean {
   const op = roleOf(team, "Operator");
-  const by = op?.replaced_by;
-  return !!by && by === roleOf(team, "Projection")?.holder_name;
+  const projection = roleOf(team, "Projection");
+  return !!op?.replaced_by && !!op.holder && op.holder === projection?.holder;
 }
 
 /** The roles whose "you lost it" notice the generic banner shows. */

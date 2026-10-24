@@ -8,9 +8,8 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
-  import DriveAction from "../../lib/kit/DriveAction.svelte";
   import RoleTake from "../../lib/kit/RoleTake.svelte";
-  import { ALWAYS_ALLOWED, PANEL_TITLE, ROLES, holderLine, roleOf, runs, stopAlways } from "../../lib/roles";
+  import { ALWAYS_ALLOWED, PANEL_TITLE, ROLES, holderLine, roleOf, runFromHere, runs, stopAlways } from "../../lib/roles";
   import { ownRoleLine, roleLine } from "../../lib/driving";
   import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
@@ -144,8 +143,8 @@
           {PLANNING_SCREENS}
         </p>
         <div class="actions">
-          <PresentAction present="Make this device the presenter" />
-          <DriveAction />
+          <PresentAction />
+          <RoleTake role="Operator" label={runFromHere("Operator")} />
         </div>
         {#if presenter.drive.driving}
           <p class="muted">This device operates {presenter.drive.driving.name} from its own screen. Present is the place to do it. {presenter.drive.driving.name} keeps the screens and the sound.</p>

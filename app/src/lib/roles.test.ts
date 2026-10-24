@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { RoleName, RoleView, TeamStatus } from "./api";
 import {
   ROLES,
+  allowBlocked,
   allowLabel,
   job,
   noticeRoles,
@@ -10,6 +11,8 @@ import {
   replacedNotice,
   requestPrompt,
   roleChoice,
+  runFromHere,
+  takeName,
   runs,
   wantsAttention,
 } from "./roles.ts";
@@ -80,7 +83,7 @@ test("a greyed Take says why", () => {
   const none = roleChoice(view("Projection", { blocked: "NoScreens" }));
   assert.equal(none.kind === "blocked" && none.hint, "No screens are set up on this device");
   const op = roleChoice(view("Operator", { blocked: "NeedsProjection", standing: "Open", holder: null }));
-  assert.equal(op.kind === "blocked" && op.hint, "Nobody runs the screens.");
+  assert.equal(op.kind === "blocked" && op.hint, "The service can't be run until someone runs the screens.");
 });
 
 test("an ask shows its answer, and a second asker is told who is asking", () => {
@@ -101,14 +104,46 @@ test("a church with one device has nothing to say", () => {
   for (const r of quiet.roles) assert.deepEqual(roleChoice(r), { kind: "none" });
 });
 
-test("the Operator notice stays quiet when the screens' device took the seat back", () => {
+test("the Operator notice stays quiet when the screens' device holds the seat (compared by device key)", () => {
   const t = team([
-    view("Projection", { holder_name: "Sanctuary" }),
-    view("Operator", { replaced_by: "Sanctuary" }),
+    view("Projection", { holder: "sanct", holder_name: "Sanctuary" }),
+    view("Operator", { holder: "sanct", replaced_by: "Sanctuary" }),
   ]);
   assert.equal(operatorTakenBack(t), true);
   assert.deepEqual(noticeRoles(t), []);
-  const other = team([view("Projection", { holder_name: "Sanctuary" }), view("Operator", { replaced_by: "Sam" })]);
+  // Another device with the same name is not the screens' device.
+  const other = team([
+    view("Projection", { holder: "sanct", holder_name: "Sanctuary" }),
+    view("Operator", { holder: "sam", holder_name: "Sanctuary", replaced_by: "Sanctuary" }),
+  ]);
+  assert.equal(operatorTakenBack(other), false);
   assert.equal(noticeRoles(other).length, 1);
   assert.equal(job("Operator"), "the service");
+});
+
+test("an unanswered ask whose holder then goes offline shows the way to take over", () => {
+  const waiting = view("Stream", { asking: "Waiting", standing: "Ask" });
+  assert.equal(roleChoice(waiting).kind, "waiting");
+  const wait = roleChoice({ ...waiting, standing: "Wait", offline_secs: 10, wait_secs: 110 });
+  assert.equal(wait.kind, "wait");
+  const over = roleChoice({ ...waiting, standing: "TakeOver", offline_secs: 130 });
+  assert.equal(over.kind, "takeover");
+  assert.equal(wantsAttention(team([{ ...waiting, standing: "TakeOver", offline_secs: 130 }])), false);
+  assert.equal(wantsAttention(team([waiting])), true);
+  // An answer that came back stays.
+  assert.equal(roleChoice({ ...waiting, asking: "Declined", standing: "TakeOver" }).kind, "declined");
+});
+
+test("Allow is not offered for the Operator while nobody runs the screens", () => {
+  const none = team([view("Projection", { holder: null, holder_name: "", standing: "Open" }), view("Operator", { holds: true })]);
+  assert.equal(allowBlocked(none, "Operator"), "The service can't be run until someone runs the screens.");
+  assert.equal(allowBlocked(none, "Stream"), null);
+  const held = team([view("Projection"), view("Operator", { holds: true })]);
+  assert.equal(allowBlocked(held, "Operator"), null);
+});
+
+test("a button standing alone names what it does", () => {
+  assert.equal(runFromHere("Operator"), "Run the service from here");
+  assert.equal(takeName("Operator", runFromHere("Operator")), "Run the service from here");
+  assert.equal(takeName("Stream"), "Take the stream");
 });

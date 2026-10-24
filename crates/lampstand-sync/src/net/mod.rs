@@ -1150,7 +1150,7 @@ impl SyncNode {
     /// the app to do.
     pub fn allow_role(&self, role: Role, device: DeviceKey, always: bool) -> Result<OnAir, String> {
         if !lock(&self.peers).sessions.contains_key(&device) {
-            return Err("that device is no longer connected".into());
+            return Err("That device is no longer connected.".into());
         }
         let reach = self.reach();
         let allowed = lock(&self.roles)
@@ -1185,7 +1185,7 @@ impl SyncNode {
         let name = lock(&self.trust)
             .get(device)
             .map(|d| d.name.clone())
-            .ok_or("that device is not paired")?;
+            .ok_or("That device is not paired.")?;
         if lock(&self.roles).set_always(role, device, name, on) {
             self.save_roles();
             self.bump();

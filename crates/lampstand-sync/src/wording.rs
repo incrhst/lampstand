@@ -10,12 +10,42 @@
 use crate::roles::{Denied, NotAllowed, Role};
 
 /// What the role runs, as the roster says it: "Runs the screens".
+/// Why the Operator cannot be taken or handed over.
+pub const NEEDS_SCREENS: &str = "The service can't be run until someone runs the screens.";
+
 pub fn job(role: Role) -> &'static str {
     match role {
         Role::Projection => "the screens",
         Role::Operator => "the service",
         Role::Stream => "the stream",
         Role::Audio => "the sound",
+    }
+}
+
+/// "30 seconds", "1 minute", "5 minutes", "2 hours": how long, for people
+/// (the same as the web app's `howLong`).
+pub fn how_long(d: std::time::Duration) -> String {
+    let s = d.as_secs();
+    if s < 60 {
+        return if s == 1 {
+            "1 second".into()
+        } else {
+            format!("{s} seconds")
+        };
+    }
+    let m = (s + 30) / 60;
+    if m < 60 {
+        return if m == 1 {
+            "1 minute".into()
+        } else {
+            format!("{m} minutes")
+        };
+    }
+    let h = (m + 30) / 60;
+    if h == 1 {
+        "1 hour".into()
+    } else {
+        format!("{h} hours")
     }
 }
 
@@ -34,9 +64,9 @@ pub fn denied(role: Role, why: &Denied, holder: &str) -> String {
     match why {
         Denied::MustAsk => format!("{} is connected: ask it to allow this.", who(role, holder)),
         Denied::TooSoon { remaining, .. } => format!(
-            "{} went offline only recently. You can take over running {job} in {}s.",
+            "{} went offline only recently. You can take over running {job} in {}.",
             who(role, holder),
-            remaining.as_secs().max(1)
+            how_long((*remaining).max(std::time::Duration::from_secs(1)))
         ),
         Denied::Already => format!("This device already runs {job}."),
         Denied::NobodyToAsk => {
@@ -48,7 +78,7 @@ pub fn denied(role: Role, why: &Denied, holder: &str) -> String {
         Denied::NotNeeded => "Nobody needs to allow this. Take it from this device.".to_string(),
         // The spec's own words.
         Denied::NoScreens => "No screens are set up on this device".to_string(),
-        Denied::NeedsProjection => "Nobody runs the screens.".to_string(),
+        Denied::NeedsProjection => NEEDS_SCREENS.to_string(),
         Denied::NotPermitted => format!("This device may not run {job}."),
     }
 }
@@ -59,7 +89,7 @@ pub fn not_allowed(role: Role, why: &NotAllowed) -> String {
     match why {
         NotAllowed::NotHolding => format!("This device does not run {job}."),
         NotAllowed::NotAsking => "That device is no longer asking.".to_string(),
-        NotAllowed::NeedsProjection => "Nobody runs the screens.".to_string(),
+        NotAllowed::NeedsProjection => NEEDS_SCREENS.to_string(),
         NotAllowed::NotPermitted => format!("That device may not run {job}."),
     }
 }
@@ -101,6 +131,27 @@ mod tests {
                 assert!(!not_allowed(role, n).contains("present"));
             }
         }
+    }
+
+    #[test]
+    fn durations_read_plainly() {
+        let secs = Duration::from_secs;
+        assert_eq!(how_long(secs(1)), "1 second");
+        assert_eq!(how_long(secs(30)), "30 seconds");
+        assert_eq!(how_long(secs(60)), "1 minute");
+        assert_eq!(how_long(secs(120)), "2 minutes");
+        assert_eq!(how_long(secs(7200)), "2 hours");
+        assert_eq!(
+            denied(
+                Role::Stream,
+                &Denied::TooSoon {
+                    offline: secs(3),
+                    remaining: secs(30)
+                },
+                "Sam"
+            ),
+            "Sam went offline only recently. You can take over running the stream in 30 seconds."
+        );
     }
 
     #[test]

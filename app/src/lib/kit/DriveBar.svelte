@@ -6,7 +6,8 @@
   import Banner from "./Banner.svelte";
   import Button from "./Button.svelte";
   import { live, presenterRequest } from "../state.svelte";
-  import DriveAction from "./DriveAction.svelte";
+  import RoleTake from "./RoleTake.svelte";
+  import { runFromHere } from "../roles";
   import { driveBarText, drivenBarText, drivenBy, drivingFrom } from "../driving";
 
   let driving = $derived(drivingFrom(live.team));
@@ -25,7 +26,7 @@
 {:else if offer}
   <Banner tone="neutral" icon="monitor">
     <span>{live.team?.presenter.holder_name || "The presenting device"} is presenting.</span>
-    <DriveAction size="small" />
+    <RoleTake role="Operator" size="small" label={runFromHere("Operator")} />
   </Banner>
 {:else if by}
   <Banner tone="neutral" icon="monitor">

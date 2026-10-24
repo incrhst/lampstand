@@ -401,9 +401,8 @@ impl Sync {
         on_role(presenting);
         let music_stop: Arc<Mutex<Option<MusicStop>>> = Arc::default();
         let stop_music = music_stop.clone();
-        let me = node.device();
         tokio::spawn(async move {
-            let mut plays = watched.roles_status().audio.record.holder == Some(me);
+            let mut plays = watched.roles_status().audio.holds;
             let mut last = None;
             let mut busy = false;
             loop {
@@ -431,7 +430,7 @@ impl Sync {
                 }
                 // Losing Audio, by an allow or by yielding to a newer record,
                 // stops what this device was playing.
-                let plays_now = watched.roles_status().audio.record.holder == Some(me);
+                let plays_now = watched.roles_status().audio.holds;
                 if plays && !plays_now {
                     eprintln!("lampstand: this device no longer runs the sound");
                     let hook = stop_music.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -592,7 +591,7 @@ impl Sync {
                 .map_err(|e| format!("Cannot connect: {e}")),
             TeamRequest::Unpair { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.unpair(key).map(|_| ()).map_err(|e| e.to_string()),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::PresenterClaim => self.node.claim_presenter().map_err(|e| {
                 wording::denied(Role::Projection, &e, &self.holder_name(Role::Projection))
@@ -606,14 +605,14 @@ impl Sync {
             }
             TeamRequest::PresenterAllow { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.allow_presenter(key),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::PresenterDecline { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => {
                     self.node.decline_presenter(key);
                     Ok(())
                 }
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::PresenterDismiss => {
                 self.node.dismiss_presenter_notice();
@@ -635,14 +634,14 @@ impl Sync {
             }
             TeamRequest::DriveAllow { device, always } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.drive_allow(key, always),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::DriveDecline { device } => match DeviceKey::from_hex(&device) {
                 Some(key) => {
                     self.node.drive_decline(key);
                     Ok(())
                 }
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::DriveTakeBack => {
                 self.node.drive_take_back();
@@ -650,7 +649,7 @@ impl Sync {
             }
             TeamRequest::DriveAlways { device, always } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.drive_set_always(key, always),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::RoleClaim { role } => {
                 let role = role_of(role);
@@ -677,14 +676,14 @@ impl Sync {
                 // clear as this device becomes Planning, the music stops as
                 // it stops being the Audio holder.
                 Some(key) => self.node.allow_role(role_of(role), key, always).map(|_| ()),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::RoleDecline { role, device } => match DeviceKey::from_hex(&device) {
                 Some(key) => {
                     self.node.decline_role(role_of(role), key);
                     Ok(())
                 }
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::RoleDismiss { role } => {
                 self.node.dismiss_role_notice(role_of(role));
@@ -696,7 +695,7 @@ impl Sync {
                 always,
             } => match DeviceKey::from_hex(&device) {
                 Some(key) => self.node.set_role_always(role_of(role), key, always),
-                None => Err("not a device key".into()),
+                None => Err("That is not a paired device.".into()),
             },
             TeamRequest::CreateInvite { .. } => Err("team invites arrive with T18".into()),
             TeamRequest::SetRelay { .. } => Err("the relay arrives with T19".into()),

@@ -1503,7 +1503,12 @@ async fn on_air_rules_follow_the_role_handed_over() {
             },
         )
         .await;
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // The hand-over has happened on both devices; only then is "nothing
+        // changed on air" worth asserting.
+        until(Duration::from_secs(20), "the hand-over to settle", || {
+            role(&laptop, name).holds && !role(&main, name).holds
+        })
+        .await;
         main.pump();
         assert_eq!(main.on_air(), on_air, "{name:?} leaves the slide up");
         assert_eq!(
@@ -1791,4 +1796,109 @@ async fn refusals_use_the_roles_words() {
     )
     .await;
     assert_eq!(mine, "This device already runs the stream.");
+}
+
+/// An ask nobody answered, and then the holder drops off: no answer can come,
+/// so the asker can take over once the time is up. The holder's prompt goes
+/// when the asker disconnects.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+    })
+    .await;
+    send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
+    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the prompt", || {
+        role(&main, RoleName::Stream).request.is_some()
+    })
+    .await;
+    assert_eq!(
+        role(&laptop, RoleName::Stream).asking,
+        Some(lampstand_api::RoleAskingView::Waiting)
+    );
+
+    main.sync.cut();
+    laptop.sync.cut();
+    // The holder's prompt goes when the asker disconnects.
+    until(Duration::from_secs(20), "the prompt to go", || {
+        role(&main, RoleName::Stream).request.is_none()
+    })
+    .await;
+    // The asker is still "waiting", but the standing now says what to do.
+    until(Duration::from_secs(20), "takeover to open", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
+    })
+    .await;
+    assert_eq!(
+        role(&laptop, RoleName::Stream).asking,
+        Some(lampstand_api::RoleAskingView::Waiting)
+    );
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(role(&laptop, RoleName::Stream).holds);
+    assert!(role(&laptop, RoleName::Stream).asking.is_none());
+}
+
+/// "Always allow" over the IPC stores nothing for Projection and Audio,
+/// whatever the request says.
+#[tokio::test(flavor = "multi_thread")]
+async fn always_allow_is_refused_for_projection_and_audio() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    for name in [RoleName::Projection, RoleName::Audio] {
+        send_ok(
+            &main,
+            TeamRequest::RoleAlways {
+                role: name,
+                device: key(&laptop),
+                always: true,
+            },
+        )
+        .await;
+        assert!(role(&main, name).always.is_empty(), "{name:?}");
+        send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+        until(Duration::from_secs(20), "the prompt", || {
+            role(&main, name).request.is_some()
+        })
+        .await;
+        send_ok(
+            &main,
+            TeamRequest::RoleAllow {
+                role: name,
+                device: key(&laptop),
+                always: true,
+            },
+        )
+        .await;
+        until(Duration::from_secs(20), "the laptop to hold it", || {
+            role(&laptop, name).holds
+        })
+        .await;
+        assert!(role(&main, name).always.is_empty(), "{name:?}");
+        assert!(!role(&main, name).offers_always);
+    }
 }
