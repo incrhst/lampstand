@@ -1058,6 +1058,7 @@ impl SyncNode {
             }
             seat.begin_ask(holder);
         }
+        eprintln!("lampstand: asking {name} to let this device drive it");
         self.send_to(holder, Frame::DriveAsk);
         self.bump();
         Ok(())
@@ -1187,7 +1188,8 @@ impl SyncNode {
     pub(crate) fn drive_ask_received(&self, from: DeviceKey) {
         let name = self.paired_name(from);
         let (holds, _, _) = self.lease_facts();
-        let asked = lock(&self.seat).receive_ask(holds, from, name);
+        let asked = lock(&self.seat).receive_ask(holds, from, name.clone());
+        eprintln!("lampstand: {name} asks to drive this device (presenting: {holds}): {asked:?}");
         match asked {
             Asked::Prompt => self.bump(),
             Asked::Allowed { .. } => {
