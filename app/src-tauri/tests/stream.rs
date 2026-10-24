@@ -251,6 +251,7 @@ async fn pair_up(main: &Device, other: &Device) {
         other.node().roles_status().audio.record.holder == Some(main.node().device())
             && main.node().status().connected() >= 1
             && other.node().status().connected() >= 1
+            && other.node().settled()
     })
     .await;
     // Both devices dial at pairing, and the connection that loses the
@@ -336,7 +337,9 @@ async fn pair_plain(shows: &Device, joins: &Device) {
         })
         .await;
     until(Duration::from_secs(10), "the pair to connect", || {
-        shows.node().status().connected() >= 1 && joins.node().status().connected() >= 1
+        shows.node().status().connected() >= 1
+            && joins.node().status().connected() >= 1
+            && joins.node().settled()
     })
     .await;
 }

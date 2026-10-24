@@ -43,6 +43,10 @@ pub(super) struct RolesFile {
     /// Devices answered at once, by role that offers it.
     #[serde(default)]
     pub always: Always,
+    /// The state of the roles was lost and has not been taught again yet:
+    /// kept on disk so a restart does not forget it.
+    #[serde(default)]
+    pub reseed: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +84,7 @@ impl RolesFile {
             audio: Record::default(),
             takeover_secs: default_takeover(),
             always: Always::default(),
+            reseed: false,
         }
     }
 
@@ -139,6 +144,7 @@ impl RolesFile {
                 operator: list(Role::Operator),
                 stream: list(Role::Stream),
             },
+            reseed: roles.reseeding(),
         }
     }
 }
@@ -181,12 +187,13 @@ pub(super) fn load(dir: &Path) -> Loaded {
     match std::fs::read(&path) {
         Ok(bytes) => match serde_json::from_slice::<RolesFile>(&bytes) {
             Ok(file) if file.sound() => {
+                let damaged = file.reseed;
                 return Loaded {
                     file,
                     migrated: false,
                     writable: true,
-                    damaged: false,
-                }
+                    damaged,
+                };
             }
             bad => {
                 let why = match bad {
@@ -203,15 +210,38 @@ pub(super) fn load(dir: &Path) -> Loaded {
                         Err(e) => format!("it could not be set aside ({e}) and is left alone"),
                     }
                 );
+                // A new, empty file that says so, so that a restart before the
+                // roles are taught again still knows.
+                let mut fresh = RolesFile::unheld();
+                fresh.reseed = true;
+                if moved.is_ok() {
+                    if let Err(e) = save(dir, &fresh) {
+                        eprintln!("lampstand: cannot write a fresh roles.json: {e}");
+                    }
+                }
                 return Loaded {
-                    file: RolesFile::unheld(),
+                    file: fresh,
                     migrated: false,
                     writable: moved.is_ok(),
                     damaged: true,
                 };
             }
         },
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // A file that was set aside and not replaced (the new one could
+            // not be written): still lost, and the older files are no
+            // fresher than they were.
+            if path.with_extension("json.bad").exists() {
+                let mut fresh = RolesFile::unheld();
+                fresh.reseed = true;
+                return Loaded {
+                    file: fresh,
+                    migrated: false,
+                    writable: true,
+                    damaged: true,
+                };
+            }
+        }
         Err(e) => {
             eprintln!(
                 "lampstand: cannot read {}: {e}. The roles start unheld and it is left alone.",
@@ -357,6 +387,14 @@ mod tests {
         assert_eq!(again.file, first.file);
     }
 
+    /// What a device starts with when its roles were lost.
+    fn lost() -> RolesFile {
+        RolesFile {
+            reseed: true,
+            ..RolesFile::unheld()
+        }
+    }
+
     #[test]
     fn a_roles_json_that_does_not_parse_is_set_aside_not_rebuilt_from_older_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -364,16 +402,14 @@ mod tests {
         std::fs::write(dir.path().join("presenter.json"), PRESENTER).unwrap();
         let loaded = load(dir.path());
         assert!(!loaded.migrated && loaded.writable);
-        assert_eq!(
-            loaded.file,
-            RolesFile::unheld(),
-            "staler files are not used"
-        );
+        assert_eq!(loaded.file, lost(), "staler files are not used");
         assert_eq!(
             std::fs::read_to_string(dir.path().join("roles.json.bad")).unwrap(),
             "{not json"
         );
-        assert!(!dir.path().join(FILE).exists());
+        // A fresh file says the roles are lost, for the next start too.
+        assert!(load(dir.path()).damaged);
+        assert_eq!(load(dir.path()).file, lost());
     }
 
     #[test]
@@ -386,7 +422,7 @@ mod tests {
         assert_ne!(good, bad);
         std::fs::write(dir.path().join(FILE), &bad).unwrap();
         let loaded = load(dir.path());
-        assert_eq!(loaded.file, RolesFile::unheld());
+        assert_eq!(loaded.file, lost());
         assert_eq!(
             std::fs::read_to_string(dir.path().join("roles.json.bad")).unwrap(),
             bad,
