@@ -2293,3 +2293,102 @@ async fn a_claim_on_a_connection_older_than_ten_seconds_is_still_taken_in() {
     })
     .await;
 }
+
+/// The sanctuary's laptop sleeps with its connection still registered: its
+/// monotonic clock stands still, the wall clock does not, and the connection
+/// ends only when it wakes and the network is cut. The office PC took the
+/// roles while it slept. The time since the sanctuary last heard from the
+/// office PC is the time of the last frame, not the time the connection
+/// ended, so it yields on waking.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_holder_whose_laptop_slept_with_a_live_connection_yields_on_waking() {
+    let (mut sanctuary, mut office) = paired_and_leased().await;
+    // The sanctuary waits a minute before it lets go; the office PC only two
+    // seconds. Only the sleep makes the sanctuary's absence long enough.
+    sanctuary.node.set_takeover_after(Duration::from_secs(60));
+    office.node.set_takeover_after(Duration::from_secs(2));
+    // Ten minutes asleep, with the connection up.
+    sanctuary.node.skip_wall_clock(Duration::from_secs(600));
+    sanctuary.cut();
+    office.cut();
+    until(Duration::from_secs(20), "disconnected", || {
+        office.node.status().connected() == 0 && sanctuary.node.status().connected() == 0
+    })
+    .await;
+    let began = Instant::now();
+    while !matches!(
+        role_status(&office, Role::Projection).standing,
+        Standing::TakeOver { .. }
+    ) {
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "takeover never opened"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    for role in [Role::Projection, Role::Operator, Role::Audio] {
+        office.node.claim_role(role).unwrap();
+    }
+    office.restore().await;
+    sanctuary.restore().await;
+    until(Duration::from_secs(20), "the sanctuary to yield", || {
+        [Role::Projection, Role::Operator, Role::Audio]
+            .iter()
+            .all(|r| !role_status(&sanctuary, *r).holds)
+    })
+    .await;
+    assert_eq!(sanctuary.node.role(), Mode::Planning);
+    assert_eq!(office.node.role(), Mode::Presenter);
+}
+
+/// Unpairing a device that is connected is not undone by its connection
+/// ending: nothing about when it was last heard is kept or saved.
+#[tokio::test(flavor = "multi_thread")]
+async fn unpairing_a_connected_device_leaves_nothing_about_it_behind() {
+    let (sanctuary, office) = paired_and_leased().await;
+    let office_hex = office.node.device().to_hex();
+    // Let a save happen while paired.
+    until(Duration::from_secs(10), "a contact time on disk", || {
+        std::fs::read_to_string(sanctuary._dir.path().join("sync/contact.json"))
+            .is_ok_and(|j| j.contains(&office_hex))
+    })
+    .await;
+    sanctuary.node.unpair(office.node.device()).unwrap();
+    until(Duration::from_secs(10), "its connection to end", || {
+        sanctuary.node.status().connected() == 0
+    })
+    .await;
+    tokio::time::sleep(Duration::from_secs(7)).await;
+    let kept = std::fs::read_to_string(sanctuary._dir.path().join("sync/contact.json"))
+        .unwrap_or_default();
+    assert!(!kept.contains(&office_hex), "{kept}");
+}
+
+/// An ask that never arrived is made again by the connection that opens next,
+/// with nobody pressing the button twice.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ask_that_was_lost_is_made_again_when_the_connection_comes_back() {
+    let (mut sanctuary, mut office) = paired_and_leased().await;
+    sanctuary.node.lose_asks(true);
+    office.node.ask_role(Role::Audio).unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(role_status(&sanctuary, Role::Audio).request.is_none());
+    assert_eq!(
+        role_status(&office, Role::Audio).asking.map(|a| a.state),
+        Some(AskState::Waiting)
+    );
+    // The frames of this run are lost; the connection is lost with them.
+    sanctuary.node.lose_asks(false);
+    sanctuary.cut();
+    office.cut();
+    until(Duration::from_secs(20), "disconnected", || {
+        office.node.status().connected() == 0 && sanctuary.node.status().connected() == 0
+    })
+    .await;
+    office.restore().await;
+    sanctuary.restore().await;
+    until(Duration::from_secs(30), "the ask to arrive again", || {
+        role_status(&sanctuary, Role::Audio).request.is_some()
+    })
+    .await;
+}
