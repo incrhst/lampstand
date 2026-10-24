@@ -1,6 +1,6 @@
 # Roles: who runs what
 
-Status: proposed for 0.8.0. Decisions: [0010](decisions/0010-roles-and-handoff.md), the map is [issue 114](https://github.com/incrhst/lampstand/issues/114). Builds on the presenter lease ([0008](decisions/0008-presenter-lease.md)) and driving ([0009](decisions/0009-driving-another-device.md)).
+Status: accepted for 0.8.0; the "Proposed details" at the end were approved with it. Decisions: [0010](decisions/0010-roles-and-handoff.md), the map is [issue 114](https://github.com/incrhst/lampstand/issues/114). Builds on the presenter lease ([0008](decisions/0008-presenter-lease.md)) and driving ([0009](decisions/0009-driving-another-device.md)).
 
 A **role** is a job someone is doing right now. It is not a permission; who may do a job is the Teams work (T18).
 

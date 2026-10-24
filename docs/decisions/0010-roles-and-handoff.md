@@ -1,6 +1,6 @@
 # 0010. Roles: Projection, Operator, Stream and Audio, held by devices
 
-- Status: proposed (for 0.8.0; the map is [issue 114](https://github.com/incrhst/lampstand/issues/114))
+- Status: accepted (for 0.8.0; the map is [issue 114](https://github.com/incrhst/lampstand/issues/114))
 - Date: 2026-10-24
 
 ## Question
