@@ -14,12 +14,15 @@ use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use super::secure::SessionKeys;
+use crate::roles::Role;
 
 /// Bumped when frames change incompatibly. A peer speaking another version
 /// is refused with a message saying which side should update. 2: hellos
 /// carry an X25519 key and frames after the handshake are encrypted (T75).
-/// 3: presenter lease, ask and heartbeat frames. 4: driving.
-pub(crate) const PROTOCOL: u32 = 4;
+/// 3: presenter lease, ask and heartbeat frames. 4: driving. 5: one record
+/// per role (Projection, Operator, Stream, Audio) replaces the lease and
+/// the driver seat.
+pub(crate) const PROTOCOL: u32 = 5;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -54,50 +57,52 @@ pub(crate) enum Frame {
     BlobMissing {
         hash: [u8; 32],
     },
-    /// The sender's presenter lease ([`crate::presenter::Lease`]): sent
-    /// when a session opens and whenever it changes. The newer one wins.
-    Lease {
+    /// The sender's record for one role ([`crate::roles::Record`]): sent for
+    /// all four when a session opens and whenever one changes. The newer
+    /// one wins, whoever sends it.
+    Role {
+        role: Role,
         holder: Option<[u8; 32]>,
         name: String,
         epoch: u64,
     },
-    /// The sender asks the receiver, the presenter, to hand over.
-    Ask,
-    /// The sender withdraws its ask.
-    Cancel,
-    /// The presenter says not now to an ask made at this lease epoch.
-    Declined {
+    /// The sender asks the receiver, the holder of `role`, to hand it over.
+    RoleAsk {
+        role: Role,
+    },
+    /// The sender withdraws its ask for `role`.
+    RoleCancel {
+        role: Role,
+    },
+    /// The holder turns an ask for `role` down, made at this record epoch.
+    RoleAnswer {
+        role: Role,
         epoch: u64,
+        answer: RoleAnswer,
+    },
+    /// The sender, the holder of `role`, gives it up on purpose and asks the
+    /// receiver to take it (an Operator stopping, for the Projection holder
+    /// that runs the service by default).
+    RoleYield {
+        role: Role,
     },
     /// Proof of life, every few seconds, so a silent connection is told
     /// from a quiet one.
     Beat,
-    /// The sender asks the receiver, the presenter, to let it drive.
-    DriveAsk,
-    /// The sender stops driving, or withdraws its ask to drive.
-    DriveCancel,
-    /// The presenter turns an ask to drive down.
-    DriveAnswer {
-        answer: DriveAnswer,
-    },
-    /// The presenter says who is driving it (`None`: nobody). Sent to every
-    /// device whenever that changes and when a session opens.
-    DriveState {
-        driver: Option<([u8; 32], String)>,
-    },
-    /// A request from the driver to the presenter: the same JSON the local
-    /// operator's screen sends.
+    /// A request from the Operator to the Projection holder: the same JSON the
+    /// local operator's screen sends.
     DriveCommand {
         payload: Vec<u8>,
     },
-    /// The presenter's live state for the driver's screen: one JSON event.
+    /// The Projection holder's live state for the Operator's screen: one
+    /// JSON event.
     DriveLive {
         payload: Vec<u8>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum DriveAnswer {
+pub(crate) enum RoleAnswer {
     Declined,
     Busy { by: String },
 }
@@ -276,11 +281,21 @@ mod tests {
                 data: vec![4; 10],
                 last: true,
             },
-            Frame::DriveState {
-                driver: Some(([8; 32], "Mary's laptop".into())),
+            Frame::Role {
+                role: Role::Operator,
+                holder: Some([8; 32]),
+                name: "Mary's laptop".into(),
+                epoch: 3,
             },
-            Frame::DriveAnswer {
-                answer: DriveAnswer::Busy { by: "Sam".into() },
+            Frame::RoleAsk { role: Role::Audio },
+            Frame::RoleCancel { role: Role::Stream },
+            Frame::RoleAnswer {
+                role: Role::Operator,
+                epoch: 3,
+                answer: RoleAnswer::Busy { by: "Sam".into() },
+            },
+            Frame::RoleYield {
+                role: Role::Operator,
             },
             Frame::DriveCommand {
                 payload: b"{\"Next\":null}".to_vec(),

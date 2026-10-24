@@ -25,21 +25,21 @@
 //!   it was last reached at, and wakes at once when mDNS sees it again.
 //!   On disconnect the peer's sync state is dropped ([`Repo::forget_peer`]),
 //!   so the next connection resumes with a fresh sync handshake.
-//! - **Presenter lease.** One paired device at a time may drive the
-//!   screens ([`presenter`](crate::presenter)). Each side sends its lease
-//!   when a session opens and whenever it changes; the newer one wins.
-//!   `Ask` / `Declined` frames carry a request to present. Every session
-//!   also sends a `Beat` every few seconds and ends if it hears nothing
-//!   for half a minute, so "offline" means a connection that is really
-//!   gone, and the time since the presenter was last heard from is what
-//!   lets another device take over.
-//! - **Driving.** While one device presents, another paired device may
-//!   operate it ([`driver`](crate::driver)). The driver asks, the presenter
-//!   allows once or always, and from then on `DriveCommand` frames carry the
-//!   driver's requests to the presenter, which applies them if the sender
-//!   is the active driver, and `DriveLive` frames carry the presenter's live
-//!   state back for the driver's screen. The payloads are opaque here: the
-//!   app decides what they say ([`DriveHooks`]).
+//! - **Roles.** Four jobs, each held by one paired device at a time
+//!   ([`roles`](crate::roles)): Projection (runs the screens, the old
+//!   presenter lease), Operator (runs the service, the old driver seat),
+//!   Stream and Audio. Each side sends its four records when a session opens
+//!   and whenever one changes; the newer one wins. `RoleAsk` / `RoleAnswer`
+//!   frames carry a request for a role. Every session also sends a `Beat`
+//!   every few seconds and ends if it hears nothing for half a minute, so
+//!   "offline" means a connection that is really gone, and the time since a
+//!   holder was last heard from is what lets another device take over.
+//! - **Driving.** The Operator operates the device that holds Projection.
+//!   `DriveCommand` frames carry the Operator's requests to the Projection
+//!   holder, which applies them if the sender holds Operator, and
+//!   `DriveLive` frames carry its live state back for the Operator's
+//!   screen. The payloads are opaque here: the app decides what they say
+//!   ([`DriveHooks`]).
 //! - **Blobs** are fetched by hash on request ([`SyncNode::fetch_blob`]),
 //!   in 256 KiB chunks, and verified on arrival ([`BlobStore::put_verified`]).
 //!
@@ -47,6 +47,7 @@
 
 mod discovery;
 mod handshake;
+mod saved;
 mod secure;
 mod session;
 mod trust;
@@ -67,15 +68,15 @@ use uuid::Uuid;
 pub use trust::{PairedDevice, PairingCode, PAIRING_TTL};
 pub use wire::Link;
 
-use crate::driver::{Answer, Asked, Asking as DriveAsking, Named, Notice as DriveNotice, Seat};
-use crate::presenter::{
-    Asking, Denied, Holder, Lease, Notice, Presenter, Request as PresentRequest, Role, Standing,
-    DEFAULT_TAKEOVER,
+use crate::roles::{
+    Answer, AskState, Asked, Asking, Blocked, Denied, Holder, Mode, Named, Net, Notice, OnAir,
+    Record, Role, Roles, Standing,
 };
 use crate::team::{DeviceKey, DeviceKeypair};
 use crate::Repo;
 use discovery::Discovery;
 use handshake::{Me, Peer};
+use saved::RolesFile;
 use trust::Trust;
 use wire::Frame;
 
@@ -151,19 +152,62 @@ pub struct NodeStatus {
     pub last_in_ms: Option<i64>,
     pub last_out_ms: Option<i64>,
     pub presenter: PresenterStatus,
+    /// All four roles.
+    pub roles: RolesStatus,
+}
+
+/// One role, as the screens show it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoleStatus {
+    pub role: Role,
+    /// Who holds it, as this device last heard.
+    pub record: Record,
+    /// This device does the job: it holds the record, or it has nobody to
+    /// share with.
+    pub holds: bool,
+    /// How this device could take it.
+    pub standing: Standing,
+    /// What stops this device taking it whatever the holder says.
+    pub blocked: Option<Blocked>,
+    /// The device asking this one, the holder, to hand it over. At most
+    /// one: a second asker is told who is asking.
+    pub request: Option<Named>,
+    /// This device's own ask.
+    pub asking: Option<Asking>,
+    pub notice: Option<Notice>,
+    /// Devices this one hands the role to without asking.
+    pub always: Vec<Named>,
+}
+
+/// All four roles.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RolesStatus {
+    pub projection: RoleStatus,
+    pub operator: RoleStatus,
+    pub stream: RoleStatus,
+    pub audio: RoleStatus,
+    /// This device has screens set up, so it can hold Projection.
+    pub screens: bool,
+    /// How long a holder must be offline before another device may take its
+    /// role without asking.
+    pub takeover_after: Duration,
+    /// The Operator controls work: Projection is on this device or
+    /// connected. While it is not, they wait and the seat is kept.
+    pub operator_ready: bool,
 }
 
 /// Who may present, as the devices screen and the status bar show it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresenterStatus {
-    pub role: Role,
+    pub role: Mode,
     pub standing: Standing,
-    pub lease: Lease,
+    /// The Projection record.
+    pub lease: Record,
     /// How long the presenter must be offline before another device may
     /// take over without asking.
     pub takeover_after: Duration,
     /// Devices asking this one (the presenter) to hand over.
-    pub requests: Vec<PresentRequest>,
+    pub requests: Vec<Named>,
     /// This device's own ask.
     pub asking: Option<Asking>,
     pub notice: Option<Notice>,
@@ -188,6 +232,21 @@ pub struct DriveStatus {
     /// Devices this one allows to drive without asking.
     pub always: Vec<Named>,
     pub notice: Option<DriveNotice>,
+}
+
+/// This device's ask to drive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DriveAsking {
+    Waiting,
+    Declined,
+    Busy { by: String },
+}
+
+/// Something about driving the person should be told once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DriveNotice {
+    /// This device was driving and the Projection holder took the seat back.
+    TakenBack { by: String },
 }
 
 /// The presenter this device is driving.
@@ -223,7 +282,7 @@ pub struct PeerStatus {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
-    /// It holds the presenter lease.
+    /// It holds Projection.
     pub presenting: bool,
     /// Why the last attempt to reach it failed, for people; cleared on
     /// connecting.
@@ -248,7 +307,7 @@ pub(crate) enum Control {
     Changed(Arc<Vec<Uuid>>),
     /// Ask the peer for a blob, and say how it went.
     Want(BlobHash, oneshot::Sender<Result<(), NetError>>),
-    /// Send this frame as it is (the presenter lease and asks).
+    /// Send this frame as it is (role records and asks).
     Frame(Frame),
 }
 
@@ -307,26 +366,15 @@ pub struct SyncNode {
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
     discovery: Mutex<Option<Discovery>>,
-    presenter: Mutex<Presenter>,
-    seat: Mutex<Seat>,
+    roles: Mutex<Roles>,
+    /// Whether another device was operating this one at the last check, so
+    /// the app is told when that changes.
+    last_driven: Mutex<bool>,
     drive_hooks: Mutex<Option<Arc<DriveHooks>>>,
     /// When this node was made: how long a never-seen presenter has been
     /// silent.
     started: Instant,
     me: Weak<SyncNode>,
-}
-
-/// What survives a restart of the presenter lease: `presenter.json`.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PresenterFile {
-    lease: Lease,
-    takeover_secs: u64,
-}
-
-/// What survives a restart of driving: `driver.json`.
-#[derive(serde::Serialize, serde::Deserialize, Default)]
-struct DriverFile {
-    always: Vec<(String, String)>,
 }
 
 /// A snapshot of who is paired, connected and for how long silent.
@@ -352,6 +400,16 @@ impl Reach {
     }
 }
 
+impl Net for Reach {
+    fn has_peers(&self) -> bool {
+        Reach::has_peers(self)
+    }
+
+    fn holder(&self, device: DeviceKey) -> Holder {
+        Reach::holder(self, device)
+    }
+}
+
 impl SyncNode {
     /// A node over `repo`, signing with `key` (the same device key the repo
     /// was opened with). Nothing runs until [`SyncNode::start`].
@@ -363,25 +421,15 @@ impl SyncNode {
         );
         std::fs::create_dir_all(&config.dir)?;
         let trust = Trust::load(config.dir.join("paired.json"))?;
-        let saved: Option<PresenterFile> = std::fs::read(config.dir.join("presenter.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok());
-        let presenter = Presenter::new(
-            key.public(),
-            config.name.clone(),
-            saved.as_ref().map(|f| f.lease.clone()).unwrap_or_default(),
-            saved
-                .map(|f| Duration::from_secs(f.takeover_secs))
-                .unwrap_or(DEFAULT_TAKEOVER),
-        );
-        let always: Vec<(DeviceKey, String)> = std::fs::read(config.dir.join("driver.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<DriverFile>(&b).ok())
-            .unwrap_or_default()
-            .always
-            .into_iter()
-            .filter_map(|(hex, name)| Some((DeviceKey::from_hex(&hex)?, name)))
-            .collect();
+        let loaded = saved::load(&config.dir);
+        if loaded.migrated {
+            // Moved over from 0.7.0's presenter.json and driver.json (or
+            // nothing yet): keep it, so the old files are read only once.
+            if let Err(e) = saved::save(&config.dir, &loaded.file) {
+                eprintln!("lampstand: cannot save the roles: {e}");
+            }
+        }
+        let roles = loaded.file.into_roles(key.public(), config.name.clone());
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -394,8 +442,8 @@ impl SyncNode {
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
-            presenter: Mutex::new(presenter),
-            seat: Mutex::new(Seat::with_always(always)),
+            roles: Mutex::new(roles),
+            last_driven: Mutex::new(false),
             drive_hooks: Mutex::new(None),
             started: Instant::now(),
             me: me.clone(),
@@ -436,6 +484,7 @@ impl SyncNode {
     pub fn status(&self) -> NodeStatus {
         let pairing = lock(&self.trust).pairing();
         let presenter = self.presenter_status();
+        let roles = self.roles_status();
         let lease = presenter.lease.clone();
         let trust = lock(&self.trust);
         let peers = lock(&self.peers);
@@ -485,6 +534,7 @@ impl SyncNode {
             paired,
             nearby,
             presenter,
+            roles,
             last_in_ms: activity.last_in_ms,
             last_out_ms: activity.last_out_ms,
         }
@@ -558,8 +608,8 @@ impl SyncNode {
     /// Stops trusting `device` and closes its connection.
     pub fn unpair(&self, device: DeviceKey) -> io::Result<bool> {
         let removed = lock(&self.trust).remove(device)?;
-        if lock(&self.seat).forget(device) {
-            self.save_driver();
+        if lock(&self.roles).forget(device) {
+            self.save_roles();
         }
         if let Some(stop) = lock(&self.peers)
             .sessions
@@ -629,10 +679,12 @@ impl SyncNode {
         if peer.paired_now {
             self.bump();
             self.ensure_dialler(peer.device);
-            // The device that showed the code is the presenting machine.
-            let claimed = lock(&self.presenter).claim_if_unclaimed();
-            if let Some(lease) = claimed {
-                self.lease_changed(&lease);
+            // The device that showed the code is the main machine: it takes
+            // the roles nobody holds (Projection, Operator and Audio).
+            let reach = self.reach();
+            let taken = lock(&self.roles).claim_if_unclaimed(&reach);
+            for (role, record) in taken {
+                self.role_changed(role, &record);
             }
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
@@ -754,6 +806,7 @@ impl SyncNode {
                         peers.problems.remove(&peer.device);
                         drop(peers);
                         self.bump();
+                        self.driving_changed();
                         let node = self.arc();
                         let device = peer.device;
                         return Some(tokio::spawn(async move {
@@ -788,20 +841,20 @@ impl SyncNode {
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
-            lock(&self.presenter).receive_cancel(device);
-            // A driver that went away hands control back.
-            let was_driver = lock(&self.seat)
-                .active()
-                .is_some_and(|a| a.device == device);
-            lock(&self.seat).gone(device);
-            if was_driver {
-                self.drive_state_changed();
+            // An ask from a device that went away is withdrawn.
+            {
+                let mut roles = lock(&self.roles);
+                for role in Role::ALL {
+                    roles.receive_cancel(role, device);
+                }
             }
+            // An Operator that went away is no longer driving anything.
+            self.driving_changed();
             self.bump();
         }
     }
 
-    // ---- Presenter lease -----------------------------------------------
+    // ---- Roles ----------------------------------------------------------
 
     fn reach(&self) -> Reach {
         let paired: HashSet<DeviceKey> = lock(&self.trust)
@@ -826,172 +879,273 @@ impl SyncNode {
         }
     }
 
-    pub fn presenter_status(&self) -> PresenterStatus {
+    /// Every role, as the screens show it: who holds it, how this device
+    /// could take it, and what it is waiting on.
+    pub fn roles_status(&self) -> RolesStatus {
         let reach = self.reach();
-        let p = lock(&self.presenter);
-        let holder = p.holder_of(|d| reach.holder(d));
-        let drive = self.drive_status(&reach, &p);
-        PresenterStatus {
-            drive,
-            role: p.role(reach.has_peers()),
-            standing: p.standing(reach.has_peers(), holder),
-            lease: p.lease().clone(),
-            takeover_after: p.takeover_after(),
-            requests: p.requests().to_vec(),
-            asking: p.asking(),
-            notice: p.notice().cloned(),
+        let net: &dyn Net = &reach;
+        let r = lock(&self.roles);
+        let one = |role: Role| RoleStatus {
+            role,
+            record: r.record(role).clone(),
+            holds: r.holds_now(role, net),
+            standing: r.standing(role, net),
+            blocked: r.blocked(role, net),
+            request: r.request(role).cloned(),
+            asking: r.asking(role).cloned(),
+            notice: r.notice(role).cloned(),
+            always: r.always(role),
+        };
+        RolesStatus {
+            projection: one(Role::Projection),
+            operator: one(Role::Operator),
+            stream: one(Role::Stream),
+            audio: one(Role::Audio),
+            screens: r.screens(),
+            takeover_after: r.takeover_after(),
+            operator_ready: r.operator_ready(net),
         }
     }
 
-    fn drive_status(&self, reach: &Reach, p: &Presenter) -> DriveStatus {
-        let seat = lock(&self.seat);
-        let holds = p.holds();
-        let online = p
-            .lease()
-            .holder
-            .is_some_and(|h| reach.holder(h) == Holder::Online);
+    /// Who may present, and who drives it: the Projection and Operator
+    /// roles as the status bar and the devices screen have always shown them.
+    pub fn presenter_status(&self) -> PresenterStatus {
+        let reach = self.reach();
+        let roles = self.roles_status();
+        let drive = self.drive_status(&reach, &roles);
+        let p = roles.projection;
+        PresenterStatus {
+            drive,
+            role: if p.holds {
+                Mode::Presenter
+            } else {
+                Mode::Planning
+            },
+            standing: p.standing,
+            lease: p.record,
+            takeover_after: roles.takeover_after,
+            requests: p.request.into_iter().collect(),
+            asking: p.asking,
+            notice: p.notice,
+        }
+    }
+
+    fn drive_status(&self, reach: &Reach, roles: &RolesStatus) -> DriveStatus {
+        let me = self.device();
+        let has_peers = reach.has_peers();
+        let (p, o) = (&roles.projection, &roles.operator);
+        let presenter = p.record.holder.filter(|h| *h != me);
+        let holds_projection = p.record.holder == Some(me);
         DriveStatus {
-            driving: seat.granted().map(|g| Driving {
-                presenter: g.presenter,
-                name: g.name.clone(),
-                online: reach.holder(g.presenter) == Holder::Online,
+            driving: presenter
+                .filter(|_| has_peers && o.record.holder == Some(me))
+                .map(|presenter| Driving {
+                    presenter,
+                    name: p.record.name.clone(),
+                    online: reach.holder(presenter) == Holder::Online,
+                }),
+            // Whoever holds Operator while another device holds Projection
+            // is driving it. On the Projection device only a connected
+            // Operator counts: one that is away is not driving anything.
+            active: o
+                .record
+                .holder
+                .filter(|h| has_peers && Some(*h) != p.record.holder)
+                .filter(|h| !holds_projection || reach.connected.contains(h))
+                .map(|device| Named {
+                    device,
+                    name: o.record.name.clone(),
+                }),
+            requests: o.request.iter().cloned().collect(),
+            asking: o.asking.as_ref().map(|a| match &a.state {
+                AskState::Waiting => DriveAsking::Waiting,
+                AskState::Declined => DriveAsking::Declined,
+                AskState::Busy { by } => DriveAsking::Busy { by: by.clone() },
             }),
-            active: if holds {
-                seat.active().cloned()
-            } else {
-                seat.known().cloned()
-            },
-            requests: if holds {
-                seat.requests().to_vec()
-            } else {
-                Vec::new()
-            },
-            asking: seat.asking().cloned(),
-            can_drive: reach.has_peers() && !holds && online && seat.granted().is_none(),
-            always: seat.always(),
-            notice: seat.notice().cloned(),
+            // Not the Projection holder (it takes the seat back instead)
+            // and not the Operator already.
+            can_drive: has_peers
+                && !holds_projection
+                && o.record.holder != Some(me)
+                && o.blocked.is_none()
+                && matches!(
+                    o.standing,
+                    Standing::Ask | Standing::Open | Standing::TakeOver { .. }
+                ),
+            always: o.always.clone(),
+            notice: o.notice.as_ref().map(|n| match n {
+                Notice::Replaced { by } => DriveNotice::TakenBack { by: by.clone() },
+            }),
         }
     }
 
     /// Whether this device may drive the screens now.
-    pub fn role(&self) -> Role {
-        let has_peers = !lock(&self.trust).devices().is_empty();
-        lock(&self.presenter).role(has_peers)
+    pub fn role(&self) -> Mode {
+        let reach = self.reach();
+        lock(&self.roles).mode(&reach)
+    }
+
+    /// Tells the node whether this device has screens set up: Projection
+    /// can be held only by a device that does.
+    pub fn set_screens(&self, set_up: bool) {
+        if lock(&self.roles).set_screens(set_up) {
+            self.bump();
+        }
+    }
+
+    /// Takes a role when nobody needs to allow it: nobody holds it, or the
+    /// holder has been offline past the timeout.
+    pub fn claim_role(&self, role: Role) -> Result<(), Denied> {
+        let reach = self.reach();
+        let record = lock(&self.roles).claim(role, &reach)?;
+        self.role_changed(role, &record);
+        Ok(())
+    }
+
+    /// Asks the holder of a role to hand it over; it sees a prompt.
+    pub fn ask_role(&self, role: Role) -> Result<(), Denied> {
+        let reach = self.reach();
+        let holder = {
+            let mut r = lock(&self.roles);
+            r.ask(role, &reach)?;
+            r.record(role).holder
+        };
+        if let Some(holder) = holder {
+            self.send_to(holder, Frame::RoleAsk { role });
+        }
+        self.bump();
+        Ok(())
+    }
+
+    /// Withdraws this device's ask for a role, or clears the "not now" it
+    /// was shown.
+    pub fn cancel_role_ask(&self, role: Role) {
+        let (open, holder) = {
+            let mut r = lock(&self.roles);
+            (r.cancel_ask(role), r.record(role).holder)
+        };
+        if let (true, Some(holder)) = (open, holder) {
+            self.send_to(holder, Frame::RoleCancel { role });
+        }
+        self.bump();
+    }
+
+    /// Hands a role to a device that asked; with `always`, remembers the
+    /// device if the role offers that. Returns what this takes off air, for
+    /// the app to do.
+    pub fn allow_role(&self, role: Role, device: DeviceKey, always: bool) -> Result<OnAir, String> {
+        if !lock(&self.peers).sessions.contains_key(&device) {
+            return Err("that device is no longer connected".into());
+        }
+        let reach = self.reach();
+        let allowed = lock(&self.roles)
+            .allow(role, device, always, &reach)
+            .map_err(|e| e.to_string())?;
+        self.role_changed(role, &allowed.record);
+        Ok(allowed.on_air)
+    }
+
+    /// Says not now to a device that asked.
+    pub fn decline_role(&self, role: Role, device: DeviceKey) {
+        let (was_asking, epoch) = {
+            let mut r = lock(&self.roles);
+            (r.decline(role, device), r.record(role).epoch)
+        };
+        if was_asking {
+            self.send_to(
+                device,
+                Frame::RoleAnswer {
+                    role,
+                    epoch,
+                    answer: wire::RoleAnswer::Declined,
+                },
+            );
+        }
+        self.bump();
+    }
+
+    /// Remembers a paired device as always allowed to take a role from this
+    /// one, or stops. Only roles that offer it remember anyone.
+    pub fn set_role_always(&self, role: Role, device: DeviceKey, on: bool) -> Result<(), String> {
+        let name = lock(&self.trust)
+            .get(device)
+            .map(|d| d.name.clone())
+            .ok_or("that device is not paired")?;
+        if lock(&self.roles).set_always(role, device, name, on) {
+            self.save_roles();
+            self.bump();
+        }
+        Ok(())
+    }
+
+    pub fn dismiss_role_notice(&self, role: Role) {
+        lock(&self.roles).dismiss_notice(role);
+        self.bump();
     }
 
     /// Takes the presenter role when nobody needs to allow it: nobody
     /// holds it, or the presenter has been offline past the timeout.
     pub fn claim_presenter(&self) -> Result<(), Denied> {
-        let reach = self.reach();
-        let lease = {
-            let mut p = lock(&self.presenter);
-            let holder = p.holder_of(|d| reach.holder(d));
-            p.claim(reach.has_peers(), holder)?
-        };
-        self.lease_changed(&lease);
-        Ok(())
+        self.claim_role(Role::Projection)
     }
 
     /// Asks the presenter to hand over; it sees a prompt.
     pub fn ask_to_present(&self) -> Result<(), Denied> {
-        let reach = self.reach();
-        let holder = {
-            let mut p = lock(&self.presenter);
-            let holder = p.holder_of(|d| reach.holder(d));
-            p.ask(reach.has_peers(), holder)?;
-            p.lease().holder
-        };
-        if let Some(holder) = holder {
-            self.send_to(holder, Frame::Ask);
-        }
-        self.bump();
-        Ok(())
+        self.ask_role(Role::Projection)
     }
 
-    /// Withdraws this device's ask, or clears the "not now" it was shown.
+    /// Withdraws this device's ask to present, or clears the "not now" it
+    /// was shown.
     pub fn cancel_ask(&self) {
-        let (open, holder) = {
-            let mut p = lock(&self.presenter);
-            (p.cancel_ask(), p.lease().holder)
-        };
-        if let (true, Some(holder)) = (open, holder) {
-            self.send_to(holder, Frame::Cancel);
-        }
-        self.bump();
+        self.cancel_role_ask(Role::Projection);
     }
 
     /// Hands the presenter role to a device that asked. This device
     /// becomes Planning; the app clears its screens when it sees that.
     pub fn allow_presenter(&self, device: DeviceKey) -> Result<(), String> {
-        if !lock(&self.peers).sessions.contains_key(&device) {
-            return Err("that device is no longer connected".into());
-        }
-        let lease = lock(&self.presenter)
-            .allow(device)
-            .ok_or("that device is not asking, or this device is not presenting")?;
-        self.lease_changed(&lease);
-        Ok(())
+        self.allow_role(Role::Projection, device, false).map(|_| ())
     }
 
-    /// Says not now to a device that asked.
+    /// Says not now to a device that asked to present.
     pub fn decline_presenter(&self, device: DeviceKey) {
-        let (was_asking, epoch) = {
-            let mut p = lock(&self.presenter);
-            (p.decline(device), p.lease().epoch)
-        };
-        if was_asking {
-            self.send_to(device, Frame::Declined { epoch });
-        }
-        self.bump();
+        self.decline_role(Role::Projection, device);
     }
 
     pub fn dismiss_presenter_notice(&self) {
-        lock(&self.presenter).dismiss_notice();
-        self.bump();
+        self.dismiss_role_notice(Role::Projection);
     }
 
-    /// How long the presenter may be offline before another device may
-    /// take over without asking. Kept on this device.
+    /// How long a holder may be offline before another device may take its
+    /// role without asking. Kept on this device.
     pub fn set_takeover_after(&self, after: Duration) {
-        lock(&self.presenter).set_takeover_after(after);
-        self.save_presenter();
+        lock(&self.roles).set_takeover_after(after);
+        self.save_roles();
         self.bump();
     }
 
-    /// This device's lease changed: keep it, tell every device, show it.
-    fn lease_changed(&self, lease: &Lease) {
-        self.save_presenter();
-        // A new presenter starts with nobody driving and nobody asking.
-        if lock(&self.seat).lease_moved(self.device(), lease.holder) {
-            self.drive_state_changed();
-        }
-        let frame = lease_frame(lease);
+    /// A role's record changed here (a claim, a hand-over, a newer record
+    /// from another device): keep it, tell every device, show it.
+    fn role_changed(&self, role: Role, record: &Record) {
+        self.save_roles();
+        let frame = record_frame(role, record);
         for s in lock(&self.peers).sessions.values() {
             let _ = s.control.send(Control::Frame(frame.clone()));
         }
+        self.driving_changed();
         self.bump();
     }
 
-    fn save_presenter(&self) {
-        let file = {
-            let p = lock(&self.presenter);
-            PresenterFile {
-                lease: p.lease().clone(),
-                takeover_secs: p.takeover_after().as_secs().max(1),
-            }
-        };
-        let path = self.dir.join("presenter.json");
-        let tmp = self.dir.join("presenter.json.tmp");
-        let saved = serde_json::to_vec_pretty(&file)
-            .map_err(io::Error::other)
-            .and_then(|json| std::fs::write(&tmp, json))
-            .and_then(|_| std::fs::rename(&tmp, &path));
-        if let Err(e) = saved {
-            eprintln!("lampstand: cannot save the presenter lease: {e}");
+    fn save_roles(&self) {
+        let file = RolesFile::from_roles(&lock(&self.roles));
+        if let Err(e) = saved::save(&self.dir, &file) {
+            eprintln!("lampstand: cannot save the roles: {e}");
         }
     }
 
     // ---- Driving --------------------------------------------------------
+    //
+    // The Operator drives the Projection holder: its commands cross to the
+    // device that holds Projection, and that device's live state comes back.
 
     /// Where the app wants driving traffic to go. Set once at start.
     pub fn set_drive_hooks(&self, hooks: DriveHooks) {
@@ -1000,13 +1154,6 @@ impl SyncNode {
 
     fn hooks(&self) -> Option<Arc<DriveHooks>> {
         lock(&self.drive_hooks).clone()
-    }
-
-    /// The lease: whether this device holds it, who does, and the name it
-    /// gave.
-    fn lease_facts(&self) -> (bool, Option<DeviceKey>, String) {
-        let p = lock(&self.presenter);
-        (p.holds(), p.lease().holder, p.lease().name.clone())
     }
 
     fn connected(&self, device: DeviceKey) -> bool {
@@ -1020,61 +1167,90 @@ impl SyncNode {
             .unwrap_or_default()
     }
 
+    /// The Projection device this device operates, when it holds Operator
+    /// and another device holds Projection.
+    fn driven_device(&self) -> Option<(DeviceKey, String)> {
+        let me = self.device();
+        let has_peers = !lock(&self.trust).devices().is_empty();
+        let r = lock(&self.roles);
+        let p = r.record(Role::Projection);
+        let holder = p.holder.filter(|h| *h != me)?;
+        (has_peers && r.holds(Role::Operator)).then(|| (holder, p.name.clone()))
+    }
+
+    /// The device operating this one, when this one holds Projection and
+    /// another, connected, device holds Operator.
+    fn operating_device(&self) -> Option<DeviceKey> {
+        let me = self.device();
+        let operator = {
+            let r = lock(&self.roles);
+            if !r.holds(Role::Projection) {
+                return None;
+            }
+            r.record(Role::Operator).holder.filter(|h| *h != me)?
+        };
+        self.connected(operator).then_some(operator)
+    }
+
     /// This device is driving the presenter, and whether it is connected.
     pub fn driving(&self) -> Option<Driving> {
-        let granted = lock(&self.seat).granted().cloned()?;
+        let (presenter, name) = self.driven_device()?;
         Some(Driving {
-            presenter: granted.presenter,
-            online: self.connected(granted.presenter),
-            name: granted.name,
+            presenter,
+            online: self.connected(presenter),
+            name,
         })
     }
 
     /// Whether another device is driving this one, the presenter.
     pub fn driven(&self) -> bool {
-        lock(&self.seat).active().is_some()
+        self.operating_device().is_some()
     }
 
-    /// Asks the presenter to let this device drive it. The presenter sees a
-    /// prompt, unless it remembers this device.
+    /// Asks the presenter to let this device drive it (to hold Operator).
+    /// The holder sees a prompt, unless it remembers this device.
     pub fn drive_ask(&self) -> Result<(), String> {
-        let has_peers = !lock(&self.trust).devices().is_empty();
-        let (holds, holder, name) = self.lease_facts();
-        if holds || !has_peers {
-            return Err("this device is presenting: nothing to ask".into());
-        }
-        let Some(holder) = holder else {
-            return Err("nobody is presenting".into());
+        let holder_name = {
+            let r = lock(&self.roles);
+            r.record(Role::Operator).name.clone()
         };
-        if !self.connected(holder) {
-            return Err(format!(
+        match self.ask_role(Role::Operator) {
+            Ok(()) => {
+                eprintln!("lampstand: asking {holder_name} to let this device drive");
+                Ok(())
+            }
+            // Already the operator of another device: nothing to do.
+            Err(Denied::Already) if self.driven_device().is_some() => Ok(()),
+            Err(Denied::Already) => Err("this device is presenting: nothing to ask".into()),
+            // Nobody holds the seat, or its holder has long been gone: no
+            // one to ask.
+            Err(Denied::NotNeeded) => self.claim_role(Role::Operator).map_err(|e| e.to_string()),
+            Err(Denied::NobodyToAsk) => Err(format!(
                 "{} is not connected",
-                if name.is_empty() {
+                if holder_name.is_empty() {
                     "the presenting device"
                 } else {
-                    &name
+                    &holder_name
                 }
-            ));
+            )),
+            Err(e) => Err(e.to_string()),
         }
-        {
-            let mut seat = lock(&self.seat);
-            if seat.granted().is_some() {
-                return Ok(());
-            }
-            seat.begin_ask(holder);
-        }
-        eprintln!("lampstand: asking {name} to let this device drive it");
-        self.send_to(holder, Frame::DriveAsk);
-        self.bump();
-        Ok(())
     }
 
-    /// Stops driving, or withdraws the ask to drive.
+    /// Stops driving, or withdraws the ask to drive. Stopping gives the
+    /// Operator seat back to the Projection holder, which takes it.
     pub fn drive_cancel(&self) {
-        let (_, holder, _) = self.lease_facts();
-        let was = lock(&self.seat).stop();
-        if let (true, Some(holder)) = (was, holder) {
-            self.send_to(holder, Frame::DriveCancel);
+        if let Some((presenter, _)) = self.driven_device() {
+            if lock(&self.roles).yield_role(Role::Operator) {
+                self.send_to(
+                    presenter,
+                    Frame::RoleYield {
+                        role: Role::Operator,
+                    },
+                );
+            }
+        } else {
+            self.cancel_role_ask(Role::Operator);
         }
         self.bump();
     }
@@ -1082,182 +1258,75 @@ impl SyncNode {
     /// Clears a "not now", a "busy" or a "taken back" the person has seen.
     pub fn drive_dismiss(&self) {
         {
-            let mut seat = lock(&self.seat);
-            seat.clear_answer();
-            seat.dismiss_notice();
+            let mut r = lock(&self.roles);
+            r.clear_answer(Role::Operator);
+            r.dismiss_notice(Role::Operator);
         }
         self.bump();
     }
 
-    /// On the presenter: lets a device that asked drive, and with `always`
-    /// remembers it.
+    /// On the holder of Operator: lets a device that asked drive, and with
+    /// `always` remembers it.
     pub fn drive_allow(&self, device: DeviceKey, always: bool) -> Result<(), String> {
-        let (holds, _, _) = self.lease_facts();
-        if !self.connected(device) {
-            return Err("that device is no longer connected".into());
-        }
-        lock(&self.seat)
-            .allow(holds, device, always)
-            .map_err(|e| e.to_string())?;
+        self.allow_role(Role::Operator, device, always)?;
         eprintln!(
             "lampstand: {} may drive this device",
             self.paired_name(device)
         );
-        if always {
-            self.save_driver();
-        }
-        self.drive_state_changed();
         Ok(())
     }
 
-    /// On the presenter: says not now to a device that asked.
+    /// On the holder of Operator: says not now to a device that asked.
     pub fn drive_decline(&self, device: DeviceKey) {
-        if lock(&self.seat).decline(device) {
-            self.send_to(
-                device,
-                Frame::DriveAnswer {
-                    answer: wire::DriveAnswer::Declined,
-                },
-            );
-        }
-        self.bump();
+        self.decline_role(Role::Operator, device);
     }
 
     /// On the presenter: takes control back from the driver at once.
     pub fn drive_take_back(&self) {
-        if lock(&self.seat).take_back() {
-            self.drive_state_changed();
-        }
+        let _ = self.claim_role(Role::Operator);
     }
 
-    /// Remembers a paired device as always allowed to drive this one, or
-    /// stops.
+    /// Remembers a paired device as always allowed to drive, or stops.
     pub fn drive_set_always(&self, device: DeviceKey, on: bool) -> Result<(), String> {
-        let name = lock(&self.trust)
-            .get(device)
-            .map(|d| d.name.clone())
-            .ok_or("that device is not paired")?;
-        if lock(&self.seat).set_always(device, name, on) {
-            self.save_driver();
-            self.bump();
-        }
-        Ok(())
+        self.set_role_always(Role::Operator, device, on)
     }
 
     /// On the driver: sends a request (JSON) to the presenter.
     pub fn drive_send(&self, payload: Vec<u8>) -> Result<(), String> {
-        let granted = lock(&self.seat)
-            .granted()
-            .cloned()
-            .ok_or("this device is not driving")?;
-        if !self.connected(granted.presenter) {
-            return Err(format!("{} is not connected", granted.name));
+        let (presenter, name) = self.driven_device().ok_or("this device is not driving")?;
+        if !self.connected(presenter) {
+            return Err(format!("{name} is not connected"));
         }
-        self.send_to(granted.presenter, Frame::DriveCommand { payload });
+        self.send_to(presenter, Frame::DriveCommand { payload });
         Ok(())
     }
 
     /// On the presenter: sends live state (one JSON event) to the driver,
     /// if there is one.
     pub fn drive_live(&self, payload: Vec<u8>) {
-        let (holds, _, _) = self.lease_facts();
-        if !holds {
-            return;
-        }
-        let driver = lock(&self.seat).active().map(|a| a.device);
-        if let Some(driver) = driver {
+        if let Some(driver) = self.operating_device() {
             self.send_to(driver, Frame::DriveLive { payload });
         }
     }
 
-    /// Who drives this device changed: tell every device and the app.
-    fn drive_state_changed(&self) {
-        let frame = self.drive_state_frame();
-        for s in lock(&self.peers).sessions.values() {
-            let _ = s.control.send(Control::Frame(frame.clone()));
-        }
-        let active = lock(&self.seat).active().is_some();
-        if let Some(hooks) = self.hooks() {
-            (hooks.driver)(active);
-        }
-        self.bump();
-    }
-
-    /// Who drives this device, as a frame, for a session that opens.
-    pub(crate) fn drive_state_frame(&self) -> Frame {
-        let (holds, _, _) = self.lease_facts();
-        let driver = holds
-            .then(|| lock(&self.seat).active().cloned())
-            .flatten()
-            .map(|a| (a.device.0, a.name));
-        Frame::DriveState { driver }
-    }
-
-    pub(crate) fn drive_ask_received(&self, from: DeviceKey) {
-        let name = self.paired_name(from);
-        let (holds, _, _) = self.lease_facts();
-        let asked = lock(&self.seat).receive_ask(holds, from, name.clone());
-        eprintln!("lampstand: {name} asks to drive this device (presenting: {holds}): {asked:?}");
-        match asked {
-            Asked::Prompt => self.bump(),
-            Asked::Allowed { .. } => {
-                self.save_driver();
-                self.drive_state_changed();
+    /// Whether someone drives this device may have changed: tell the app,
+    /// which sends the driver everything on air when one starts.
+    fn driving_changed(&self) {
+        let driven = self.driven();
+        if std::mem::replace(&mut *lock(&self.last_driven), driven) != driven {
+            if let Some(hooks) = self.hooks() {
+                (hooks.driver)(driven);
             }
-            Asked::Refuse(answer) => {
-                let answer = match answer {
-                    Answer::Declined => wire::DriveAnswer::Declined,
-                    Answer::Busy { by } => wire::DriveAnswer::Busy { by },
-                };
-                self.send_to(from, Frame::DriveAnswer { answer });
-                self.bump();
-            }
-            Asked::Ignored => {}
-        }
-    }
-
-    pub(crate) fn drive_cancel_received(&self, from: DeviceKey) {
-        let was_driver = lock(&self.seat).active().is_some_and(|a| a.device == from);
-        lock(&self.seat).gone(from);
-        if was_driver {
-            self.drive_state_changed();
-        } else {
-            self.bump();
-        }
-    }
-
-    pub(crate) fn drive_answer_received(&self, from: DeviceKey, answer: wire::DriveAnswer) {
-        let (_, holder, _) = self.lease_facts();
-        if holder != Some(from) {
-            return;
-        }
-        lock(&self.seat).receive_answer(match answer {
-            wire::DriveAnswer::Declined => Answer::Declined,
-            wire::DriveAnswer::Busy { by } => Answer::Busy { by },
-        });
-        self.bump();
-    }
-
-    pub(crate) fn drive_state_received(&self, from: DeviceKey, driver: Option<Named>) {
-        let (_, holder, name) = self.lease_facts();
-        // Only the presenter says who drives it.
-        if holder != Some(from) {
-            return;
-        }
-        let me = self.device();
-        let driving = driver.as_ref().is_some_and(|d| d.device == me);
-        if lock(&self.seat).receive_state(from, &name, driver, me) {
-            eprintln!(
-                "lampstand: {name} says this device is {} driving it",
-                if driving { "now" } else { "no longer" }
-            );
             self.bump();
         }
     }
 
     pub(crate) fn drive_command_received(&self, from: DeviceKey, payload: Vec<u8>) {
-        let (holds, _, _) = self.lease_facts();
-        if !lock(&self.seat).accepts(holds, from) {
+        let accepted = {
+            let r = lock(&self.roles);
+            r.holds(Role::Projection) && r.record(Role::Operator).holder == Some(from)
+        };
+        if !accepted {
             eprintln!(
                 "lampstand: ignored a command from {}: it is not the driver here",
                 self.paired_name(from)
@@ -1270,33 +1339,14 @@ impl SyncNode {
     }
 
     pub(crate) fn drive_live_received(&self, from: DeviceKey, payload: Vec<u8>) {
-        let from_presenter = lock(&self.seat)
-            .granted()
-            .is_some_and(|g| g.presenter == from);
-        if !from_presenter {
+        // Only the Projection holder says what is on air, and only to the
+        // device that operates it.
+        let accepted = self.driven_device().is_some_and(|(p, _)| p == from);
+        if !accepted {
             return;
         }
         if let Some(hooks) = self.hooks() {
             (hooks.live)(payload);
-        }
-    }
-
-    fn save_driver(&self) {
-        let file = DriverFile {
-            always: lock(&self.seat)
-                .always()
-                .into_iter()
-                .map(|n| (n.device.to_hex(), n.name))
-                .collect(),
-        };
-        let path = self.dir.join("driver.json");
-        let tmp = self.dir.join("driver.json.tmp");
-        let saved = serde_json::to_vec_pretty(&file)
-            .map_err(io::Error::other)
-            .and_then(|json| std::fs::write(&tmp, json))
-            .and_then(|_| std::fs::rename(&tmp, &path));
-        if let Err(e) = saved {
-            eprintln!("lampstand: cannot save the devices allowed to drive: {e}");
         }
     }
 
@@ -1306,41 +1356,95 @@ impl SyncNode {
         }
     }
 
-    /// This device's lease, as a frame, for a session that opens.
-    pub(crate) fn lease_frame(&self) -> Frame {
-        lease_frame(lock(&self.presenter).lease())
+    /// This device's four records, as frames, for a session that opens.
+    pub(crate) fn record_frames(&self) -> Vec<Frame> {
+        let r = lock(&self.roles);
+        Role::ALL
+            .into_iter()
+            .map(|role| record_frame(role, r.record(role)))
+            .collect()
     }
 
-    /// A device sent its lease: the newer of the two stands.
-    pub(crate) fn lease_received(&self, lease: Lease) {
-        let known = lease
+    /// A device sent its record for a role: the newer of the two stands.
+    pub(crate) fn record_received(&self, role: Role, record: Record) {
+        let known = record
             .holder
             .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
-        let merged = lock(&self.presenter).merge(&lease, known);
+        let merged = lock(&self.roles).merge(role, &record, known);
         if merged.changed {
-            self.lease_changed(&lease);
+            self.role_changed(role, &record);
         }
     }
 
-    pub(crate) fn ask_received(&self, from: DeviceKey) {
-        let name = lock(&self.trust)
-            .get(from)
-            .map(|d| d.name.clone())
-            .unwrap_or_default();
-        if lock(&self.presenter).receive_ask(from, name) {
+    pub(crate) fn role_ask_received(&self, from: DeviceKey, role: Role) {
+        let name = self.paired_name(from);
+        let asked = lock(&self.roles).receive_ask(role, from, name.clone());
+        match asked {
+            Asked::Prompt => self.bump(),
+            Asked::Remembered => {
+                eprintln!("lampstand: {name} may take {role:?}: remembered");
+                if let Err(e) = self.allow_role(role, from, false) {
+                    eprintln!("lampstand: could not hand {role:?} to {name}: {e}");
+                }
+                self.bump();
+            }
+            Asked::Refuse(answer) => {
+                let epoch = lock(&self.roles).record(role).epoch;
+                let answer = match answer {
+                    Answer::Declined => wire::RoleAnswer::Declined,
+                    Answer::Busy { by } => wire::RoleAnswer::Busy { by },
+                };
+                self.send_to(
+                    from,
+                    Frame::RoleAnswer {
+                        role,
+                        epoch,
+                        answer,
+                    },
+                );
+                self.bump();
+            }
+            Asked::Ignored => {}
+        }
+    }
+
+    pub(crate) fn role_cancel_received(&self, from: DeviceKey, role: Role) {
+        if lock(&self.roles).receive_cancel(role, from) {
             self.bump();
         }
     }
 
-    pub(crate) fn cancel_received(&self, from: DeviceKey) {
-        if lock(&self.presenter).receive_cancel(from) {
-            self.bump();
-        }
-    }
-
-    pub(crate) fn declined_received(&self, from: DeviceKey, epoch: u64) {
-        lock(&self.presenter).receive_declined(from, epoch);
+    pub(crate) fn role_answer_received(
+        &self,
+        from: DeviceKey,
+        role: Role,
+        epoch: u64,
+        answer: wire::RoleAnswer,
+    ) {
+        lock(&self.roles).receive_answer(
+            role,
+            from,
+            epoch,
+            match answer {
+                wire::RoleAnswer::Declined => Answer::Declined,
+                wire::RoleAnswer::Busy { by } => Answer::Busy { by },
+            },
+        );
         self.bump();
+    }
+
+    /// The holder of a role gave it up on purpose and asks this device to
+    /// take it. Only done if the rules let this device take it unasked.
+    pub(crate) fn role_yield_received(&self, from: DeviceKey, role: Role) {
+        if lock(&self.roles).record(role).holder != Some(from) {
+            return;
+        }
+        if let Err(e) = self.claim_role(role) {
+            eprintln!(
+                "lampstand: {} gave up {role:?} but this device cannot take it: {e}",
+                self.paired_name(from)
+            );
+        }
     }
 
     /// Notes that `device` was just heard from.
@@ -1364,7 +1468,15 @@ impl SyncNode {
                 if matches!(
                     node.presenter_status().standing,
                     Standing::Wait { .. } | Standing::TakeOver { .. }
-                ) {
+                ) || {
+                    let s = node.roles_status();
+                    [&s.operator, &s.stream, &s.audio].iter().any(|r| {
+                        matches!(
+                            r.standing,
+                            Standing::Wait { .. } | Standing::TakeOver { .. }
+                        )
+                    })
+                } {
                     node.bump();
                 }
             }
@@ -1517,11 +1629,12 @@ impl SyncNode {
     }
 }
 
-fn lease_frame(lease: &Lease) -> Frame {
-    Frame::Lease {
-        holder: lease.holder.map(|h| h.0),
-        name: lease.name.clone(),
-        epoch: lease.epoch,
+fn record_frame(role: Role, record: &Record) -> Frame {
+    Frame::Role {
+        role,
+        holder: record.holder.map(|h| h.0),
+        name: record.name.clone(),
+        epoch: record.epoch,
     }
 }
 
@@ -1581,5 +1694,98 @@ mod tests {
             "office.local:7341"
         );
         assert_eq!(normalize_address("[::1]:7400"), "[::1]:7400");
+    }
+
+    type Hooked = (
+        Arc<SyncNode>,
+        Arc<Mutex<Vec<DeviceKey>>>,
+        Arc<Mutex<Vec<Vec<u8>>>>,
+        tempfile::TempDir,
+    );
+
+    /// A node on its own, with a hook that records what it is asked to do.
+    fn node_with_hooks() -> Hooked {
+        let dir = tempfile::tempdir().unwrap();
+        let key = DeviceKeypair::generate();
+        let repo = Arc::new(
+            Repo::open(
+                dir.path().join("repo"),
+                DeviceKeypair::from_secret_bytes(key.secret_bytes()),
+            )
+            .unwrap(),
+        );
+        let node = SyncNode::new(
+            repo,
+            key,
+            NodeConfig {
+                name: "Sanctuary".into(),
+                dir: dir.path().join("sync"),
+            },
+        )
+        .unwrap();
+        let (commands, live) = (
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Vec::new())),
+        );
+        let (c, l) = (commands.clone(), live.clone());
+        node.set_drive_hooks(DriveHooks {
+            command: Box::new(move |from, _| lock(&c).push(from)),
+            live: Box::new(move |payload| lock(&l).push(payload)),
+            driver: Box::new(|_| {}),
+        });
+        (node, commands, live, dir)
+    }
+
+    fn record(holder: DeviceKey, epoch: u64) -> Record {
+        Record {
+            holder: Some(holder),
+            name: "x".into(),
+            epoch,
+        }
+    }
+
+    #[test]
+    fn a_command_counts_only_from_the_operator_and_only_where_projection_is_held() {
+        let (node, commands, _, _dir) = node_with_hooks();
+        let me = node.device();
+        let (operator, other) = (DeviceKey([7; 32]), DeviceKey([8; 32]));
+        node.record_received(Role::Projection, record(me, 1));
+        node.record_received(Role::Operator, record(operator, 1));
+        node.drive_command_received(operator, b"a".to_vec());
+        node.drive_command_received(other, b"b".to_vec());
+        node.drive_command_received(me, b"c".to_vec());
+        assert_eq!(*lock(&commands), vec![operator], "only the Operator counts");
+        // Projection moves away: this device carries out nothing, from
+        // anybody.
+        node.record_received(Role::Projection, record(other, 2));
+        node.drive_command_received(operator, b"d".to_vec());
+        assert_eq!(lock(&commands).len(), 1);
+        // And an Operator that is replaced no longer counts.
+        node.record_received(Role::Projection, record(me, 3));
+        node.record_received(Role::Operator, record(other, 2));
+        node.drive_command_received(operator, b"e".to_vec());
+        assert_eq!(lock(&commands).len(), 1);
+        node.drive_command_received(other, b"f".to_vec());
+        assert_eq!(lock(&commands).len(), 2);
+    }
+
+    #[test]
+    fn live_state_counts_only_from_the_projection_holder_this_device_operates() {
+        let (node, _, live, _dir) = node_with_hooks();
+        let me = node.device();
+        let (projection, other) = (DeviceKey([7; 32]), DeviceKey([8; 32]));
+        // The roles must have a paired device to mean anything.
+        lock(&node.trust)
+            .add(projection, "Back room", None)
+            .unwrap();
+        node.record_received(Role::Projection, record(projection, 1));
+        node.record_received(Role::Operator, record(me, 1));
+        node.drive_live_received(projection, b"a".to_vec());
+        node.drive_live_received(other, b"b".to_vec());
+        assert_eq!(*lock(&live), vec![b"a".to_vec()]);
+        // Not the Operator: the state means nothing here.
+        node.record_received(Role::Operator, record(other, 2));
+        node.drive_live_received(projection, b"c".to_vec());
+        assert_eq!(lock(&live).len(), 1);
     }
 }

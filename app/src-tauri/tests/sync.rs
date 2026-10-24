@@ -55,7 +55,14 @@ struct Device {
     _dir: tempfile::TempDir,
 }
 
+/// A device with a screen set up, as a church's machines have.
 async fn device(name: &str) -> Device {
+    device_with(name, true).await
+}
+
+/// A device with or without a screen. Without one it cannot hold the
+/// Projection role (sync is told when the app has an output turned on).
+async fn device_with(name: &str, screens: bool) -> Device {
     let dir = tempfile::tempdir().unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     let recorded = events.clone();
@@ -64,7 +71,7 @@ async fn device(name: &str) -> Device {
         Arc::new(move |e| recorded.lock().unwrap().push(e)),
         cell.clone(),
     );
-    let app = App::open(
+    let mut app = App::open(
         dir.path(),
         Fonts::bundled_only(),
         Arc::new(Sink),
@@ -72,6 +79,9 @@ async fn device(name: &str) -> Device {
         emit.clone(),
     )
     .unwrap();
+    if screens {
+        app.handle(Request::Outputs(OutputRequest::Put(screen(name))));
+    }
     let changes = app.library().subscribe();
     let roles = Arc::new(Mutex::new(Vec::new()));
     let told = roles.clone();
@@ -106,6 +116,8 @@ async fn device(name: &str) -> Device {
     )
     .await
     .unwrap();
+    // As the shell does once sync is running; it tells sync about the screens.
+    app.set_sync_link(sync.link());
     Device {
         app,
         sync,
@@ -115,6 +127,23 @@ async fn device(name: &str) -> Device {
         driven,
         announce,
         _dir: dir,
+    }
+}
+
+fn screen(name: &str) -> OutputConfig {
+    OutputConfig {
+        id: OutputId::generate(),
+        name: format!("{name} screen"),
+        role: OutputRole::Audience { primary: true },
+        target: OutputTarget::Window {
+            width: 640,
+            height: 360,
+        },
+        safe_area: SafeArea::default(),
+        background: BackgroundMode::Bleed,
+        theme: None,
+        idle: None,
+        enabled: true,
     }
 }
 
@@ -756,4 +785,245 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
         },
     )
     .await;
+}
+
+// ---- Roles --------------------------------------------------------------------
+
+use lampstand_api::PresenterStanding;
+use lampstand_sync::roles::Role;
+
+/// Pairs `other` with `main` (which shows the code) and waits until both
+/// have the roles pairing leaves: the main machine holds Projection,
+/// Operator and Audio.
+async fn pair_up(main: &Device, other: &Device) {
+    let code = match main.sync.handle(TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    other
+        .sync
+        .handle(TeamRequest::Join {
+            invite: code,
+            address: Some(main.address()),
+        })
+        .await;
+    until(Duration::from_secs(5), "the roles to settle", || {
+        let held = |d: &Device| d.sync.node().roles_status().audio.record.holder;
+        held(other) == Some(main.sync.node().device())
+            && main.sync.node().status().connected() == 1
+            && other.sync.node().status().connected() == 1
+    })
+    .await;
+}
+
+fn team(d: &Device) -> lampstand_api::TeamStatus {
+    d.sync.status()
+}
+
+/// A church with one device and nothing paired sees nothing new: the same
+/// view the screens read in 0.7.0, no prompt, no button, no wording, and
+/// nothing written for roles. (The API and the web app are untouched by the
+/// role record, so there is no new text to show.) It holds all four roles
+/// even with no screen set up.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_church_with_one_device_and_no_pairing_sees_nothing_new() {
+    let mut lone = device_with("Sanctuary", false).await;
+    let t = team(&lone);
+    assert!(t.paired.is_empty() && t.nearby.is_empty() && t.pairing.is_none());
+    assert_eq!(t.sync.state, lampstand_api::SyncState::DeviceOnly);
+    let p = &t.presenter;
+    assert_eq!(p.role, PresenterRole::Presenting);
+    assert_eq!(p.standing, PresenterStanding::Presenting);
+    assert!(p.requests.is_empty() && p.asking.is_none() && p.replaced_by.is_none());
+    assert_eq!(p.takeover_secs, 120);
+    let d = &*p.drive;
+    assert!(d.driving.is_none() && d.active.is_none() && d.requests.is_empty());
+    assert!(d.asking.is_none() && !d.can_drive && d.always.is_empty());
+    assert!(d.taken_back_by.is_none());
+
+    // Nothing is written for roles until something is claimed.
+    assert!(!lone._dir.path().join("sync/roles.json").exists());
+
+    // Asking to hand over says what it said before: the device already has
+    // the job. (Claiming on a lone device records the claim, as it did.)
+    match lone.sync.handle(TeamRequest::PresenterAsk).await {
+        Response::Error { message } => {
+            assert_eq!(message, "this device is already presenting")
+        }
+        other => panic!("{other:?}"),
+    }
+    match lone.sync.handle(TeamRequest::DriveAsk).await {
+        Response::Error { message } => {
+            assert_eq!(message, "this device is presenting: nothing to ask")
+        }
+        other => panic!("{other:?}"),
+    }
+
+    // It can take a service live, with no screen at all.
+    let grace = song_id(&mut lone, "Amazing Grace");
+    let service = match lone.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    lone.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    lone.request(Request::Service(ServiceRequest::Open(service.id)));
+    lone.request(Request::Live(Command::Next));
+    assert!(!lone.on_air().is_empty());
+    // The app was only ever told it presents.
+    assert!(lone.roles.lock().unwrap().iter().all(|p| *p));
+    let r = lone.sync.node().roles_status();
+    assert!(r.projection.holds && r.operator.holds && r.stream.holds && r.audio.holds);
+}
+
+/// Projection can be held only by a device with screens set up, and the app
+/// tells sync when that changes.
+#[tokio::test(flavor = "multi_thread")]
+async fn projection_needs_a_screen_and_the_app_tells_sync_when_one_is_set_up() {
+    let main = device("Sanctuary").await;
+    let mut laptop = device_with("Mary's laptop", false).await;
+    pair_up(&main, &laptop).await;
+
+    for request in [TeamRequest::PresenterAsk, TeamRequest::PresenterClaim] {
+        match laptop.sync.handle(request).await {
+            Response::Error { message } => {
+                assert_eq!(message, "No screens are set up on this device")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    assert!(main.sync.status().presenter.requests.is_empty());
+    // The other roles do not need a screen: it can ask to run the sound.
+    laptop.sync.node().ask_role(Role::Audio).unwrap();
+
+    // Turning on an output (Setup > Screens) is what lets it ask.
+    laptop.request(Request::Outputs(OutputRequest::Put(screen(
+        "Mary's laptop",
+    ))));
+    assert!(matches!(
+        laptop.sync.handle(TeamRequest::PresenterAsk).await,
+        Response::Team(_)
+    ));
+    until(Duration::from_secs(5), "the prompt", || {
+        !main.sync.status().presenter.requests.is_empty()
+    })
+    .await;
+    // And removing it again closes the way (the holder keeps what it has).
+    let outputs = match laptop.request(Request::Outputs(OutputRequest::List)) {
+        Response::Outputs(o) => o,
+        other => panic!("{other:?}"),
+    };
+    for o in outputs {
+        laptop.request(Request::Outputs(OutputRequest::Remove(o.id)));
+    }
+    laptop.sync.handle(TeamRequest::PresenterCancel).await;
+    match laptop.sync.handle(TeamRequest::PresenterAsk).await {
+        Response::Error { message } => {
+            assert_eq!(message, "No screens are set up on this device")
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Only passing Projection clears the screens. Passing Operator, Stream or
+/// Audio leaves the slide up. (Audio's own effect, stopping the music, comes
+/// with the sound itself; the rule is `Role::on_air`.)
+#[tokio::test(flavor = "multi_thread")]
+async fn only_passing_projection_clears_the_screens() {
+    let mut sanctuary = device("Sanctuary").await;
+    let mut laptop = device("Mary's laptop").await;
+    pair_up(&sanctuary, &laptop).await;
+    let grace = song_id(&mut sanctuary, "Amazing Grace");
+    let service = match sanctuary.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    sanctuary.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    sanctuary.request(Request::Service(ServiceRequest::Open(service.id)));
+    sanctuary.request(Request::Live(Command::Next));
+    let on_air = sanctuary.on_air();
+    assert!(!on_air.is_empty());
+
+    for role in [Role::Operator, Role::Audio] {
+        laptop.sync.node().ask_role(role).unwrap();
+        until(Duration::from_secs(5), "the prompt", || {
+            let r = sanctuary.sync.node().roles_status();
+            match role {
+                Role::Operator => r.operator.request.is_some(),
+                _ => r.audio.request.is_some(),
+            }
+        })
+        .await;
+        sanctuary
+            .sync
+            .node()
+            .allow_role(role, laptop.sync.node().device(), false)
+            .unwrap();
+        sanctuary.pump();
+        assert_eq!(sanctuary.on_air(), on_air, "{role:?} leaves the slide up");
+    }
+    // The sanctuary still presents; the laptop runs the service and the sound.
+    assert_eq!(team(&sanctuary).presenter.role, PresenterRole::Presenting);
+    until(Duration::from_secs(5), "the laptop to drive", || {
+        laptop.pump();
+        sanctuary.pump();
+        team(&laptop).presenter.drive.driving.is_some()
+    })
+    .await;
+    assert_eq!(sanctuary.on_air(), on_air);
+
+    // Stream is unheld; taking it changes nothing on air either.
+    laptop.sync.node().claim_role(Role::Stream).unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    sanctuary.pump();
+    assert_eq!(sanctuary.on_air(), on_air);
+
+    // Projection is different: the screens go clear.
+    laptop.sync.handle(TeamRequest::PresenterAsk).await;
+    until(Duration::from_secs(5), "the prompt", || {
+        !team(&sanctuary).presenter.requests.is_empty()
+    })
+    .await;
+    let asker = team(&sanctuary).presenter.requests[0].device.clone();
+    sanctuary
+        .sync
+        .handle(TeamRequest::PresenterAllow { device: asker })
+        .await;
+    until(Duration::from_secs(5), "the screens to clear", || {
+        sanctuary.pump();
+        sanctuary.on_air().is_empty()
+    })
+    .await;
+    // The Operator seat is kept across the hand-over: the sanctuary no
+    // longer holds it, the laptop does, and it now holds Projection too.
+    let roles = sanctuary.sync.node().roles_status();
+    assert_eq!(
+        roles.operator.record.holder,
+        Some(laptop.sync.node().device())
+    );
+    assert_eq!(
+        roles.projection.record.holder,
+        Some(laptop.sync.node().device())
+    );
 }

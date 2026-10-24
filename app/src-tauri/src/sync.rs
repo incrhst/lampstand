@@ -31,11 +31,11 @@ use lampstand_core::scene::Scene;
 use lampstand_library::Library;
 use lampstand_render::Renderer;
 use lampstand_server::{Backend, SceneHub, Server};
-use lampstand_sync::driver::{Asking, Notice as DriveNotice};
 use lampstand_sync::net::{
-    local_addresses, DriveHooks, DriveStatus, NodeConfig, NodeStatus, PresenterStatus, SyncNode,
+    local_addresses, DriveAsking as Asking, DriveHooks, DriveNotice, DriveStatus, NodeConfig,
+    NodeStatus, PresenterStatus, SyncNode,
 };
-use lampstand_sync::presenter::{Notice, Role, Standing};
+use lampstand_sync::roles::{AskState, Mode, Named, Notice, Standing};
 use lampstand_sync::team::{DeviceKey, DeviceKeypair};
 
 use crate::handler::{EventSink, SyncLink};
@@ -192,6 +192,9 @@ impl SyncLink for NodeLink {
             .map(|p| p.device.to_hex())
             .collect()
     }
+    fn screens(&self, set_up: bool) {
+        self.0.set_screens(set_up);
+    }
     fn fetch(&self, hashes: Vec<BlobHash>) {
         let node = self.0.clone();
         tauri::async_runtime::spawn(async move {
@@ -309,7 +312,7 @@ impl Sync {
         );
         let mut changes = node.watch();
         let watched = node.clone();
-        let mut presenting = watched.role() == Role::Presenter;
+        let mut presenting = watched.role() == Mode::Presenter;
         on_role(presenting);
         tokio::spawn(async move {
             let mut last = None;
@@ -328,7 +331,7 @@ impl Sync {
                 // Changes come in bursts (a connection and its addresses).
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 changes.borrow_and_update();
-                let now_presenting = watched.role() == Role::Presenter;
+                let now_presenting = watched.role() == Mode::Presenter;
                 if now_presenting != presenting {
                     presenting = now_presenting;
                     eprintln!(
@@ -624,7 +627,7 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
 
 fn presenter_view(p: &PresenterStatus) -> PresenterView {
     let (standing, offline_secs, wait_secs) = match p.standing {
-        Standing::Presenting => (PresenterStanding::Presenting, None, None),
+        Standing::Holding => (PresenterStanding::Presenting, None, None),
         Standing::Open => (PresenterStanding::Open, None, None),
         Standing::Ask => (PresenterStanding::Ask, None, None),
         Standing::TakeOver { offline } => {
@@ -638,8 +641,8 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
     };
     PresenterView {
         role: match p.role {
-            Role::Presenter => PresenterRole::Presenting,
-            Role::Planning => PresenterRole::Planning,
+            Mode::Presenter => PresenterRole::Presenting,
+            Mode::Planning => PresenterRole::Planning,
         },
         standing,
         holder: p.lease.holder.map(|h| h.to_hex()),
@@ -656,8 +659,8 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
                 name: r.name.clone(),
             })
             .collect(),
-        asking: p.asking.map(|a| AskingView {
-            declined: a.declined,
+        asking: p.asking.as_ref().map(|a| AskingView {
+            declined: a.state != AskState::Waiting,
         }),
         replaced_by: p.notice.as_ref().map(|n| match n {
             Notice::Replaced { by } => by.clone(),
@@ -667,7 +670,7 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
 }
 
 fn drive_view(d: &DriveStatus) -> DriveView {
-    let named = |n: &lampstand_sync::driver::Named| DriverView {
+    let named = |n: &Named| DriverView {
         device: n.device.to_hex(),
         name: n.name.clone(),
     };
@@ -724,9 +727,10 @@ mod tests {
             pairing: None,
             paired,
             nearby: Vec::new(),
+            roles: Default::default(),
             presenter: PresenterStatus {
-                role: Role::Presenter,
-                standing: Standing::Presenting,
+                role: Mode::Presenter,
+                standing: Standing::Holding,
                 lease: Default::default(),
                 takeover_after: std::time::Duration::from_secs(120),
                 requests: Vec::new(),
