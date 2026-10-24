@@ -531,6 +531,12 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         )
     });
     lock(&app).set_obs_cues(obs_control.cues());
+    // "Set up OBS" asks the app for a picture's address and size, so the
+    // window never supplies the address OBS is pointed at.
+    let picture_app = app.clone();
+    obs_control.set_pictures(Arc::new(move |output| {
+        lock(&picture_app).obs_picture(output)
+    }));
 
     let role_tx = tx.clone();
     let drive_tx = tx.clone();
