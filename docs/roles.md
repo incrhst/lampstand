@@ -13,32 +13,127 @@ A **role** is a job someone is doing right now. It is not a permission; who may 
 | **Stream** | Runs what goes out online | OBS scene, mutes, preview; OBS and Zoom | nothing |
 | **Audio** | Runs the sound | The sound Lampstand plays: video sound, music-only items, backing tracks; the sound output | Projection, for new cues |
 
+**Projection is tied to the screens.** It belongs to the machine that is wired to the projector and screens, and it does not move by itself. Only a device that has screens set up (a projector, a stage display, or its own display as the output) can hold Projection; the "Take" button on any other device is greyed out and says "No screens are set up on this device". Moving Projection to another machine means that machine is connected to the screens, for example a backup laptop on the same projector switch or a cable moved by hand. Pass it on only then.
+
+**Projection can run unattended.** Nobody has to sit at the Projection machine. It opens its screens when Lampstand starts, keeps the service ready, and everything else (the Operator, the stream, planning) happens from other devices. This is the usual set-up in a larger church: a machine at the projector, and a volunteer with a laptop at the back running the service.
+
 All four have one holder at a time. A device may hold any mix. A device with no role still edits and syncs freely, as a planning device does today.
 
 ## Set-ups: one machine, two, three or more
 
-You can start with one machine and add the others later. Nothing about the service changes; each role moves to another device by asking.
+You can start with one machine and add the others later. Nothing about the service changes; each role moves to another device by asking, except Projection, which stays with the machine wired to the screens (above).
 
 ### 1. One machine, all roles
 
 One computer runs the screens, the service and OBS. It holds Projection, Operator, Stream and Audio (it holds them automatically; there is nothing to set up). OBS and Zoom, if used, run on the same computer. The house sound is whatever that computer plays, so for Zoom use a mixer feed into the computer. Nothing is paired.
 
+```mermaid
+flowchart LR
+  subgraph PC["One computer: Projection, Operator, Stream, Audio"]
+    L["Lampstand"]
+    O["OBS + Zoom (optional)"]
+  end
+  L -->|video out| P["Projector and screens"]
+  L -->|sound out| M["Mixer"]
+  L -->|browser source| O
+  M --> S["House speakers"]
+  M -->|"microphones and band"| O
+  Cam["Cameras"] --> O
+  O -->|Virtual Camera| Z["Zoom call"]
+```
+
 ### 2. Two machines
 
-- **Machine A, in the house:** Projection, Operator and Audio. Screens, projector, and the sound Lampstand plays.
+- **Machine A, at the projector:** Projection, Operator and Audio. Screens, projector, and the sound Lampstand plays. It can sit unattended; the service can be run from B.
 - **Machine B, the stream machine:** Stream. Runs OBS, Zoom and the OBS Virtual Camera. Connects to its own OBS.
 
 Pair B with A. B asks for Stream; A allows (and can say "always allow this device"). Use a wired network with reserved addresses. The browser source in B's OBS reads A's address.
 
 Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
+```mermaid
+flowchart LR
+  subgraph A["Machine A at the projector: Projection, Operator, Audio"]
+    LA["Lampstand"]
+  end
+  subgraph B["Machine B, the stream machine: Stream"]
+    LB["Lampstand"]
+    OB["OBS + Zoom"]
+  end
+  LA -->|video out| P["Projector and screens"]
+  LA -->|sound out| M["Mixer"]
+  M --> S["House speakers"]
+  M -->|"microphones and band (USB interface)"| OB
+  LA <-->|"sync on the church network"| LB
+  LA -->|"browser source (graphics)"| OB
+  LB -->|"scene control"| OB
+  Cam["Cameras"] --> OB
+  OB -->|Virtual Camera| Z["Zoom call"]
+```
+
 ### 3. Three machines
 
-- **A, house:** Projection (screens, projector), and Audio unless it moves.
+- **A, at the projector:** Projection (screens, projector), and Audio unless it moves. It can run unattended.
 - **B, back of the room:** Operator (runs the service, sees what is on air).
 - **C, stream machine:** Stream (OBS, Zoom, Virtual Camera).
 
 Operator is disabled if A drops, and wakes when Projection is held again. C keeps working without A. Phones and tablets act as helpers on any of these set-ups (below).
+
+```mermaid
+flowchart LR
+  subgraph A["A at the projector: Projection, Audio (unattended)"]
+    LA["Lampstand"]
+  end
+  subgraph B["B at the back: Operator"]
+    LB["Lampstand"]
+  end
+  subgraph C["C, the stream machine: Stream"]
+    LC["Lampstand"]
+    OC["OBS + Zoom"]
+  end
+  LA -->|video out| P["Projector and screens"]
+  LA -->|sound out| M["Mixer"]
+  M --> S["House speakers"]
+  M -->|"microphones and band"| OC
+  LB -->|"Next, jump, take live"| LA
+  LA -->|"what is on air"| LB
+  LA -->|"browser source and scene cues"| OC
+  LC -->|"scene control"| OC
+  Cam["Cameras"] --> OC
+  OC -->|Virtual Camera| Z["Zoom call"]
+  T["Phone or tablet (helper)"] -.->|"remote"| LA
+```
+
+### 4. Four machines, with the sound desk
+
+Where the mixer is far from the projector, add a machine at the desk that holds Audio. Backing tracks and video sound then play from there, straight into the mixer.
+
+```mermaid
+flowchart LR
+  subgraph A["A at the projector: Projection"]
+    LA["Lampstand"]
+  end
+  subgraph B["B at the back: Operator"]
+    LB["Lampstand"]
+  end
+  subgraph C["C, the stream machine: Stream"]
+    LC["Lampstand"]
+    OC["OBS + Zoom"]
+  end
+  subgraph D["D at the sound desk: Audio"]
+    LD["Lampstand"]
+  end
+  LA -->|video out| P["Projector and screens"]
+  LD -->|"sound out (backing tracks, video sound)"| M["Mixer"]
+  M --> S["House speakers"]
+  M -->|"microphones and band"| OC
+  LB -->|"Next, jump, take live"| LA
+  LA -->|"sound cues"| LD
+  LA -->|"browser source and scene cues"| OC
+  LC -->|"scene control"| OC
+  Cam["Cameras"] --> OC
+  OC -->|Virtual Camera| Z["Zoom call"]
+```
 
 ### Audio at the sound desk
 

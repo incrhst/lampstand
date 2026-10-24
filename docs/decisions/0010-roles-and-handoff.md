@@ -22,8 +22,11 @@ the four duties *roles* only because the app does.
 
 1. **Four roles at launch, all single-holder.**
    - **Projection**, "runs the screens": the projector and stage screens, the
-     live engine, media sound and the local server OBS reads from. Today's
-     lease.
+     live engine and the local server OBS reads from. Today's lease. It is
+     tied to the machine wired to the screens and does not move by itself: only
+     a device with screens set up can hold it, and any other device's "Take"
+     is greyed out ("No screens are set up on this device"). It can run
+     unattended, since the service is operated from other devices.
    - **Operator**, "runs the service": next, previous, jump, take an item
      live. Today's driver seat, as a role of its own.
    - **Stream**, "runs what goes out online": the OBS program scene, mutes
