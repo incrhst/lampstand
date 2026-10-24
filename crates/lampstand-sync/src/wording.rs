@@ -80,6 +80,9 @@ pub fn denied(role: Role, why: &Denied, holder: &str) -> String {
         Denied::NoScreens => "No screens are set up on this device".to_string(),
         Denied::NeedsProjection => NEEDS_SCREENS.to_string(),
         Denied::NotPermitted => format!("This device may not run {job}."),
+        // The device has only just paired and has not heard who holds what:
+        // the 0.7.0 wording for "no one holds it yet", kept as it was.
+        Denied::Settling => "Nobody is presenting.".to_string(),
     }
 }
 
@@ -114,6 +117,12 @@ mod tests {
             Denied::NeedsProjection,
             Denied::NotPermitted,
         ];
+        // `Denied::Settling` keeps the 0.7.0 wording ("Nobody is presenting.")
+        // on purpose, so it is left out of the list above.
+        assert_eq!(
+            denied(Role::Stream, &Denied::Settling, ""),
+            "Nobody is presenting."
+        );
         let refusals = [
             NotAllowed::NotHolding,
             NotAllowed::NotAsking,

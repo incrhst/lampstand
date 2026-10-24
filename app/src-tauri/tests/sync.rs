@@ -701,6 +701,8 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
+    // (See `learned_the_roles`: the laptop must know who holds Operator before
+    // it asks, or it sees the seat as free and takes it.)
     let mut sanctuary = device("Sanctuary").await;
     let mut laptop = device("Mary's laptop").await;
     let code = match sanctuary.sync.handle(TeamRequest::StartPairing).await {
@@ -719,6 +721,7 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
         status(&laptop).role == PresenterRole::Planning
             && status(&sanctuary).role == PresenterRole::Presenting
             && laptop.sync.status().paired.iter().any(|p| p.connected)
+            && learned_the_roles(&sanctuary, &laptop)
     })
     .await;
     let grace = song_id(&mut sanctuary, "Amazing Grace");
@@ -800,6 +803,18 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
 use lampstand_api::{PresenterStanding, RoleName, RoleStanding, RoleView};
 use lampstand_sync::roles::Role;
 
+/// The joining device has heard who holds Projection, Operator and Audio (the
+/// device that showed the code). Until it has, those roles look free to it and
+/// a press of "Take" or "Ask" would take one instead of asking: a short window
+/// after pairing that tests must wait out (a known limit from PR #142).
+fn learned_the_roles(main: &Device, other: &Device) -> bool {
+    let r = other.sync.node().roles_status();
+    let held = Some(main.sync.node().device());
+    r.projection.record.holder == held
+        && r.operator.record.holder == held
+        && r.audio.record.holder == held
+}
+
 /// Pairs `other` with `main` (which shows the code) and waits until both
 /// have the roles pairing leaves: the main machine holds Projection,
 /// Operator and Audio.
@@ -818,6 +833,7 @@ async fn pair_up(main: &Device, other: &Device) {
     until(Duration::from_secs(5), "the roles to settle", || {
         let held = |d: &Device| d.sync.node().roles_status().audio.record.holder;
         held(other) == Some(main.sync.node().device())
+            && learned_the_roles(main, other)
             && main.sync.node().status().connected() == 1
             && other.sync.node().status().connected() == 1
     })
@@ -1485,6 +1501,11 @@ async fn on_air_rules_follow_the_role_handed_over() {
             role: RoleName::Stream,
         },
     )
+    .await;
+    // The laptop must hear it before it asks, or Stream looks free to it.
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+    })
     .await;
     let on_air = put_on_air(&mut main);
 
