@@ -863,10 +863,31 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
     assert_eq!(office.node.ask_to_present(), Err(Denied::NobodyToAsk));
     assert_eq!(office.node.role(), Role::Planning);
 
-    until(Duration::from_secs(10), "takeover to open", || {
-        matches!(presenter_of(&office).standing, Standing::TakeOver { .. })
-    })
-    .await;
+    let began = Instant::now();
+    let mut seen: Vec<String> = Vec::new();
+    while !matches!(presenter_of(&office).standing, Standing::TakeOver { .. }) {
+        // Say what the office saw, second by second, if this ever times out.
+        let st = office.node.status();
+        let line = format!(
+            "{}s: connected {} standing {} problem {:?}",
+            began.elapsed().as_secs(),
+            st.connected(),
+            format!("{:?}", st.presenter.standing)
+                .split([' ', '{'])
+                .next()
+                .unwrap_or_default(),
+            st.paired[0].problem
+        );
+        if seen.last() != Some(&line) {
+            seen.push(line);
+        }
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "timed out waiting for takeover to open:\n{}",
+            seen.join("\n")
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
     office.node.claim_presenter().unwrap();
     assert_eq!(office.node.role(), Role::Presenter);
     assert_eq!(presenter_of(&office).lease.epoch, 2);
