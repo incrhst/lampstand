@@ -316,7 +316,11 @@ impl Seat {
         driver: Option<Named>,
         me: DeviceKey,
     ) -> bool {
-        let before = (self.granted.clone(), self.known.clone(), self.asking.clone());
+        let before = (
+            self.granted.clone(),
+            self.known.clone(),
+            self.asking.clone(),
+        );
         let mine = driver.as_ref().is_some_and(|d| d.device == me);
         if mine {
             self.granted = Some(Granted {
@@ -335,7 +339,12 @@ impl Seat {
         }
         self.known = driver;
         self.known_from = Some(from);
-        before != (self.granted.clone(), self.known.clone(), self.asking.clone())
+        before
+            != (
+                self.granted.clone(),
+                self.known.clone(),
+                self.asking.clone(),
+            )
     }
 
     /// This device stops driving, or withdraws its ask. True if it was
@@ -362,7 +371,11 @@ impl Seat {
     /// anything changed.
     pub fn lease_moved(&mut self, me: DeviceKey, holder: Option<DeviceKey>) -> bool {
         let mut changed = false;
-        if self.granted.as_ref().is_some_and(|g| Some(g.presenter) != holder) {
+        if self
+            .granted
+            .as_ref()
+            .is_some_and(|g| Some(g.presenter) != holder)
+        {
             self.granted = None;
             changed = true;
         }
@@ -445,7 +458,12 @@ mod tests {
         assert!(p.requests().is_empty());
         assert_eq!(p.active().map(|a| a.name.as_str()), Some("Mary's MacBook"));
         // Someone who was never remembered is still asked.
-        assert_eq!(ask(&mut p, SAM, "Sam's phone"), Asked::Refuse(Answer::Busy { by: "Mary's MacBook".into() }));
+        assert_eq!(
+            ask(&mut p, SAM, "Sam's phone"),
+            Asked::Refuse(Answer::Busy {
+                by: "Mary's MacBook".into()
+            })
+        );
         assert!(p.forget(key(MARY)));
         p.take_back();
         assert_eq!(ask(&mut p, MARY, "Mary's laptop"), Asked::Prompt);

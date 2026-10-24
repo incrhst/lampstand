@@ -136,7 +136,10 @@ impl Device {
                 panic!("a driver's request failed: {message}");
             }
         }
-        if self.announce.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        if self
+            .announce
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
             self.app.announce();
         }
         let batch: Vec<DocChanged> = self.changes.try_iter().collect();
@@ -147,10 +150,15 @@ impl Device {
 
     /// The cursor the last `Event::Live` this device emitted put on air.
     fn live_cursor(&self) -> Option<Cursor> {
-        self.events.lock().unwrap().iter().rev().find_map(|e| match e {
-            Event::Live { live, .. } => Some(*live),
-            _ => None,
-        })?
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Event::Live { live, .. } => Some(*live),
+                _ => None,
+            })?
     }
 
     fn address(&self) -> String {
@@ -535,7 +543,11 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
     assert!(!verse1.is_empty());
 
     // Before it drives, the laptop's commands go nowhere: it only plans.
-    assert!(laptop.sync.forward(&Request::Live(Command::Next)).await.is_none());
+    assert!(laptop
+        .sync
+        .forward(&Request::Live(Command::Next))
+        .await
+        .is_none());
     until(Duration::from_secs(5), "the laptop app to be told", || {
         laptop.pump();
         matches!(
@@ -573,10 +585,14 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
     assert_eq!(status(&laptop).role, PresenterRole::Planning);
 
     // The laptop's Present screen is told what is on air and what is loaded.
-    until(Duration::from_secs(5), "the laptop to mirror the sanctuary", || {
-        sanctuary.pump();
-        laptop.last_loaded().is_some() && laptop.live_cursor().is_some()
-    })
+    until(
+        Duration::from_secs(5),
+        "the laptop to mirror the sanctuary",
+        || {
+            sanctuary.pump();
+            laptop.last_loaded().is_some() && laptop.live_cursor().is_some()
+        },
+    )
     .await;
     assert_eq!(laptop.live_cursor(), sanctuary.live_cursor());
 
@@ -627,7 +643,11 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
         status(&laptop).drive.driving.is_none()
     })
     .await;
-    assert!(laptop.sync.forward(&Request::Live(Command::Next)).await.is_none());
+    assert!(laptop
+        .sync
+        .forward(&Request::Live(Command::Next))
+        .await
+        .is_none());
     let before = sanctuary.on_air();
     laptop.sync.forward(&Request::Live(Command::Next)).await;
     sanctuary.pump();
@@ -709,9 +729,13 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
     assert!(matches!(opened, Some(Response::Loaded(_))), "{opened:?}");
     // Then Next from the driver.
     laptop.sync.forward(&Request::Live(Command::Next)).await;
-    until(Duration::from_secs(5), "the presenter to show verse 1", || {
-        sanctuary.pump();
-        !sanctuary.on_air().is_empty()
-    })
+    until(
+        Duration::from_secs(5),
+        "the presenter to show verse 1",
+        || {
+            sanctuary.pump();
+            !sanctuary.on_air().is_empty()
+        },
+    )
     .await;
 }
