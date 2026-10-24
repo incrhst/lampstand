@@ -61,6 +61,10 @@ struct SetupState {
     browser_sources: Vec<(String, Value)>,
     /// Every request that changes something, by type and what it named.
     writes: Vec<String>,
+    /// Outputs that are running, and a scene OBS will not make.
+    virtual_cam: bool,
+    replay_buffer: bool,
+    fail_create_scene: bool,
 }
 
 impl Default for SetupState {
@@ -72,6 +76,9 @@ impl Default for SetupState {
             items: Vec::new(),
             browser_sources: Vec::new(),
             writes: Vec::new(),
+            virtual_cam: false,
+            replay_buffer: false,
+            fail_create_scene: false,
         }
     }
 }
@@ -290,6 +297,11 @@ async fn serve(
                             .collect();
                         json!({ "inputs": inputs })
                     }
+                    "GetVirtualCamStatus" => json!({ "outputActive": scenes.lock().unwrap().setup.virtual_cam }),
+                    "GetReplayBufferStatus" => {
+                        let on = scenes.lock().unwrap().setup.replay_buffer;
+                        json!({ "outputActive": on })
+                    }
                     "GetSceneCollectionList" => {
                         let sc = scenes.lock().unwrap();
                         json!({ "currentSceneCollectionName": sc.setup.current, "sceneCollections": sc.setup.collections })
@@ -308,7 +320,9 @@ async fn serve(
                         let name = d["requestData"]["sceneName"].as_str().unwrap_or_default().to_string();
                         let mut sc = scenes.lock().unwrap();
                         sc.setup.writes.push(format!("CreateScene {name}"));
-                        if MOCK_SCENES.contains(&name.as_str()) || sc.setup.scenes.contains(&name) {
+                        if sc.setup.fail_create_scene {
+                            status = json!({ "result": false, "code": 500, "comment": "boom, C:\\Users\\secret" });
+                        } else if MOCK_SCENES.contains(&name.as_str()) || sc.setup.scenes.contains(&name) {
                             status = json!({ "result": false, "code": 601, "comment": "already exists" });
                         } else {
                             sc.setup.scenes.push(name);
@@ -1115,8 +1129,11 @@ fn own_lan_address() -> Option<String> {
 /// A fake OBS for the "Lampstand" collection, reached "remotely".
 async fn remote_obs() -> Option<(MockObs, Harness)> {
     let Some(lan) = own_lan_address() else {
-        eprintln!("skipped: this computer is on no network, so there is no non-loopback address");
-        return None;
+        // Never a silent pass: without a network these tests prove nothing.
+        panic!(
+            "these tests need this computer on a network (any address that isn't loopback), \
+             because the fake OBS is reached at that address to stand in for another computer"
+        );
     };
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     let mock = MockObs::start_on(listener, None);
@@ -1264,7 +1281,7 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
     h.wait_for(|v| v.stream.as_ref().is_some_and(|s| s.active))
         .await;
     let words = text(set_up(&h, PICTURE).await);
-    assert!(words.contains("streaming or recording"), "{words}");
+    assert!(words.contains("streaming, recording"), "{words}");
     assert!(mock.writes().is_empty());
     mock.stop();
 
@@ -1277,10 +1294,7 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_remote_obs_that_is_closed_is_diagnosed_in_plain_words() {
-    let Some(lan) = own_lan_address() else {
-        eprintln!("skipped: this computer is on no network");
-        return;
-    };
+    let lan = own_lan_address().expect("this computer needs a network address for this test");
     // This computer answers but nothing listens on OBS's port.
     let free = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
     let port = free.local_addr().unwrap().port();
@@ -1341,4 +1355,90 @@ async fn a_church_with_obs_on_this_computer_sees_nothing_new() {
         view.problem,
         Some(ObsProblem::NotRunning | ObsProblem::ServerOff | ObsProblem::NotInstalled)
     ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn set_up_waits_for_the_virtual_camera_and_replay_buffer_too() {
+    let (mock, h) = remote_obs().await.unwrap();
+    h.control
+        .handle(ObsRequest::UseAddress {
+            address: Some("192.168.1.20".into()),
+        })
+        .await;
+    for which in ["virtual camera", "replay buffer"] {
+        {
+            let mut sc = mock.scenes.lock().unwrap();
+            sc.setup.virtual_cam = which == "virtual camera";
+            sc.setup.replay_buffer = which == "replay buffer";
+        }
+        let words = text(set_up(&h, PICTURE).await);
+        assert!(
+            words.contains("sending its picture out"),
+            "{which}: {words}"
+        );
+        assert!(mock.writes().is_empty(), "{which}");
+    }
+    mock.stop();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_setup_that_fails_part_way_puts_obs_back_and_keeps_obs_words_out() {
+    let (mock, h) = remote_obs().await.unwrap();
+    h.control
+        .handle(ObsRequest::UseAddress {
+            address: Some("192.168.1.20".into()),
+        })
+        .await;
+    mock.scenes.lock().unwrap().setup.fail_create_scene = true;
+    let words = text(set_up(&h, PICTURE).await);
+    assert!(words.contains("OBS is back on “Church”"), "{words}");
+    // OBS's own error text (and anything in it) never reaches the volunteer.
+    assert!(
+        !words.contains("boom") && !words.contains("secret"),
+        "{words}"
+    );
+    assert_eq!(mock.scenes.lock().unwrap().setup.current, "Church");
+    mock.scenes.lock().unwrap().setup.fail_create_scene = false;
+    mock.writes();
+
+    // Next time it works, and says OBS is now on the new collection.
+    let done = text(set_up(&h, PICTURE).await);
+    assert!(
+        done.contains("OBS is now showing the “Lampstand” collection"),
+        "{done}"
+    );
+    // Already on it: nothing to say about switching.
+    let again = text(set_up(&h, PICTURE).await);
+    assert!(again.contains("Nothing changed"), "{again}");
+    assert!(!again.contains("now showing"), "{again}");
+    mock.stop();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pin_must_be_an_address_this_computer_has() {
+    let (mock, h) = remote_obs().await.unwrap();
+    for bad in ["192.168.1.99", "999.1.1.1", "169.254.1.1", "localhost"] {
+        assert!(
+            matches!(
+                h.control
+                    .handle(ObsRequest::UseAddress {
+                        address: Some(bad.into())
+                    })
+                    .await,
+                Response::Error { .. }
+            ),
+            "{bad}"
+        );
+    }
+    assert_eq!(h.status().await.pinned_address, None);
+    // A picture address that isn't Lampstand's own never reaches OBS.
+    h.control
+        .handle(ObsRequest::UseAddress {
+            address: Some("10.0.0.7".into()),
+        })
+        .await;
+    let words = text(set_up(&h, "http://u:p@10.0.0.7:7340/obs/a?k=b").await);
+    assert!(words.contains("picture addresses"), "{words}");
+    assert!(mock.writes().is_empty());
+    mock.stop();
 }

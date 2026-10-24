@@ -470,12 +470,17 @@ pub fn diagnose(
     connection: &ObsConnection,
     local: bool,
     found: Option<&Found>,
+    refused: bool,
 ) -> Option<ObsProblem> {
     match connection {
         ObsConnection::Connecting | ObsConnection::Connected { .. } => None,
         ObsConnection::PasswordRequired => Some(ObsProblem::PasswordRequired),
         ObsConnection::WrongPassword => Some(ObsProblem::WrongPassword),
-        ObsConnection::Disconnected { reason } if !local => Some(remote_problem(reason)),
+        ObsConnection::Disconnected { .. } if !local => Some(if refused {
+            ObsProblem::RemoteNotListening
+        } else {
+            ObsProblem::Unreachable
+        }),
         ObsConnection::Disconnected { .. } => {
             let found = found?;
             Some(match (found.running, &found.launcher) {
@@ -487,23 +492,10 @@ pub fn diagnose(
     }
 }
 
-/// OBS is on another computer and isn't connected. The computer either
-/// answered and refused the connection, so nothing listens on OBS's port
-/// (`RemoteNotListening`: OBS closed there, its server off, or another
-/// port), or it never answered (`Unreachable`: wrong name or address,
-/// another network, a firewall).
-fn remote_problem(reason: &str) -> ObsProblem {
-    if reason.to_lowercase().contains("refused") {
-        ObsProblem::RemoteNotListening
-    } else {
-        ObsProblem::Unreachable
-    }
-}
-
 /// What to say when OBS is on another computer and this one has no network
 /// address to give it.
 const NO_ADDRESS: &str = "OBS is on another computer, but this computer has no network address \
-OBS can use. Connect this computer to the network, then try again.";
+OBS can use. Connect this computer to the network, or choose an address under “Use this address”.";
 
 /// The address `host` as it goes in a URL (IPv6 in brackets).
 fn url_host(host: &str) -> String {
@@ -514,23 +506,21 @@ fn url_host(host: &str) -> String {
     }
 }
 
-/// `url` as OBS should load it. With OBS on this computer it is `url`
-/// as it stands. With OBS on another computer, the host in `url` is
-/// replaced by `pinned`, if there is one, and a host that only means "this
-/// computer" (`localhost`, `127.0.0.1`, `0.0.0.0`) is refused: OBS would
-/// look for Lampstand on itself.
-pub fn address_for_obs(url: &str, pinned: Option<&str>, remote: bool) -> Result<String, String> {
-    if !remote {
-        return Ok(url.to_string());
-    }
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or_else(|| "That isn't a web address.".to_string())?;
+/// The parts of a picture's address, as Lampstand makes them
+/// (`http://host:port/obs/<id>?k=<key>`): host, port, and the rest.
+/// Anything else, including an address with a user name in it, is refused,
+/// so OBS is only ever pointed at one of Lampstand's own pictures.
+fn picture_parts(url: &str) -> Result<(&str, Option<&str>, &str), String> {
+    let bad = || "That isn't one of Lampstand's picture addresses.".to_string();
+    let rest = url.strip_prefix("http://").ok_or_else(bad)?;
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(end);
+    if authority.contains('@') {
+        return Err(bad());
+    }
     let (host, port) = match authority.strip_prefix('[') {
         Some(v6) => {
-            let (host, after) = v6.split_once(']').unwrap_or((v6, ""));
+            let (host, after) = v6.split_once(']').ok_or_else(bad)?;
             (host, after.strip_prefix(':'))
         }
         None => match authority.rsplit_once(':') {
@@ -538,6 +528,32 @@ pub fn address_for_obs(url: &str, pinned: Option<&str>, remote: bool) -> Result<
             None => (authority, None),
         },
     };
+    let id_ok = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    };
+    let shaped = tail
+        .strip_prefix("/obs/")
+        .and_then(|t| t.split_once("?k="))
+        .is_some_and(|(id, key)| id_ok(id) && id_ok(key));
+    let port_ok = port.is_none_or(|p| p.parse::<u16>().is_ok());
+    if host.is_empty() || !shaped || !port_ok {
+        return Err(bad());
+    }
+    Ok((host, port, tail))
+}
+
+/// `url` as OBS should load it. With OBS on this computer it is `url`
+/// as it stands. With OBS on another computer, the host in `url` is
+/// replaced by `pinned`, if there is one, and a host that only means "this
+/// computer" (`localhost`, `127.0.0.1`, `0.0.0.0`) is refused: OBS would
+/// look for Lampstand on itself.
+pub fn address_for_obs(url: &str, pinned: Option<&str>, remote: bool) -> Result<String, String> {
+    let (host, port, tail) = picture_parts(url)?;
+    if !remote {
+        return Ok(url.to_string());
+    }
     let host = pinned.unwrap_or(host);
     let unspecified = host
         .parse::<std::net::IpAddr>()
@@ -546,12 +562,13 @@ pub fn address_for_obs(url: &str, pinned: Option<&str>, remote: bool) -> Result<
         return Err(NO_ADDRESS.into());
     }
     let port = port.map(|p| format!(":{p}")).unwrap_or_default();
-    Ok(format!("{scheme}://{}{port}{tail}", url_host(host)))
+    Ok(format!("http://{}{port}{tail}", url_host(host)))
 }
 
-/// A pin as typed or picked: an address or name another computer can use
-/// to reach this one. Returns it tidied, or what to tell the person.
-pub fn check_pin(address: &str) -> Result<String, String> {
+/// A pin as picked: one of this computer's addresses (`here`), or a name
+/// another computer can use to reach it. Returns it tidied, or what to tell
+/// the person.
+pub fn check_pin(address: &str, here: &[String]) -> Result<String, String> {
     let address = address.trim();
     let bad = || {
         format!(
@@ -562,20 +579,39 @@ pub fn check_pin(address: &str) -> Result<String, String> {
         return Err(bad());
     }
     if let Ok(ip) = address.parse::<std::net::IpAddr>() {
-        return if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
+        // Only an address this computer has, so a typo can't send OBS to
+        // another machine; and not one that only works on the cable itself.
+        let link_local = match ip {
+            std::net::IpAddr::V4(v4) => v4.is_link_local(),
+            std::net::IpAddr::V6(v6) => (v6.segments()[0] & 0xffc0) == 0xfe80,
+        };
+        let ours = here.iter().any(|a| a.parse() == Ok(ip));
+        return if ip.is_loopback()
+            || ip.is_unspecified()
+            || ip.is_multicast()
+            || link_local
+            || !ours
+        {
             Err(bad())
         } else {
             Ok(ip.to_string())
         };
     }
-    let name_ok = address.len() <= 253
+    let labels: Vec<&str> = address.split('.').collect();
+    let label_ok = |l: &&str| {
+        !l.is_empty()
+            && l.len() <= 63
+            && !l.starts_with('-')
+            && !l.ends_with('-')
+            && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    // A name has a letter in it: "999.1.1.1" is a mistyped address, not a name.
+    let looks_like_address = labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit()));
+    if address.len() <= 253
+        && labels.iter().all(label_ok)
+        && !looks_like_address
         && !is_local(address)
-        && !address.starts_with(['.', '-'])
-        && !address.ends_with(['.', '-'])
-        && address
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
-    if name_ok {
+    {
         Ok(address.to_ascii_lowercase())
     } else {
         Err(bad())
@@ -592,7 +628,7 @@ fn connection(status: &ObsStatus) -> ObsConnection {
             obs_version: obs_version.clone(),
             websocket_version: websocket_version.clone(),
         },
-        ObsStatus::Disconnected { reason } => ObsConnection::Disconnected {
+        ObsStatus::Disconnected { reason, .. } => ObsConnection::Disconnected {
             reason: reason.clone(),
         },
         ObsStatus::PasswordRequired => ObsConnection::PasswordRequired,
@@ -934,18 +970,45 @@ impl ObsControl {
 
     /// Pins the address (checked first) or goes back to Lampstand's pick.
     async fn use_address(&self, address: Option<String>) -> Result<(), String> {
-        let address = address.map(|a| check_pin(&a)).transpose()?;
+        self.refresh_found().await;
+        let here = lock(&self.addresses).clone();
+        let address = address.map(|a| check_pin(&a, &here)).transpose()?;
         lock(&self.settings)
             .pin(address)
             .map_err(|e| format!("Could not save the address: {e}"))?;
-        self.refresh_found().await;
         Ok(())
     }
 
+    /// Whether OBS has an output running that setup would disturb by
+    /// switching collections: streaming, recording, the virtual camera or
+    /// the replay buffer. Asks OBS, not what was last heard.
+    async fn on_air(&self) -> bool {
+        if self.busy() {
+            return true;
+        }
+        let virtual_cam = self.obs.virtual_cam_active().await.unwrap_or(false);
+        virtual_cam || self.obs.replay_buffer_active().await
+    }
+
+    /// Waits for OBS to finish loading `collection` (it answers the switch
+    /// before the scenes are there), up to a few seconds.
+    async fn collection_loaded(&self, collection: &str) -> bool {
+        for _ in 0..50 {
+            if let Ok((current, _)) = self.obs.scene_collections().await {
+                if current == collection && self.obs.scene_list().await.is_ok() {
+                    return true;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        false
+    }
+
     /// "Set up OBS" (#133): the "Lampstand" scene collection, its starter
-    /// scenes and the browser source. Touches only those: a collection,
-    /// scenes and an input of these names, and nothing else in OBS. Run
-    /// again, it adds what is missing and updates the source's address.
+    /// scenes and the browser source. Adds only what is missing, to that
+    /// collection and with those names, and leaves every other collection
+    /// alone. If it has to switch OBS to the collection and then fails, it
+    /// switches back.
     async fn set_up(&self, url: &str, width: u32, height: u32) -> Result<String, String> {
         let (host, pinned) = {
             let store = lock(&self.settings);
@@ -959,42 +1022,91 @@ impl ObsControl {
                 "Lampstand isn't connected to OBS yet. Save and test the connection first.".into(),
             );
         }
-        if self.busy() {
-            return Err("OBS is streaming or recording right now. Set it up after the service, so nothing changes on air.".into());
+        const ON_AIR: &str = "OBS is streaming, recording or sending its picture out right now. Set it up after the service, so nothing changes on air.";
+        if self.on_air().await {
+            return Err(ON_AIR.into());
         }
-        let failed = |e: ObsError| format!("OBS didn't set up: {e}");
         let obs = &self.obs;
         let mut changes: Vec<String> = Vec::new();
 
-        let (current, collections) = obs.scene_collections().await.map_err(failed)?;
+        let (current, collections) = obs.scene_collections().await.map_err(|e| failed(&e))?;
+        let mut switched = false;
         if current != SETUP_COLLECTION {
+            // Switching changes what OBS shows: look again just before.
+            if self.on_air().await {
+                return Err(ON_AIR.into());
+            }
             if collections.iter().any(|c| c == SETUP_COLLECTION) {
                 obs.set_scene_collection(SETUP_COLLECTION)
                     .await
-                    .map_err(failed)?;
+                    .map_err(|e| failed(&e))?;
             } else {
                 obs.create_scene_collection(SETUP_COLLECTION)
                     .await
-                    .map_err(failed)?;
+                    .map_err(|e| failed(&e))?;
                 changes.push(format!("made the “{SETUP_COLLECTION}” collection"));
             }
+            switched = true;
+        }
+        if let Err(message) = self
+            .fill_collection(&url, width, height, &mut changes)
+            .await
+        {
+            if switched {
+                // Put OBS back where it was; if even that fails, say so.
+                let back = obs.set_scene_collection(&current).await.is_ok();
+                return Err(if back {
+                    format!("{message} OBS is back on “{current}”.")
+                } else {
+                    format!("{message} OBS is still on the “{SETUP_COLLECTION}” collection; switch back to “{current}” in OBS.")
+                });
+            }
+            return Err(message);
         }
 
-        let have = obs.scene_list().await.map_err(failed)?.scenes;
+        self.refresh_scenes().await;
+        self.publish();
+        let on = if switched {
+            format!(" OBS is now showing the “{SETUP_COLLECTION}” collection.")
+        } else {
+            String::new()
+        };
+        Ok(if changes.is_empty() {
+            format!("OBS was already set up. Nothing changed.{on}")
+        } else {
+            format!("OBS is set up: {}.{on}", changes.join("; "))
+        })
+    }
+
+    /// The scenes and the picture in the collection OBS is on now.
+    async fn fill_collection(
+        &self,
+        url: &str,
+        width: u32,
+        height: u32,
+        changes: &mut Vec<String>,
+    ) -> Result<(), String> {
+        let obs = &self.obs;
+        if !self.collection_loaded(SETUP_COLLECTION).await {
+            return Err(
+                "OBS is slow to open the “Lampstand” collection. Try again in a moment.".into(),
+            );
+        }
+        let have = obs.scene_list().await.map_err(|e| failed(&e))?.scenes;
         let missing: Vec<&str> = SETUP_SCENES
             .iter()
             .copied()
             .filter(|scene| !have.iter().any(|h| h == scene))
             .collect();
         for scene in &missing {
-            obs.create_scene(scene).await.map_err(failed)?;
+            obs.create_scene(scene).await.map_err(|e| failed(&e))?;
         }
         if !missing.is_empty() {
             changes.push(format!("added the scenes {}", missing.join(", ")));
         }
 
         // Only a browser source of our own name is ours to change.
-        let inputs = obs.inputs().await.map_err(failed)?;
+        let inputs = obs.inputs().await.map_err(|e| failed(&e))?;
         if inputs
             .iter()
             .any(|i| i.name == SETUP_SOURCE && i.kind != "browser_source")
@@ -1005,11 +1117,11 @@ impl ObsControl {
         }
         let mut exists = inputs.iter().any(|i| i.name == SETUP_SOURCE);
         for scene in SETUP_SCENES {
-            let sources = obs.scene_sources(scene).await.map_err(failed)?;
+            let sources = obs.scene_sources(scene).await.map_err(|e| failed(&e))?;
             if !sources.iter().any(|s| s == SETUP_SOURCE) {
-                obs.add_browser_source(scene, SETUP_SOURCE, &url, width, height)
+                obs.add_browser_source(scene, SETUP_SOURCE, url, width, height)
                     .await
-                    .map_err(failed)?;
+                    .map_err(|e| failed(&e))?;
                 if exists {
                     changes.push(format!("put the picture in the “{scene}” scene"));
                 } else {
@@ -1021,24 +1133,14 @@ impl ObsControl {
         let now = obs
             .browser_source_settings(SETUP_SOURCE)
             .await
-            .map_err(failed)?;
-        if now != (url.clone(), width, height) {
-            obs.update_browser_source(SETUP_SOURCE, &url, width, height)
+            .map_err(|e| failed(&e))?;
+        if now != (url.to_string(), width, height) {
+            obs.update_browser_source(SETUP_SOURCE, url, width, height)
                 .await
-                .map_err(failed)?;
+                .map_err(|e| failed(&e))?;
             changes.push("pointed the picture at this computer's address".into());
         }
-
-        self.refresh_scenes().await;
-        self.publish();
-        Ok(if changes.is_empty() {
-            "OBS was already set up. Nothing changed.".to_string()
-        } else {
-            format!(
-                "OBS is set up: {}. In OBS, switch to the “{SETUP_COLLECTION}” collection if it isn't showing.",
-                changes.join("; ")
-            )
-        })
+        Ok(())
     }
 
     async fn launch(&self) -> Result<(), String> {
@@ -1079,7 +1181,10 @@ impl ObsControl {
         let addresses = if local {
             Vec::new()
         } else {
-            self.probe.addresses()
+            let probe = self.probe.clone();
+            tokio::task::spawn_blocking(move || probe.addresses())
+                .await
+                .unwrap_or_default()
         };
         *lock(&self.addresses) = addresses;
     }
@@ -1208,7 +1313,16 @@ impl ObsControl {
         };
         let connection = connection(&self.shown_status());
         let found = lock(&self.found).clone();
-        let problem = diagnose(&connection, is_local(&settings.host), found.as_ref());
+        let refused = matches!(
+            self.shown_status(),
+            ObsStatus::Disconnected { refused: true, .. }
+        );
+        let problem = diagnose(
+            &connection,
+            is_local(&settings.host),
+            found.as_ref(),
+            refused,
+        );
         let connected = matches!(connection, ObsConnection::Connected { .. });
         let (stream, record) = if connected {
             lock(&self.outputs).clone()
@@ -1363,6 +1477,12 @@ async fn watch_obs(
         }
         c.publish();
     }
+}
+
+/// What the volunteer reads when OBS refuses a step of the setup: OBS's own
+/// words are for the logs of OBS, not for them.
+fn failed(_: &ObsError) -> String {
+    "OBS didn't accept the setup. Check that OBS is still open, then try again.".to_string()
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -1568,32 +1688,6 @@ mod tests {
                 Some(ObsProblem::NotInstalled),
             ),
             (down.clone(), true, None, None),
-            // OBS on another computer: it answers but nothing listens, or
-            // it never answers at all.
-            (
-                ObsConnection::Disconnected {
-                    reason: "nothing is listening on 192.168.1.30:4455 (Connection refused (os error 61)); is OBS running with its WebSocket server on?".into(),
-                },
-                false,
-                None,
-                Some(ObsProblem::RemoteNotListening),
-            ),
-            (
-                ObsConnection::Disconnected {
-                    reason: "nothing is listening on 192.168.1.30:4455 (No connection could be made because the target machine actively refused it. (os error 10061))".into(),
-                },
-                false,
-                None,
-                Some(ObsProblem::RemoteNotListening),
-            ),
-            (
-                ObsConnection::Disconnected {
-                    reason: "nothing is listening on 192.168.1.30:4455 (Network is unreachable (os error 51))".into(),
-                },
-                false,
-                None,
-                Some(ObsProblem::Unreachable),
-            ),
             (down.clone(), false, None, Some(ObsProblem::Unreachable)),
             (
                 ObsConnection::Disconnected {
@@ -1633,11 +1727,29 @@ mod tests {
         ];
         for (connection, local, found, want) in cases {
             assert_eq!(
-                diagnose(&connection, local, found.as_ref()),
+                diagnose(&connection, local, found.as_ref(), false),
                 want,
                 "{connection:?} local={local} {found:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_remote_obs_that_refuses_is_told_from_one_that_never_answers() {
+        let down = ObsConnection::Disconnected {
+            reason: "whatever the words are".into(),
+        };
+        // Told by the kind of error the connection met, not by its words.
+        assert_eq!(
+            diagnose(&down, false, None, true),
+            Some(ObsProblem::RemoteNotListening)
+        );
+        assert_eq!(
+            diagnose(&down, false, None, false),
+            Some(ObsProblem::Unreachable)
+        );
+        // OBS on this computer is diagnosed by looking at the computer.
+        assert_eq!(diagnose(&down, true, None, true), None);
     }
 
     #[test]
@@ -1647,11 +1759,11 @@ mod tests {
         for local in ["localhost", "127.0.0.1"] {
             assert_eq!(
                 address_for_obs(
-                    &format!("http://{local}:7340/o?k=1"),
+                    &format!("http://{local}:7340/obs/o1?k=1"),
                     Some("10.0.0.9"),
                     false
                 ),
-                Ok(format!("http://{local}:7340/o?k=1"))
+                Ok(format!("http://{local}:7340/obs/o1?k=1"))
             );
         }
         // OBS elsewhere: the address Lampstand picked, or the pinned one.
@@ -1681,15 +1793,23 @@ mod tests {
         }
         // A pin wins over the address in the URL, even a localhost one.
         assert_eq!(
-            address_for_obs("http://127.0.0.1:7340/o?k=1", Some("10.0.0.9"), true),
-            Ok("http://10.0.0.9:7340/o?k=1".to_string())
+            address_for_obs("http://127.0.0.1:7340/obs/o1?k=1", Some("10.0.0.9"), true),
+            Ok("http://10.0.0.9:7340/obs/o1?k=1".to_string())
         );
     }
 
     #[test]
     fn a_pin_must_be_an_address_another_computer_can_use() {
-        assert_eq!(check_pin(" 192.168.1.20 "), Ok("192.168.1.20".into()));
-        assert_eq!(check_pin("Projector.Local"), Ok("projector.local".into()));
+        let here = vec!["192.168.1.20".to_string(), "fd00::9".to_string()];
+        assert_eq!(
+            check_pin(" 192.168.1.20 ", &here),
+            Ok("192.168.1.20".into())
+        );
+        assert_eq!(check_pin("fd00::9", &here), Ok("fd00::9".into()));
+        assert_eq!(
+            check_pin("Projector.Local", &here),
+            Ok("projector.local".into())
+        );
         for bad in [
             "",
             "localhost",
@@ -1700,8 +1820,40 @@ mod tests {
             "http://x",
             "x:7340",
             "-x",
+            // Not an address this computer has.
+            "192.168.1.99",
+            // Look-alikes of an address.
+            "999.1.1.1",
+            "192.168.1",
+            "1.2.3.4.5",
+            // Only works on the cable itself.
+            "169.254.3.4",
+            "fe80::1",
         ] {
-            assert!(check_pin(bad).is_err(), "{bad:?} should be refused");
+            assert!(check_pin(bad, &here).is_err(), "{bad:?} should be refused");
+        }
+        // Link-local is refused even when this computer has it.
+        assert!(check_pin("169.254.3.4", &["169.254.3.4".into()]).is_err());
+    }
+
+    #[test]
+    fn only_lampstands_own_picture_addresses_go_to_obs() {
+        for bad in [
+            "http://user:pw@192.168.1.20:7340/obs/a1?k=b2",
+            "http://192.168.1.20@evil.example/obs/a1?k=b2",
+            "https://192.168.1.20:7340/obs/a1?k=b2",
+            "http://192.168.1.20:7340/other",
+            "http://192.168.1.20:7340/obs/a1",
+            "http://192.168.1.20:99999/obs/a1?k=b2",
+            "javascript:alert(1)",
+            "",
+        ] {
+            for remote in [true, false] {
+                assert!(
+                    address_for_obs(bad, Some("10.0.0.9"), remote).is_err(),
+                    "{bad:?} remote={remote}"
+                );
+            }
         }
     }
 

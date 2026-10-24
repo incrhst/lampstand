@@ -370,10 +370,12 @@ async fn nothing_listening_is_disconnected_not_waiting() {
         matches!(s, ObsStatus::Disconnected { .. })
     })
     .await;
-    let ObsStatus::Disconnected { reason } = status else {
+    let ObsStatus::Disconnected { reason, refused } = status else {
         unreachable!()
     };
     assert!(reason.contains("is OBS running"), "{reason}");
+    // The kind of error says so, whatever the words.
+    assert!(refused, "a closed port is a refused connection");
     assert_eq!(obs.start_stream().await, Err(ObsError::NotConnected));
 }
 

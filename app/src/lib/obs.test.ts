@@ -80,7 +80,7 @@ test("each problem says what to do", () => {
     ["PasswordRequired", "setup", /password/],
     ["WrongPassword", "setup", /refused/],
     ["Unreachable", "setup", /Lampstand can't reach OBS on localhost\. Check that OBS is open there, that its WebSocket server is on \(Tools > WebSocket Server Settings\), and that both computers are on the same network\./],
-    ["RemoteNotListening", "setup", /localhost is on the network, but OBS isn't answering on port 4455/],
+    ["RemoteNotListening", "setup", /localhost is on the network, but OBS isn't answering there\. Check that OBS is open/],
   ] as const;
   for (const [problem, action, message] of cases) {
     const n = notice(view({ connection: down, problem }));

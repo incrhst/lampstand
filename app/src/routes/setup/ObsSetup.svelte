@@ -194,7 +194,7 @@
       {#if live.obs?.remote}
         <Panel
           title="OBS is on another computer"
-          description="OBS loads Lampstand's picture over your network, so it needs this computer's network address, never “localhost”."
+          description="OBS loads Lampstand's picture over your network, so it needs this computer's network address."
         >
           <div class="remote">
             <label class="address">
@@ -216,15 +216,15 @@
               {/if}
             </p>
             <div class="buttons">
-              <Button variant="primary" onclick={setUpObs} disabled={settingUp || blocked !== null}>
+              <Button variant="primary" onclick={setUpObs} disabled={settingUp || blocked !== null} describedby="setup-why">
                 {settingUp ? "Setting up…" : "Set up OBS"}
               </Button>
             </div>
-            {#if blocked}<p class="muted small">Set up OBS is greyed out: {blocked}</p>{/if}
+            <p id="setup-why" class="muted small">{blocked ? `Set up OBS is greyed out: ${blocked}` : ""}</p>
             <p class="muted small">
-              Makes a “Lampstand” collection in OBS with the scenes Slides, Worship and Pastor and slides, each showing Lampstand's picture. Run it again after you change the address or press New key. It never changes your own scenes.
+              Switches OBS to a collection called “Lampstand” (making it if it isn't there) and adds the scenes Slides, Worship and Pastor and slides to it, each showing Lampstand's picture. If the collection already has scenes with those names, the picture is added to them. Nothing in your other collections changes. Run it again after you change the address or press New key.
             </p>
-            {#if setupResult}<p class="result" role="status">{setupResult}</p>{/if}
+            <p class="result" role="status">{setupResult ?? ""}</p>
           </div>
         </Panel>
       {/if}

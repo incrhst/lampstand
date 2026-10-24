@@ -113,7 +113,7 @@ export function notice(view: ObsView | null): ObsNotice | null {
       };
     case "RemoteNotListening":
       return {
-        message: `${view.host} is on the network, but OBS isn't answering on port ${view.port}. Check that OBS is open there, that its WebSocket server is on (Tools > WebSocket Server Settings), and that the port matches.`,
+        message: `${view.host} is on the network, but OBS isn't answering there. Check that OBS is open, that its WebSocket server is on (Tools > WebSocket Server Settings), and that the port number here matches the one in OBS.`,
         action: "setup",
         steps: [],
       };

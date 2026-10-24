@@ -14,6 +14,7 @@
     title,
     label,
     shortcut,
+    describedby,
   }: {
     onclick: () => void;
     children?: Snippet;
@@ -28,6 +29,8 @@
     label?: string;
     /** Shown after the label, e.g. "Space". */
     shortcut?: string;
+    /** The id of text that explains the button, e.g. why it is greyed out. */
+    describedby?: string;
   } = $props();
 </script>
 
@@ -38,6 +41,7 @@
   {onclick}
   {disabled}
   {title}
+  aria-describedby={describedby}
   aria-label={label}
   aria-pressed={pressed}
 >
