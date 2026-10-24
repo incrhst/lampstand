@@ -201,3 +201,126 @@ export function operatorTakenBack(team: TeamStatus | null | undefined): boolean 
 export function noticeRoles(team: TeamStatus | null | undefined): RoleView[] {
   return rolesOf(team).filter((r) => r.replaced_by && !(r.role === "Operator" && operatorTakenBack(team)));
 }
+
+// ---- The roster: the status bar and Setup > Devices -----------------------
+
+/** "the screens", "the screens and the service", "the screens, the service and the sound". */
+function joinJobs(roles: RoleName[]): string {
+  const jobs = roles.map(job);
+  if (jobs.length <= 1) return jobs.join("");
+  return `${jobs.slice(0, -1).join(", ")} and ${jobs[jobs.length - 1]}`;
+}
+
+/**
+ * A device's part, in the spec's verbs: "Runs the screens and the service".
+ * A device that runs nothing is just "Planning" (docs/roles.md, "Roster").
+ */
+export function runsLine(roles: RoleName[]): string {
+  return roles.length === 0 ? "Planning" : `Runs ${joinJobs(roles)}`;
+}
+
+/** The roles this device holds, in order. */
+export function heldRoles(team: TeamStatus | null | undefined): RoleName[] {
+  return rolesOf(team)
+    .filter((r) => r.holds)
+    .map((r) => r.role);
+}
+
+/** The roles a paired device holds, as this device knows them, by its key. */
+export function rolesHeldBy(team: TeamStatus | null | undefined, device: string): RoleName[] {
+  return rolesOf(team)
+    .filter((r) => !r.holds && r.holder === device)
+    .map((r) => r.role);
+}
+
+/** This device, "Runs the screens and the service" or "Planning". */
+export function ownRunsLine(team: TeamStatus | null | undefined): string {
+  return runsLine(heldRoles(team));
+}
+
+/** Setup › Devices: a paired device, "Runs the stream" or "Planning". */
+export function deviceRunsLine(team: TeamStatus | null | undefined, device: string): string {
+  return runsLine(rolesHeldBy(team, device));
+}
+
+/** The other devices that hold roles, one entry each: "Mary's laptop runs the stream". */
+export function othersRun(team: TeamStatus | null | undefined): string[] {
+  const byDevice = new Map<string, { name: string; roles: RoleName[] }>();
+  for (const r of rolesOf(team)) {
+    if (r.holds || !r.holder) continue;
+    const entry = byDevice.get(r.holder) ?? { name: r.holder_name || "Another device", roles: [] };
+    entry.roles.push(r.role);
+    byDevice.set(r.holder, entry);
+  }
+  return [...byDevice.values()].map((e) => `${e.name} runs ${joinJobs(e.roles)}`);
+}
+
+/**
+ * The status bar's sync pill with the roster in front of it: "Runs the
+ * screens and the service · Mary's laptop runs the stream · Synced with 1
+ * device". A device with nothing paired holds all four roles and says
+ * nothing about them (a church with one machine sees what it always saw,
+ * minus the old "Presenting"); sync trouble keeps the pill's tone.
+ */
+export function withRoster<P extends { text: string; title: string }>(pill: P, team: TeamStatus | null | undefined): P {
+  if (!team || team.paired.length === 0 || rolesOf(team).length === 0) return pill;
+  const parts = [ownRunsLine(team), ...othersRun(team)];
+  return { ...pill, text: `${parts.join(" · ")} · ${pill.text}`, title: `${pill.title}. ${parts.join(". ")}` };
+}
+
+/**
+ * The owner-approved line for when the device that runs the stream is
+ * offline and a scene change is waiting. Nothing otherwise, and nothing on
+ * the device that runs the stream itself.
+ */
+export function streamOfflineLine(team: TeamStatus | null | undefined): string | null {
+  if (!team?.scene_cue_waiting) return null;
+  const s = roleOf(team, "Stream");
+  if (!s || s.holds || !s.holder) return null;
+  if (s.standing !== "Wait" && s.standing !== "TakeOver") return null;
+  return `${s.holder_name || "Another device"} runs the stream and is offline. OBS will catch up when it is back.`;
+}
+
+/** Setup › Devices: the takeover time control. */
+export const TAKEOVER_LABEL = "Take over without asking after";
+export const TAKEOVER_HELP =
+  "If the device that runs a job has been offline this long, another device can take the job without asking. Never while it is connected. Set on each device.";
+export function takeoverOption(seconds: number): string {
+  return `${howLong(seconds)} offline`;
+}
+
+/** Present, on a device that cannot take a service live. */
+export function cannotGoLive(holderName: string): string {
+  const who = holderName ? `${holderName} runs the screens` : "Nobody runs the screens";
+  return `This device does not run the screens. ${who}. To take a service live here, run the screens from here, or run the service from the bar above.`;
+}
+
+/** Setup > Screens: why a screen turned on here stays dark. */
+export const SCREENS_DARK =
+  "This device does not run the screens, so its screens stay dark. They open by themselves when this device runs the screens.";
+
+/** Said once on the device that had the Operator seat when the screens' device took it back. */
+export function operatorTakenBackNotice(by: string): string {
+  return `${by} took back running the service. This device no longer runs the service.`;
+}
+
+/** The bar on the screens' device while another device runs the service. */
+export function runsServiceBar(by: string): string {
+  return `${by} runs the service. Your keyboard and clicker still work.`;
+}
+
+/** The bar on a device that runs the service while another runs the screens. */
+export function serviceFromHereBar(screensName: string, online: boolean): string {
+  const who = screensName || "Another device";
+  return online
+    ? `${who} runs the screens. This device runs the service.`
+    : `${who} runs the screens and is not connected. The service controls wait until it is back.`;
+}
+
+/** The bar on a device that could run the service from here. */
+export function screensBar(holderName: string): string {
+  return `${holderName || "Another device"} runs the screens.`;
+}
+
+export const HAND_BACK = "Hand the service back";
+export const RUNS_SCREENS_NOW = "This device runs the screens now.";

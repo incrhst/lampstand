@@ -830,6 +830,8 @@ fn view(status: &NodeStatus, port: u16, now_ms: i64) -> TeamStatus {
             .collect(),
         presenter: presenter_view(&status.presenter),
         roles: roles_view(&status.roles),
+        // #150 (stream owns OBS) sets this from `SyncNode::scene_cue_waiting()`.
+        scene_cue_waiting: false,
         sync: summarize(status, now_ms),
     }
 }

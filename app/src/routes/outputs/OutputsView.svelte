@@ -16,7 +16,8 @@
   import CalibrateView from "./CalibrateView.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
-  import { isPlanning, PLANNING_SCREENS } from "../../lib/presenting";
+  import { isPlanning } from "../../lib/presenting";
+  import { SCREENS_DARK } from "../../lib/roles";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
   let { onobs, onidle }: { onobs?: () => void; onidle?: () => void } = $props();
@@ -146,7 +147,7 @@
     {#if isPlanning(live.team)}
       <div class="saved">
         <Banner tone="warn" icon="monitor">
-          <span>{PLANNING_SCREENS}</span>
+          <span>{SCREENS_DARK}</span>
           <PresentAction />
         </Banner>
       </div>

@@ -39,6 +39,7 @@
   import MoreMenu from "./MoreMenu.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
+  import { cannotGoLive } from "../../lib/roles";
   import { driverOffline, isDriving } from "../../lib/driving";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
@@ -508,7 +509,7 @@
       {#if planningOnly}
         <div class="pick-foot gate">
           <Banner tone="neutral" icon="monitor">
-            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter, or drive it from the bar above.</span>
+            <span>{cannotGoLive(live.team?.presenter.holder_name ?? "")}</span>
             <PresentAction />
           </Banner>
         </div>

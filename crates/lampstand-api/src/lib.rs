@@ -880,6 +880,12 @@ pub struct TeamStatus {
     /// The four roles in order (Projection, Operator, Stream, Audio): who
     /// holds each, how this device could take it, and any prompt or notice.
     pub roles: Vec<RoleView>,
+    /// A scene change is waiting for the device that runs the stream, which
+    /// is offline (docs/roles.md, "Where OBS lives"). Drives the status bar
+    /// line "{Name} runs the stream and is offline. OBS will catch up when it
+    /// is back." Always false until the OBS cue work (#132, PR #150) sets it
+    /// from `SyncNode::scene_cue_waiting()`.
+    pub scene_cue_waiting: bool,
     pub sync: SyncSummary,
 }
 
