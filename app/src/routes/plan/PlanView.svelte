@@ -2,6 +2,7 @@
      order in the middle, the song, scripture, deck and media library on the right.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
@@ -16,12 +17,10 @@
     type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
-  import Banner from "../../lib/kit/Banner.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
   import MediaThumb from "../../lib/kit/MediaThumb.svelte";
@@ -29,6 +28,8 @@
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
   import SongOrder from "./SongOrder.svelte";
+  import TextEditor from "./TextEditor.svelte";
+  import { splitText, textTitle } from "../../lib/textSlides";
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
@@ -41,6 +42,8 @@
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
+  /** The service the New service form copies its items from, or "" for an empty one. */
+  let copyFrom = $state("");
   /** A date and time as the inputs hold them, in an IANA zone. */
   type When = { date: string; time: string; zone: string };
   /** The coming Sunday at 10:00 in `zone`, as the inputs hold it. */
@@ -146,21 +149,34 @@
     creating = !creating;
     // Each new service starts on the coming Sunday unless the planner
     // picks another day.
+    copyFrom = "";
     if (creating) newWhen = defaultWhen();
   }
 
+  /** Picking a service to start from titles the copy after it. */
+  function pickCopy() {
+    const source = services.find((s) => s.id === copyFrom);
+    newTitle = source ? `${source.title} (copy)` : "Sunday service";
+  }
+
+  /** Offers the New service form with `id` as its starting point. */
+  function startFrom(id: string) {
+    const source = services.find((s) => s.id === id);
+    creating = true;
+    newWhen = defaultWhen();
+    copyFrom = id;
+    if (source) newTitle = `${source.title} (copy)`;
+  }
+
   async function create() {
+    const title = newTitle.trim() || "Service";
     try {
       selected = await request(
         {
           area: "Service",
-          request: {
-            Create: {
-              title: newTitle.trim() || "Service",
-              starts_at: at(newWhen),
-              time_zone: newWhen.zone,
-            },
-          },
+          request: copyFrom
+            ? { Duplicate: { service: copyFrom, title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+            : { Create: { title, starts_at: at(newWhen), time_zone: newWhen.zone } },
         },
         "Service",
       );
@@ -272,6 +288,7 @@
   /** Inserts an item at `index`, or at the end of the selected service. */
   async function addItem(kind: ItemKind, index?: number): Promise<boolean> {
     if (!selected) return false;
+    const before = new Set(Object.keys(selected.items));
     try {
       selected = await request(
         {
@@ -286,10 +303,30 @@
         },
         "Service",
       );
+      // A new text slide has nothing yet: open it to be typed into.
+      if ("Text" in kind) openCard = Object.keys(selected.items).find((id) => !before.has(id)) ?? openCard;
       return true;
     } catch (e) {
       report(e);
       return false;
+    }
+  }
+
+  /** A new, empty text slide at the end of the service. */
+  function addText() {
+    return addItem({ Text: { title: "", body: "", attribution: null } });
+  }
+
+  /** Rewrites a text slide item. */
+  async function setText(item: string, title: string, body: string, attribution: string | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetItemText: { service: selected.id, item, title, body, attribution } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
     }
   }
 
@@ -490,6 +527,7 @@
     if ("Deck" in k) return deckById[k.Deck.deck]?.title ?? "Presentation";
     if ("Media" in k) return k.Media.name;
     if ("Countdown" in k) return k.Countdown.label;
+    if ("Text" in k) return textTitle(k.Text.title, k.Text.body);
     return "Announcements";
   }
 
@@ -507,6 +545,10 @@
     if ("Deck" in k) {
       const deck = deckById[k.Deck.deck];
       return deck ? `${label} · ${deckSourceLabel(deck.source)}` : label;
+    }
+    if ("Text" in k) {
+      const n = splitText(k.Text.body).length;
+      return `${label} · ${n === 1 ? "1 slide" : `${n} slides`}`;
     }
     if ("Media" in k) return `${mediaKind(k.Media.name)}${k.Media.looped ? " · loops" : ""}`;
     return label;
@@ -771,6 +813,14 @@
           <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
         </div>
         {@render zonePicker(newWhen)}
+        {#if services.length > 0}
+          <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
+            <option value="">Start empty</option>
+            {#each services as s (s.id)}
+              <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
+            {/each}
+          </select>
+        {/if}
         <Button variant="primary" size="small" onclick={create}>Create</Button>
       </form>
     {/if}
@@ -798,6 +848,7 @@
               {#if selected?.id === s.id}
                 <span class="row-actions">
                   <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
+                  <Button variant="ghost" size="small" title="Start a new service from this one" onclick={() => startFrom(s.id)}>Duplicate</Button>
                   {#if live.loaded?.service === s.id}
                     <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => takeOffAir(s.id)}>Close</Button>
                   {/if}
@@ -858,18 +909,9 @@
           </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
-          <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
+          <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
-
-      {#if items.length > 0}
-        <div class="banner">
-          <Banner>
-            <span>Nothing has checked that every item is on this device yet.</span>
-            <Placeholder ticket="T36">Readiness</Placeholder>
-          </Banner>
-        </div>
-      {/if}
 
       <div class="order-body" bind:this={orderBody}>
         {#if items.length === 0}
@@ -997,6 +1039,18 @@
                             />
                           </div>
                         {/if}
+                        {#if "Text" in item.kind}
+                          {@const text = item.kind.Text}
+                          <div class="option">
+                            <TextEditor
+                              title={text.title}
+                              body={text.body}
+                              attribution={text.attribution}
+                              label={itemTitle(item)}
+                              onsave={(t, b, a) => setText(id, t, b, a)}
+                            />
+                          </div>
+                        {/if}
                         <div class="option row-options">
                           <LoopPicker
                             value={item.loop_seconds}
@@ -1025,7 +1079,10 @@
             {#if naming === items.length}
               {@render namingRow(items.length)}
             {:else if !dragging}
-              <li class="slot"><button type="button" class="slot-add" aria-label="Add a header at the end" onclick={() => openNaming(items.length)}>+ Header here</button></li>
+              <li class="slot">
+                <button type="button" class="slot-add" aria-label="Add a header at the end" onclick={() => openNaming(items.length)}>+ Header here</button>
+                <button type="button" class="slot-add" onclick={addText}>+ Text slide</button>
+              </li>
             {/if}
             {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true">{#if dragHint}<span class="drop-hint">{dragHint}</span>{/if}</li>{/if}
           </ol>
@@ -1174,10 +1231,12 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
-  }
-  .banner {
-    padding: 0 2rem;
+    /* Wrap inside the pane rather than run on under the Library. */
+    max-width: 100%;
+    min-width: 0;
   }
   .order-body {
     flex: 1;

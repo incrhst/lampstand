@@ -78,7 +78,10 @@
     width: 1.75rem;
   }
   button:disabled {
-    opacity: 0.45;
+    opacity: 0.6;
+    /* Grey as well as faint, so a button that cannot be used (a planning
+       device's Open for live, say) does not still look gold. */
+    filter: saturate(0);
     cursor: not-allowed;
   }
   .primary {

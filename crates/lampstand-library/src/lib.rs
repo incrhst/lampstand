@@ -17,6 +17,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use lampstand_core::brand::Brand;
+use lampstand_core::church::{ChurchSettings, CHURCH_SETTINGS_ID};
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::geom::{Color, Rect};
 use lampstand_core::id::BlobHash;
@@ -220,6 +221,37 @@ impl Library {
             .or_else(|| self.theme(starter_theme_id()).ok().flatten())
             .or_else(|| self.themes().ok()?.into_iter().next())
             .unwrap_or_else(starter_theme)
+    }
+
+    /// The church's settings (look, default theme, idle screen) that sync
+    /// to its other devices; all unset before anything is saved.
+    pub fn church_settings(&self) -> Result<ChurchSettings, SyncError> {
+        Ok(self
+            .repo
+            .get::<ChurchSettings>(CHURCH_SETTINGS_ID)?
+            .unwrap_or_default())
+    }
+
+    /// Saves the church's settings. Only the fields that changed become
+    /// edits, so another device's edit to a different field is kept.
+    pub fn put_church_settings(&self, settings: &ChurchSettings) -> Result<(), SyncError> {
+        self.repo.put(settings)
+    }
+
+    /// Takes a deleted theme out of the church settings that name it, so
+    /// the default falls back to the Starter theme on every device.
+    pub fn forget_theme_in_church_settings(&self, id: ThemeId) -> Result<(), SyncError> {
+        let mut settings = self.church_settings()?;
+        if settings.default_theme == Some(id) || settings.brand_theme == Some(id) {
+            if settings.default_theme == Some(id) {
+                settings.default_theme = None;
+            }
+            if settings.brand_theme == Some(id) {
+                settings.brand_theme = None;
+            }
+            self.put_church_settings(&settings)?;
+        }
+        Ok(())
     }
 
     pub fn deck(&self, id: DeckId) -> Result<Option<Deck>, SyncError> {
@@ -715,5 +747,156 @@ mod tests {
         assert_eq!(t.text.font_family, starter_theme().text.font_family);
         assert_eq!(t.text.color, Color::rgb(255, 230, 0));
         assert_eq!(t.name, "Our church");
+    }
+
+    /// Passes sync messages both ways until neither library has more to say.
+    fn sync(a: &Library, b: &Library) {
+        for _ in 0..20 {
+            let mut ids: Vec<Uuid> = a.repo().documents().into_iter().map(|(_, id)| id).collect();
+            ids.extend(b.repo().documents().into_iter().map(|(_, id)| id));
+            ids.sort();
+            ids.dedup();
+            let mut quiet = true;
+            for id in ids {
+                if let Some(m) = a.repo().generate_sync_message(b.repo().device(), id) {
+                    b.repo().receive_sync_message(a.repo().device(), m).unwrap();
+                    quiet = false;
+                }
+                if let Some(m) = b.repo().generate_sync_message(a.repo().device(), id) {
+                    a.repo().receive_sync_message(b.repo().device(), m).unwrap();
+                    quiet = false;
+                }
+            }
+            if quiet {
+                return;
+            }
+        }
+        panic!("libraries did not converge");
+    }
+
+    fn brand(name: &str) -> Brand {
+        Brand {
+            name: name.into(),
+            logo: Some(BlobHash::of(b"logo")),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+            bug: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_brand_and_logo_set_on_one_device_arrive_on_the_other() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let theme = ThemeId::generate();
+        let mut s = a.church_settings().unwrap();
+        s.set_brand(Some(&brand("Grace Chapel")));
+        s.brand_theme = Some(theme);
+        s.default_theme = Some(theme);
+        s.set_idle(Some(&lampstand_core::output::IdleScreen::Video {
+            blob: BlobHash::of(b"loop"),
+            name: "Loop.mp4".into(),
+        }));
+        s.updated_by = Some("Mary's laptop".into());
+        a.put_church_settings(&s).unwrap();
+        assert!(b.church_settings().unwrap().is_empty());
+        sync(&a, &b);
+        let got = b.church_settings().unwrap();
+        assert_eq!(got, s);
+        assert_eq!(got.brand().unwrap().logo, Some(BlobHash::of(b"logo")));
+        assert_eq!(got.files().len(), 2);
+    }
+
+    #[test]
+    fn concurrent_edits_to_different_fields_merge_and_the_same_field_keeps_the_later() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        // Both devices create the document before they meet.
+        let mut base = ChurchSettings::default();
+        base.set_brand(Some(&brand("Grace Chapel")));
+        a.put_church_settings(&base).unwrap();
+        sync(&a, &b);
+        let mut on_a = a.church_settings().unwrap();
+        let mut on_b = b.church_settings().unwrap();
+        let mut brand_a = on_a.brand().unwrap();
+        brand_a.name = "Grace Church".into();
+        on_a.set_brand(Some(&brand_a));
+        let mut brand_b = on_b.brand().unwrap();
+        brand_b.font_family = "Lato".into();
+        on_b.set_brand(Some(&brand_b));
+        a.put_church_settings(&on_a).unwrap();
+        b.put_church_settings(&on_b).unwrap();
+        sync(&a, &b);
+        let (ma, mb) = (a.church_settings().unwrap(), b.church_settings().unwrap());
+        assert_eq!(ma, mb);
+        let merged = ma.brand().unwrap();
+        assert_eq!(merged.name, "Grace Church");
+        assert_eq!(merged.font_family, "Lato");
+
+        // The same field edited on both: one wins, on both devices.
+        let mut x = a.church_settings().unwrap();
+        x.name = Some("From A".into());
+        a.put_church_settings(&x).unwrap();
+        let mut y = b.church_settings().unwrap();
+        y.name = Some("From B".into());
+        b.put_church_settings(&y).unwrap();
+        sync(&a, &b);
+        let (ma, mb) = (a.church_settings().unwrap(), b.church_settings().unwrap());
+        assert_eq!(ma.name, mb.name);
+        assert!(matches!(ma.name.as_deref(), Some("From A" | "From B")));
+    }
+
+    #[test]
+    fn two_devices_that_each_start_the_document_still_merge() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let mut on_a = ChurchSettings::default();
+        on_a.set_brand(Some(&brand("Grace Chapel")));
+        a.put_church_settings(&on_a).unwrap();
+        let theme = ThemeId::generate();
+        let on_b = ChurchSettings {
+            default_theme: Some(theme),
+            ..ChurchSettings::default()
+        };
+        b.put_church_settings(&on_b).unwrap();
+        sync(&a, &b);
+        for lib in [&a, &b] {
+            let got = lib.church_settings().unwrap();
+            assert_eq!(got.brand().unwrap().name, "Grace Chapel");
+            assert_eq!(got.default_theme, Some(theme));
+        }
+    }
+
+    #[test]
+    fn a_deleted_theme_falls_back_to_the_starter_on_every_device() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let mut t = starter_theme();
+        t.id = ThemeId::generate();
+        t.name = "Church".into();
+        a.put_theme(&t).unwrap();
+        a.put_church_settings(&ChurchSettings {
+            default_theme: Some(t.id),
+            brand_theme: Some(t.id),
+            ..ChurchSettings::default()
+        })
+        .unwrap();
+        sync(&a, &b);
+        let on_b = b.church_settings().unwrap();
+        assert_eq!(b.resolve_theme(&[on_b.default_theme]).id, t.id);
+
+        a.remove_theme(t.id).unwrap();
+        a.forget_theme_in_church_settings(t.id).unwrap();
+        sync(&a, &b);
+        let on_b = b.church_settings().unwrap();
+        assert_eq!((on_b.default_theme, on_b.brand_theme), (None, None));
+        assert_eq!(
+            b.resolve_theme(&[on_b.default_theme]).id,
+            starter_theme_id()
+        );
+        // Even a setting that still names the theme resolves to the starter.
+        assert_eq!(b.resolve_theme(&[Some(t.id)]).id, starter_theme_id());
     }
 }

@@ -12,6 +12,7 @@ export const icons = {
   media: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/>',
   header: '<path d="M6 4v16M18 4v16M6 12h12"/>',
   countdown: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M10 2h4"/>',
+  text: '<path d="M5 6h14M12 6v13M9 19h6"/>',
   announcements: '<path d="M4 10v4h3l7 4V6L7 10H4z"/><path d="M18 9a4 4 0 0 1 0 6"/>',
 
   // Actions

@@ -104,6 +104,15 @@ pub enum ItemKind {
         target: CountdownTarget,
         label: String,
     },
+    /// Text the planner types straight in: a quote, a welcome, prayer
+    /// points. See [`crate::text::text_slides`] for how `body` splits.
+    Text {
+        /// Shown in the order list; never projected.
+        title: String,
+        body: String,
+        /// A line at the foot of every slide, for a quote's author.
+        attribution: Option<String>,
+    },
     /// Images shown in a loop, for example before the service.
     Announcements {
         slides: Vec<BlobHash>,
@@ -271,6 +280,22 @@ impl Service {
     pub fn remove(&mut self, id: ItemId) -> Option<ServiceItem> {
         self.items.remove(&id)
     }
+
+    /// A new service started from this one: the same items in the same
+    /// order, each with its notes, OBS scene, loop and arrangement, under
+    /// `title` and a fresh ID. Every item gets a fresh ID too, so changing
+    /// or deleting one in the copy never touches the original. Positions
+    /// carry over, which keeps the order. The schedule is not copied.
+    pub fn duplicate(&self, title: impl Into<String>) -> Service {
+        let mut copy = Service::new(title);
+        copy.theme = self.theme;
+        copy.items = self
+            .items
+            .values()
+            .map(|item| (ItemId::generate(), item.clone()))
+            .collect();
+        copy
+    }
 }
 
 #[cfg(test)]
@@ -364,6 +389,44 @@ mod tests {
             first = prev;
         }
         assert!(first.as_str().len() < 6, "{}", first.as_str());
+    }
+
+    #[test]
+    fn duplicate_keeps_order_and_fields_with_fresh_ids() {
+        let mut s = Service::new("Sunday");
+        let a = s.insert(0, header("A"));
+        let b = s.insert(
+            1,
+            ItemKind::Song {
+                song: SongId::generate(),
+                arrangement: Some(vec!["Verse 1".into(), "Chorus".into()]),
+            },
+        );
+        let c = s.insert(2, header("C"));
+        s.items.get_mut(&b).unwrap().notes = "capo 2".into();
+        s.items.get_mut(&b).unwrap().obs_scene = Some("Wide".into());
+        s.items.get_mut(&a).unwrap().loop_seconds = Some(8);
+        s.starts_at = Some(Timestamp(1_000));
+
+        let mut copy = s.duplicate("Sunday (copy)");
+        assert_eq!(copy.title, "Sunday (copy)");
+        assert_ne!(copy.id, s.id);
+        assert_eq!(copy.starts_at, None);
+
+        let kept = |svc: &Service| -> Vec<ServiceItem> {
+            svc.ordered().into_iter().map(|(_, i)| i.clone()).collect()
+        };
+        assert_eq!(kept(&copy), kept(&s));
+        assert!(copy.items.keys().all(|id| ![a, b, c].contains(id)));
+
+        // Independent: editing or deleting in the copy leaves the original.
+        let before = s.clone();
+        let (first, _) = copy.ordered()[1];
+        copy.items.get_mut(&first).unwrap().notes = "changed".into();
+        let (last, _) = copy.ordered()[2];
+        copy.remove(last);
+        assert_eq!(s, before);
+        assert_eq!(copy.items.len(), 2);
     }
 
     #[test]

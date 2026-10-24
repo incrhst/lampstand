@@ -41,7 +41,7 @@ use lampstand_api::{
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::{
-    idle_for, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
+    idle_plan, IdlePlan, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
 };
 use lampstand_core::program::{Bug, Content, Idle, Logo, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
@@ -50,6 +50,7 @@ use lampstand_core::scripture::{
     find_translation, parse_reference_versioned, unrecognised_version_message,
 };
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
@@ -62,12 +63,17 @@ use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
+
+mod church;
+
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
 use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+use church::ChurchSync;
+pub use church::SyncLink;
 
 /// Where an output window goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +147,8 @@ pub struct App {
     fonts: Fonts,
     outputs: OutputStore,
     settings: SettingsStore,
+    /// Bookkeeping for the settings shared with the church's other devices.
+    church_sync: ChurchSync,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -182,7 +190,15 @@ pub struct App {
     /// Set from `open` until the journal is restored, so the windows
     /// being placed and the half-restored state do not overwrite it.
     restoring: bool,
+    /// This device may drive the screens: it is the presenter, or has no
+    /// paired devices. Set by the shell as sync reports it; a Planning
+    /// device refuses live control and keeps its screens dark.
+    presenting: bool,
 }
+
+/// Why a Planning device refuses live control.
+pub const PLANNING_ONLY: &str =
+    "This device is planning. Ask the presenting device to hand over, then take the service live.";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -217,6 +233,7 @@ impl App {
             fonts,
             outputs,
             settings,
+            church_sync: ChurchSync::default(),
             sink,
             windows,
             emit,
@@ -237,6 +254,7 @@ impl App {
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
+            presenting: true,
         };
         app.place_windows();
         app.restore();
@@ -285,6 +303,28 @@ impl App {
         self.obs_cues = Some(cues);
     }
 
+    /// Sync says whether this device may drive the screens now. Becoming
+    /// Planning takes the service off air and closes the output windows:
+    /// they stay dark (the outputs keep their settings) until this device
+    /// presents again.
+    pub fn set_presenting(&mut self, presenting: bool) {
+        if self.presenting == presenting {
+            return;
+        }
+        self.presenting = presenting;
+        if !presenting {
+            self.loaded = None;
+            self.loop_overrides.clear();
+            let events = self.live.apply(Command::EndService);
+            self.live.load(Vec::new());
+            self.after_live(events);
+        }
+        self.place_windows();
+        if !presenting {
+            self.journal.clear();
+        }
+    }
+
     /// Where the local server listens (`host:port`), for the URLs
     /// `BrowserSourceUrl` gives.
     pub fn set_server_address(&mut self, address: String) {
@@ -296,6 +336,12 @@ impl App {
             Request::Library(r) => self.library_request(r),
             Request::Service(r) => self.service_request(r),
             Request::Live(command) => {
+                // Putting a slide on the preview pane changes nothing on air.
+                if !self.presenting && !matches!(command, Command::Preview(_)) {
+                    return Response::Error {
+                        message: PLANNING_ONLY.into(),
+                    };
+                }
                 let events = self.live.apply(command);
                 self.after_live(events);
                 Ok(Response::Ok)
@@ -305,8 +351,14 @@ impl App {
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
             Request::Settings(SettingsRequest::Get) => {
-                Ok(Response::Settings(self.settings.get().clone()))
+                Ok(Response::Settings(self.device_settings()))
             }
+            Request::Settings(SettingsRequest::Church) => {
+                Ok(Response::Church(self.church_status()))
+            }
+            Request::Settings(SettingsRequest::ResolveChurch(choice)) => self
+                .resolve_church(choice)
+                .map(|()| Response::Church(self.church_status())),
             Request::Settings(SettingsRequest::Put(settings)) => self.put_settings(settings),
             Request::Settings(SettingsRequest::SaveBrand(brand)) => self.save_brand(brand),
             Request::Settings(SettingsRequest::SetLogoBug(bug)) => self.set_logo_bug(bug),
@@ -379,7 +431,7 @@ impl App {
             LibraryRequest::ImportBrand { path, mode } => {
                 Response::Text(self.import_brand(&path, mode)?)
             }
-            LibraryRequest::ThemePreview { .. } => {
+            LibraryRequest::ThemePreview { .. } | LibraryRequest::IdlePreview { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("theme previews are drawn by the app shell".into());
             }
@@ -502,6 +554,22 @@ impl App {
                 lib.put_service(&service).map_err(err)?;
                 Response::Service(service)
             }
+            ServiceRequest::Duplicate {
+                service,
+                title,
+                starts_at,
+                time_zone,
+            } => {
+                let title = title.trim();
+                if title.is_empty() {
+                    return Err("a service needs a name".into());
+                }
+                let mut copy = get(service)?.duplicate(title);
+                copy.starts_at = starts_at;
+                copy.time_zone = time_zone;
+                lib.put_service(&copy).map_err(err)?;
+                Response::Service(copy)
+            }
             ServiceRequest::Reschedule {
                 service,
                 starts_at,
@@ -617,6 +685,32 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetItemText {
+                service,
+                item,
+                title,
+                body,
+                attribution,
+            } => {
+                let mut s = get(service)?;
+                match s.items.get_mut(&item).map(|i| &mut i.kind) {
+                    Some(ItemKind::Text {
+                        title: t,
+                        body: b,
+                        attribution: a,
+                    }) => {
+                        *t = title;
+                        *b = body;
+                        *a = attribution
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty());
+                    }
+                    _ => return Err("that item is not a text slide".into()),
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::SetLoop {
                 service,
                 item,
@@ -629,6 +723,7 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::Open(_) if !self.presenting => return Err(PLANNING_ONLY.into()),
             ServiceRequest::Open(id) => {
                 if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
                     self.loop_overrides.clear();
@@ -1084,6 +1179,21 @@ impl App {
                 };
                 item(label.clone(), vec![text(content)])
             }
+            ItemKind::Text {
+                title,
+                body,
+                attribution,
+            } => {
+                let slides = text_slides(body, attribution.as_deref())
+                    .into_iter()
+                    .map(|slide| text(Content::Text { slide }))
+                    .collect();
+                let title = title.trim();
+                item(
+                    if title.is_empty() { "Text" } else { title }.to_string(),
+                    slides,
+                )
+            }
             ItemKind::Announcements {
                 slides,
                 seconds_each,
@@ -1355,7 +1465,7 @@ impl App {
 
     /// The logo screen from the church's brand, if it has set one.
     fn logo(&mut self) -> Option<Logo> {
-        let brand = self.settings.get().brand.clone()?;
+        let brand = self.church().brand?;
         let bug = match brand.logo {
             Some(image) if brand.bug.enabled => self.logo_aspect(&image).map(|aspect| Bug {
                 image,
@@ -1391,29 +1501,37 @@ impl App {
                 .ok()?;
             (w > 0 && h > 0).then(|| w as f32 / h as f32)
         });
-        self.logo_aspects.insert(*blob, aspect);
+        if aspect.is_some() {
+            self.logo_aspects.insert(*blob, aspect);
+        }
         aspect
     }
 
     /// What `config` shows while nothing is on air: its own idle screen,
-    /// else the device default. A file or deck that has not reached this
-    /// device yet, or that is gone, shows the plain theme background
-    /// rather than a hole.
+    /// else the device default, else the default idle screen (the church's
+    /// logo and name, or Lampstand's lamp). A file or deck that has not
+    /// reached this device yet, or that is gone, shows the plain theme
+    /// background rather than a hole.
     fn idle_content(&mut self, config: &OutputConfig) -> Option<Idle> {
-        let default = self.settings.get().idle.clone();
+        let church = self.church();
         let present = |lib: &Library, blob: &BlobHash| lib.repo().blobs().path(blob).is_some();
-        match idle_for(config, default.as_ref())?.clone() {
-            IdleScreen::Blank => None,
-            IdleScreen::Image { blob, .. } => {
-                present(&self.library, &blob).then_some(Idle::Image { blob })
+        match idle_plan(config, church.idle.as_ref()) {
+            IdlePlan::Plain => None,
+            IdlePlan::Mark => {
+                let brand = crate::theme_preview::brand_for_idle(&self.library, church.brand);
+                Some(Idle::mark(brand.as_ref()))
             }
-            IdleScreen::Video { blob, .. } => {
-                present(&self.library, &blob).then_some(Idle::Video { blob })
+            IdlePlan::Chosen(IdleScreen::Blank | IdleScreen::Default) => None,
+            IdlePlan::Chosen(IdleScreen::Image { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Image { blob: *blob })
             }
-            IdleScreen::DeckSlide { deck, slide } => {
-                let deck = self.library.deck(deck).ok().flatten()?;
+            IdlePlan::Chosen(IdleScreen::Video { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Video { blob: *blob })
+            }
+            IdlePlan::Chosen(IdleScreen::DeckSlide { deck, slide }) => {
+                let deck = self.library.deck(*deck).ok().flatten()?;
                 let parsed = self.parsed_deck(&deck).ok()?;
-                let scene = parsed.slides.get(slide)?.scenes.last()?.clone();
+                let scene = parsed.slides.get(*slide)?.scenes.last()?.clone();
                 Some(Idle::Deck { scene })
             }
         }
@@ -1429,7 +1547,7 @@ impl App {
     /// delete on another device never takes the output down.
     fn resolve_theme(&self, id: Option<ThemeId>) -> Theme {
         self.library
-            .resolve_theme(&[id, self.settings.get().default_theme])
+            .resolve_theme(&[id, self.church().default_theme])
     }
 
     /// The theme songs and scripture are split with: the one the main
@@ -1437,30 +1555,22 @@ impl App {
     /// is paginated is what is shown.
     fn pagination_theme(&self, service: Option<ThemeId>, primary: &OutputConfig) -> Theme {
         self.library
-            .resolve_theme(&[primary.theme, service, self.settings.get().default_theme])
+            .resolve_theme(&[primary.theme, service, self.church().default_theme])
     }
 
     fn put_settings(&mut self, settings: lampstand_api::DeviceSettings) -> Result<Response> {
-        self.settings.put(settings).map_err(err)?;
+        self.put_device_settings(settings)?;
         // The default theme, the idle screen and the logo change what the
         // outputs show.
         self.sent.clear();
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
-    /// Takes a deleted theme out of the settings that name it.
+    /// Takes a deleted theme out of the settings that name it, on every
+    /// device (the church settings sync).
     fn settings_forget_theme(&mut self, id: ThemeId) -> Result<()> {
-        let mut settings = self.settings.get().clone();
-        if settings.default_theme == Some(id) {
-            settings.default_theme = None;
-        }
-        if settings.brand_theme == Some(id) {
-            settings.brand_theme = None;
-        }
-        if &settings != self.settings.get() {
-            self.settings.put(settings).map_err(err)?;
-        }
+        self.church_forget_theme(id)?;
         self.present();
         Ok(())
     }
@@ -1468,11 +1578,11 @@ impl App {
     /// `ExportBrand`: the brand, its themes and its idle screen in one file.
     fn export_brand(&self, path: &str) -> Result<String> {
         use lampstand_library::brand_package::{export, BrandSource};
-        let settings = self.settings.get();
+        let church = self.church();
         let source = BrandSource {
-            brand: settings.brand.clone(),
-            idle: settings.idle.clone(),
-            brand_theme: settings.brand_theme,
+            brand: church.brand.clone(),
+            idle: church.idle.clone(),
+            brand_theme: church.brand_theme,
         };
         let file = std::fs::File::create(path).map_err(err)?;
         let report = export(&self.library, &source, std::io::BufWriter::new(file)).map_err(err)?;
@@ -1483,7 +1593,7 @@ impl App {
             report.files,
             if report.files == 1 { "" } else { "s" },
         );
-        if settings.brand.is_none() {
+        if church.brand.is_none() {
             message
                 .push_str(" No church name or logo has been set up yet, so only themes went in.");
         }
@@ -1530,6 +1640,7 @@ impl App {
             idle: match &file.idle {
                 Some(IdleScreen::Image { name, .. }) => Some(format!("Picture: {name}")),
                 Some(IdleScreen::Video { name, .. }) => Some(format!("Looping video: {name}")),
+                Some(IdleScreen::Blank) => Some("Plain background".into()),
                 _ => None,
             },
             has_brand: file.brand.is_some(),
@@ -1552,18 +1663,18 @@ impl App {
         )
         .map_err(err)?;
         let replace = mode == BrandImportMode::Replace;
-        let mut settings = self.settings.get().clone();
-        if got.brand.is_some() && (replace || settings.brand.is_none()) {
-            settings.brand = got.brand.clone();
-            if let Some(id) = got.brand_theme {
-                settings.brand_theme = Some(id);
-                settings.default_theme = Some(id);
+        self.save_church(|church| {
+            if got.brand.is_some() && (replace || church.brand.is_none()) {
+                church.brand = got.brand.clone();
+                if let Some(id) = got.brand_theme {
+                    church.brand_theme = Some(id);
+                    church.default_theme = Some(id);
+                }
             }
-        }
-        if got.idle.is_some() && (replace || settings.idle.is_none()) {
-            settings.idle = got.idle.clone();
-        }
-        self.settings.put(settings).map_err(err)?;
+            if got.idle.is_some() && (replace || church.idle.is_none()) {
+                church.idle = got.idle.clone();
+            }
+        })?;
         self.sent.clear();
         self.present();
         Ok(format!(
@@ -1577,38 +1688,41 @@ impl App {
     /// The quick start: keeps the brand, makes (or updates) its theme and
     /// makes that the default theme.
     fn save_brand(&mut self, brand: lampstand_core::brand::Brand) -> Result<Response> {
-        let mut settings = self.settings.get().clone();
-        let existing = settings
+        let existing = self
+            .church()
             .brand_theme
             .filter(|id| self.library.theme(*id).ok().flatten().is_some());
         let id = existing.unwrap_or_else(ThemeId::generate);
         self.library
             .put_theme(&lampstand_library::theme_from_brand(&brand, id))
             .map_err(err)?;
-        settings.brand = Some(brand);
-        settings.brand_theme = Some(id);
-        settings.default_theme = Some(id);
-        self.settings.put(settings).map_err(err)?;
+        self.save_church(|church| {
+            church.brand = Some(brand);
+            church.brand_theme = Some(id);
+            church.default_theme = Some(id);
+        })?;
         self.sent.clear();
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
     /// Turns the logo bug on or off, or moves or resizes it, without
     /// touching the rest of the brand or its theme. A church that has no
     /// brand yet has nothing to put it on.
     fn set_logo_bug(&mut self, bug: lampstand_core::brand::LogoBug) -> Result<Response> {
-        let mut settings = self.settings.get().clone();
-        let Some(brand) = settings.brand.as_mut() else {
+        if self.church().brand.is_none() {
             return Err(err("Add your church's logo in Setup first."));
-        };
-        brand.bug = lampstand_core::brand::LogoBug {
-            opacity: bug.opacity.clamp(10, 100),
-            ..bug
-        };
-        self.settings.put(settings).map_err(err)?;
+        }
+        self.save_church(|church| {
+            if let Some(brand) = church.brand.as_mut() {
+                brand.bug = lampstand_core::brand::LogoBug {
+                    opacity: bug.opacity.clamp(10, 100),
+                    ..bug
+                };
+            }
+        })?;
         self.present();
-        Ok(Response::Settings(self.settings.get().clone()))
+        Ok(Response::Settings(self.device_settings()))
     }
 
     /// The audience output scripture is split against: the primary one,
@@ -1648,7 +1762,7 @@ impl App {
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match &o.target {
                 OutputTarget::Display(m) => Some((o.id, m.clone())),
                 _ => None,
@@ -1656,7 +1770,12 @@ impl App {
             .collect();
         let assigned = assign_displays(&wanted, &displays);
         let mut placements = HashMap::new();
-        for o in self.outputs.all().iter().filter(|o| o.enabled) {
+        for o in self
+            .outputs
+            .all()
+            .iter()
+            .filter(|o| o.enabled && self.presenting)
+        {
             let placement = match &o.target {
                 OutputTarget::Window { width, height } => Placement::Window {
                     width: *width,
@@ -1714,7 +1833,7 @@ impl App {
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match o.target {
                 OutputTarget::BrowserSource { width, height } => {
                     Some((o.id, (width.max(1), height.max(1))))
@@ -1819,6 +1938,7 @@ impl App {
         }
         // The heartbeat while live, and an fsync a burst of clicks put off.
         self.write_journal(now);
+        self.church_tick();
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -1949,6 +2069,16 @@ impl App {
         {
             self.present();
         }
+        if changes
+            .iter()
+            .any(|c| c.kind == lampstand_sync::DocKind::ChurchSettings)
+        {
+            // The church look or idle screen changed on another device (or
+            // this one): redraw, and look for files it points at.
+            self.sent.clear();
+            self.present();
+            self.church_sync_look_now();
+        }
         let Some(loaded) = &self.loaded else {
             return;
         };
@@ -2040,14 +2170,18 @@ fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange 
 }
 
 fn slide_view(slide: &LoadedSlide) -> SlideView {
-    let (label, lines) = match &slide.content {
-        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => {
-            (slide.label.clone(), slide.lines.clone())
+    let (label, lines, footer) = match &slide.content {
+        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => (
+            slide.label.clone(),
+            slide.lines.clone(),
+            slide.footer.clone(),
+        ),
+        Content::DeckSlide { index, .. } => {
+            (Some(format!("Slide {}", index + 1)), Vec::new(), None)
         }
-        Content::DeckSlide { index, .. } => (Some(format!("Slide {}", index + 1)), Vec::new()),
-        Content::Image { .. } => (Some("Image".into()), Vec::new()),
-        Content::Video { .. } => (Some("Video".into()), Vec::new()),
-        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()]),
+        Content::Image { .. } => (Some("Image".into()), Vec::new(), None),
+        Content::Video { .. } => (Some("Video".into()), Vec::new(), None),
+        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()], None),
     };
     let notes = match &slide.content {
         Content::DeckSlide { notes, .. } => notes.clone(),
@@ -2056,6 +2190,7 @@ fn slide_view(slide: &LoadedSlide) -> SlideView {
     SlideView {
         label,
         lines,
+        footer,
         steps: slide.steps,
         notes,
     }

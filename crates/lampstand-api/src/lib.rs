@@ -97,8 +97,10 @@ pub enum UpdateState {
     },
 }
 
-/// This machine's settings that are not about one screen. They stay on the
-/// device, like the outputs.
+/// Settings. The clicker mode and the default Bible stay on this machine,
+/// like the outputs. The church's look, default theme and default idle
+/// screen follow the church to its other devices (`ChurchStatus`); they
+/// are read and saved here all the same.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SettingsRequest {
@@ -114,6 +116,56 @@ pub enum SettingsRequest {
     /// Turns the logo bug on or off, or changes its corner, size or
     /// opacity, keeping the rest of the brand. Answers `Response::Settings`.
     SetLogoBug(LogoBug),
+    /// How the church's shared settings stand: whether they are shared,
+    /// whether this device and another disagree, and the files still to
+    /// arrive. Answers `Response::Church`.
+    Church,
+    /// Settles a `ChurchStatus::conflict`, once. Answers `Response::Church`.
+    ResolveChurch(ChurchChoice),
+}
+
+/// Which of two different church looks to keep.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChurchChoice {
+    /// This device's look becomes the church's, on every device.
+    ThisDevice,
+    /// The look from the other device replaces this device's.
+    Shared,
+}
+
+/// The church look and idle settings follow the church across its paired
+/// devices (`lampstand_core::church`). This is how that stands on this one.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChurchStatus {
+    /// The settings live in the synced document. False on a device that
+    /// has never met another one with settings of its own, where they
+    /// still belong to this device only.
+    pub shared: bool,
+    /// This device and another each had a look of their own when they met.
+    pub conflict: Option<ChurchConflict>,
+    /// Files the settings point at that have not reached this device yet.
+    pub waiting: Vec<WaitingFile>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChurchConflict {
+    /// The device the other look came from: "Mary's laptop".
+    pub other_device: String,
+    /// What this device has, in a line: "Grace Chapel, logo, Picture: Welcome.png".
+    pub mine: String,
+    pub theirs: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitingFile {
+    /// "idle video", "idle picture" or "logo".
+    pub what: String,
+    /// The device that set it, or "your other devices".
+    pub from: String,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -145,6 +197,12 @@ pub struct DeviceSettings {
     /// own. Unset means the theme's plain background.
     #[serde(default)]
     pub idle: Option<IdleScreen>,
+    /// Set by the app: `brand`, `brand_theme`, `default_theme` and `idle`
+    /// are the church's, shared through the synced document, rather than
+    /// this device's own. While false they are kept here, as before. A
+    /// save from the UI cannot change this.
+    #[serde(default)]
+    pub church_synced: bool,
 }
 
 /// What opening a brand file does to the themes already here.
@@ -235,6 +293,16 @@ pub enum LibraryRequest {
         width: u32,
         height: u32,
         thumb_width: u32,
+    },
+    /// A picture of the default idle screen (`IdleScreen::Default`) for a
+    /// church with this `brand` (none: Lampstand's own), `width` pixels
+    /// wide, drawn by the same layout and renderer as the screens in the
+    /// theme `theme` (the starter theme if none). Answers
+    /// `Response::Thumbnail`.
+    IdlePreview {
+        brand: Option<Brand>,
+        theme: Option<ThemeId>,
+        width: u32,
     },
     ListTranslations,
     /// "Jn 3:16" in a translation, for the scripture panel (BI-1). A version
@@ -328,6 +396,16 @@ pub enum ServiceRequest {
         starts_at: Option<Timestamp>,
         time_zone: Option<String>,
     },
+    /// A new service started from an existing one: the same items in the
+    /// same order with their notes, OBS scenes, loops and arrangements, all
+    /// with fresh IDs, under `title` and the given time. Answers
+    /// `Response::Service` with the copy.
+    Duplicate {
+        service: ServiceId,
+        title: String,
+        starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
+    },
     /// Moves a service to another time and zone, or clears its date with
     /// `starts_at: None`. Answers `Response::Service`.
     Reschedule {
@@ -400,6 +478,15 @@ pub enum ServiceRequest {
         service: ServiceId,
         item: ItemId,
         arrangement: Option<Vec<String>>,
+    },
+    /// Rewrites a text slide item: its title, body and attribution (blank
+    /// clears it). Answers `Response::Service`.
+    SetItemText {
+        service: ServiceId,
+        item: ItemId,
+        title: String,
+        body: String,
+        attribution: Option<String>,
     },
     /// Loop an item or section (pre- and post-service): seconds per slide,
     /// or `None` for no loop. On a header it loops the items after it up to
@@ -505,6 +592,56 @@ pub enum TeamRequest {
     /// Stops syncing with a paired device (its key in hex).
     Unpair {
         device: String,
+    },
+    /// Becomes the presenting device when nobody needs to allow it: nobody
+    /// holds the role, or the presenter has been offline past the takeover
+    /// time. Answers `Response::Team`, or an error saying to ask.
+    PresenterClaim,
+    /// Asks the presenting device to hand over; it shows a prompt.
+    PresenterAsk,
+    /// Withdraws this device's ask, or clears the "not now" it was shown.
+    PresenterCancel,
+    /// On the presenting device: hands the role to a device that asked
+    /// (its key in hex). This device becomes Planning and its screens clear.
+    PresenterAllow {
+        device: String,
+    },
+    /// On the presenting device: says not now to a device that asked.
+    PresenterDecline {
+        device: String,
+    },
+    /// Clears the notice about having been replaced as presenter.
+    PresenterDismiss,
+    /// How long the presenter may be offline before another device may take
+    /// over without asking, on this device.
+    SetTakeover {
+        seconds: u32,
+    },
+    /// On a device that is not presenting: asks the presenting device to let
+    /// this one drive it (operate it from here). The presenter sees a prompt
+    /// unless it remembers this device.
+    DriveAsk,
+    /// Stops driving, or withdraws the ask to drive.
+    DriveCancel,
+    /// Clears a "not now", "busy" or "taken back" shown to the driver.
+    DriveDismiss,
+    /// On the presenting device: lets a device that asked drive (its key in
+    /// hex); with `always`, remembers it so it is not asked again.
+    DriveAllow {
+        device: String,
+        always: bool,
+    },
+    /// On the presenting device: says not now to a device that asked.
+    DriveDecline {
+        device: String,
+    },
+    /// On the presenting device: takes control back from the driver at once.
+    DriveTakeBack,
+    /// Remembers a paired device as always allowed to drive this one, or
+    /// stops (its key in hex).
+    DriveAlways {
+        device: String,
+        always: bool,
     },
 }
 
@@ -672,6 +809,174 @@ pub struct TeamStatus {
     pub paired: Vec<DeviceView>,
     /// Lampstand devices seen on the network that are not paired.
     pub nearby: Vec<NearbyView>,
+    /// Who may present, and what this device can do about it.
+    pub presenter: PresenterView,
+    pub sync: SyncSummary,
+}
+
+/// Where sync with the paired devices stands, in one value for the status
+/// bar.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SyncSummary {
+    pub state: SyncState,
+    /// Devices this one is paired with.
+    pub paired: usize,
+    /// Of those, how many are connected now.
+    pub connected: usize,
+    /// For `Error`: what went wrong, in words for the operator.
+    pub reason: Option<String>,
+    /// When changes last arrived from, and went out to, another device
+    /// (unix ms); `None` since this app started.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_in_ms: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_out_ms: Option<i64>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SyncState {
+    /// Nothing is paired.
+    DeviceOnly,
+    /// Every paired device is connected and no changes are moving.
+    Synced,
+    /// Changes are moving to or from a paired device now.
+    Syncing,
+    /// A paired device is not connected (off, asleep or not found).
+    Offline,
+    /// Sync is not working; `reason` says why.
+    Error,
+}
+
+/// What this device may do on screen: the presenting device drives the
+/// screens and takes a service live; the others are Planning.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PresenterRole {
+    Presenting,
+    Planning,
+}
+
+/// How a Planning device can become the presenter.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PresenterStanding {
+    /// Already presenting, or alone.
+    Presenting,
+    /// Nobody holds the role: `PresenterClaim` takes it with no one's
+    /// permission.
+    Open,
+    /// The presenter is connected: `PresenterAsk`.
+    Ask,
+    /// The presenter has been offline long enough: `PresenterClaim` takes
+    /// over without asking; say so first ("offline for 5 minutes").
+    TakeOver,
+    /// The presenter is offline but only recently: wait `wait_secs`.
+    Wait,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresenterView {
+    pub role: PresenterRole,
+    pub standing: PresenterStanding,
+    /// The presenting device's key in hex; `None` while nobody holds it.
+    pub holder: Option<String>,
+    /// The presenter's name: "Mary's laptop". This device's own when it
+    /// presents.
+    pub holder_name: String,
+    /// Counts every claim or hand-over.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub epoch: u64,
+    /// How long the presenter has been offline, when it is.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub offline_secs: Option<u64>,
+    /// Seconds until takeover opens, when the presenter is offline.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub wait_secs: Option<u64>,
+    /// The takeover time on this device.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub takeover_secs: u64,
+    /// Devices asking this one, the presenter, to hand over.
+    pub requests: Vec<PresentRequestView>,
+    /// This device's own ask, while it is open or was declined.
+    pub asking: Option<AskingView>,
+    /// This device was presenting and another took over; shown once.
+    pub replaced_by: Option<String>,
+    /// Driving: which device operates the presenter, and what this device
+    /// may do about it. The presenter is still the only device that owns
+    /// the screens.
+    pub drive: Box<DriveView>,
+}
+
+/// A device that drives, or may, named for people.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DriverView {
+    /// The device's key in hex.
+    pub device: String,
+    pub name: String,
+}
+
+/// Driving the presenting device from another one.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DriveView {
+    /// This device is driving the presenter: its Present screen mirrors the
+    /// presenter and its commands go there.
+    pub driving: Option<DrivingView>,
+    /// Who operates the presenting device now. On the presenter this is the
+    /// truth; elsewhere it is what the presenter last said.
+    pub active: Option<DriverView>,
+    /// On the presenter: devices asking to drive, waiting for an answer.
+    pub requests: Vec<PresentRequestView>,
+    /// This device's own ask to drive, while it is open or was refused.
+    pub asking: Option<DriveAskingView>,
+    /// `DriveAsk` would work now: the presenter is connected and nobody
+    /// has let this device drive yet.
+    pub can_drive: bool,
+    /// On the presenter: devices allowed without asking.
+    pub always: Vec<DriverView>,
+    /// The presenter took control back from this device; shown once.
+    pub taken_back_by: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrivingView {
+    /// The presenter's key in hex.
+    pub presenter: String,
+    /// "Sanctuary PC".
+    pub name: String,
+    /// The presenter is connected. While it is not, the controls wait.
+    pub online: bool,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DriveAskingView {
+    /// Waiting for the presenter to answer.
+    Waiting,
+    /// The presenter said not now.
+    Declined,
+    /// Another device is driving; `by` is its name.
+    Busy { by: String },
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresentRequestView {
+    /// The asking device's key in hex.
+    pub device: String,
+    pub name: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AskingView {
+    /// The presenter said not now.
+    pub declined: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -692,6 +997,10 @@ pub struct DeviceView {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
+    /// It holds the presenter role.
+    pub presenting: bool,
+    /// Why the last attempt to reach it failed, when it is not connected.
+    pub problem: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -752,6 +1061,7 @@ pub enum Response {
     BrandFile(BrandContents),
     Obs(ObsView),
     Settings(DeviceSettings),
+    Church(ChurchStatus),
     Update(UpdateStatus),
 }
 
@@ -839,6 +1149,10 @@ pub struct SlideView {
     /// "V1", "John 3:16", or the slide's kind for non-text slides.
     pub label: Option<String>,
     pub lines: Vec<String>,
+    /// The smaller line at the foot: a song's author, copyright and CCLI
+    /// number, a verse's reference, or a text slide's attribution.
+    #[serde(default)]
+    pub footer: Option<String>,
     /// Build steps after the slide appears (deck slides).
     pub steps: usize,
     /// Speaker notes (deck slides), one line per paragraph; empty when
@@ -890,11 +1204,10 @@ pub enum Event {
         kind: String,
         id: String,
     },
-    /// Connections or nearby devices changed: `peers` paired devices are
-    /// connected now. Refetch `TeamRequest::Status` for the details.
+    /// Connections, nearby devices or sync traffic changed. Refetch
+    /// `TeamRequest::Status` for the devices themselves.
     SyncStatus {
-        peers: usize,
-        relay_connected: bool,
+        sync: SyncSummary,
     },
     Readiness {
         service: ServiceId,

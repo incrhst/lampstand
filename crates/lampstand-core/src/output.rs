@@ -37,8 +37,12 @@ pub struct OutputConfig {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdleScreen {
-    /// The theme's background and nothing else, as before.
+    /// The theme's background and nothing else ("Plain").
     Blank,
+    /// The church's logo and name, else the Lampstand lamp, centred on a
+    /// plain background. What a screen shows until a church chooses
+    /// something else.
+    Default,
     /// A picture in the blob store; `name` is the file it came from.
     Image { blob: BlobHash, name: String },
     /// A video in the blob store. It loops, silent.
@@ -47,15 +51,26 @@ pub enum IdleScreen {
     DeckSlide { deck: DeckId, slide: usize },
 }
 
-/// The idle screen an output shows: its own, else the device default, else
-/// `None` for the plain theme background.
-pub fn idle_for<'a>(
-    output: &'a OutputConfig,
-    default: Option<&'a IdleScreen>,
-) -> Option<&'a IdleScreen> {
-    match output.idle.as_ref().or(default)? {
-        IdleScreen::Blank => None,
-        idle => Some(idle),
+/// Which idle screen an output shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdlePlan<'a> {
+    /// The theme's plain background.
+    Plain,
+    /// The default: the church's logo and name if it has set a logo, else
+    /// the Lampstand lamp (`Idle::mark`).
+    Mark,
+    /// A picture, video or deck slide the church chose.
+    Chosen(&'a IdleScreen),
+}
+
+/// The idle screen an output shows: its own setting, else the device's
+/// default for all screens, else (nothing chosen yet) the default idle
+/// screen.
+pub fn idle_plan<'a>(output: &'a OutputConfig, default: Option<&'a IdleScreen>) -> IdlePlan<'a> {
+    match output.idle.as_ref().or(default) {
+        None | Some(IdleScreen::Default) => IdlePlan::Mark,
+        Some(IdleScreen::Blank) => IdlePlan::Plain,
+        Some(chosen) => IdlePlan::Chosen(chosen),
     }
 }
 
@@ -141,25 +156,47 @@ mod tests {
         let default = image("default.png");
         let own = image("own.png");
         let o = output(Some(own.clone()));
-        assert_eq!(idle_for(&o, Some(&default)), Some(&own));
+        assert_eq!(idle_plan(&o, Some(&default)), IdlePlan::Chosen(&own));
     }
 
     #[test]
-    fn a_screen_without_one_uses_the_default() {
+    fn a_screen_without_one_uses_the_default_for_all_screens() {
         let default = image("default.png");
-        assert_eq!(idle_for(&output(None), Some(&default)), Some(&default));
+        assert_eq!(
+            idle_plan(&output(None), Some(&default)),
+            IdlePlan::Chosen(&default)
+        );
     }
 
     #[test]
-    fn blank_on_a_screen_overrides_the_default() {
+    fn plain_on_a_screen_overrides_the_default() {
         let default = image("default.png");
         let o = output(Some(IdleScreen::Blank));
-        assert_eq!(idle_for(&o, Some(&default)), None);
+        assert_eq!(idle_plan(&o, Some(&default)), IdlePlan::Plain);
     }
 
     #[test]
-    fn nothing_set_is_the_plain_background() {
-        assert_eq!(idle_for(&output(None), None), None);
+    fn plain_for_all_screens_is_the_bare_theme_background() {
+        assert_eq!(
+            idle_plan(&output(None), Some(&IdleScreen::Blank)),
+            IdlePlan::Plain
+        );
+    }
+
+    #[test]
+    fn a_screen_can_choose_the_default_over_a_picture_for_all_screens() {
+        let default = image("default.png");
+        let o = output(Some(IdleScreen::Default));
+        assert_eq!(idle_plan(&o, Some(&default)), IdlePlan::Mark);
+    }
+
+    #[test]
+    fn nothing_chosen_anywhere_is_the_default_idle_screen() {
+        assert_eq!(idle_plan(&output(None), None), IdlePlan::Mark);
+        assert_eq!(
+            idle_plan(&output(None), Some(&IdleScreen::Default)),
+            IdlePlan::Mark
+        );
     }
 
     #[test]

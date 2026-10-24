@@ -171,10 +171,19 @@ mod tests {
     #[test]
     fn roles_narrow_from_admin_to_viewer() {
         use DocKind::*;
-        let all = [Team, Song, Service, Theme, Deck, Translation, UsageLog];
+        let all = [
+            Team,
+            Song,
+            Service,
+            Theme,
+            Deck,
+            Translation,
+            ChurchSettings,
+            UsageLog,
+        ];
         let count = |r: Role| all.iter().filter(|k| r.can_write(**k)).count();
-        assert_eq!(count(Role::Admin), 7);
-        assert_eq!(count(Role::Planner), 6);
+        assert_eq!(count(Role::Admin), 8);
+        assert_eq!(count(Role::Planner), 7);
         assert_eq!(count(Role::Operator), 3);
         assert_eq!(count(Role::Viewer), 1);
         assert!(!Role::Operator.can_write(Song));

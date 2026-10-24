@@ -1,5 +1,5 @@
-<!-- Bare devices screen (T17): pair this device with another and see which
-     paired devices are connected. The presenting machine shows a code; the
+<!-- Devices screen (T17): pair this device with another, see which paired
+     devices are connected and when changes last moved. The presenting machine shows a code; the
      service device types it. Teams and roles (T18) replace pairing. -->
 <script lang="ts">
   import { onDestroy } from "svelte";
@@ -7,6 +7,11 @@
   import { report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import DriveAction from "../../lib/kit/DriveAction.svelte";
+  import { ownRoleLine, roleLine } from "../../lib/driving";
+  import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
+  import { ago, syncPill } from "../../lib/sync";
 
   let status: TeamStatus | null = $state(null);
   let code = $state("");
@@ -41,6 +46,11 @@
   }
 
   const refresh = () => team("Status");
+  let presenter = $derived.by(() => status?.presenter ?? null);
+  /** The saved time, plus the current one if it is not among the choices. */
+  let takeoverChoices = $derived(
+    [...new Set<number>([...TAKEOVER_CHOICES, presenter?.takeover_secs ?? 120])].sort((a, b) => a - b),
+  );
   const unlisten = onEvent((e) => {
     if (e.type === "SyncStatus") refresh();
   });
@@ -53,6 +63,8 @@
     clearInterval(clock);
   });
   refresh();
+
+  const pillOf = (s: TeamStatus | null) => syncPill(s?.sync ?? null);
 
   function spaced(c: string) {
     return `${c.slice(0, 3)} ${c.slice(3)}`;
@@ -119,19 +131,86 @@
     {/if}
   </Panel>
 
+  {#if status && presenter}
+    <Panel title="Presenting" description="One device at a time drives the screens and takes a service live. Every device can still plan and sync.">
+      <p>
+        <strong>This device: {ownRoleLine(status)}</strong>
+      </p>
+      {#if presenter.role === "Planning"}
+        <p class="muted">
+          {#if presenter.holder}{presenter.holder_name} is the presenting device.{:else}Nobody is presenting yet.{/if}
+          {PLANNING_SCREENS}
+        </p>
+        <div class="actions">
+          <PresentAction present="Make this device the presenter" />
+          <DriveAction />
+        </div>
+        {#if presenter.drive.driving}
+          <p class="muted">This device operates {presenter.drive.driving.name} from its own screen. Present is the place to do it. {presenter.drive.driving.name} keeps the screens and the sound.</p>
+        {/if}
+      {:else if status.paired.length === 0}
+        <p class="muted">This device is the presenter: it is the only one. Once you pair a second device, a device that wants to present has to ask this one first.</p>
+      {:else}
+        <p class="muted">Screens turned on here show the service. Another device can ask to present or to drive; you will be asked to allow it. Driving lets that device press Next and take items live from its own screen; the screens stay here.</p>
+        {#if presenter.drive.active}
+          <p>
+            {presenter.drive.active.name} is driving.
+            <Button size="small" variant="primary" onclick={() => team("DriveTakeBack")}>Take back control</Button>
+          </p>
+        {/if}
+      {/if}
+      <label class="takeover">
+        Take over without asking after
+        <select
+          value={presenter.takeover_secs}
+          onchange={(e) => team({ SetTakeover: { seconds: Number(e.currentTarget.value) } })}
+        >
+          {#each takeoverChoices as s}
+            <option value={s}>{howLong(s)} offline</option>
+          {/each}
+        </select>
+        <small class="muted">
+          If the presenting device is offline this long, another device can present without its permission. Never while it is connected. Set on each device.
+        </small>
+      </label>
+    </Panel>
+  {/if}
+
   <Panel title="Paired devices">
     {#snippet actions()}
       <Button onclick={refresh}>Refresh</Button>
     {/snippet}
+    {#if status && status.sync.paired > 0}
+      <p class="summary" class:warn={pillOf(status).tone === "warn"}>
+        <strong>{pillOf(status).text}</strong>
+        {#if status.sync.reason}<br />{status.sync.reason}{/if}
+      </p>
+      <p class="muted">
+        Last change received: {ago(status.sync.last_in_ms, now)} · sent: {ago(status.sync.last_out_ms, now)}
+      </p>
+    {/if}
     <ul class="list">
       {#each status?.paired ?? [] as p (p.device)}
         <li>
           <span>
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
-            <small class="muted">{p.connected ? "connected" : "not connected"}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
+            <small class="role" class:presenting={p.presenting}>{status ? roleLine(status, p) : ""}</small>
+            <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>
-          <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
+          <span class="row">
+            {#if presenter?.role === "Presenting"}
+              <label class="always" title="This device can drive the presenting device without asking each time">
+                <input
+                  type="checkbox"
+                  checked={presenter.drive.always.some((d) => d.device === p.device)}
+                  onchange={(e) => team({ DriveAlways: { device: p.device, always: e.currentTarget.checked } })}
+                />
+                Always allow to drive
+              </label>
+            {/if}
+            <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
+          </span>
         </li>
       {:else}
         <li class="muted">No paired devices yet.</li>
@@ -181,6 +260,30 @@
     font-size: 0.85rem;
     color: var(--muted);
     margin: 1rem 0 0.4rem;
+  }
+  .takeover {
+    margin-top: 1rem;
+  }
+  select {
+    font: inherit;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--raised);
+    color: var(--text);
+  }
+  .role {
+    margin-right: 0.4rem;
+    color: var(--muted);
+  }
+  .role.presenting {
+    color: var(--accent);
+  }
+  .summary {
+    margin: 0 0 0.3rem;
+  }
+  .summary.warn {
+    color: var(--warn);
   }
   .badge {
     color: var(--accent);

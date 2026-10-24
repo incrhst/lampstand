@@ -63,6 +63,8 @@ async fn serve(app: &mut App, dir: &Path) -> Sync {
             renderer: None,
         },
         app.emitter(),
+        std::sync::Arc::new(|_| {}),
+        Default::default(),
     )
     .await
     .unwrap();

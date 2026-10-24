@@ -66,7 +66,7 @@ const themes: any[] = [{
   text: { font_family: "Noto Sans", size: 72, min_size: 36, weight: 400, italic: false, color: { r: 255, g: 255, b: 255, a: 255 }, align: "Center", valign: "Middle", line_spacing: 1.2, uppercase: false, shadow: null, outline: null },
   background: { Color: { r: 0, g: 0, b: 0, a: 255 } }, text_area: { x: 0, y: 0, width: 1, height: 1 }, max_lines: 4, transition: { kind: "Cut", duration_ms: 0 }, show_copyright: true,
 }];
-let settings: any = { clicker_mode: false, default_translation: null, brand: null, brand_theme: null, default_theme: null, idle: null };
+let settings: any = { clicker_mode: false, default_translation: null, brand: null, brand_theme: null, default_theme: null, idle: null, church_synced: false };
 const hex = (c: any) => "#" + [c.r, c.g, c.b].map((n: number) => n.toString(16).padStart(2, "0")).join("");
 // A stand-in for the picture the core draws of a theme: its colours and font on a 16:9 card.
 const themeThumb = (t: any, sample: string, w: number, h: number) => {
@@ -89,6 +89,16 @@ function slidesFor(kind: any) {
   if (kind.Song) { const s = songs.find((x) => x.id === kind.Song.song)!; return s.sections.map((sec) => ({ label: sec.label, lines: sec.lines, steps: 0, notes: "" })); }
   if (kind.Scripture) return [{ label: "John 3:16", lines: [verses["John 3:16"][0][2]], steps: 0, notes: "" }];
   if (kind.Deck) return deckSlides[kind.Deck.deck] ?? [];
+  if (kind.Text) {
+    const groups: string[][] = [];
+    let cur: string[] = [];
+    for (const raw of kind.Text.body.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line === "" || /^-{3,}$/.test(line)) { if (cur.length) groups.push(cur); cur = []; } else cur.push(line);
+    }
+    if (cur.length) groups.push(cur);
+    return groups.map((lines, i) => ({ label: groups.length > 1 ? `${i + 1}/${groups.length}` : "Text", lines, steps: 0, notes: "" }));
+  }
   return [];
 }
 function titleFor(kind: any) {
@@ -96,6 +106,7 @@ function titleFor(kind: any) {
   if (kind.Song) return songs.find((x) => x.id === kind.Song.song)!.title;
   if (kind.Scripture) return "John 3:16";
   if (kind.Deck) return decks.find((d) => d.id === kind.Deck.deck)!.title;
+  if (kind.Text) return kind.Text.title.trim() || "Text";
   return "Item";
 }
 function load(id: string) {
@@ -166,13 +177,14 @@ function api(req: any): any {
         case "ListSongDatabases": return { type: "SongDatabases", data: [{ code: "en", name: "English", source: "Free song database" }] };
         case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
-        case "DeckThumbnail": case "MediaThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        case "DeckThumbnail": case "MediaThumbnail": case "IdlePreview": return { type: "Thumbnail", data: svgThumb("Slides") };
       }
       break;
     case "Service":
       switch (key) {
         case "List": return { type: "Services", data: state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length })) };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
+        case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }
         case "InsertItem": {
           const s = state.services.find((x: any) => x.id === arg.service);
@@ -191,6 +203,13 @@ function api(req: any): any {
           return { type: "Service", data: s };
         }
         case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
+        case "SetItemText": {
+          const s = state.services.find((x: any) => x.id === arg.service);
+          const k = s.items[arg.item].kind.Text;
+          k.title = arg.title; k.body = arg.body; k.attribution = arg.attribution?.trim() || null;
+          if (state.loaded?.service === s.id) { state.loaded = load(s.id); emit({ type: "Loaded", data: state.loaded }); }
+          return { type: "Service", data: s };
+        }
         case "SetLoop": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].loop_seconds = arg.seconds; return { type: "Service", data: s }; }
         case "SetMediaLooped": { const s = state.services.find((x: any) => x.id === arg.service); s.items[arg.item].kind.Media.looped = arg.looped; return { type: "Service", data: s }; }
         case "Close": { state.loaded = null; state.live = null; state.preview = null; state.loopOverrides = {}; pushLive(); return ok; }
@@ -253,9 +272,10 @@ function api(req: any): any {
         if (!settings.brand) return { type: "Error", data: { message: "Add your church's logo in Setup first." } };
         settings = { ...settings, brand: { ...settings.brand, bug: arg } };
       }
+      if (key === "Church" || key === "ResolveChurch") return { type: "Church", data: { shared: false, conflict: null, waiting: [] } };
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
-    case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: [], nearby: [] } };
+    case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: state.paired ?? [], nearby: [] } };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
   }
@@ -263,6 +283,11 @@ function api(req: any): any {
 }
 const obsOff = () => ({ host: "127.0.0.1", port: 4455, has_password: false, connection: { Disconnected: { reason: "not running" } }, problem: null, relevant: true, stream: null, record: null, scenes: [], program_scene: null, held: false, scene_problem: null, audio: [] });
 export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_version: "30.2", websocket_version: "5.5" } }, stream: { active: true, reconnecting: false, timecode: "00:12:41", skipped_frames: 0, total_frames: 45678 }, record: null, scenes: ["Wide", "Speaker", "Lyrics"], program_scene: "Lyrics", audio: [{ name: "Mic", muted: false }] });
+// Pretends a device was paired: the "connect another device" prompt goes away.
+(window as any).__pairDevice = () => {
+  state.paired = [{ device: "bb", fingerprint: "a1b2 c3d4", name: "Office PC", address: "192.168.1.30:7340", connected: true, problem: null, presenting: false }];
+  emit({ type: "SyncStatus", data: { sync: { state: "Synced", paired: 1, connected: 1, reason: null, last_in_ms: null, last_out_ms: null } } });
+};
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {

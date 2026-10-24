@@ -230,7 +230,7 @@ fn export_with_limit(
             );
             file.idle = None;
         }
-        Some(IdleScreen::Blank) | None => {}
+        Some(IdleScreen::Blank | IdleScreen::Default) | None => {}
     }
 
     let starter = starter_theme();

@@ -5,7 +5,7 @@
 //! PRD: CD-1 to CD-3, CD-6.
 //!
 //! - One Automerge document per entity (song, service, theme, deck,
-//!   translation, usage log) plus one team document. Documents map to the
+//!   translation, church settings, usage log) plus one team document. Documents map to the
 //!   core types with autosurgeon; the document ID is the entity's `Id`.
 //! - Blobs (deck files, media, Bible text) are content-addressed files,
 //!   fetched by hash from whichever peer has them. Never inside documents.
@@ -17,13 +17,16 @@
 //! The repo wraps `automerge` directly rather than using samod; see
 //! docs/decisions/0002-sync-repo.md.
 
+pub mod driver;
 #[cfg(feature = "net")]
 pub mod net;
+pub mod presenter;
 mod repo;
 pub mod team;
 
 use std::fmt;
 
+use lampstand_core::church::{ChurchSettings, CHURCH_SETTINGS_ID};
 use lampstand_core::deck::Deck;
 use lampstand_core::scripture::Translation;
 use lampstand_core::service::Service;
@@ -43,18 +46,22 @@ pub enum DocKind {
     Theme,
     Deck,
     Translation,
+    /// The one document of the settings that follow the church across its
+    /// devices (`lampstand_core::church`).
+    ChurchSettings,
     /// One per device: the CCLI usage log of what that device showed.
     UsageLog,
 }
 
 impl DocKind {
-    pub const ALL: [DocKind; 7] = [
+    pub const ALL: [DocKind; 8] = [
         DocKind::Team,
         DocKind::Song,
         DocKind::Service,
         DocKind::Theme,
         DocKind::Deck,
         DocKind::Translation,
+        DocKind::ChurchSettings,
         DocKind::UsageLog,
     ];
 
@@ -67,6 +74,7 @@ impl DocKind {
             DocKind::Theme => "theme",
             DocKind::Deck => "deck",
             DocKind::Translation => "translation",
+            DocKind::ChurchSettings => "church-settings",
             DocKind::UsageLog => "usage-log",
         }
     }
@@ -115,6 +123,13 @@ impl Doc for Translation {
     const KIND: DocKind = DocKind::Translation;
     fn doc_id(&self) -> Uuid {
         self.id.uuid()
+    }
+}
+
+impl Doc for ChurchSettings {
+    const KIND: DocKind = DocKind::ChurchSettings;
+    fn doc_id(&self) -> Uuid {
+        CHURCH_SETTINGS_ID
     }
 }
 

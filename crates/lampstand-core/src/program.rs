@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::brand::{BugCorner, BugSize};
+use crate::brand::{Brand, BugCorner, BugSize};
 use crate::deck::DeckId;
 use crate::geom::Color;
 use crate::id::{BlobHash, Timestamp};
@@ -72,7 +72,7 @@ pub enum Overlay {
 }
 
 /// What an audience screen shows while nothing is on air, already resolved
-/// for that screen (see `output::idle_for`). Black and Logo cover it.
+/// for that screen (see `output::idle_plan`). Black and Logo cover it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Idle {
     Image {
@@ -86,6 +86,49 @@ pub enum Idle {
     Deck {
         scene: Arc<Scene>,
     },
+    /// The default: a logo centred on a plain background with a name quietly
+    /// beneath it. The church's own logo and name when it has set a logo,
+    /// else the Lampstand lamp.
+    Mark(Mark),
+}
+
+/// The Lampstand lamp's dark background, from the app icon.
+pub const LAMPSTAND_BACKGROUND: Color = Color::rgb(0x10, 0x14, 0x1f);
+/// The Lampstand lamp's stand and wordmark colour, from the app icon.
+pub const LAMPSTAND_TEXT: Color = Color::rgb(0xf4, 0xf1, 0xea);
+
+/// What the default idle screen draws.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Mark {
+    /// The church's logo, contained in the middle of the screen. `None`
+    /// draws the Lampstand lamp instead.
+    pub logo: Option<BlobHash>,
+    /// Drawn under the logo; empty draws no name.
+    pub name: String,
+    pub background: Color,
+    pub text: Color,
+}
+
+impl Idle {
+    /// The default idle screen: the church's logo and name when `brand`
+    /// has a logo, else Lampstand's lamp and name. A brand with a name but
+    /// no logo still gets the Lampstand lamp, so the screen is never bare.
+    pub fn mark(brand: Option<&Brand>) -> Idle {
+        match brand.filter(|b| b.logo.is_some()) {
+            Some(brand) => Idle::Mark(Mark {
+                logo: brand.logo,
+                name: brand.name.trim().to_string(),
+                background: brand.primary,
+                text: brand.text_color(),
+            }),
+            None => Idle::Mark(Mark {
+                logo: None,
+                name: "Lampstand".into(),
+                background: LAMPSTAND_BACKGROUND,
+                text: LAMPSTAND_TEXT,
+            }),
+        }
+    }
 }
 
 /// The church's logo screen, for the Logo overlay.
@@ -133,4 +176,51 @@ pub struct Program {
     /// Set by the app from the church's brand, for the Logo overlay.
     #[serde(default)]
     pub logo: Option<Logo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn brand(name: &str, logo: Option<BlobHash>) -> Brand {
+        Brand {
+            name: name.into(),
+            logo,
+            primary: Color::rgb(250, 250, 250),
+            text: None,
+            accent: Color::rgb(200, 0, 0),
+            font_family: String::new(),
+            bug: Default::default(),
+        }
+    }
+
+    fn mark(idle: Idle) -> Mark {
+        let Idle::Mark(m) = idle else {
+            panic!("expected the default idle screen")
+        };
+        m
+    }
+
+    #[test]
+    fn without_a_brand_the_default_idle_screen_is_the_lampstand_lamp() {
+        let m = mark(Idle::mark(None));
+        assert_eq!((m.logo, m.name.as_str()), (None, "Lampstand"));
+        assert_eq!(m.background, LAMPSTAND_BACKGROUND);
+    }
+
+    #[test]
+    fn a_brand_without_a_logo_still_gets_the_lamp() {
+        let m = mark(Idle::mark(Some(&brand("Grace Chapel", None))));
+        assert_eq!((m.logo, m.name.as_str()), (None, "Lampstand"));
+    }
+
+    #[test]
+    fn a_church_logo_brings_its_name_and_colours() {
+        let logo = BlobHash::of(b"logo");
+        let m = mark(Idle::mark(Some(&brand(" Grace Chapel ", Some(logo)))));
+        assert_eq!(m.logo, Some(logo));
+        assert_eq!(m.name, "Grace Chapel");
+        assert_eq!(m.background, Color::rgb(250, 250, 250));
+        assert_eq!(m.text, Color::BLACK, "dark text on a light background");
+    }
 }

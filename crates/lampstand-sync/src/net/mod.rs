@@ -25,6 +25,21 @@
 //!   it was last reached at, and wakes at once when mDNS sees it again.
 //!   On disconnect the peer's sync state is dropped ([`Repo::forget_peer`]),
 //!   so the next connection resumes with a fresh sync handshake.
+//! - **Presenter lease.** One paired device at a time may drive the
+//!   screens ([`presenter`](crate::presenter)). Each side sends its lease
+//!   when a session opens and whenever it changes; the newer one wins.
+//!   `Ask` / `Declined` frames carry a request to present. Every session
+//!   also sends a `Beat` every few seconds and ends if it hears nothing
+//!   for half a minute, so "offline" means a connection that is really
+//!   gone, and the time since the presenter was last heard from is what
+//!   lets another device take over.
+//! - **Driving.** While one device presents, another paired device may
+//!   operate it ([`driver`](crate::driver)). The driver asks, the presenter
+//!   allows once or always, and from then on `DriveCommand` frames carry the
+//!   driver's requests to the presenter, which applies them if the sender
+//!   is the active driver, and `DriveLive` frames carry the presenter's live
+//!   state back for the driver's screen. The payloads are opaque here: the
+//!   app decides what they say ([`DriveHooks`]).
 //! - **Blobs** are fetched by hash on request ([`SyncNode::fetch_blob`]),
 //!   in 256 KiB chunks, and verified on arrival ([`BlobStore::put_verified`]).
 //!
@@ -43,7 +58,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use lampstand_core::id::BlobHash;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -52,11 +67,17 @@ use uuid::Uuid;
 pub use trust::{PairedDevice, PairingCode, PAIRING_TTL};
 pub use wire::Link;
 
+use crate::driver::{Answer, Asked, Asking as DriveAsking, Named, Notice as DriveNotice, Seat};
+use crate::presenter::{
+    Asking, Denied, Holder, Lease, Notice, Presenter, Request as PresentRequest, Role, Standing,
+    DEFAULT_TAKEOVER,
+};
 use crate::team::{DeviceKey, DeviceKeypair};
 use crate::Repo;
 use discovery::Discovery;
 use handshake::{Me, Peer};
 use trust::Trust;
+use wire::Frame;
 
 /// The mDNS service type peers advertise.
 pub const SERVICE_TYPE: &str = "_lampstand._tcp.local.";
@@ -125,6 +146,69 @@ pub struct NodeStatus {
     pub paired: Vec<PeerStatus>,
     /// Lampstand devices seen by mDNS that are not paired with this one.
     pub nearby: Vec<Nearby>,
+    /// When sync messages last arrived from, and went out to, any paired
+    /// device (unix ms): what the status bar calls "syncing" while recent.
+    pub last_in_ms: Option<i64>,
+    pub last_out_ms: Option<i64>,
+    pub presenter: PresenterStatus,
+}
+
+/// Who may present, as the devices screen and the status bar show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresenterStatus {
+    pub role: Role,
+    pub standing: Standing,
+    pub lease: Lease,
+    /// How long the presenter must be offline before another device may
+    /// take over without asking.
+    pub takeover_after: Duration,
+    /// Devices asking this one (the presenter) to hand over.
+    pub requests: Vec<PresentRequest>,
+    /// This device's own ask.
+    pub asking: Option<Asking>,
+    pub notice: Option<Notice>,
+    pub drive: DriveStatus,
+}
+
+/// Driving, as the screens show it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DriveStatus {
+    /// This device is driving the presenter.
+    pub driving: Option<Driving>,
+    /// Who is driving the presenter (on the presenter: authoritative; on
+    /// another device: as the presenter last said).
+    pub active: Option<Named>,
+    /// Devices asking to drive this one, the presenter.
+    pub requests: Vec<Named>,
+    /// This device's own ask to drive.
+    pub asking: Option<DriveAsking>,
+    /// This device could ask to drive now: it is not presenting and the
+    /// presenter is connected.
+    pub can_drive: bool,
+    /// Devices this one allows to drive without asking.
+    pub always: Vec<Named>,
+    pub notice: Option<DriveNotice>,
+}
+
+/// The presenter this device is driving.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Driving {
+    pub presenter: DeviceKey,
+    pub name: String,
+    /// The presenter is connected. While it is not, the controls wait.
+    pub online: bool,
+}
+
+/// What the app does with driving traffic. Called on sync tasks: they must
+/// not block, so pass the work on.
+pub struct DriveHooks {
+    /// On the presenter: the active driver sent a request (JSON).
+    pub command: Box<dyn Fn(DeviceKey, Vec<u8>) + Send + Sync>,
+    /// On the driver: the presenter sent live state (one JSON event).
+    pub live: Box<dyn Fn(Vec<u8>) + Send + Sync>,
+    /// On the presenter: a device started (`true`) or stopped driving; send
+    /// it the full live state when it starts.
+    pub driver: Box<dyn Fn(bool) + Send + Sync>,
 }
 
 impl NodeStatus {
@@ -139,6 +223,14 @@ pub struct PeerStatus {
     pub name: String,
     pub address: Option<String>,
     pub connected: bool,
+    /// It holds the presenter lease.
+    pub presenting: bool,
+    /// Why the last attempt to reach it failed, for people; cleared on
+    /// connecting.
+    pub problem: Option<String>,
+    /// The device answered and refused this one (it no longer has it
+    /// paired), so waiting will not help.
+    pub refused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +248,8 @@ pub(crate) enum Control {
     Changed(Arc<Vec<Uuid>>),
     /// Ask the peer for a blob, and say how it went.
     Want(BlobHash, oneshot::Sender<Result<(), NetError>>),
+    /// Send this frame as it is (the presenter lease and asks).
+    Frame(Frame),
 }
 
 struct Session {
@@ -183,6 +277,17 @@ struct Peers {
     next_id: u64,
     found: HashMap<DeviceKey, Found>,
     dialling: HashSet<DeviceKey>,
+    /// When each device was last heard from, once its session has run.
+    last_contact: HashMap<DeviceKey, Instant>,
+    /// The last failed attempt to reach each paired device, with whether
+    /// it was refused.
+    problems: HashMap<DeviceKey, (String, bool)>,
+}
+
+#[derive(Default)]
+struct Activity {
+    last_in_ms: Option<i64>,
+    last_out_ms: Option<i64>,
 }
 
 /// This device on the network: its paired devices, its connections and
@@ -197,11 +302,54 @@ pub struct SyncNode {
     /// Held by the one pairing handshake allowed at a time.
     pairing: tokio::sync::Mutex<()>,
     peers: Mutex<Peers>,
+    activity: Mutex<Activity>,
     /// Bumped whenever the status changes or mDNS sees something.
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
     discovery: Mutex<Option<Discovery>>,
+    presenter: Mutex<Presenter>,
+    seat: Mutex<Seat>,
+    drive_hooks: Mutex<Option<Arc<DriveHooks>>>,
+    /// When this node was made: how long a never-seen presenter has been
+    /// silent.
+    started: Instant,
     me: Weak<SyncNode>,
+}
+
+/// What survives a restart of the presenter lease: `presenter.json`.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PresenterFile {
+    lease: Lease,
+    takeover_secs: u64,
+}
+
+/// What survives a restart of driving: `driver.json`.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct DriverFile {
+    always: Vec<(String, String)>,
+}
+
+/// A snapshot of who is paired, connected and for how long silent.
+struct Reach {
+    paired: HashSet<DeviceKey>,
+    connected: HashSet<DeviceKey>,
+    silent: HashMap<DeviceKey, Duration>,
+}
+
+impl Reach {
+    fn has_peers(&self) -> bool {
+        !self.paired.is_empty()
+    }
+
+    fn holder(&self, device: DeviceKey) -> Holder {
+        if !self.paired.contains(&device) {
+            Holder::Gone
+        } else if self.connected.contains(&device) {
+            Holder::Online
+        } else {
+            Holder::Offline(self.silent.get(&device).copied().unwrap_or_default())
+        }
+    }
 }
 
 impl SyncNode {
@@ -215,6 +363,25 @@ impl SyncNode {
         );
         std::fs::create_dir_all(&config.dir)?;
         let trust = Trust::load(config.dir.join("paired.json"))?;
+        let saved: Option<PresenterFile> = std::fs::read(config.dir.join("presenter.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        let presenter = Presenter::new(
+            key.public(),
+            config.name.clone(),
+            saved.as_ref().map(|f| f.lease.clone()).unwrap_or_default(),
+            saved
+                .map(|f| Duration::from_secs(f.takeover_secs))
+                .unwrap_or(DEFAULT_TAKEOVER),
+        );
+        let always: Vec<(DeviceKey, String)> = std::fs::read(config.dir.join("driver.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<DriverFile>(&b).ok())
+            .unwrap_or_default()
+            .always
+            .into_iter()
+            .filter_map(|(hex, name)| Some((DeviceKey::from_hex(&hex)?, name)))
+            .collect();
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -223,9 +390,14 @@ impl SyncNode {
             trust: Mutex::new(trust),
             pairing: tokio::sync::Mutex::new(()),
             peers: Mutex::new(Peers::default()),
+            activity: Mutex::new(Activity::default()),
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
+            presenter: Mutex::new(presenter),
+            seat: Mutex::new(Seat::with_always(always)),
+            drive_hooks: Mutex::new(None),
+            started: Instant::now(),
             me: me.clone(),
         }))
     }
@@ -235,6 +407,7 @@ impl SyncNode {
     pub fn start(self: &Arc<Self>, port: u16, advertise: bool) {
         *lock(&self.port) = Some(port);
         self.start_pusher();
+        self.start_clock();
         let paired: Vec<DeviceKey> = lock(&self.trust)
             .devices()
             .iter()
@@ -262,6 +435,8 @@ impl SyncNode {
 
     pub fn status(&self) -> NodeStatus {
         let pairing = lock(&self.trust).pairing();
+        let presenter = self.presenter_status();
+        let lease = presenter.lease.clone();
         let trust = lock(&self.trust);
         let peers = lock(&self.peers);
         let paired = trust
@@ -276,9 +451,18 @@ impl SyncNode {
                         .and_then(|s| s.address.clone())
                         .or_else(|| d.address.clone()),
                     connected: session.is_some(),
+                    presenting: lease.holder == Some(d.device),
+                    problem: peers
+                        .problems
+                        .get(&d.device)
+                        .filter(|_| session.is_none())
+                        .map(|(why, _)| why.clone()),
+                    refused: session.is_none()
+                        && peers.problems.get(&d.device).is_some_and(|(_, r)| *r),
                 }
             })
             .collect();
+        let activity = lock(&self.activity);
         let mut nearby: Vec<Nearby> = peers
             .found
             .iter()
@@ -300,6 +484,9 @@ impl SyncNode {
             pairing,
             paired,
             nearby,
+            presenter,
+            last_in_ms: activity.last_in_ms,
+            last_out_ms: activity.last_out_ms,
         }
     }
 
@@ -371,6 +558,9 @@ impl SyncNode {
     /// Stops trusting `device` and closes its connection.
     pub fn unpair(&self, device: DeviceKey) -> io::Result<bool> {
         let removed = lock(&self.trust).remove(device)?;
+        if lock(&self.seat).forget(device) {
+            self.save_driver();
+        }
         if let Some(stop) = lock(&self.peers)
             .sessions
             .get_mut(&device)
@@ -439,6 +629,11 @@ impl SyncNode {
         if peer.paired_now {
             self.bump();
             self.ensure_dialler(peer.device);
+            // The device that showed the code is the presenting machine.
+            let claimed = lock(&self.presenter).claim_if_unclaimed();
+            if let Some(lease) = claimed {
+                self.lease_changed(&lease);
+            }
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
         let link = link.encrypt(keys);
@@ -467,6 +662,9 @@ impl SyncNode {
                 name: String::new(),
                 address: None,
                 connected: false,
+                presenting: false,
+                problem: None,
+                refused: false,
             })
     }
 
@@ -553,6 +751,7 @@ impl SyncNode {
                                 done: Some(done),
                             },
                         );
+                        peers.problems.remove(&peer.device);
                         drop(peers);
                         self.bump();
                         let node = self.arc();
@@ -584,10 +783,600 @@ impl SyncNode {
         let mut peers = lock(&self.peers);
         if peers.sessions.get(&device).is_some_and(|s| s.id == id) {
             peers.sessions.remove(&device);
+            peers.last_contact.insert(device, Instant::now());
             // Under the peers lock, so a new session cannot start before
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
+            lock(&self.presenter).receive_cancel(device);
+            // A driver that went away hands control back.
+            let was_driver = lock(&self.seat)
+                .active()
+                .is_some_and(|a| a.device == device);
+            lock(&self.seat).gone(device);
+            if was_driver {
+                self.drive_state_changed();
+            }
+            self.bump();
+        }
+    }
+
+    // ---- Presenter lease -----------------------------------------------
+
+    fn reach(&self) -> Reach {
+        let paired: HashSet<DeviceKey> = lock(&self.trust)
+            .devices()
+            .iter()
+            .map(|d| d.device)
+            .collect();
+        let peers = lock(&self.peers);
+        let connected: HashSet<DeviceKey> = peers.sessions.keys().copied().collect();
+        let silent = paired
+            .iter()
+            .filter(|d| !connected.contains(d))
+            .map(|d| {
+                let since = peers.last_contact.get(d).copied().unwrap_or(self.started);
+                (*d, since.elapsed())
+            })
+            .collect();
+        Reach {
+            paired,
+            connected,
+            silent,
+        }
+    }
+
+    pub fn presenter_status(&self) -> PresenterStatus {
+        let reach = self.reach();
+        let p = lock(&self.presenter);
+        let holder = p.holder_of(|d| reach.holder(d));
+        let drive = self.drive_status(&reach, &p);
+        PresenterStatus {
+            drive,
+            role: p.role(reach.has_peers()),
+            standing: p.standing(reach.has_peers(), holder),
+            lease: p.lease().clone(),
+            takeover_after: p.takeover_after(),
+            requests: p.requests().to_vec(),
+            asking: p.asking(),
+            notice: p.notice().cloned(),
+        }
+    }
+
+    fn drive_status(&self, reach: &Reach, p: &Presenter) -> DriveStatus {
+        let seat = lock(&self.seat);
+        let holds = p.holds();
+        let online = p
+            .lease()
+            .holder
+            .is_some_and(|h| reach.holder(h) == Holder::Online);
+        DriveStatus {
+            driving: seat.granted().map(|g| Driving {
+                presenter: g.presenter,
+                name: g.name.clone(),
+                online: reach.holder(g.presenter) == Holder::Online,
+            }),
+            active: if holds {
+                seat.active().cloned()
+            } else {
+                seat.known().cloned()
+            },
+            requests: if holds {
+                seat.requests().to_vec()
+            } else {
+                Vec::new()
+            },
+            asking: seat.asking().cloned(),
+            can_drive: reach.has_peers() && !holds && online && seat.granted().is_none(),
+            always: seat.always(),
+            notice: seat.notice().cloned(),
+        }
+    }
+
+    /// Whether this device may drive the screens now.
+    pub fn role(&self) -> Role {
+        let has_peers = !lock(&self.trust).devices().is_empty();
+        lock(&self.presenter).role(has_peers)
+    }
+
+    /// Takes the presenter role when nobody needs to allow it: nobody
+    /// holds it, or the presenter has been offline past the timeout.
+    pub fn claim_presenter(&self) -> Result<(), Denied> {
+        let reach = self.reach();
+        let lease = {
+            let mut p = lock(&self.presenter);
+            let holder = p.holder_of(|d| reach.holder(d));
+            p.claim(reach.has_peers(), holder)?
+        };
+        self.lease_changed(&lease);
+        Ok(())
+    }
+
+    /// Asks the presenter to hand over; it sees a prompt.
+    pub fn ask_to_present(&self) -> Result<(), Denied> {
+        let reach = self.reach();
+        let holder = {
+            let mut p = lock(&self.presenter);
+            let holder = p.holder_of(|d| reach.holder(d));
+            p.ask(reach.has_peers(), holder)?;
+            p.lease().holder
+        };
+        if let Some(holder) = holder {
+            self.send_to(holder, Frame::Ask);
+        }
+        self.bump();
+        Ok(())
+    }
+
+    /// Withdraws this device's ask, or clears the "not now" it was shown.
+    pub fn cancel_ask(&self) {
+        let (open, holder) = {
+            let mut p = lock(&self.presenter);
+            (p.cancel_ask(), p.lease().holder)
+        };
+        if let (true, Some(holder)) = (open, holder) {
+            self.send_to(holder, Frame::Cancel);
+        }
+        self.bump();
+    }
+
+    /// Hands the presenter role to a device that asked. This device
+    /// becomes Planning; the app clears its screens when it sees that.
+    pub fn allow_presenter(&self, device: DeviceKey) -> Result<(), String> {
+        if !lock(&self.peers).sessions.contains_key(&device) {
+            return Err("that device is no longer connected".into());
+        }
+        let lease = lock(&self.presenter)
+            .allow(device)
+            .ok_or("that device is not asking, or this device is not presenting")?;
+        self.lease_changed(&lease);
+        Ok(())
+    }
+
+    /// Says not now to a device that asked.
+    pub fn decline_presenter(&self, device: DeviceKey) {
+        let (was_asking, epoch) = {
+            let mut p = lock(&self.presenter);
+            (p.decline(device), p.lease().epoch)
+        };
+        if was_asking {
+            self.send_to(device, Frame::Declined { epoch });
+        }
+        self.bump();
+    }
+
+    pub fn dismiss_presenter_notice(&self) {
+        lock(&self.presenter).dismiss_notice();
+        self.bump();
+    }
+
+    /// How long the presenter may be offline before another device may
+    /// take over without asking. Kept on this device.
+    pub fn set_takeover_after(&self, after: Duration) {
+        lock(&self.presenter).set_takeover_after(after);
+        self.save_presenter();
+        self.bump();
+    }
+
+    /// This device's lease changed: keep it, tell every device, show it.
+    fn lease_changed(&self, lease: &Lease) {
+        self.save_presenter();
+        // A new presenter starts with nobody driving and nobody asking.
+        if lock(&self.seat).lease_moved(self.device(), lease.holder) {
+            self.drive_state_changed();
+        }
+        let frame = lease_frame(lease);
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(Control::Frame(frame.clone()));
+        }
+        self.bump();
+    }
+
+    fn save_presenter(&self) {
+        let file = {
+            let p = lock(&self.presenter);
+            PresenterFile {
+                lease: p.lease().clone(),
+                takeover_secs: p.takeover_after().as_secs().max(1),
+            }
+        };
+        let path = self.dir.join("presenter.json");
+        let tmp = self.dir.join("presenter.json.tmp");
+        let saved = serde_json::to_vec_pretty(&file)
+            .map_err(io::Error::other)
+            .and_then(|json| std::fs::write(&tmp, json))
+            .and_then(|_| std::fs::rename(&tmp, &path));
+        if let Err(e) = saved {
+            eprintln!("lampstand: cannot save the presenter lease: {e}");
+        }
+    }
+
+    // ---- Driving --------------------------------------------------------
+
+    /// Where the app wants driving traffic to go. Set once at start.
+    pub fn set_drive_hooks(&self, hooks: DriveHooks) {
+        *lock(&self.drive_hooks) = Some(Arc::new(hooks));
+    }
+
+    fn hooks(&self) -> Option<Arc<DriveHooks>> {
+        lock(&self.drive_hooks).clone()
+    }
+
+    /// The lease: whether this device holds it, who does, and the name it
+    /// gave.
+    fn lease_facts(&self) -> (bool, Option<DeviceKey>, String) {
+        let p = lock(&self.presenter);
+        (p.holds(), p.lease().holder, p.lease().name.clone())
+    }
+
+    fn connected(&self, device: DeviceKey) -> bool {
+        lock(&self.peers).sessions.contains_key(&device)
+    }
+
+    fn paired_name(&self, device: DeviceKey) -> String {
+        lock(&self.trust)
+            .get(device)
+            .map(|d| d.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// This device is driving the presenter, and whether it is connected.
+    pub fn driving(&self) -> Option<Driving> {
+        let granted = lock(&self.seat).granted().cloned()?;
+        Some(Driving {
+            presenter: granted.presenter,
+            online: self.connected(granted.presenter),
+            name: granted.name,
+        })
+    }
+
+    /// Whether another device is driving this one, the presenter.
+    pub fn driven(&self) -> bool {
+        lock(&self.seat).active().is_some()
+    }
+
+    /// Asks the presenter to let this device drive it. The presenter sees a
+    /// prompt, unless it remembers this device.
+    pub fn drive_ask(&self) -> Result<(), String> {
+        let has_peers = !lock(&self.trust).devices().is_empty();
+        let (holds, holder, name) = self.lease_facts();
+        if holds || !has_peers {
+            return Err("this device is presenting: nothing to ask".into());
+        }
+        let Some(holder) = holder else {
+            return Err("nobody is presenting".into());
+        };
+        if !self.connected(holder) {
+            return Err(format!(
+                "{} is not connected",
+                if name.is_empty() {
+                    "the presenting device"
+                } else {
+                    &name
+                }
+            ));
+        }
+        {
+            let mut seat = lock(&self.seat);
+            if seat.granted().is_some() {
+                return Ok(());
+            }
+            seat.begin_ask(holder);
+        }
+        self.send_to(holder, Frame::DriveAsk);
+        self.bump();
+        Ok(())
+    }
+
+    /// Stops driving, or withdraws the ask to drive.
+    pub fn drive_cancel(&self) {
+        let (_, holder, _) = self.lease_facts();
+        let was = lock(&self.seat).stop();
+        if let (true, Some(holder)) = (was, holder) {
+            self.send_to(holder, Frame::DriveCancel);
+        }
+        self.bump();
+    }
+
+    /// Clears a "not now", a "busy" or a "taken back" the person has seen.
+    pub fn drive_dismiss(&self) {
+        {
+            let mut seat = lock(&self.seat);
+            seat.clear_answer();
+            seat.dismiss_notice();
+        }
+        self.bump();
+    }
+
+    /// On the presenter: lets a device that asked drive, and with `always`
+    /// remembers it.
+    pub fn drive_allow(&self, device: DeviceKey, always: bool) -> Result<(), String> {
+        let (holds, _, _) = self.lease_facts();
+        if !self.connected(device) {
+            return Err("that device is no longer connected".into());
+        }
+        lock(&self.seat)
+            .allow(holds, device, always)
+            .map_err(|e| e.to_string())?;
+        if always {
+            self.save_driver();
+        }
+        self.drive_state_changed();
+        Ok(())
+    }
+
+    /// On the presenter: says not now to a device that asked.
+    pub fn drive_decline(&self, device: DeviceKey) {
+        if lock(&self.seat).decline(device) {
+            self.send_to(
+                device,
+                Frame::DriveAnswer {
+                    answer: wire::DriveAnswer::Declined,
+                },
+            );
+        }
+        self.bump();
+    }
+
+    /// On the presenter: takes control back from the driver at once.
+    pub fn drive_take_back(&self) {
+        if lock(&self.seat).take_back() {
+            self.drive_state_changed();
+        }
+    }
+
+    /// Remembers a paired device as always allowed to drive this one, or
+    /// stops.
+    pub fn drive_set_always(&self, device: DeviceKey, on: bool) -> Result<(), String> {
+        let name = lock(&self.trust)
+            .get(device)
+            .map(|d| d.name.clone())
+            .ok_or("that device is not paired")?;
+        if lock(&self.seat).set_always(device, name, on) {
+            self.save_driver();
+            self.bump();
+        }
+        Ok(())
+    }
+
+    /// On the driver: sends a request (JSON) to the presenter.
+    pub fn drive_send(&self, payload: Vec<u8>) -> Result<(), String> {
+        let granted = lock(&self.seat)
+            .granted()
+            .cloned()
+            .ok_or("this device is not driving")?;
+        if !self.connected(granted.presenter) {
+            return Err(format!("{} is not connected", granted.name));
+        }
+        self.send_to(granted.presenter, Frame::DriveCommand { payload });
+        Ok(())
+    }
+
+    /// On the presenter: sends live state (one JSON event) to the driver,
+    /// if there is one.
+    pub fn drive_live(&self, payload: Vec<u8>) {
+        let (holds, _, _) = self.lease_facts();
+        if !holds {
+            return;
+        }
+        let driver = lock(&self.seat).active().map(|a| a.device);
+        if let Some(driver) = driver {
+            self.send_to(driver, Frame::DriveLive { payload });
+        }
+    }
+
+    /// Who drives this device changed: tell every device and the app.
+    fn drive_state_changed(&self) {
+        let frame = self.drive_state_frame();
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(Control::Frame(frame.clone()));
+        }
+        let active = lock(&self.seat).active().is_some();
+        if let Some(hooks) = self.hooks() {
+            (hooks.driver)(active);
+        }
+        self.bump();
+    }
+
+    /// Who drives this device, as a frame, for a session that opens.
+    pub(crate) fn drive_state_frame(&self) -> Frame {
+        let (holds, _, _) = self.lease_facts();
+        let driver = holds
+            .then(|| lock(&self.seat).active().cloned())
+            .flatten()
+            .map(|a| (a.device.0, a.name));
+        Frame::DriveState { driver }
+    }
+
+    pub(crate) fn drive_ask_received(&self, from: DeviceKey) {
+        let name = self.paired_name(from);
+        let (holds, _, _) = self.lease_facts();
+        let asked = lock(&self.seat).receive_ask(holds, from, name);
+        match asked {
+            Asked::Prompt => self.bump(),
+            Asked::Allowed { .. } => {
+                self.save_driver();
+                self.drive_state_changed();
+            }
+            Asked::Refuse(answer) => {
+                let answer = match answer {
+                    Answer::Declined => wire::DriveAnswer::Declined,
+                    Answer::Busy { by } => wire::DriveAnswer::Busy { by },
+                };
+                self.send_to(from, Frame::DriveAnswer { answer });
+                self.bump();
+            }
+            Asked::Ignored => {}
+        }
+    }
+
+    pub(crate) fn drive_cancel_received(&self, from: DeviceKey) {
+        let was_driver = lock(&self.seat).active().is_some_and(|a| a.device == from);
+        lock(&self.seat).gone(from);
+        if was_driver {
+            self.drive_state_changed();
+        } else {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn drive_answer_received(&self, from: DeviceKey, answer: wire::DriveAnswer) {
+        let (_, holder, _) = self.lease_facts();
+        if holder != Some(from) {
+            return;
+        }
+        lock(&self.seat).receive_answer(match answer {
+            wire::DriveAnswer::Declined => Answer::Declined,
+            wire::DriveAnswer::Busy { by } => Answer::Busy { by },
+        });
+        self.bump();
+    }
+
+    pub(crate) fn drive_state_received(&self, from: DeviceKey, driver: Option<Named>) {
+        let (_, holder, name) = self.lease_facts();
+        // Only the presenter says who drives it.
+        if holder != Some(from) {
+            return;
+        }
+        let me = self.device();
+        if lock(&self.seat).receive_state(from, &name, driver, me) {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn drive_command_received(&self, from: DeviceKey, payload: Vec<u8>) {
+        let (holds, _, _) = self.lease_facts();
+        if !lock(&self.seat).accepts(holds, from) {
+            return;
+        }
+        if let Some(hooks) = self.hooks() {
+            (hooks.command)(from, payload);
+        }
+    }
+
+    pub(crate) fn drive_live_received(&self, from: DeviceKey, payload: Vec<u8>) {
+        let from_presenter = lock(&self.seat)
+            .granted()
+            .is_some_and(|g| g.presenter == from);
+        if !from_presenter {
+            return;
+        }
+        if let Some(hooks) = self.hooks() {
+            (hooks.live)(payload);
+        }
+    }
+
+    fn save_driver(&self) {
+        let file = DriverFile {
+            always: lock(&self.seat)
+                .always()
+                .into_iter()
+                .map(|n| (n.device.to_hex(), n.name))
+                .collect(),
+        };
+        let path = self.dir.join("driver.json");
+        let tmp = self.dir.join("driver.json.tmp");
+        let saved = serde_json::to_vec_pretty(&file)
+            .map_err(io::Error::other)
+            .and_then(|json| std::fs::write(&tmp, json))
+            .and_then(|_| std::fs::rename(&tmp, &path));
+        if let Err(e) = saved {
+            eprintln!("lampstand: cannot save the devices allowed to drive: {e}");
+        }
+    }
+
+    fn send_to(&self, device: DeviceKey, frame: Frame) {
+        if let Some(s) = lock(&self.peers).sessions.get(&device) {
+            let _ = s.control.send(Control::Frame(frame));
+        }
+    }
+
+    /// This device's lease, as a frame, for a session that opens.
+    pub(crate) fn lease_frame(&self) -> Frame {
+        lease_frame(lock(&self.presenter).lease())
+    }
+
+    /// A device sent its lease: the newer of the two stands.
+    pub(crate) fn lease_received(&self, lease: Lease) {
+        let known = lease
+            .holder
+            .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
+        let merged = lock(&self.presenter).merge(&lease, known);
+        if merged.changed {
+            self.lease_changed(&lease);
+        }
+    }
+
+    pub(crate) fn ask_received(&self, from: DeviceKey) {
+        let name = lock(&self.trust)
+            .get(from)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+        if lock(&self.presenter).receive_ask(from, name) {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn cancel_received(&self, from: DeviceKey) {
+        if lock(&self.presenter).receive_cancel(from) {
+            self.bump();
+        }
+    }
+
+    pub(crate) fn declined_received(&self, from: DeviceKey, epoch: u64) {
+        lock(&self.presenter).receive_declined(from, epoch);
+        self.bump();
+    }
+
+    /// Notes that `device` was just heard from.
+    pub(crate) fn heard(&self, device: DeviceKey) {
+        lock(&self.peers)
+            .last_contact
+            .insert(device, Instant::now());
+    }
+
+    /// While the presenter is offline, the time since it was heard from
+    /// changes the answer; wake the status every few seconds.
+    fn start_clock(&self) {
+        let node = self.me.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                let Some(node) = node.upgrade() else {
+                    return;
+                };
+                if matches!(
+                    node.presenter_status().standing,
+                    Standing::Wait { .. } | Standing::TakeOver { .. }
+                ) {
+                    node.bump();
+                }
+            }
+        });
+    }
+
+    /// Sync messages came in from a peer.
+    pub(crate) fn note_in(&self) {
+        lock(&self.activity).last_in_ms = Some(now_ms());
+        self.bump();
+    }
+
+    /// Sync messages went out to a peer.
+    pub(crate) fn note_out(&self) {
+        lock(&self.activity).last_out_ms = Some(now_ms());
+        self.bump();
+    }
+
+    fn set_problem(&self, device: DeviceKey, problem: Option<(String, bool)>) {
+        let changed = {
+            let mut peers = lock(&self.peers);
+            match problem {
+                Some(p) => peers.problems.insert(device, p.clone()) != Some(p),
+                None => peers.problems.remove(&device).is_some(),
+            }
+        };
+        if changed {
             self.bump();
         }
     }
@@ -678,6 +1467,8 @@ impl SyncNode {
                 }
             }
             let mut lasted = Duration::ZERO;
+            let mut failure = None;
+            let tried = !addresses.is_empty();
             for address in addresses {
                 let started = tokio::time::Instant::now();
                 match self.dial(&address, None).await {
@@ -688,8 +1479,15 @@ impl SyncNode {
                     }
                     // Another device answers there now.
                     Ok(_) => {}
-                    Err(_) => {}
+                    Err(e) => {
+                        let refused = matches!(e, NetError::Refused(_));
+                        failure = Some((e.to_string(), refused));
+                    }
                 }
+            }
+            if lasted == Duration::ZERO {
+                // Not found anywhere is not a failure: it is just away.
+                self.set_problem(device, failure.filter(|_| tried));
             }
             if lasted > Duration::from_secs(10) {
                 backoff = BACKOFF_START;
@@ -702,6 +1500,20 @@ impl SyncNode {
             backoff = (backoff * 2).min(BACKOFF_MAX);
         }
     }
+}
+
+fn lease_frame(lease: &Lease) -> Frame {
+    Frame::Lease {
+        holder: lease.holder.map(|h| h.0),
+        name: lease.name.clone(),
+        epoch: lease.epoch,
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// `"10.0.0.5"` → `"10.0.0.5:7340"`; `"ws://host:1234/sync"` → `"host:1234"`.

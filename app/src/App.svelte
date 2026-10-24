@@ -8,17 +8,21 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
+  import { syncPill } from "./lib/sync";
+  import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
+  import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
+  import { isPlanning, withRole } from "./lib/presenting";
+  import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
   import Logo from "./lib/kit/Logo.svelte";
-  import Placeholder from "./lib/kit/Placeholder.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -51,6 +55,18 @@
     screen = "help";
   }
   let obsStatus = $derived(obsPill(live.obs));
+  let planningOnly = $derived(isPlanning(live.team));
+  let syncStatus = $derived(syncPill(live.sync));
+  let rolePill = $derived(withRole(syncStatus, live.team));
+  // The quiet "Connect another device" line beside the sync pill, until a device is paired or it is put off.
+  let connectLine = $derived.by(() => {
+    void live.tipsVersion;
+    return connectDue({ paired: live.team?.paired.length, realUse: live.realUse }, loadDismissed(), loadSnoozed());
+  });
+  // Pairing a device ends the prompt for good, even if it is unpaired later.
+  $effect(() => {
+    if (live.team && live.team.paired.length > 0) dismissForGood(CONNECT_DEVICE);
+  });
 
   // A new release is looked for shortly after starting and then every few
   // hours, quietly: no network is not worth an error. Installing it is up to
@@ -126,6 +142,9 @@
       setFlag("lampstand.getstarted.tried");
     }
   });
+  $effect(() => {
+    live.realUse = tried || serviceList.some((s) => s.title !== WELCOME_TITLE && s.items > 0);
+  });
   let started = $derived(getStartedSteps({ screensOn: enabled, songs: songCount, services: serviceList, triedService: tried, brandSet: !!live.settings?.brand }));
   let showStrip = $derived(!hidden && !allDone(started));
   function hide() {
@@ -175,6 +194,7 @@
   refreshThemes();
   refreshSettings();
   refreshObs();
+  refreshSync();
 </script>
 
 <svelte:window {onkeydown} />
@@ -209,13 +229,15 @@
     </div>
   </header>
 
+  <PresenterNotices />
+
   {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
   <main>
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
-      <OperateView onsetup={() => openSetup("screens")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
+      <OperateView ondevices={() => openSetup("devices")} onsetup={() => openSetup("screens")} onidle={() => openSetup("idle")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
     {:else if screen === "help"}
       <HelpView tab={helpTab} onchange={(tab) => (helpTab = tab)} />
     {:else}
@@ -225,11 +247,15 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="Open Setup › Devices">
-        <Dot />
-        <span>This device only</span>
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
+        <Dot tone={syncStatus.tone} />
+        <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
-      <Placeholder ticket="T18">Sync</Placeholder>
+      {#if connectLine}
+        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
+          Connect another device
+        </button>
+      {/if}
     {/snippet}
     {#snippet middle()}
       {#if live.progress}
@@ -263,7 +289,7 @@
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
-        {#if screenOutputs.length > 0}<span>· {enabled} on</span>{/if}
+        {#if screenOutputs.length > 0}<span>· {enabled} on{planningOnly && enabled > 0 ? ", dark while planning" : ""}</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}
@@ -398,6 +424,11 @@
   }
   .warn {
     color: var(--warn);
+  }
+  .status-link.quiet {
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 2px;
   }
   .status-link:hover {
     background: var(--raised);

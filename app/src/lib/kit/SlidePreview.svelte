@@ -7,6 +7,7 @@
 
   let {
     lines = [],
+    footer = null,
     overlay = "None",
     safeArea,
     showGuide = false,
@@ -17,6 +18,8 @@
     brand = null,
   }: {
     lines?: readonly string[];
+    /** The smaller line at the foot: attribution, copyright, a verse reference. */
+    footer?: string | null;
     overlay?: "None" | "Black" | "Logo";
     /** Margins as fractions (0.05 = 5%). */
     safeArea?: SafeArea | null;
@@ -68,6 +71,7 @@
   {:else if overlay === "None"}
     <div class="text" style={box}>
       {#each lines as line}<p>{line}</p>{:else}<span class="empty">{empty}</span>{/each}
+      {#if footer && lines.length > 0}<p class="footer">{footer}</p>{/if}
     </div>
   {/if}
   {#if bug}
@@ -111,6 +115,16 @@
   }
   p {
     margin: 0;
+  }
+  /* Where the screen draws it: small, at the foot of the safe area. */
+  .footer {
+    position: absolute;
+    right: 2%;
+    bottom: 3%;
+    left: 2%;
+    font-size: 0.55em;
+    font-weight: 400;
+    opacity: 0.8;
   }
   .empty {
     color: var(--faint);

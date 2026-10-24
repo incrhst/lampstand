@@ -1,7 +1,7 @@
 // node --test --experimental-strip-types (npm test)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextTip, TIPS } from "./tips.ts";
+import { connectDue, nextTip, snooze, TIPS } from "./tips.ts";
 import type { LoadedService } from "./api";
 
 const service = (sections: { header: string; seconds: number | null; items: string[] }[]): LoadedService => ({
@@ -75,6 +75,43 @@ test("the logo-bug tip waits for a logo", () => {
   assert.equal(nextTip({ ...f, hasLogo: true }, seen)?.id, "logo-bug");
 });
 
-test("there are eight tips", () => {
-  assert.equal(TIPS.length, 8);
+test("there are nine tips", () => {
+  assert.equal(TIPS.length, 9);
+});
+
+const real = { paired: 0, realUse: true };
+
+test("connect-a-device is offered with nothing paired once the church is using Lampstand for real", () => {
+  assert.equal(nextTip({ loaded: null, liveItem: null, ...real }, new Set())?.id, "connect-device");
+  assert.equal(TIPS.find((t) => t.id === "connect-device")?.action?.go, "devices");
+});
+
+test("connect-a-device stays away during the welcome-only state or before sync has answered", () => {
+  assert.equal(nextTip({ loaded: null, liveItem: null, paired: 0, realUse: false }, new Set()), null);
+  assert.equal(nextTip({ loaded: null, liveItem: null, realUse: true }, new Set()), null);
+});
+
+test("connect-a-device is not shown once a device is paired", () => {
+  assert.equal(nextTip({ loaded: null, liveItem: null, paired: 1, realUse: true }, new Set()), null);
+});
+
+test("connect-a-device is never offered while something is on air", () => {
+  assert.equal(nextTip({ loaded: null, liveItem: "a", ...real }, new Set(["quick-add", "jump-keys", "blank-screen", "safe-area"]))?.id, undefined);
+});
+
+test("Not now puts connect-a-device off for a week, then it comes back", () => {
+  const f = { loaded: null, liveItem: null, ...real };
+  const now = 1_000_000;
+  const s = snooze({}, "connect-device", 7, now);
+  assert.equal(nextTip(f, new Set(), TIPS, s, now + 6 * 86_400_000), null);
+  assert.equal(nextTip(f, new Set(), TIPS, s, now + 7 * 86_400_000)?.id, "connect-device");
+});
+
+test("dismissing connect-a-device hides it for good, and the status line follows", () => {
+  const f = { loaded: null, liveItem: null, ...real };
+  assert.equal(nextTip(f, new Set(["connect-device"])), null);
+  assert.equal(connectDue(real, new Set(), {}), true);
+  assert.equal(connectDue(real, new Set(["connect-device"]), {}), false);
+  assert.equal(connectDue(real, new Set(), snooze({}, "connect-device", 7)), false);
+  assert.equal(connectDue({ paired: 2, realUse: true }, new Set(), {}), false);
 });

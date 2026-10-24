@@ -23,7 +23,7 @@
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import PresenterView from "./PresenterView.svelte";
   import TipCard from "../../lib/kit/TipCard.svelte";
-  import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed } from "../../lib/tips";
+  import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
@@ -37,9 +37,18 @@
   import { steppedDown, windowToDemote } from "../../lib/primary";
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import DriveAction from "../../lib/kit/DriveAction.svelte";
+  import { isPlanning } from "../../lib/presenting";
+  import { driverOffline, isDriving } from "../../lib/driving";
 
-  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view). */
-  let { onsetup, onobs, onplan, ontips }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void } = $props();
+  /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
+  let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
+  /** Driving a presenter that is not connected: the controls wait. */
+  let paused = $derived(driverOffline(live.team));
+
+  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen, `ondevices` where devices are paired. */
+  let { onsetup, onobs, onplan, ontips, onidle, ondevices }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void; ondevices?: () => void } = $props();
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
@@ -293,6 +302,17 @@
   function dismissTip(id: string) {
     dismissedTips = new Set([...dismissedTips, id]);
     saveDismissed(dismissedTips);
+    live.tipsVersion++;
+  }
+  let snoozedTips = $state(loadSnoozed());
+  /** "Not now": the tip comes back after its snooze, if it still applies. */
+  function snoozeTip(t: Tip) {
+    snoozedTips = snooze(snoozedTips, t.id, t.snoozeDays ?? 7);
+    saveSnoozed(snoozedTips);
+    live.tipsVersion++;
+  }
+  function tipAction(t: Tip) {
+    if (t.action?.go === "devices") ondevices?.();
   }
   /** The order as groups: each header with the items under it. Items before
    *  the first header form a group with no header. */
@@ -323,8 +343,10 @@
   let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
   let tip = $derived(
     nextTip(
-      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo },
+      { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo, paired: live.team?.paired.length, realUse: live.realUse },
       new Set([...dismissedTips, ...usedTips]),
+      undefined,
+      snoozedTips,
     ),
   );
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
@@ -482,7 +504,17 @@
       <div class="pick-head">
         <h1>No service is open</h1>
         <p class="muted">Open one to go live, or plan a new one.</p>
+        {#if onidle}<button type="button" class="quiet-link" onclick={onidle}>Change idle screen</button>{/if}
       </div>
+      {#if planningOnly}
+        <div class="pick-foot gate">
+          <Banner tone="neutral" icon="monitor">
+            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter, or drive it from this device.</span>
+            <PresentAction />
+            <DriveAction />
+          </Banner>
+        </div>
+      {/if}
       {#if services.length > 0}
         <ul class="plain pick-list" aria-label="Services to open">
           {#each services as svc (svc.id)}
@@ -499,7 +531,7 @@
                 {#if svc.items === 0 && onplan}
                   <Button size="small" icon="calendar" onclick={() => planService(svc.id)} label="Plan {svc.title}">Plan</Button>
                 {:else}
-                  <Button variant="primary" size="small" icon="play" onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  <Button variant="primary" size="small" icon="play" disabled={planningOnly} onclick={() => openService(svc.id)} label="Open {svc.title} for live">
                     Open
                   </Button>
                 {/if}
@@ -516,7 +548,7 @@
     </div>
   </div>
 {:else}
-  <div class="operate">
+  <div class="operate" inert={paused} class:paused>
     <div class="bar">
       <p class="service">
         <strong title={live.loaded.title}>{live.loaded.title}</strong>
@@ -567,8 +599,9 @@
         onbug={toggleBug}
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
-        onclose={askClose}
+        {onidle}
       />
+      <Button size="small" variant="ghost" icon="x" onclick={askClose} title="Put the service away; it stays in Plan">Close service</Button>
     </div>
 
     <!-- While a deck is on air the presenter view takes the right column
@@ -595,7 +628,7 @@
           <LiveLoop loaded={live.loaded} section={liveSection} />
         {/if}
         {#if tip}
-          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} />
+          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
         {/if}
         <div class="pane-body groups">
           {#each groups as group (group.section?.header ?? "ungrouped")}
@@ -686,6 +719,7 @@
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
               lines={live.liveSlide?.lines ?? []}
+              footer={live.liveSlide?.footer ?? null}
               image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step, liveWidth) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
@@ -699,6 +733,9 @@
               <LoopProgress seconds={liveSection.seconds} slideKey="{live.live.item}:{live.live.slide}:{live.live.step}" />
             {/if}
           </div>
+          {#if live.idle && live.overlay === "None" && onidle}
+            <button type="button" class="quiet-link idle-link" onclick={onidle}>Change idle screen</button>
+          {/if}
           <div class="transport">
             <Button icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
             <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
@@ -722,7 +759,7 @@
                     onclick={() => show({ item: viewed.id, slide: i, step: 0 })}
                     aria-current={isLive(viewed.id, i) ? "true" : undefined}
                   >
-                    <SlidePreview lines={slide.lines} image={builtThumb(viewed.id, i)} size="small" />
+                    <SlidePreview lines={slide.lines} footer={slide.footer} image={builtThumb(viewed.id, i)} size="small" />
                     <span class="caption">
                       {#if isLive(viewed.id, i)}<StatusPill tone="live">LIVE</StatusPill>{/if}
                       <span>{slide.label ?? i + 1}</span>
@@ -747,6 +784,7 @@
               {#if upcoming}
                 <SlidePreview
                   lines={upcoming.slide.lines}
+                  footer={upcoming.slide.footer}
                   image={builtThumb(upcoming.cursor.item, upcoming.cursor.slide)}
                   safeArea={output?.safe_area}
                 />
@@ -857,6 +895,9 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+  }
+  .operate.paused {
+    opacity: 0.55;
   }
   .bar > :global(*) {
     flex-shrink: 0;
@@ -1073,6 +1114,26 @@
   }
   .live-screen.on {
     box-shadow: 0 0 0 2px var(--live);
+  }
+  .quiet-link {
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .quiet-link:hover {
+    color: var(--text);
+  }
+  .idle-link {
+    display: block;
+    margin-top: 0.4rem;
+  }
+  .pick-head .quiet-link {
+    margin-top: 0.35rem;
   }
   .transport {
     display: flex;

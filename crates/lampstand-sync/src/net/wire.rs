@@ -18,7 +18,8 @@ use super::secure::SessionKeys;
 /// Bumped when frames change incompatibly. A peer speaking another version
 /// is refused with a message saying which side should update. 2: hellos
 /// carry an X25519 key and frames after the handshake are encrypted (T75).
-pub(crate) const PROTOCOL: u32 = 2;
+/// 3: presenter lease, ask and heartbeat frames. 4: driving.
+pub(crate) const PROTOCOL: u32 = 4;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -53,6 +54,52 @@ pub(crate) enum Frame {
     BlobMissing {
         hash: [u8; 32],
     },
+    /// The sender's presenter lease ([`crate::presenter::Lease`]): sent
+    /// when a session opens and whenever it changes. The newer one wins.
+    Lease {
+        holder: Option<[u8; 32]>,
+        name: String,
+        epoch: u64,
+    },
+    /// The sender asks the receiver, the presenter, to hand over.
+    Ask,
+    /// The sender withdraws its ask.
+    Cancel,
+    /// The presenter says not now to an ask made at this lease epoch.
+    Declined {
+        epoch: u64,
+    },
+    /// Proof of life, every few seconds, so a silent connection is told
+    /// from a quiet one.
+    Beat,
+    /// The sender asks the receiver, the presenter, to let it drive.
+    DriveAsk,
+    /// The sender stops driving, or withdraws its ask to drive.
+    DriveCancel,
+    /// The presenter turns an ask to drive down.
+    DriveAnswer {
+        answer: DriveAnswer,
+    },
+    /// The presenter says who is driving it (`None`: nobody). Sent to every
+    /// device whenever that changes and when a session opens.
+    DriveState {
+        driver: Option<([u8; 32], String)>,
+    },
+    /// A request from the driver to the presenter: the same JSON the local
+    /// operator's screen sends.
+    DriveCommand {
+        payload: Vec<u8>,
+    },
+    /// The presenter's live state for the driver's screen: one JSON event.
+    DriveLive {
+        payload: Vec<u8>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum DriveAnswer {
+    Declined,
+    Busy { by: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -228,6 +275,15 @@ mod tests {
                 hash: [3; 32],
                 data: vec![4; 10],
                 last: true,
+            },
+            Frame::DriveState {
+                driver: Some(([8; 32], "Mary's laptop".into())),
+            },
+            Frame::DriveAnswer {
+                answer: DriveAnswer::Busy { by: "Sam".into() },
+            },
+            Frame::DriveCommand {
+                payload: b"{\"Next\":null}".to_vec(),
             },
         ];
         for frame in frames {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { neighbourItem, nextClick, nextSlide } from "./cursor.ts";
 import type { LoadedService } from "./api";
 
-const slide = (label: string, steps = 0) => ({ label, lines: [label], steps, notes: "" });
+const slide = (label: string, steps = 0) => ({ label, lines: [label], footer: null, steps, notes: "" });
 const loaded: LoadedService = {
   service: "s",
   title: "Sunday",

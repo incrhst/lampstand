@@ -11,12 +11,16 @@ import {
   type OutputConfig,
   type Overlay,
   type SlideView,
+  type TeamRequest,
+  type TeamStatus,
+  type SyncSummary,
   type DeviceSettings,
   type Theme,
   type UpdateStatus,
 } from "./api";
 import { loadSettings, updateSettings } from "./settings";
 import { sortThemes } from "./themes";
+import { syncFailed } from "./sync";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -35,8 +39,16 @@ class LiveState {
   songsVersion: number = $state(0);
   /** Bumped when a deck is added or changes (here or synced in). */
   decksVersion: number = $state(0);
+  /** Bumped when the church's shared settings change here or on another device. */
+  churchVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** Where sync with the paired devices stands; null until first asked. */
+  sync: SyncSummary | null = $state(null);
+  /** The church plans or presents for real, not just the Welcome service (see tips.ts). */
+  realUse = $state(false);
+  /** Bumped when a quick tip is put off or dismissed, so the status bar looks again. */
+  tipsVersion = $state(0);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
@@ -48,6 +60,8 @@ class LiveState {
   themes: Theme[] = $state([]);
   /** This device's settings: default theme, idle screen, church brand. */
   settings: DeviceSettings | null = $state(null);
+  /** Paired devices and who presents; null until first asked (`refreshTeam`). */
+  team: TeamStatus | null = $state(null);
   /** The engine has nothing on air and no service under way: screens show their idle screen. */
   idle: boolean = $state(true);
 
@@ -86,9 +100,18 @@ onEvent((event) => {
     case "Changed":
       if (event.data.kind === "deck") live.decksVersion++;
       if (event.data.kind === "theme") refreshThemes();
+      if (event.data.kind === "churchsettings" || event.data.kind === "church") {
+        live.churchVersion++;
+        refreshSettings();
+      }
       break;
     case "Obs":
       live.obs = event.data;
+      break;
+    case "SyncStatus":
+      live.sync = event.data.sync;
+      // The summary is in the event; who presents and who asks is not.
+      refreshTeam();
       break;
     case "DisplaysChanged":
       live.displaysVersion++;
@@ -125,6 +148,38 @@ export async function saveSettings(change: Partial<DeviceSettings>) {
     live.settings = await updateSettings(change);
   } catch (e) {
     report(e);
+  }
+}
+
+/**
+ * Refetches the paired devices and who presents into `live.team`. A device
+ * that stops being the presenter loses its open service: the core took it
+ * off air and closed the screens.
+ */
+export async function refreshTeam() {
+  try {
+    const was = live.team?.presenter.role;
+    live.team = await request({ area: "Team", request: "Status" }, "Team");
+    live.sync = live.team.sync;
+    if (was === "Presenting" && live.team.presenter.role === "Planning") {
+      live.loaded = null;
+      live.live = null;
+      live.preview = null;
+    }
+  } catch (e) {
+    // Sync may be off (the local server could not start): this device presents.
+    live.sync = syncFailed(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Sends a presenter request (ask, allow, claim…) and keeps `live.team` current. */
+export async function presenterRequest(req: TeamRequest): Promise<boolean> {
+  try {
+    live.team = await request({ area: "Team", request: req }, "Team");
+    return true;
+  } catch (e) {
+    report(e);
+    return false;
   }
 }
 
@@ -214,6 +269,9 @@ export async function obs(req: ObsRequest): Promise<ObsView> {
   live.obs = view;
   return view;
 }
+
+/** Asks sync where it stands; a sync engine that is not running shows as an error. */
+export const refreshSync = refreshTeam;
 
 /** Refetches OBS's state, reporting a failure in the status bar. */
 export async function refreshObs() {

@@ -59,7 +59,7 @@ use crate::import::import_files;
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
-use crate::sync::{Obs, Sync, SyncConfig};
+use crate::sync::{mirroring, DriveSinks, NodeCell, Obs, Sync, SyncConfig};
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -72,6 +72,12 @@ enum Internal {
     Key(Key),
     /// An output window gained or lost focus.
     Focused(OutputId, bool),
+    /// Sync says whether this device presents (`true`) or only plans.
+    Presenting(bool),
+    /// The device driving this one sent a request.
+    Drive(Request),
+    /// A device started driving this one: tell it everything on air.
+    Announce,
 }
 
 struct Shared {
@@ -83,6 +89,8 @@ struct Shared {
     downloads: PathBuf,
     /// `None` when the local server could not start.
     sync: Option<Arc<Sync>>,
+    /// Why `sync` is `None`, for the status bar.
+    sync_error: Option<String>,
     /// OBS over its WebSocket (T89). Answers `Obs` requests without the
     /// `App` lock.
     obs: Arc<ObsControl>,
@@ -122,6 +130,12 @@ async fn api(
             .await
             .map_err(|e| e.to_string())
     };
+    // A device that is driving another sends what the operator does there.
+    if let Some(sync) = &state.sync {
+        if let Some(response) = sync.forward(&request).await {
+            return Ok(response);
+        }
+    }
     match request {
         Request::Obs(request) => Ok(state.obs.handle(request).await),
         Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
@@ -143,7 +157,10 @@ async fn api(
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {
-                message: "sync is off: the local server could not start".into(),
+                message: format!(
+                    "Sync is off: {}",
+                    state.sync_error.as_deref().unwrap_or("it did not start")
+                ),
             },
         }),
         Request::Library(LibraryRequest::ImportFiles { paths }) => {
@@ -246,6 +263,28 @@ async fn api(
                 )
                 .map(Response::Thumbnail)
                 .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // The default idle screen, by the same layout and renderer as the
+        // screens.
+        Request::Library(LibraryRequest::IdlePreview {
+            brand,
+            theme,
+            width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "previews are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                let brand = crate::theme_preview::brand_for_idle(&library, brand);
+                let theme = library.resolve_theme(&[theme]);
+                crate::theme_preview::idle_preview(brand.as_ref(), &theme, width, &fonts, &renderer)
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
             }))
             .await
         }
@@ -449,9 +488,14 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         tx: tx.clone(),
     };
     let emitter = handle.clone();
-    let emit = Arc::new(move |event: Event| {
-        let _ = emitter.emit("api-event", event);
-    });
+    // Events also go to a device driving this one, once there is one.
+    let node_cell = NodeCell::default();
+    let emit = mirroring(
+        Arc::new(move |event: Event| {
+            let _ = emitter.emit("api-event", event);
+        }),
+        node_cell.clone(),
+    );
     // A folder that has never been seeded is a brand-new install, which
     // starts with a welcome service. Known before `App::open` seeds it.
     let first_run = !data_dir.join("seeded").exists();
@@ -486,6 +530,33 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     });
     lock(&app).set_obs_cues(obs_control.cues());
 
+    let role_tx = tx.clone();
+    let drive_tx = tx.clone();
+    let announce_tx = tx.clone();
+    let drive_obs = obs_control.clone();
+    let announce_obs = obs_control.clone();
+    let announce_emit = emit.clone();
+    let drive = DriveSinks {
+        command: Arc::new(move |request| match request {
+            // OBS answers on the async runtime, without the `App` lock.
+            Request::Obs(request) => {
+                let obs = drive_obs.clone();
+                tauri::async_runtime::spawn(async move {
+                    obs.handle(request).await;
+                });
+            }
+            request => {
+                let _ = drive_tx.send(Internal::Drive(request));
+            }
+        }),
+        driver: Arc::new(move |on| {
+            if on {
+                let _ = announce_tx.send(Internal::Announce);
+                announce_emit(Event::Obs(Box::new(announce_obs.view())));
+            }
+        }),
+        cell: node_cell,
+    };
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(
             &library,
@@ -494,17 +565,22 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             SyncConfig::from_env(),
             obs,
             emit.clone(),
+            Arc::new(move |presenting| {
+                let _ = role_tx.send(Internal::Presenting(presenting));
+            }),
+            drive,
         )),
         Err(e) => Err(e.to_string()),
     };
-    let sync = match sync {
+    let (sync, sync_error) = match sync {
         Ok(sync) => {
             lock(&app).set_server_address(sync.public_address());
-            Some(Arc::new(sync))
+            lock(&app).set_sync_link(sync.link());
+            (Some(Arc::new(sync)), None)
         }
         Err(e) => {
             eprintln!("lampstand: sync is off: {e}");
-            None
+            (None, Some(e))
         }
     };
     let wake_tx = tx.clone();
@@ -530,6 +606,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
         downloads: data_dir.join("downloads"),
         sync,
+        sync_error,
         obs: obs_control,
         thumbnails,
         thumbnail_fonts: Arc::new(Mutex::new(None)),
@@ -682,6 +759,13 @@ fn app_step(
                 lock(app).output_closed(id)
             }
             Ok(Internal::LibraryChanged) => {}
+            Ok(Internal::Presenting(presenting)) => lock(app).set_presenting(presenting),
+            Ok(Internal::Drive(request)) => {
+                if let Response::Error { message } = lock(app).handle(request) {
+                    eprintln!("lampstand: a driver's request failed: {message}");
+                }
+            }
+            Ok(Internal::Announce) => lock(app).announce(),
             Ok(Internal::Key(key)) => {
                 if let Response::Error { message } = lock(app).handle(Request::Live(key.command()))
                 {
