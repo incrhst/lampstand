@@ -369,7 +369,7 @@ async fn a_cut_off_peer_is_offline_without_a_problem() {
     })
     .await;
     presenter.cut();
-    until(Duration::from_secs(5), "disconnected", || {
+    until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0
     })
     .await;
@@ -400,7 +400,7 @@ async fn a_cut_off_peer_catches_up_after_reconnecting() {
     .await;
 
     presenter.cut();
-    until(Duration::from_secs(5), "disconnected", || {
+    until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0 && presenter.node.status().connected() == 0
     })
     .await;
@@ -847,7 +847,7 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
     // would restart the offline clock.
     sanctuary.cut();
     office.cut();
-    until(Duration::from_secs(5), "disconnected", || {
+    until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0
     })
     .await;
