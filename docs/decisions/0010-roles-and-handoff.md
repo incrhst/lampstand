@@ -118,6 +118,13 @@ the four duties *roles* only because the app does.
     The Present view shows what sound is playing and what is next, with the
     panic stop.
 
+11. **A confidence screen is not a role.** It is a second output on the
+    Projection machine, or a browser page on any device (a tablet), which is
+    a helper like the remote. The browser stage page is the planned stage
+    display and is built apart from this work. A native stage output on a
+    second Lampstand machine would be a later Stage display role, not
+    single-holder, since a church can have several stage screens.
+
 Defaults and details that the map did not grill, proposed here for approval:
 see [roles spec](../roles.md), "Proposed details".
 

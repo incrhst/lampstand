@@ -173,6 +173,25 @@ Sound is part of the service, so it lives in the service order and syncs like th
 - **The roster shows who plays it.** The status bar says who runs the sound, and Present warns if nobody holds Audio when a sound item is next.
 - **Moving Audio never edits the order.** The order is the plan; only the playing changes hands.
 
+### Confidence screens and stage displays
+
+A confidence screen (speaker's notes, next slide, clock) is not a role. It can be:
+
+- **A second display on the Projection machine,** set up as a stage output. Today's way, limited by the cable run to the stage.
+- **A browser page on any device** (a tablet on a music stand, a laptop, a TV with a browser), opened from a QR code like the tablet remote. It is a helper: it shows what Projection is showing, never holds anything, and never affects the main screens if it drops off Wi-Fi. This is the answer when the stage is far from the projector.
+
+The browser stage page is the planned stage display (PRD LV-5, PS-7; decision 0006 lists it as a later page) and is built separately from the roles work. A native stage output on a second Lampstand machine would be a later Stage display role; it would not be single-holder, since a church can have several stage screens.
+
+```mermaid
+flowchart LR
+  subgraph A["A at the projector: Projection"]
+    LA["Lampstand"]
+  end
+  LA -->|video out| P["Projector and screens"]
+  LA -->|"stage output (a second display)"| S1["Confidence screen on a cable"]
+  LA -.->|"stage page over the church network"| T["Tablet or phone (helper)"]
+```
+
 ### Phones and tablets
 
 A phone or tablet in the browser (the tablet remote, paired by QR code and PIN) is a **helper**: it acts for the device that holds a role, today by sending Operator-type commands (next, previous, show, black, logo, clear) to the Projection machine, and later the panic stop for music. It never holds a role, and does not appear in a seat. A browser view for Stream is a later feature.
