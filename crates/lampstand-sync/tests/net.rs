@@ -1647,6 +1647,10 @@ async fn a_pairing_device_with_no_screens_takes_no_role_and_operator_waits_for_p
         laptop.node.status().connected() == 1 && projector.node.status().connected() == 1
     })
     .await;
+    until(Duration::from_secs(5), "both to have been told", || {
+        laptop.node.settled() && projector.node.settled()
+    })
+    .await;
     for role in Role::ALL {
         assert_eq!(holder_of(&laptop, role), None, "{role:?}");
         assert_eq!(holder_of(&projector, role), None, "{role:?}");

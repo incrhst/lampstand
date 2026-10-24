@@ -388,6 +388,8 @@ pub struct SyncNode {
     wall_offset_ms: std::sync::atomic::AtomicI64,
     /// Tests: ignore asks that arrive.
     lose_asks: std::sync::atomic::AtomicBool,
+    /// Which roles a connected device has told this one about in this run.
+    heard_roles: Mutex<[bool; 4]>,
     /// Contact times are saved one at a time, newest last.
     contacts_save: Mutex<()>,
     /// Roles are saved one at a time, newest last.
@@ -512,6 +514,7 @@ impl SyncNode {
             contacts_dirty: std::sync::atomic::AtomicBool::new(false),
             wall_offset_ms: std::sync::atomic::AtomicI64::new(0),
             lose_asks: std::sync::atomic::AtomicBool::new(false),
+            heard_roles: Mutex::new([false; 4]),
             contacts_save: Mutex::new(()),
             save_lock: Mutex::new(()),
             persist_roles: loaded.writable,
@@ -1108,7 +1111,15 @@ impl SyncNode {
     /// holder has been offline past the timeout.
     pub fn claim_role(&self, role: Role) -> Result<(), Denied> {
         let reach = self.reach();
-        let record = lock(&self.roles).claim(role, &reach)?;
+        let record = {
+            let mut roles = lock(&self.roles);
+            // Just connected and not yet told who holds what: a role that
+            // looks unheld may be held, and taking it now would be a guess.
+            if roles.standing(role, &reach) == Standing::Open && self.settling(&reach) {
+                return Err(Denied::Settling);
+            }
+            roles.claim(role, &reach)?
+        };
         self.role_changed(role, &record);
         Ok(())
     }
@@ -1514,7 +1525,21 @@ impl SyncNode {
     }
 
     /// A device sent its record for a role: the newer of the two stands.
+    /// Whether this device has been told about every role by a connected
+    /// device (or is connected to none): an unheld role is then really
+    /// unheld as far as anyone here knows.
+    pub fn settled(&self) -> bool {
+        !self.settling(&self.reach())
+    }
+
+    /// Connected to someone who has not yet told this device about every
+    /// role (the four records come together as a connection opens).
+    fn settling(&self, reach: &Reach) -> bool {
+        !reach.connected.is_empty() && !lock(&self.heard_roles).iter().all(|h| *h)
+    }
+
     pub(crate) fn record_received(&self, from: DeviceKey, role: Role, mut record: Record) {
+        lock(&self.heard_roles)[role.index()] = true;
         let known = record
             .holder
             .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
@@ -2558,5 +2583,33 @@ mod tests {
         let node = node_at(dir.path());
         assert!(node.roles_status().stream.unverified);
         assert_eq!(node.roles_status().projection.record.epoch, 0);
+    }
+
+    #[test]
+    fn a_device_that_has_just_connected_does_not_take_a_role_it_has_not_been_told_about() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let (control, _frames) = mpsc::unbounded_channel();
+        lock(&node.peers).sessions.insert(
+            id(7),
+            Session {
+                id: 1,
+                client: id(7),
+                address: None,
+                control,
+                stop: None,
+                done: None,
+            },
+        );
+        // Connected to device 7, which has not said anything yet.
+        assert!(!node.settled());
+        assert_eq!(node.claim_role(Role::Stream), Err(Denied::Settling));
+        assert_eq!(node.roles_status().stream.record.holder, None);
+        // Device 7 tells it about the four roles (it holds none).
+        for role in Role::ALL {
+            node.record_received(id(7), role, Record::default());
+        }
+        assert!(node.settled());
+        assert!(node.claim_role(Role::Stream).is_ok());
     }
 }

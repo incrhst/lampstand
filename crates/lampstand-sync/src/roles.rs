@@ -447,6 +447,9 @@ pub enum Denied {
     NeedsProjection,
     /// Teams (T18) does not let this device hold the role.
     NotPermitted,
+    /// This device has just connected and has not yet been told who holds
+    /// the roles, so a role that looks unheld may not be.
+    Settling,
 }
 
 /// Teams (T18) does not let a device hold a role. Never returned until T18.
@@ -484,6 +487,8 @@ impl std::fmt::Display for Denied {
             // The wording the driver's bar already used when nothing presents.
             Denied::NeedsProjection => write!(f, "nobody is presenting"),
             Denied::NotPermitted => write!(f, "this device may not hold that role"),
+            // What the bar said in 0.7.0 before it had heard who presents.
+            Denied::Settling => write!(f, "nobody is presenting"),
         }
     }
 }
