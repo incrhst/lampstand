@@ -2171,10 +2171,14 @@ fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange 
 
 fn slide_view(slide: &LoadedSlide) -> SlideView {
     let (label, lines, footer) = match &slide.content {
-        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => {
-            (slide.label.clone(), slide.lines.clone(), slide.footer.clone())
+        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => (
+            slide.label.clone(),
+            slide.lines.clone(),
+            slide.footer.clone(),
+        ),
+        Content::DeckSlide { index, .. } => {
+            (Some(format!("Slide {}", index + 1)), Vec::new(), None)
         }
-        Content::DeckSlide { index, .. } => (Some(format!("Slide {}", index + 1)), Vec::new(), None),
         Content::Image { .. } => (Some("Image".into()), Vec::new(), None),
         Content::Video { .. } => (Some("Video".into()), Vec::new(), None),
         Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()], None),

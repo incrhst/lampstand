@@ -298,9 +298,7 @@ impl State {
                     name,
                 }),
             ),
-            Frame::DriveCommand { payload } => {
-                self.node.drive_command_received(self.peer, payload)
-            }
+            Frame::DriveCommand { payload } => self.node.drive_command_received(self.peer, payload),
             Frame::DriveLive { payload } => self.node.drive_live_received(self.peer, payload),
             Frame::Beat => {}
             // Handshake frames after the handshake: ignore.

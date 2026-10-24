@@ -934,7 +934,11 @@ struct Seen {
 
 fn watch(p: &Peer) -> Seen {
     let seen = Seen::default();
-    let (c, l, d) = (seen.commands.clone(), seen.live.clone(), seen.driver.clone());
+    let (c, l, d) = (
+        seen.commands.clone(),
+        seen.live.clone(),
+        seen.driver.clone(),
+    );
     p.node.set_drive_hooks(DriveHooks {
         command: Box::new(move |from, payload| c.lock().unwrap().push((from, payload))),
         live: Box::new(move |payload| l.lock().unwrap().push(payload)),
@@ -972,7 +976,10 @@ async fn driving_pair() -> (Peer, Peer, Seen, Seen) {
 async fn asking_shows_a_prompt_and_allowing_lets_the_device_drive() {
     let (sanctuary, office) = paired_and_leased().await;
     assert!(drive_of(&office).can_drive);
-    assert!(!drive_of(&sanctuary).can_drive, "the presenter does not ask");
+    assert!(
+        !drive_of(&sanctuary).can_drive,
+        "the presenter does not ask"
+    );
     assert!(office.node.drive_send(b"early".to_vec()).is_err());
     office.node.drive_ask().unwrap();
     assert_eq!(drive_of(&office).asking, Some(DriveAsking::Waiting));
@@ -981,7 +988,10 @@ async fn asking_shows_a_prompt_and_allowing_lets_the_device_drive() {
     })
     .await;
     let request = drive_of(&sanctuary).requests[0].clone();
-    assert_eq!((request.name.as_str(), request.device), ("Office PC", office.node.device()));
+    assert_eq!(
+        (request.name.as_str(), request.device),
+        ("Office PC", office.node.device())
+    );
     // Nothing is driven until the presenter says so.
     assert!(drive_of(&sanctuary).active.is_none());
 
@@ -1025,7 +1035,10 @@ async fn a_command_from_the_driver_reaches_the_presenter_and_live_state_comes_ba
     assert_eq!(*on_sanctuary.driver.lock().unwrap(), vec![true]);
 
     let sent = Instant::now();
-    office.node.drive_send(b"{\"Live\":\"Next\"}".to_vec()).unwrap();
+    office
+        .node
+        .drive_send(b"{\"Live\":\"Next\"}".to_vec())
+        .unwrap();
     let took = until(Duration::from_secs(5), "the command", || {
         !on_sanctuary.commands.lock().unwrap().is_empty()
     })
@@ -1106,9 +1119,11 @@ async fn a_second_device_is_refused_while_one_drives() {
         .pair(&code.code, Some(&sanctuary.address()))
         .await
         .unwrap();
-    until(Duration::from_secs(5), "the tablet to know who presents", || {
-        presenter_of(&tablet).lease.name == "Sanctuary" && tablet.node.status().connected() >= 1
-    })
+    until(
+        Duration::from_secs(5),
+        "the tablet to know who presents",
+        || presenter_of(&tablet).lease.name == "Sanctuary" && tablet.node.status().connected() >= 1,
+    )
     .await;
     tablet.node.drive_ask().unwrap();
     until(Duration::from_secs(5), "to be told who drives", || {
@@ -1119,7 +1134,10 @@ async fn a_second_device_is_refused_while_one_drives() {
     })
     .await;
     assert!(drive_of(&sanctuary).requests.is_empty(), "no queue");
-    assert_eq!(drive_of(&sanctuary).active.unwrap().device, office.node.device());
+    assert_eq!(
+        drive_of(&sanctuary).active.unwrap().device,
+        office.node.device()
+    );
     // The tablet also knows who drives, to say so.
     until(Duration::from_secs(5), "the tablet to know", || {
         drive_of(&tablet).active.as_ref().map(|a| a.name.as_str()) == Some("Office PC")
@@ -1132,7 +1150,10 @@ async fn a_second_device_is_refused_while_one_drives() {
 async fn the_presenter_takes_control_back_at_once() {
     let (sanctuary, office, on_sanctuary, _) = driving_pair().await;
     sanctuary.node.drive_take_back();
-    assert!(drive_of(&sanctuary).active.is_none(), "at once, on the presenter");
+    assert!(
+        drive_of(&sanctuary).active.is_none(),
+        "at once, on the presenter"
+    );
     assert_eq!(*on_sanctuary.driver.lock().unwrap(), vec![true, false]);
     until(Duration::from_secs(5), "the driver to learn", || {
         drive_of(&office).driving.is_none()
@@ -1153,9 +1174,11 @@ async fn the_presenter_takes_control_back_at_once() {
 async fn the_presenter_going_offline_disables_driving_and_a_driver_going_offline_returns_control() {
     let (mut sanctuary, office, ..) = driving_pair().await;
     sanctuary.cut();
-    until(Duration::from_secs(10), "the presenter to be offline", || {
-        drive_of(&office).driving.is_some_and(|d| !d.online)
-    })
+    until(
+        Duration::from_secs(10),
+        "the presenter to be offline",
+        || drive_of(&office).driving.is_some_and(|d| !d.online),
+    )
     .await;
     assert!(office.node.drive_send(b"x".to_vec()).is_err());
     // On the presenter, the driver is gone and control is back.
@@ -1181,7 +1204,10 @@ async fn the_presenter_going_offline_disables_driving_and_a_driver_going_offline
 async fn only_a_presenting_device_decides_and_it_alone() {
     let (sanctuary, office) = paired_and_leased().await;
     // The planning device cannot allow anyone, nor take control back.
-    assert!(office.node.drive_allow(sanctuary.node.device(), false).is_err());
+    assert!(office
+        .node
+        .drive_allow(sanctuary.node.device(), false)
+        .is_err());
     office.node.drive_take_back();
     // A device with nothing to ask cannot ask.
     assert!(sanctuary.node.drive_ask().is_err());
@@ -1192,7 +1218,10 @@ async fn only_a_presenting_device_decides_and_it_alone() {
         !presenter_of(&sanctuary).requests.is_empty()
     })
     .await;
-    sanctuary.node.allow_presenter(office.node.device()).unwrap();
+    sanctuary
+        .node
+        .allow_presenter(office.node.device())
+        .unwrap();
     until(Duration::from_secs(5), "the hand-over", || {
         office.node.role() == Role::Presenter
     })

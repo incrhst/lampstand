@@ -374,15 +374,14 @@ impl SyncNode {
                 .map(|f| Duration::from_secs(f.takeover_secs))
                 .unwrap_or(DEFAULT_TAKEOVER),
         );
-        let always: Vec<(DeviceKey, String)> =
-            std::fs::read(config.dir.join("driver.json"))
-                .ok()
-                .and_then(|b| serde_json::from_slice::<DriverFile>(&b).ok())
-                .unwrap_or_default()
-                .always
-                .into_iter()
-                .filter_map(|(hex, name)| Some((DeviceKey::from_hex(&hex)?, name)))
-                .collect();
+        let always: Vec<(DeviceKey, String)> = std::fs::read(config.dir.join("driver.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<DriverFile>(&b).ok())
+            .unwrap_or_default()
+            .always
+            .into_iter()
+            .filter_map(|(hex, name)| Some((DeviceKey::from_hex(&hex)?, name)))
+            .collect();
         Ok(Arc::new_cyclic(|me| Self {
             repo,
             key,
@@ -791,7 +790,9 @@ impl SyncNode {
             drop(peers);
             lock(&self.presenter).receive_cancel(device);
             // A driver that went away hands control back.
-            let was_driver = lock(&self.seat).active().is_some_and(|a| a.device == device);
+            let was_driver = lock(&self.seat)
+                .active()
+                .is_some_and(|a| a.device == device);
             lock(&self.seat).gone(device);
             if was_driver {
                 self.drive_state_changed();
@@ -1048,7 +1049,11 @@ impl SyncNode {
         if !self.connected(holder) {
             return Err(format!(
                 "{} is not connected",
-                if name.is_empty() { "the presenting device" } else { &name }
+                if name.is_empty() {
+                    "the presenting device"
+                } else {
+                    &name
+                }
             ));
         }
         {

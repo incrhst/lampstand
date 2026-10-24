@@ -282,17 +282,19 @@ impl Sync {
                     Err(e) => eprintln!("lampstand: unreadable request from a driver: {e}"),
                 }
             }),
-            live: Box::new(move |payload| match serde_json::from_slice::<Event>(&payload) {
-                Ok(event) => {
-                    if let Event::Loaded(loaded) = &event {
-                        *live_mirror.loaded.lock().unwrap_or_else(|e| e.into_inner()) =
-                            Some(loaded.clone());
-                        live_mirror.changed.notify_waiters();
+            live: Box::new(
+                move |payload| match serde_json::from_slice::<Event>(&payload) {
+                    Ok(event) => {
+                        if let Event::Loaded(loaded) = &event {
+                            *live_mirror.loaded.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(loaded.clone());
+                            live_mirror.changed.notify_waiters();
+                        }
+                        live_emit(event);
                     }
-                    live_emit(event);
-                }
-                Err(e) => eprintln!("lampstand: unreadable state from the presenter: {e}"),
-            }),
+                    Err(e) => eprintln!("lampstand: unreadable state from the presenter: {e}"),
+                },
+            ),
             driver: Box::new(move |on| driver(on)),
         });
         let _ = cell.set(node.clone());

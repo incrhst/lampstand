@@ -395,10 +395,13 @@ mod tests {
     fn duplicate_keeps_order_and_fields_with_fresh_ids() {
         let mut s = Service::new("Sunday");
         let a = s.insert(0, header("A"));
-        let b = s.insert(1, ItemKind::Song {
-            song: SongId::generate(),
-            arrangement: Some(vec!["Verse 1".into(), "Chorus".into()]),
-        });
+        let b = s.insert(
+            1,
+            ItemKind::Song {
+                song: SongId::generate(),
+                arrangement: Some(vec!["Verse 1".into(), "Chorus".into()]),
+            },
+        );
         let c = s.insert(2, header("C"));
         s.items.get_mut(&b).unwrap().notes = "capo 2".into();
         s.items.get_mut(&b).unwrap().obs_scene = Some("Wide".into());
