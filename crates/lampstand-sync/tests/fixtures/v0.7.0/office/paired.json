@@ -1,0 +1,10 @@
+{
+  "devices": [
+    {
+      "device": "3256a1ecfedbb0b3769a538900aa47b2a9a22d5af6f810d2adf2d07d9e3bf307",
+      "name": "Sanctuary",
+      "address": "127.0.0.1:62239",
+      "paired_ms": 1792850255174
+    }
+  ]
+}

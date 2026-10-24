@@ -781,12 +781,14 @@ impl App {
                 self.outputs.put(config).map_err(err)?;
                 self.sent.remove(&id);
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Remove(id) => {
                 self.outputs.remove(id).map_err(err)?;
                 self.keys.remove(id).map_err(err)?;
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Calibrate { output, active } => {
@@ -1888,6 +1890,7 @@ impl App {
         if let Some(mut config) = self.outputs.get(id).cloned() {
             config.enabled = false;
             if self.outputs.put(config).is_ok() {
+                self.tell_screens();
                 (self.emit)(Event::Changed {
                     kind: "outputs".into(),
                     id: id.uuid().to_string(),

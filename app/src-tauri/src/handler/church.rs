@@ -49,6 +49,9 @@ pub trait SyncLink: Send + Sync {
     /// Starts fetching these files from whichever connected device has
     /// them, without waiting.
     fn fetch(&self, hashes: Vec<BlobHash>);
+    /// Whether this device has screens set up (an output turned on): only
+    /// then can it hold the Projection role.
+    fn screens(&self, _set_up: bool) {}
 }
 
 /// A first-time agreement waits this long for the other device's copy to
@@ -171,6 +174,14 @@ impl App {
     /// Called by the shell once sync is running.
     pub fn set_sync_link(&mut self, link: std::sync::Arc<dyn SyncLink>) {
         self.church_sync.link = Some(link);
+        self.tell_screens();
+    }
+
+    /// Tells sync whether this device has screens set up.
+    pub(super) fn tell_screens(&self) {
+        if let Some(link) = &self.church_sync.link {
+            link.screens(self.outputs.all().iter().any(|o| o.enabled));
+        }
     }
 
     /// The shared settings as they stand: from the document once this
