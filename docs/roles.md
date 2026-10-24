@@ -41,7 +41,7 @@ Operator is disabled if A drops, and wakes when Projection is held again. C keep
 
 ### Sound for the stream
 
-Lampstand sends no sound to OBS or Zoom. **We recommend a house feed from the mixing board straight into the stream machine** through a USB audio interface: use it as the Zoom microphone (with "Original sound" on) and as an OBS audio source. The mix should carry service playback and the microphones. The stream machine's mutes belong to the Stream holder.
+Sound is independent of Lampstand and of the roles. Lampstand sends no sound to OBS or Zoom, and the source of the sound may be any device, several, or none (a mixing board with microphones and no computer at all). No role owns it. **We recommend a house feed from the mixing board straight into the stream machine** through a USB audio interface: use it as the Zoom microphone (with "Original sound" on) and as an OBS audio source. The mix should carry service playback and the microphones. The stream machine's mutes belong to the Stream holder.
 
 ### Phones and tablets
 
@@ -75,4 +75,4 @@ The same rules for every role.
 - **Migration.** The lease becomes the Projection record keeping its epoch; the driver seat becomes Operator (the "always allowed" list in `driver.json` carries over). Sync protocol 5.
 - **Roster.** The status bar shows the roles this device holds ("Runs the screens", "Runs the service", "Runs the stream"), and for the others who holds them; "Presenting" and "Driving" are replaced by these. Setup › Devices lists each device with its roles and the takeover time. A device with no role is just "Planning".
 - **Teams check.** Who may hold a role is decided at `Roles::claim` and `Roles::allow` and nowhere else (T18).
-- **Audio.** Stays outside Lampstand. An output-device selector for media playback, or an NDI audio feed, are later tickets.
+- **Audio.** Stays outside Lampstand and outside the roles: the source may be any device or none. An output-device selector for media playback, or an NDI audio feed, are later tickets.
