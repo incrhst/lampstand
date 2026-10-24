@@ -9,19 +9,34 @@
     "render": "remotion render src/index.ts Demo out/lampstand-demo.mp4 --codec=h264 --crf=18",
     "capture:serve": "vite --config capture/vite.config.ts",
     "capture": "node capture/shoot.mjs",
-    "sfx": "node audio/make-sfx.mjs"
+    "sfx": "node audio/make-sfx.mjs",
+    "lamp:studio": "remotion studio projects/lampstand/index.ts --public-dir=public",
+    "lamp:validate": "tsx core/scripts/validate.ts projects/lampstand projects/lampstand/videos/*.json",
+    "lamp:sheet": "node --import tsx core/scripts/render.mjs projects/lampstand",
+    "lamp:render": "node --import tsx core/scripts/render.mjs projects/lampstand",
+    "lamp:typecheck": "tsc --noEmit -p projects/lampstand"
   },
   "dependencies": {
     "@remotion/cli": "4.0.290",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "remotion": "4.0.290"
+    "remotion": "4.0.290",
+    "zod": "3.24.1",
+    "@remotion/bundler": "4.0.290",
+    "@remotion/renderer": "4.0.290",
+    "@video/core": "*",
+    "@video/lampstand": "*"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/react": "18.3.12",
     "playwright-core": "1.49.1",
     "typescript": "5.9.3",
-    "vite": "8.3.4"
-  }
+    "vite": "8.3.4",
+    "tsx": "4.19.2"
+  },
+  "workspaces": [
+    "core",
+    "projects/*"
+  ]
 }
