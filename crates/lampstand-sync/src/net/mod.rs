@@ -386,6 +386,10 @@ pub struct SyncNode {
     contacts_dirty: std::sync::atomic::AtomicBool,
     /// Added to the wall clock for the times kept on disk; tests move it.
     wall_offset_ms: std::sync::atomic::AtomicI64,
+    /// Tests: ignore asks that arrive.
+    lose_asks: std::sync::atomic::AtomicBool,
+    /// Which roles a connected device has told this one about in this run.
+    heard_roles: Mutex<[bool; 4]>,
     /// Contact times are saved one at a time, newest last.
     contacts_save: Mutex<()>,
     /// Roles are saved one at a time, newest last.
@@ -509,6 +513,8 @@ impl SyncNode {
             contacts: Mutex::new(saved::load_contacts(&dir)),
             contacts_dirty: std::sync::atomic::AtomicBool::new(false),
             wall_offset_ms: std::sync::atomic::AtomicI64::new(0),
+            lose_asks: std::sync::atomic::AtomicBool::new(false),
+            heard_roles: Mutex::new([false; 4]),
             contacts_save: Mutex::new(()),
             save_lock: Mutex::new(()),
             persist_roles: loaded.writable,
@@ -889,10 +895,12 @@ impl SyncNode {
                         peers.problems.remove(&peer.device);
                         // How long it had been out of reach, from what was
                         // heard before this connection (kept across a
-                        // restart). Nothing known: no longer than this run
-                        // has lasted, so a claim made on no evidence is
-                        // refused rather than believed.
-                        let away = self.silence_or_run(&peers, peer.device);
+                        // restart). Nothing known: not away at all, so a
+                        // claim made on no evidence is refused rather than
+                        // believed, however long this process has run.
+                        let away = self
+                            .silence_in(&peers, peer.device)
+                            .unwrap_or(Duration::ZERO);
                         peers.away_before.insert(peer.device, away);
                         peers.session_started.insert(peer.device, Instant::now());
                         drop(peers);
@@ -927,14 +935,18 @@ impl SyncNode {
         let mut peers = lock(&self.peers);
         if peers.sessions.get(&device).is_some_and(|s| s.id == id) {
             peers.sessions.remove(&device);
-            peers.last_contact.insert(device, Instant::now());
+            // Not stamped with "now": when the device was last heard from
+            // is when its last frame came. A laptop that slept with its
+            // connection open is noticed long after it last spoke, and the
+            // time since then is what counts.
             peers.session_started.remove(&device);
             // Under the peers lock, so a new session cannot start before
             // the old state is gone.
             self.repo.forget_peer(device);
             drop(peers);
-            lock(&self.contacts).insert(device, self.wall_now());
-            self.save_contacts_in_background();
+            if lock(&self.trust).is_paired(device) {
+                self.save_contacts_in_background();
+            }
             // An ask from a device that went away is withdrawn, and so is a
             // hand-back that was on its way to it.
             {
@@ -1099,7 +1111,15 @@ impl SyncNode {
     /// holder has been offline past the timeout.
     pub fn claim_role(&self, role: Role) -> Result<(), Denied> {
         let reach = self.reach();
-        let record = lock(&self.roles).claim(role, &reach)?;
+        let record = {
+            let mut roles = lock(&self.roles);
+            // Just connected and not yet told who holds what: a role that
+            // looks unheld may be held, and taking it now would be a guess.
+            if roles.standing(role, &reach) == Standing::Open && self.settling(&reach) {
+                return Err(Denied::Settling);
+            }
+            roles.claim(role, &reach)?
+        };
         self.role_changed(role, &record);
         Ok(())
     }
@@ -1505,7 +1525,21 @@ impl SyncNode {
     }
 
     /// A device sent its record for a role: the newer of the two stands.
+    /// Whether this device has been told about every role by a connected
+    /// device (or is connected to none): an unheld role is then really
+    /// unheld as far as anyone here knows.
+    pub fn settled(&self) -> bool {
+        !self.settling(&self.reach())
+    }
+
+    /// Connected to someone who has not yet told this device about every
+    /// role (the four records come together as a connection opens).
+    fn settling(&self, reach: &Reach) -> bool {
+        !reach.connected.is_empty() && !lock(&self.heard_roles).iter().all(|h| *h)
+    }
+
     pub(crate) fn record_received(&self, from: DeviceKey, role: Role, mut record: Record) {
+        lock(&self.heard_roles)[role.index()] = true;
         let known = record
             .holder
             .is_some_and(|h| lock(&self.trust).is_paired(h) || h == self.device());
@@ -1527,7 +1561,16 @@ impl SyncNode {
             }
         };
         let reach = self.reach();
-        let merged = lock(&self.roles).merge(role, &record, from, &reach);
+        let (merged, was_reseeding, now_reseeding) = {
+            let mut roles = lock(&self.roles);
+            let was = roles.reseeding();
+            let merged = roles.merge(role, &record, from, &reach);
+            (merged, was, roles.reseeding())
+        };
+        if was_reseeding && !now_reseeding && !merged.changed {
+            // Taught that nothing is held: the marker on disk goes.
+            self.save_roles();
+        }
         if merged.changed {
             self.role_changed(role, &record);
         } else {
@@ -1543,7 +1586,17 @@ impl SyncNode {
         }
     }
 
+    /// For tests: asks that arrive are ignored, as if the frames were lost.
+    #[doc(hidden)]
+    pub fn lose_asks(&self, lose: bool) {
+        self.lose_asks
+            .store(lose, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub(crate) fn role_ask_received(&self, from: DeviceKey, role: Role) {
+        if self.lose_asks.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         let name = self.paired_name(from);
         let asked = lock(&self.roles).receive_ask(role, from, name.clone());
         match asked {
@@ -1631,6 +1684,11 @@ impl SyncNode {
 
     /// Notes that `device` was just heard from.
     pub(crate) fn heard(&self, device: DeviceKey) {
+        // A device that was unpaired while its connection was still closing
+        // is not remembered.
+        if !lock(&self.trust).is_paired(device) {
+            return;
+        }
         lock(&self.peers)
             .last_contact
             .insert(device, Instant::now());
@@ -1647,19 +1705,21 @@ impl SyncNode {
     /// while a laptop sleeps on macOS and Linux).
     fn silence_in(&self, peers: &Peers, device: DeviceKey) -> Option<Duration> {
         let by_run = peers.last_contact.get(&device).map(Instant::elapsed);
-        let by_wall = lock(&self.contacts)
-            .get(&device)
-            .map(|ms| Duration::from_millis(u64::try_from(self.wall_now() - ms).unwrap_or(0)));
+        let by_wall = lock(&self.contacts).get(&device).map(|ms| {
+            Duration::from_millis(u64::try_from(self.wall_now().saturating_sub(*ms)).unwrap_or(0))
+        });
         match (by_run, by_wall) {
             (Some(a), Some(b)) => Some(a.max(b)),
             (a, b) => a.or(b),
         }
     }
 
-    /// [`SyncNode::silence_in`], or, when nothing is known (the file that
-    /// kept it is gone or unreadable), no longer than this run has lasted:
-    /// the answer errs towards "not away", so a claim made on no evidence is
-    /// refused rather than believed. Every place that needs it uses this one.
+    /// [`SyncNode::silence_in`], or, when nothing is known, how long this
+    /// run has lasted: a device never heard from in this run is taken to
+    /// have been silent since it began, so a holder that has never been heard
+    /// can be taken over from after the takeover time, and not before. (How
+    /// long a claimant was away, for a claim against this device, is
+    /// different: nothing known counts as not away at all.)
     fn silence_or_run(&self, peers: &Peers, device: DeviceKey) -> Duration {
         self.silence_in(peers, device)
             .unwrap_or_else(|| self.started.elapsed())
@@ -1696,7 +1756,11 @@ impl SyncNode {
 
     fn save_contacts(&self) {
         let _one_at_a_time = lock(&self.contacts_save);
-        let contacts = lock(&self.contacts).clone();
+        let mut contacts = lock(&self.contacts).clone();
+        {
+            let trust = lock(&self.trust);
+            contacts.retain(|d, _| trust.is_paired(*d));
+        }
         if let Err(e) = saved::save_contacts(&self.dir, &contacts) {
             eprintln!("lampstand: cannot save when devices were last heard: {e}");
         }
@@ -1714,6 +1778,8 @@ impl SyncNode {
     /// reads when devices were last heard from back from disk.
     #[doc(hidden)]
     pub fn forget_this_runs_contacts(&self) {
+        // Whatever a background save has not written yet is written now.
+        self.save_contacts();
         lock(&self.peers).last_contact.clear();
         *lock(&self.contacts) = saved::load_contacts(&self.dir);
     }
@@ -1975,7 +2041,11 @@ mod tests {
 
     /// A node over the folder `dir`.
     fn node_at(dir: &std::path::Path) -> Arc<SyncNode> {
-        let key = DeviceKeypair::generate();
+        node_with_key(dir, DeviceKeypair::generate())
+    }
+
+    /// The same node again, as after a restart.
+    fn node_with_key(dir: &std::path::Path, key: DeviceKeypair) -> Arc<SyncNode> {
         let repo = Arc::new(
             Repo::open(
                 dir.join("repo"),
@@ -2322,18 +2392,14 @@ mod tests {
 
     #[test]
     fn after_a_restart_a_claimant_that_was_away_longer_than_the_takeover_time_is_believed() {
-        let (node, _, _, dir) = node_with_hooks();
+        let (node, _, _, _dir) = node_with_hooks();
         paired(&node, 7);
         node.claim_role(Role::Stream).unwrap();
         let claim = claim_against(&node, 7);
         // What the last run kept: device 7 was last heard from ten minutes
         // ago. This run has heard nothing.
         let ten_minutes_ago = now_ms() - 600_000;
-        saved::save_contacts(
-            &dir.path().join("sync"),
-            &HashMap::from([(id(7), ten_minutes_ago)]),
-        )
-        .unwrap();
+        lock(&node.contacts).insert(id(7), ten_minutes_ago);
         node.forget_this_runs_contacts();
         assert!(lock(&node.peers).last_contact.is_empty());
         node.record_received(id(7), Role::Stream, claim);
@@ -2386,7 +2452,8 @@ mod tests {
             node.silence_or_run(&peers, id(7))
         };
         assert!(silence < Duration::from_secs(60), "{silence:?}");
-        // So a claim from it is refused: no evidence of an absence.
+        // A claim from it is refused, however long this process has run:
+        // no evidence of an absence counts as no absence.
         node.claim_role(Role::Stream).unwrap();
         let claim = claim_against(&node, 7);
         node.record_received(id(7), Role::Stream, claim);
@@ -2465,5 +2532,84 @@ mod tests {
         assert_eq!(r.stream.record.holder, Some(id(7)));
         assert!(!r.stream.unverified);
         assert!(r.projection.unverified, "the others still wait");
+    }
+
+    #[test]
+    fn roles_that_were_lost_stay_lost_across_restarts_until_they_are_taught() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sync")).unwrap();
+        std::fs::write(dir.path().join("sync/roles.json"), "{broken").unwrap();
+        // Older files that must not come back.
+        std::fs::write(
+            dir.path().join("sync/presenter.json"),
+            r#"{"lease":{"holder":null,"name":"Old","epoch":9},"takeover_secs":300}"#,
+        )
+        .unwrap();
+        let key = || DeviceKeypair::from_secret_bytes([42; 32]);
+        for run in 0..3 {
+            let node = node_with_key(dir.path(), key());
+            let r = node.roles_status();
+            assert!(r.stream.unverified && r.projection.unverified, "run {run}");
+            assert_eq!(r.projection.record.epoch, 0, "the old lease is not read");
+            assert_eq!(r.takeover_after, Duration::from_secs(120));
+        }
+        // Taught: the device it is paired with speaks about every role.
+        let node = node_with_key(dir.path(), key());
+        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        let (_, held) = claimed(7, Role::Stream);
+        node.record_received(id(7), Role::Stream, held);
+        for role in [Role::Projection, Role::Operator, Role::Audio] {
+            node.record_received(id(7), role, Record::default());
+        }
+        let r = node.roles_status();
+        assert!(!r.stream.unverified && !r.projection.unverified && !r.audio.unverified);
+        drop(node);
+        let node = node_with_key(dir.path(), key());
+        let r = node.roles_status();
+        assert!(!r.stream.unverified && !r.projection.unverified);
+        assert_eq!(r.stream.record.holder, Some(id(7)));
+    }
+
+    #[test]
+    fn a_roles_json_set_aside_with_no_new_one_written_is_still_lost_on_the_next_start() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sync")).unwrap();
+        std::fs::write(dir.path().join("sync/roles.json.bad"), "{broken").unwrap();
+        std::fs::write(
+            dir.path().join("sync/presenter.json"),
+            r#"{"lease":{"holder":null,"name":"Old","epoch":9},"takeover_secs":300}"#,
+        )
+        .unwrap();
+        let node = node_at(dir.path());
+        assert!(node.roles_status().stream.unverified);
+        assert_eq!(node.roles_status().projection.record.epoch, 0);
+    }
+
+    #[test]
+    fn a_device_that_has_just_connected_does_not_take_a_role_it_has_not_been_told_about() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let (control, _frames) = mpsc::unbounded_channel();
+        lock(&node.peers).sessions.insert(
+            id(7),
+            Session {
+                id: 1,
+                client: id(7),
+                address: None,
+                control,
+                stop: None,
+                done: None,
+            },
+        );
+        // Connected to device 7, which has not said anything yet.
+        assert!(!node.settled());
+        assert_eq!(node.claim_role(Role::Stream), Err(Denied::Settling));
+        assert_eq!(node.roles_status().stream.record.holder, None);
+        // Device 7 tells it about the four roles (it holds none).
+        for role in Role::ALL {
+            node.record_received(id(7), role, Record::default());
+        }
+        assert!(node.settled());
+        assert!(node.claim_role(Role::Stream).is_ok());
     }
 }
