@@ -42,8 +42,13 @@ impl Peer {
     }
 
     /// Stops listening and drops every connection: the network is cut.
-    fn cut(&self) {
+    ///
+    /// The listener is gone before the sessions are dropped: a device that
+    /// redials the moment its session ends must find nothing there, not a
+    /// listener that is still shutting down and accepts it for good.
+    async fn cut(&mut self) {
         self.server.abort();
+        let _ = (&mut self.server).await;
         self.node.drop_connections();
     }
 
@@ -363,12 +368,12 @@ async fn a_device_that_unpaired_this_one_shows_as_refused_not_just_offline() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_cut_off_peer_is_offline_without_a_problem() {
-    let (presenter, office) = paired().await;
+    let (mut presenter, office) = paired().await;
     until(Duration::from_secs(5), "connected", || {
         office.node.status().connected() == 1
     })
     .await;
-    presenter.cut();
+    presenter.cut().await;
     until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0
     })
@@ -399,7 +404,7 @@ async fn a_cut_off_peer_catches_up_after_reconnecting() {
     })
     .await;
 
-    presenter.cut();
+    presenter.cut().await;
     until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0 && presenter.node.status().connected() == 0
     })
@@ -849,8 +854,8 @@ async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return()
     // A cut network cuts both ways: if the office kept listening, the
     // sanctuary's own dialler could reach it again and every reconnect
     // would restart the offline clock.
-    sanctuary.cut();
-    office.cut();
+    sanctuary.cut().await;
+    office.cut().await;
     until(Duration::from_secs(20), "disconnected", || {
         office.node.status().connected() == 0
     })
@@ -1207,7 +1212,7 @@ async fn the_presenter_takes_control_back_at_once() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_presenter_going_offline_disables_driving_and_a_driver_going_offline_returns_control() {
     let (mut sanctuary, office, ..) = driving_pair().await;
-    sanctuary.cut();
+    sanctuary.cut().await;
     until(
         Duration::from_secs(10),
         "the presenter to be offline",
