@@ -14,6 +14,7 @@ use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use super::secure::SessionKeys;
+use super::sound_cue::{SoundCommand, SoundNow};
 use crate::roles::Role;
 
 /// Bumped when frames change incompatibly. A peer speaking another version
@@ -117,6 +118,16 @@ pub(crate) enum Frame {
     ObsCueAck {
         run: u64,
         seq: u64,
+    },
+    /// To the Audio holder: play, pause, resume, stop or panic (see
+    /// [`super::sound_cue`]). Nothing is kept for a holder that is away.
+    SoundCue {
+        cmd: SoundCommand,
+    },
+    /// From the Audio holder to every connected device: what is playing
+    /// (`None`: nothing).
+    SoundNow {
+        now: Option<SoundNow>,
     },
 }
 
@@ -337,6 +348,30 @@ mod tests {
                 scene: None,
             },
             Frame::ObsCueAck { run: 9, seq: 3 },
+            Frame::SoundCue {
+                cmd: SoundCommand::Play {
+                    file: [6; 32],
+                    name: "Amazing Grace (track)".into(),
+                    item: "item-1".into(),
+                },
+            },
+            Frame::SoundCue {
+                cmd: SoundCommand::Stop { fade_ms: 3000 },
+            },
+            Frame::SoundCue {
+                cmd: SoundCommand::Panic,
+            },
+            Frame::SoundNow {
+                now: Some(SoundNow {
+                    item: "item-1".into(),
+                    name: "Amazing Grace (track)".into(),
+                    paused: false,
+                    ending: false,
+                    position_ms: 1500,
+                    length_ms: 180_000,
+                }),
+            },
+            Frame::SoundNow { now: None },
         ];
         for frame in frames {
             assert_eq!(Frame::decode(&frame.encode()).unwrap(), frame);
