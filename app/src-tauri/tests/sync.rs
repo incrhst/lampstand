@@ -1385,6 +1385,18 @@ async fn a_second_asker_is_told_who_is_already_asking() {
 /// notice, and Audio's music stops on it.
 #[tokio::test(flavor = "multi_thread")]
 async fn takeover_after_a_cut_and_the_returning_holder_yields() {
+    cut_takeover_and_return(false).await;
+}
+
+/// The same, with both devices dialling each other the moment the network
+/// is back (as their redialling can), so two connections race and one is
+/// dropped for the other. The returning holder must still yield.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_returning_holder_yields_when_both_devices_dial_at_once() {
+    cut_takeover_and_return(true).await;
+}
+
+async fn cut_takeover_and_return(both_dial: bool) {
     let main = device("Sanctuary").await;
     let laptop = device("Mary's laptop").await;
     pair_up(&main, &laptop).await;
@@ -1456,6 +1468,13 @@ async fn takeover_after_a_cut_and_the_returning_holder_yields() {
 
     main.sync.restore().await.unwrap();
     laptop.sync.restore().await.unwrap();
+    if both_dial {
+        let (to_main, to_laptop) = (main.address(), laptop.address());
+        tokio::join!(
+            send(&laptop, TeamRequest::Connect { address: to_main }),
+            send(&main, TeamRequest::Connect { address: to_laptop }),
+        );
+    }
     until(Duration::from_secs(60), "the old holder to yield", || {
         !role(&main, RoleName::Stream).holds && !role(&main, RoleName::Audio).holds
     })

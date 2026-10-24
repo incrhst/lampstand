@@ -361,6 +361,13 @@ struct Peers {
     away_before: HashMap<DeviceKey, Duration>,
     /// When each connected device's present connection began.
     session_started: HashMap<DeviceKey, Instant>,
+    /// How long a device had been out of reach when its latest connection
+    /// began, and when that was. A connection that opens soon after another
+    /// one for the same device (two devices dialling each other at once, one
+    /// connection dropped for the other) inherits it: the first connection's
+    /// frames have just made the device "heard", which must not read as
+    /// "never away".
+    recent_away: HashMap<DeviceKey, (Duration, Instant)>,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -705,6 +712,7 @@ impl SyncNode {
             peers.last_contact.remove(&device);
             peers.away_before.remove(&device);
             peers.session_started.remove(&device);
+            peers.recent_away.remove(&device);
         }
         if lock(&self.contacts).remove(&device).is_some() {
             self.save_contacts_in_background();
@@ -911,9 +919,17 @@ impl SyncNode {
                         // restart). Nothing known: not away at all, so a
                         // claim made on no evidence is refused rather than
                         // believed, however long this process has run.
-                        let away = self
+                        let mut away = self
                             .silence_in(&peers, peer.device)
                             .unwrap_or(Duration::ZERO);
+                        if let Some((before, at)) = peers.recent_away.get(&peer.device) {
+                            if at.elapsed() <= *lock(&self.fresh_session) {
+                                away = away.max(*before);
+                            }
+                        }
+                        peers
+                            .recent_away
+                            .insert(peer.device, (away, Instant::now()));
                         peers.away_before.insert(peer.device, away);
                         peers.session_started.insert(peer.device, Instant::now());
                         drop(peers);
