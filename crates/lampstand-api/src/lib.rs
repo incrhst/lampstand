@@ -682,16 +682,13 @@ pub enum ObsRequest {
     /// Mutes or unmutes one of OBS's audio inputs (T91).
     SetMute { input: String, muted: bool },
     /// "Set up OBS" (T93, #133): makes a "Lampstand" scene collection in
-    /// OBS with starter scenes, each showing the browser source `url` at
-    /// `width` by `height`. Run again, it changes only that source. When OBS
-    /// is on another computer the address in `url` is replaced by this
-    /// computer's network address (the pinned one, if there is one), and
-    /// never `localhost`. Answers `Response::Text` with what was done.
-    SetUp {
-        url: String,
-        width: u32,
-        height: u32,
-    },
+    /// OBS with starter scenes, each showing the picture `output` (a
+    /// browser-source output). The core makes the picture's address itself;
+    /// the window sends no address. Run again, it changes only that source.
+    /// When OBS is on another computer the address is this computer's
+    /// network address (the pinned one, if there is one), and never
+    /// `localhost`. Answers `Response::Text` with what was done.
+    SetUp { output: OutputId },
     /// Pins the address OBS on another computer uses to reach this one, for
     /// a computer that has several ("Use this address"). `None` goes back
     /// to the address Lampstand picks.

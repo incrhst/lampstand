@@ -17,6 +17,7 @@ use lampstand_api::{
 };
 use lampstand_app::obs_control::{ObsControl, Os, Probe, SceneCue};
 use lampstand_connectors::obs::auth_response;
+use lampstand_core::output::OutputId;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
@@ -481,6 +482,12 @@ struct Harness {
     machine: Arc<Machine>,
     streaming_output: Arc<AtomicBool>,
     pushed: Arc<Mutex<Vec<ObsView>>>,
+    /// The host the app's local server has now, which the shell's address
+    /// watch changes when the network does. The app's picture address is
+    /// built from it.
+    server_host: Arc<Mutex<String>>,
+    /// Every output the app was asked for a picture of.
+    asked: Arc<Mutex<Vec<OutputId>>>,
     _dir: tempfile::TempDir,
     dir: PathBuf,
 }
@@ -521,11 +528,23 @@ async fn start(dir: tempfile::TempDir, path: PathBuf) -> Harness {
             }
         }),
     );
+    // The app, as the shell wires it: the picture's address and size from
+    // the output, with the server's host as the address watch last left it.
+    let server_host = Arc::new(Mutex::new("127.0.0.1".to_string()));
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let (host, log) = (server_host.clone(), asked.clone());
+    control.set_pictures(Arc::new(move |output| {
+        log.lock().unwrap().push(output);
+        let host = host.lock().unwrap().clone();
+        Ok((format!("http://{host}:7340/obs/6c9f?k=sekret"), 1920, 1080))
+    }));
     Harness {
         control,
         machine,
         streaming_output,
         pushed,
+        server_host,
+        asked,
         _dir: dir,
         dir: path,
     }
@@ -1149,14 +1168,11 @@ async fn remote_obs() -> Option<(MockObs, Harness)> {
     Some((mock, h))
 }
 
-const PICTURE: &str = "http://127.0.0.1:7340/obs/6c9f?k=sekret";
-
-async fn set_up(h: &Harness, url: &str) -> Response {
+/// Sets up with the picture the app has (the window sends only the output).
+async fn set_up(h: &Harness) -> Response {
     h.control
         .handle(ObsRequest::SetUp {
-            url: url.into(),
-            width: 1920,
-            height: 1080,
+            output: OutputId::generate(),
         })
         .await
 }
@@ -1180,7 +1196,7 @@ async fn set_up_writes_this_computers_address_into_a_remote_obs() {
 
     // The picture's URL says localhost (this computer found no network
     // address): refused, and nothing written to OBS.
-    let refused = text(set_up(&h, PICTURE).await);
+    let refused = text(set_up(&h).await);
     assert!(refused.contains("no network address"), "{refused}");
     assert!(mock.writes().is_empty());
 
@@ -1205,7 +1221,7 @@ async fn set_up_writes_this_computers_address_into_a_remote_obs() {
     };
     assert_eq!(view.pinned_address.as_deref(), Some("192.168.1.20"));
 
-    let done = text(set_up(&h, PICTURE).await);
+    let done = text(set_up(&h).await);
     assert!(done.contains("OBS is set up"), "{done}");
     // Neither the key nor the host's secrets are repeated in the answer.
     assert!(!done.contains("sekret"), "{done}");
@@ -1236,7 +1252,7 @@ async fn set_up_writes_this_computers_address_into_a_remote_obs() {
     }
 
     // Again: nothing changes.
-    assert!(text(set_up(&h, PICTURE).await).contains("Nothing changed"));
+    assert!(text(set_up(&h).await).contains("Nothing changed"));
     assert!(mock.writes().is_empty());
 
     // The address is pinned to the other network: only the source changes.
@@ -1245,7 +1261,7 @@ async fn set_up_writes_this_computers_address_into_a_remote_obs() {
             address: Some("10.0.0.7".into()),
         })
         .await;
-    assert!(text(set_up(&h, PICTURE).await).contains("OBS is set up"));
+    assert!(text(set_up(&h).await).contains("OBS is set up"));
     assert_eq!(mock.writes(), ["SetInputSettings Lampstand stream"]);
     assert_eq!(
         mock.browser_source("Lampstand stream").unwrap()["url"],
@@ -1280,7 +1296,7 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
         .unwrap();
     h.wait_for(|v| v.stream.as_ref().is_some_and(|s| s.active))
         .await;
-    let words = text(set_up(&h, PICTURE).await);
+    let words = text(set_up(&h).await);
     assert!(words.contains("streaming, recording"), "{words}");
     assert!(mock.writes().is_empty());
     mock.stop();
@@ -1288,7 +1304,7 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
     // OBS gone: it says Lampstand isn't connected, and writes nothing.
     h.wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
         .await;
-    let words = text(set_up(&h, PICTURE).await);
+    let words = text(set_up(&h).await);
     assert!(words.contains("isn't connected to OBS"), "{words}");
 }
 
@@ -1343,7 +1359,7 @@ async fn a_church_with_obs_on_this_computer_sees_nothing_new() {
     assert_eq!(view.pinned_address, None);
     assert!(view.addresses.is_empty());
     let url = "http://127.0.0.1:7340/obs/6c9f?k=sekret";
-    assert!(text(set_up(&h, url).await).contains("OBS is set up"));
+    assert!(text(set_up(&h).await).contains("OBS is set up"));
     assert_eq!(mock.browser_source("Lampstand stream").unwrap()["url"], url);
 
     // A refusing local OBS is diagnosed as before.
@@ -1371,7 +1387,7 @@ async fn set_up_waits_for_the_virtual_camera_and_replay_buffer_too() {
             sc.setup.virtual_cam = which == "virtual camera";
             sc.setup.replay_buffer = which == "replay buffer";
         }
-        let words = text(set_up(&h, PICTURE).await);
+        let words = text(set_up(&h).await);
         assert!(
             words.contains("sending its picture out"),
             "{which}: {words}"
@@ -1390,7 +1406,7 @@ async fn a_setup_that_fails_part_way_puts_obs_back_and_keeps_obs_words_out() {
         })
         .await;
     mock.scenes.lock().unwrap().setup.fail_create_scene = true;
-    let words = text(set_up(&h, PICTURE).await);
+    let words = text(set_up(&h).await);
     assert!(words.contains("OBS is back on “Church”"), "{words}");
     // OBS's own error text (and anything in it) never reaches the volunteer.
     assert!(
@@ -1402,13 +1418,13 @@ async fn a_setup_that_fails_part_way_puts_obs_back_and_keeps_obs_words_out() {
     mock.writes();
 
     // Next time it works, and says OBS is now on the new collection.
-    let done = text(set_up(&h, PICTURE).await);
+    let done = text(set_up(&h).await);
     assert!(
         done.contains("OBS is now showing the “Lampstand” collection"),
         "{done}"
     );
     // Already on it: nothing to say about switching.
-    let again = text(set_up(&h, PICTURE).await);
+    let again = text(set_up(&h).await);
     assert!(again.contains("Nothing changed"), "{again}");
     assert!(!again.contains("now showing"), "{again}");
     mock.stop();
@@ -1437,8 +1453,61 @@ async fn a_pin_must_be_an_address_this_computer_has() {
             address: Some("10.0.0.7".into()),
         })
         .await;
-    let words = text(set_up(&h, "http://u:p@10.0.0.7:7340/obs/a?k=b").await);
+    // Even the app's own address is checked before it reaches OBS.
+    *h.server_host.lock().unwrap() = "u:p@10.0.0.7".into();
+    let words = text(set_up(&h).await);
     assert!(words.contains("picture addresses"), "{words}");
+    assert!(mock.writes().is_empty());
+    mock.stop();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_window_cannot_choose_the_address_and_the_pin_beats_the_address_watch() {
+    let (mock, h) = remote_obs().await.unwrap();
+    // A request that carries an address of its own: the field is not part
+    // of the request, so it is ignored, and the app is asked for the output.
+    let request: ObsRequest = serde_json::from_value(json!({
+        "SetUp": { "output": OutputId::generate(), "url": "http://evil.example/obs/a?k=b" }
+    }))
+    .unwrap();
+    *h.server_host.lock().unwrap() = "192.168.1.20".into();
+    let done = text(h.control.handle(request).await);
+    assert!(done.contains("OBS is set up"), "{done}");
+    assert_eq!(h.asked.lock().unwrap().len(), 1);
+    let url = || mock.browser_source("Lampstand stream").unwrap()["url"].clone();
+    assert_eq!(url(), "http://192.168.1.20:7340/obs/6c9f?k=sekret");
+
+    // The network changes and the shell's address watch moves the server's
+    // address. With nothing pinned, the next setup follows it.
+    *h.server_host.lock().unwrap() = "10.0.0.7".into();
+    assert!(text(set_up(&h).await).contains("OBS is set up"));
+    assert_eq!(url(), "http://10.0.0.7:7340/obs/6c9f?k=sekret");
+
+    // With an address pinned, the pin wins over whatever the watch found.
+    h.control
+        .handle(ObsRequest::UseAddress {
+            address: Some("192.168.1.20".into()),
+        })
+        .await;
+    *h.server_host.lock().unwrap() = "10.0.0.7".into();
+    assert!(text(set_up(&h).await).contains("OBS is set up"));
+    assert_eq!(url(), "http://192.168.1.20:7340/obs/6c9f?k=sekret");
+    *h.server_host.lock().unwrap() = "10.9.9.9".into();
+    assert!(text(set_up(&h).await).contains("Nothing changed"));
+    assert_eq!(url(), "http://192.168.1.20:7340/obs/6c9f?k=sekret");
+    mock.stop();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn set_up_without_the_app_or_for_a_picture_that_is_not_one_says_so() {
+    let mock = MockObs::start(None).await;
+    let h = harness(mock.port, None).await;
+    h.wait_for(connected).await;
+    h.control.set_pictures(Arc::new(|_| {
+        Err("that output is not an OBS browser source".into())
+    }));
+    let words = text(set_up(&h).await);
+    assert!(words.contains("not an OBS browser source"), "{words}");
     assert!(mock.writes().is_empty());
     mock.stop();
 }

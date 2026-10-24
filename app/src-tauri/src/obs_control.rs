@@ -58,6 +58,7 @@ use lampstand_api::{
     ObsSceneProblem, ObsView, Response,
 };
 use lampstand_connectors::obs::{codes, Input, Obs, ObsConfig, ObsError, ObsEvent, ObsStatus};
+use lampstand_core::output::OutputId;
 use lampstand_core::service::ItemId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
@@ -783,6 +784,10 @@ impl Follower {
 
 // The controller.
 
+/// Where "Set up OBS" gets a picture's address and size from: the app,
+/// asked by output. The shell supplies it with [`ObsControl::set_pictures`].
+pub type Pictures = Arc<dyn Fn(OutputId) -> Result<(String, u32, u32), String> + Send + Sync>;
+
 /// OBS for the app: settings, the connection, and the view pushed to the UI.
 pub struct ObsControl {
     obs: Obs,
@@ -811,6 +816,7 @@ pub struct ObsControl {
     /// OBS's audio inputs and their mutes, for Present's toggles (T91).
     audio: Mutex<Vec<ObsAudioInput>>,
     cues: SceneCues,
+    pictures: Mutex<Option<Pictures>>,
 }
 
 impl ObsControl {
@@ -842,6 +848,7 @@ impl ObsControl {
             scenes: Mutex::new((Vec::new(), None)),
             audio: Mutex::new(Vec::new()),
             cues,
+            pictures: Mutex::new(None),
         });
         tokio::spawn(watch_obs(
             Arc::downgrade(&control),
@@ -849,6 +856,11 @@ impl ObsControl {
             cue_rx,
         ));
         control
+    }
+
+    /// Tells "Set up OBS" where to get a picture's address and size.
+    pub fn set_pictures(&self, pictures: Pictures) {
+        *lock(&self.pictures) = Some(pictures);
     }
 
     /// Where `App` sends an item's scene when it goes live.
@@ -905,8 +917,8 @@ impl ObsControl {
                 self.publish();
                 done
             }
-            ObsRequest::SetUp { url, width, height } => {
-                return match self.set_up(&url, width, height).await {
+            ObsRequest::SetUp { output } => {
+                return match self.set_up(output).await {
                     Ok(done) => Response::Text(done),
                     Err(message) => Response::Error { message },
                 };
@@ -1009,14 +1021,22 @@ impl ObsControl {
     /// collection and with those names, and leaves every other collection
     /// alone. If it has to switch OBS to the collection and then fails, it
     /// switches back.
-    async fn set_up(&self, url: &str, width: u32, height: u32) -> Result<String, String> {
+    async fn set_up(&self, output: OutputId) -> Result<String, String> {
+        let pictures = lock(&self.pictures)
+            .clone()
+            .ok_or("Set up OBS isn't available here.")?;
+        // The app makes the address, from the output: what the window says
+        // is never trusted. It asks the app, which may be busy, off this thread.
+        let (url, width, height) = tokio::task::spawn_blocking(move || pictures(output))
+            .await
+            .map_err(|e| e.to_string())??;
         let (host, pinned) = {
             let store = lock(&self.settings);
             let settings = store.settings();
             (settings.host.clone(), settings.pinned_address.clone())
         };
         let remote = !is_local(&host);
-        let url = address_for_obs(url, pinned.as_deref(), remote)?;
+        let url = address_for_obs(&url, pinned.as_deref(), remote)?;
         if !matches!(self.shown_status(), ObsStatus::Connected { .. }) {
             return Err(
                 "Lampstand isn't connected to OBS yet. Save and test the connection first.".into(),

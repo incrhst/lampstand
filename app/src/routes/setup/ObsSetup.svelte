@@ -84,13 +84,12 @@
   }
 
   async function setUpObs() {
-    if (!picture || !("BrowserSource" in picture.target)) return;
+    if (!picture) return;
     settingUp = true;
     setupResult = null;
     try {
-      const url = await request({ area: "Outputs", request: { BrowserSourceUrl: picture.id } }, "Text");
-      const { width, height } = picture.target.BrowserSource;
-      setupResult = await request({ area: "Obs", request: { SetUp: { url, width, height } } }, "Text");
+      // The core makes the picture's address itself; only the output is named.
+      setupResult = await request({ area: "Obs", request: { SetUp: { output: picture.id } } }, "Text");
     } catch (e) {
       report(e);
     }

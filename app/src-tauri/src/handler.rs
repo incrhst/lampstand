@@ -814,16 +814,7 @@ impl App {
                 Response::Ok
             }
             OutputRequest::BrowserSourceUrl(output) => {
-                self.browser_source(output)?;
-                let key = match self.keys.get(output) {
-                    Some(key) => key.to_string(),
-                    None => {
-                        let key = fresh_key();
-                        self.keys.put(output, &key).map_err(err)?;
-                        key
-                    }
-                };
-                Response::Text(self.browser_source_url(output, &key)?)
+                Response::Text(self.browser_source_address(output)?)
             }
             OutputRequest::BrowserSourceStatus => Response::BrowserSources(
                 self.outputs
@@ -843,6 +834,31 @@ impl App {
                 Response::Text(self.browser_source_url(output, &key)?)
             }
         })
+    }
+
+    /// A browser-source output's URL, making its key if it has none.
+    fn browser_source_address(&mut self, output: OutputId) -> Result<String> {
+        self.browser_source(output)?;
+        let key = match self.keys.get(output) {
+            Some(key) => key.to_string(),
+            None => {
+                let key = fresh_key();
+                self.keys.put(output, &key).map_err(err)?;
+                key
+            }
+        };
+        self.browser_source_url(output, &key)
+    }
+
+    /// What "Set up OBS" puts in OBS for `output`: its URL as the local
+    /// server has it now (so it follows the address the shell watches) and
+    /// its size. The caller may then swap in a pinned address.
+    pub fn obs_picture(&mut self, output: OutputId) -> Result<(String, u32, u32)> {
+        let url = self.browser_source_address(output)?;
+        match self.outputs.get(output).map(|o| &o.target) {
+            Some(OutputTarget::BrowserSource { width, height }) => Ok((url, *width, *height)),
+            _ => Err("that output is not an OBS browser source".into()),
+        }
     }
 
     /// Checks that `output` is a browser-source output.
