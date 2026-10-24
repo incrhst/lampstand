@@ -447,6 +447,9 @@ pub enum Denied {
     NeedsProjection,
     /// Teams (T18) does not let this device hold the role.
     NotPermitted,
+    /// This device has just connected and has not yet been told who holds
+    /// the roles, so a role that looks unheld may not be.
+    Settling,
 }
 
 /// Teams (T18) does not let a device hold a role. Never returned until T18.
@@ -477,6 +480,8 @@ impl std::fmt::Display for Denied {
             Denied::NoScreens => write!(f, "No screens are set up on this device"),
             Denied::NeedsProjection => write!(f, "nobody runs the screens"),
             Denied::NotPermitted => write!(f, "this device may not hold that role"),
+            // What the bar said in 0.7.0 before it had heard who presents.
+            Denied::Settling => write!(f, "nobody is presenting"),
         }
     }
 }
@@ -1307,6 +1312,12 @@ impl Roles {
         self.unverified = [true; 4];
     }
 
+    /// Some role is still waiting to be taught again after its state was
+    /// lost.
+    pub fn reseeding(&self) -> bool {
+        self.reseed.iter().any(|r| *r)
+    }
+
     /// Roles this device has asked `holder` for and still waits on: to be
     /// asked again when a connection to it opens, in case the ask was lost.
     pub fn waiting_asks(&self, holder: DeviceKey) -> Vec<Role> {
@@ -1340,8 +1351,12 @@ impl Roles {
                 self.seed_heard = [false; 4];
             }
         }
-        if merged.changed {
-            self.reseed[role.index()] = false;
+        let i = role.index();
+        // Taught again: by a record that took, or by a device that has the
+        // same or less to say.
+        if self.reseed[i] && (merged.changed || !remote.beats(&self.records[i])) {
+            self.reseed[i] = false;
+            self.unverified[i] = false;
         }
         merged
     }
