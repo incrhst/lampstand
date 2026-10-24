@@ -103,6 +103,21 @@ pub(crate) enum Frame {
     DriveLive {
         payload: Vec<u8>,
     },
+    /// From the Projection holder to the Stream holder: the OBS scene the
+    /// item that just went live asks for (`None`: no scene, but a new item).
+    /// The scene name is all it carries. `run` is random per start and `seq`
+    /// grows within a run, so an older cue is not applied after a newer one.
+    ObsCue {
+        run: u64,
+        seq: u64,
+        scene: Option<String>,
+    },
+    /// From the Stream holder back to the Projection holder: the cue is
+    /// taken, so it need not be sent again.
+    ObsCueAck {
+        run: u64,
+        seq: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -311,6 +326,17 @@ mod tests {
             Frame::DriveCommand {
                 payload: b"{\"Next\":null}".to_vec(),
             },
+            Frame::ObsCue {
+                run: 9,
+                seq: 2,
+                scene: Some("Worship".into()),
+            },
+            Frame::ObsCue {
+                run: 9,
+                seq: 3,
+                scene: None,
+            },
+            Frame::ObsCueAck { run: 9, seq: 3 },
         ];
         for frame in frames {
             assert_eq!(Frame::decode(&frame.encode()).unwrap(), frame);

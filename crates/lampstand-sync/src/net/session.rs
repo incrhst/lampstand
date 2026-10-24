@@ -307,6 +307,10 @@ impl State {
             Frame::RoleYield { role } => self.node.role_yield_received(self.peer, role),
             Frame::DriveCommand { payload } => self.node.drive_command_received(self.peer, payload),
             Frame::DriveLive { payload } => self.node.drive_live_received(self.peer, payload),
+            Frame::ObsCue { run, seq, scene } => {
+                self.node.scene_cue_received(self.peer, run, seq, scene)
+            }
+            Frame::ObsCueAck { run, seq } => self.node.scene_cue_ack_received(self.peer, run, seq),
             Frame::Beat => {}
             // Handshake frames after the handshake: ignore.
             Frame::Hello(_) | Frame::Proof { .. } | Frame::Refused { .. } => {}

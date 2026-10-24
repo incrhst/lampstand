@@ -112,7 +112,13 @@ pub type NodeCell = Arc<OnceLock<Arc<SyncNode>>>;
 pub fn mirroring(emit: EventSink, node: NodeCell) -> EventSink {
     Arc::new(move |event: Event| {
         if matches!(event, Event::Live { .. } | Event::Loaded(_) | Event::Obs(_)) {
-            if let Some(node) = node.get().filter(|n| n.driven()) {
+            // OBS state comes from the device that owns OBS. A Projection
+            // holder that does not own it says nothing about OBS, except the
+            // one view that says OBS is not relevant here (sent when the duty
+            // moves away), so the driver's strip goes.
+            let obs_elsewhere =
+                |n: &SyncNode| matches!(&event, Event::Obs(v) if v.relevant) && !n.obs_here();
+            if let Some(node) = node.get().filter(|n| n.driven() && !obs_elsewhere(n)) {
                 if let Ok(json) = serde_json::to_vec(&event) {
                     node.drive_live(json);
                 }
@@ -349,6 +355,7 @@ impl Sync {
         let mirrored = Arc::new(Mirrored::default());
         let (command, driver, cell) = (drive.command, drive.driver, drive.cell);
         let (live_emit, live_mirror) = (emit.clone(), mirrored.clone());
+        let live_node = Arc::downgrade(&node);
         node.set_drive_hooks(DriveHooks {
             command: Box::new(move |from, payload| {
                 match serde_json::from_slice::<Request>(&payload) {
@@ -370,6 +377,13 @@ impl Sync {
                             *live_mirror.loaded.lock().unwrap_or_else(|e| e.into_inner()) =
                                 Some(loaded.clone());
                             live_mirror.changed.notify_waiters();
+                        }
+                        // The presenter's OBS state means nothing to a
+                        // device that owns OBS itself (it shows its own).
+                        if matches!(event, Event::Obs(_))
+                            && live_node.upgrade().is_some_and(|n| n.obs_here())
+                        {
+                            return;
                         }
                         live_emit(event);
                     }
@@ -461,6 +475,19 @@ impl Sync {
     pub async fn forward(&self, request: &Request) -> Option<Response> {
         if !driveable(request) {
             return None;
+        }
+        // OBS belongs to the device that holds Stream: scene and mute
+        // choices are carried out there, never on the Projection holder
+        // while another device holds Stream.
+        if matches!(request, Request::Obs(o) if crate::stream_cues::switches_obs(o)) {
+            if self.node.obs_here() {
+                return None;
+            }
+            if self.node.stream_elsewhere().is_some() {
+                return Some(Response::Error {
+                    message: crate::stream_cues::NOT_THE_STREAM.into(),
+                });
+            }
         }
         let driving = self.node.driving()?;
         let error = |message: String| {
