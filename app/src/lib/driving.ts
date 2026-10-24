@@ -115,6 +115,6 @@ export function driveChoice(drive: DriveView | null | undefined, presenter: stri
   if (asking && typeof asking === "object") {
     return { kind: "busy", label: `${asking.Busy.by} is driving ${who} now`, again: "Ask again" };
   }
-  if (drive.can_drive) return { kind: "ask", label: "Drive from this device" };
+  if (drive.can_drive) return { kind: "ask", label: presenter ? `Drive ${presenter} from here` : "Drive from this device" };
   return { kind: "none" };
 }

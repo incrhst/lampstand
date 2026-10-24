@@ -68,7 +68,7 @@ test("the status bar names the role and who presents", () => {
 test("the button depends on how this device can become the presenter", () => {
   assert.deepEqual(presentChoice(view({ role: "Presenting", standing: "Presenting" })), { kind: "go" });
   assert.deepEqual(presentChoice(null), { kind: "go" });
-  assert.deepEqual(presentChoice(view()), { kind: "ask", label: "Ask to present" });
+  assert.deepEqual(presentChoice(view()), { kind: "ask", label: "Make this device the presenter" });
   assert.deepEqual(presentChoice(view({ standing: "Open" })), { kind: "claim", label: "Present from here" });
   assert.deepEqual(presentChoice(view({ standing: "Open" }), "Make this device the presenter"), {
     kind: "claim",

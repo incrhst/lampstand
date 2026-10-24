@@ -1063,6 +1063,7 @@ impl SyncNode {
             }
             seat.begin_ask(holder);
         }
+        eprintln!("lampstand: asking {name} to let this device drive it");
         self.send_to(holder, Frame::DriveAsk);
         self.bump();
         Ok(())
@@ -1098,6 +1099,10 @@ impl SyncNode {
         lock(&self.seat)
             .allow(holds, device, always)
             .map_err(|e| e.to_string())?;
+        eprintln!(
+            "lampstand: {} may drive this device",
+            self.paired_name(device)
+        );
         if always {
             self.save_driver();
         }
@@ -1191,7 +1196,8 @@ impl SyncNode {
     pub(crate) fn drive_ask_received(&self, from: DeviceKey) {
         let name = self.paired_name(from);
         let (holds, _, _) = self.lease_facts();
-        let asked = lock(&self.seat).receive_ask(holds, from, name);
+        let asked = lock(&self.seat).receive_ask(holds, from, name.clone());
+        eprintln!("lampstand: {name} asks to drive this device (presenting: {holds}): {asked:?}");
         match asked {
             Asked::Prompt => self.bump(),
             Asked::Allowed { .. } => {
@@ -1239,7 +1245,12 @@ impl SyncNode {
             return;
         }
         let me = self.device();
+        let driving = driver.as_ref().is_some_and(|d| d.device == me);
         if lock(&self.seat).receive_state(from, &name, driver, me) {
+            eprintln!(
+                "lampstand: {name} says this device is {} driving it",
+                if driving { "now" } else { "no longer" }
+            );
             self.bump();
         }
     }
@@ -1247,6 +1258,10 @@ impl SyncNode {
     pub(crate) fn drive_command_received(&self, from: DeviceKey, payload: Vec<u8>) {
         let (holds, _, _) = self.lease_facts();
         if !lock(&self.seat).accepts(holds, from) {
+            eprintln!(
+                "lampstand: ignored a command from {}: it is not the driver here",
+                self.paired_name(from)
+            );
             return;
         }
         if let Some(hooks) = self.hooks() {

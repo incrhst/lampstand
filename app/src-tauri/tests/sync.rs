@@ -661,3 +661,89 @@ async fn a_driver_presses_next_and_the_presenter_moves_and_mirrors_back() {
     sanctuary.pump();
     assert_eq!(sanctuary.on_air(), before, "a former driver moves nothing");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
+    let mut sanctuary = device("Sanctuary").await;
+    let mut laptop = device("Mary's laptop").await;
+    let code = match sanctuary.sync.handle(TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    laptop
+        .sync
+        .handle(TeamRequest::Join {
+            invite: code,
+            address: Some(sanctuary.address()),
+        })
+        .await;
+    let status = |d: &Device| d.sync.status().presenter;
+    until(Duration::from_secs(5), "the roles to settle", || {
+        status(&laptop).role == PresenterRole::Planning
+            && status(&sanctuary).role == PresenterRole::Presenting
+            && laptop.sync.status().paired.iter().any(|p| p.connected)
+    })
+    .await;
+    let grace = song_id(&mut sanctuary, "Amazing Grace");
+    let service = match sanctuary.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    sanctuary.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    laptop.sync.handle(TeamRequest::DriveAsk).await;
+    until(Duration::from_secs(5), "the prompt", || {
+        !status(&sanctuary).drive.requests.is_empty()
+    })
+    .await;
+    let asker = status(&sanctuary).drive.requests[0].device.clone();
+    sanctuary
+        .sync
+        .handle(TeamRequest::DriveAllow {
+            device: asker,
+            always: false,
+        })
+        .await;
+    until(Duration::from_secs(5), "the laptop to drive", || {
+        laptop.pump();
+        sanctuary.pump();
+        status(&laptop).drive.driving.is_some()
+    })
+    .await;
+    // The service has to reach the laptop's library only for its list; the
+    // presenter opens it from its own.
+    let open = Request::Service(ServiceRequest::Open(service.id));
+    let opened = laptop.sync.forward(&open);
+    let pumping = async {
+        loop {
+            sanctuary.pump();
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    };
+    let opened = tokio::select! {
+        r = opened => r,
+        _ = pumping => unreachable!(),
+    };
+    assert!(matches!(opened, Some(Response::Loaded(_))), "{opened:?}");
+    // Then Next from the driver.
+    laptop.sync.forward(&Request::Live(Command::Next)).await;
+    until(
+        Duration::from_secs(5),
+        "the presenter to show verse 1",
+        || {
+            sanctuary.pump();
+            !sanctuary.on_air().is_empty()
+        },
+    )
+    .await;
+}
