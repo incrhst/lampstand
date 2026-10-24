@@ -4,6 +4,15 @@ import type { RoleName, RoleView, TeamStatus } from "./api";
 import {
   ROLES,
   allowBlocked,
+  cannotGoLive,
+  deviceRunsLine,
+  operatorTakenBackNotice,
+  othersRun,
+  ownRunsLine,
+  runsLine,
+  streamOfflineLine,
+  takeoverOption,
+  withRoster,
   allowLabel,
   job,
   noticeRoles,
@@ -33,8 +42,13 @@ const view = (role: RoleName, over: Partial<RoleView> = {}): RoleView => ({
   offers_always: role === "Operator" || role === "Stream",
   ...over,
 });
-const team = (roles: RoleView[]): TeamStatus =>
-  ({ roles, paired: [], presenter: {} }) as unknown as TeamStatus;
+const team = (roles: RoleView[], over: Partial<TeamStatus> = {}): TeamStatus =>
+  ({ roles, paired: [], presenter: {}, scene_cue_waiting: false, ...over }) as unknown as TeamStatus;
+/** A paired church: `paired` has one device, so the roster has something to say. */
+const paired = (roles: RoleView[], over: Partial<TeamStatus> = {}): TeamStatus =>
+  team(roles, { paired: [{ device: "aa", name: "Mary's laptop" }] as TeamStatus["paired"], ...over });
+const pill = { tone: "ready" as const, text: "Synced with 1 device", title: "Shared" };
+const mine = (role: RoleName) => view(role, { holds: true, standing: "Holding", holder: "me", holder_name: "Sanctuary" });
 
 test("each role is named as the spec's roster names it", () => {
   assert.deepEqual(ROLES.map(runs), ["Runs the screens", "Runs the service", "Runs the stream", "Runs the sound"]);
@@ -146,4 +160,96 @@ test("a button standing alone names what it does", () => {
   assert.equal(runFromHere("Operator"), "Run the service from here");
   assert.equal(takeName("Operator", runFromHere("Operator")), "Run the service from here");
   assert.equal(takeName("Stream"), "Take the stream");
+});
+
+test("a device says what it runs, in the spec's verbs, or that it is planning", () => {
+  assert.equal(runsLine([]), "Planning");
+  assert.equal(runsLine(["Projection"]), "Runs the screens");
+  assert.equal(runsLine(["Projection", "Operator"]), "Runs the screens and the service");
+  assert.equal(runsLine(["Projection", "Operator", "Audio"]), "Runs the screens, the service and the sound");
+  assert.equal(runsLine(["Stream"]), "Runs the stream");
+});
+
+test("the status bar names what this device runs and who runs the rest", () => {
+  const t = paired([mine("Projection"), mine("Operator"), view("Stream"), mine("Audio")]);
+  assert.equal(ownRunsLine(t), "Runs the screens, the service and the sound");
+  assert.deepEqual(othersRun(t), ["Mary's laptop runs the stream"]);
+  const shown = withRoster(pill, t);
+  assert.equal(shown.text, "Runs the screens, the service and the sound · Mary's laptop runs the stream · Synced with 1 device");
+  assert.match(shown.title, /Shared\. Runs the screens/);
+  // Nothing in it is the 0.7.0 wording.
+  assert.doesNotMatch(shown.text + shown.title, /Presenting|Driving|presenter|drive/);
+});
+
+test("a device that runs nothing is Planning, and the others are named once each", () => {
+  const t = paired([
+    view("Projection", { holder: "aa", holder_name: "Sanctuary PC" }),
+    view("Operator", { holder: "aa", holder_name: "Sanctuary PC" }),
+    view("Stream", { holder: "bb", holder_name: "Sam's PC" }),
+    view("Audio", { holder: null, holder_name: "", standing: "Open" }),
+  ]);
+  assert.equal(ownRunsLine(t), "Planning");
+  assert.deepEqual(othersRun(t), ["Sanctuary PC runs the screens and the service", "Sam's PC runs the stream"]);
+  assert.equal(
+    withRoster(pill, t).text,
+    "Planning · Sanctuary PC runs the screens and the service · Sam's PC runs the stream · Synced with 1 device",
+  );
+  // Sync trouble keeps its tone and its words.
+  const warn = { tone: "warn" as const, text: "Offline: 1 device not reachable", title: "x" };
+  assert.equal(withRoster(warn, t).tone, "warn");
+  assert.match(withRoster(warn, t).text, /Offline: 1 device not reachable$/);
+});
+
+test("Setup > Devices says what each paired device runs", () => {
+  const t = paired([
+    view("Projection", { holder: "aa", holder_name: "Sanctuary PC" }),
+    mine("Operator"),
+    view("Stream", { holder: "aa", holder_name: "Sanctuary PC" }),
+    view("Audio", { holder: "bb" }),
+  ]);
+  assert.equal(deviceRunsLine(t, "aa"), "Runs the screens and the stream");
+  assert.equal(deviceRunsLine(t, "bb"), "Runs the sound");
+  assert.equal(deviceRunsLine(t, "cc"), "Planning");
+  assert.equal(ownRunsLine(t), "Runs the service");
+});
+
+test("a church with one device sees no roster in the status bar", () => {
+  const lone = team(ROLES.map(mine));
+  assert.deepEqual(withRoster({ tone: "neutral" as const, text: "This device only", title: "Nothing is paired" }, lone), {
+    tone: "neutral",
+    text: "This device only",
+    title: "Nothing is paired",
+  });
+  assert.equal(withRoster(pill, null), pill);
+  assert.equal(withRoster(pill, team([])), pill);
+  assert.equal(streamOfflineLine(lone), null);
+  assert.equal(wantsAttention(lone), false);
+});
+
+test("the stream line is the owner's, only when the cue is waiting and the holder is offline", () => {
+  const offline = view("Stream", { standing: "Wait", offline_secs: 20, wait_secs: 100 });
+  const wording = "Mary's laptop runs the stream and is offline. OBS will catch up when it is back.";
+  assert.equal(streamOfflineLine(paired([offline], { scene_cue_waiting: true })), wording);
+  assert.equal(streamOfflineLine(paired([{ ...offline, standing: "TakeOver" }], { scene_cue_waiting: true })), wording);
+  // The field is false until the OBS cue work sets it: no line.
+  assert.equal(streamOfflineLine(paired([offline])), null);
+  // Connected holder, nobody holding, or this device holding: no line.
+  assert.equal(streamOfflineLine(paired([view("Stream")], { scene_cue_waiting: true })), null);
+  assert.equal(streamOfflineLine(paired([view("Stream", { holder: null, standing: "Open" })], { scene_cue_waiting: true })), null);
+  assert.equal(streamOfflineLine(paired([mine("Stream")], { scene_cue_waiting: true })), null);
+  assert.equal(
+    streamOfflineLine(paired([{ ...offline, holder_name: "" }], { scene_cue_waiting: true })),
+    "Another device runs the stream and is offline. OBS will catch up when it is back.",
+  );
+});
+
+test("the takeover time and the other Devices words", () => {
+  assert.equal(takeoverOption(120), "2 minutes offline");
+  assert.equal(takeoverOption(30), "30 seconds offline");
+  assert.equal(
+    cannotGoLive("Sanctuary PC"),
+    "This device does not run the screens. Sanctuary PC runs the screens. To take a service live here, run the screens from here, or run the service from the bar above.",
+  );
+  assert.match(cannotGoLive(""), /Nobody runs the screens/);
+  assert.equal(operatorTakenBackNotice("Sanctuary PC"), "Sanctuary PC took back running the service. This device no longer runs the service.");
 });

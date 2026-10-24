@@ -15,7 +15,8 @@
   import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
-  import { isPlanning, withRole } from "./lib/presenting";
+  import { isPlanning } from "./lib/presenting";
+  import { streamOfflineLine, withRoster } from "./lib/roles";
   import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { drivenBy, isDriving } from "./lib/driving";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
@@ -71,7 +72,9 @@
     wasBusy = busy;
   });
   let syncStatus = $derived(syncPill(live.sync));
-  let rolePill = $derived(withRole(syncStatus, live.team));
+  let rolePill = $derived(withRoster(syncStatus, live.team));
+  // Set once the OBS cue work is in; false until then, so the line stays away.
+  let streamOffline = $derived(streamOfflineLine(live.team));
   // The quiet "Connect another device" line beside the sync pill, until a device is paired or it is put off.
   let connectLine = $derived.by(() => {
     void live.tipsVersion;
@@ -265,6 +268,10 @@
         <Dot tone={syncStatus.tone} />
         <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
+      <!-- Always in the page, so a screen reader announces the line when it fills in, once. -->
+      <span class="stream-offline" role="status">
+        {#if streamOffline}<Dot tone="warn" /><span class="warn">{streamOffline}</span>{/if}
+      </span>
       {#if connectLine}
         <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
           Connect another device
@@ -303,7 +310,7 @@
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
-        {#if screenOutputs.length > 0}<span>· {enabled} on{planningOnly && enabled > 0 ? ", dark while planning" : ""}</span>{/if}
+        {#if screenOutputs.length > 0}<span>· {enabled} on{planningOnly && enabled > 0 ? ", dark here (this device does not run the screens)" : ""}</span>{/if}
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}
@@ -460,6 +467,16 @@
   }
   .warn {
     color: var(--warn);
+  }
+  .stream-offline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stream-offline:empty {
+    margin-left: -0.5rem;
   }
   .status-link.quiet {
     text-decoration: underline;

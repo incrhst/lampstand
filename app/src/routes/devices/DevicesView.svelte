@@ -1,17 +1,30 @@
 <!-- Devices screen (T17): pair this device with another, see which paired
-     devices are connected and when changes last moved. The presenting machine shows a code; the
-     service device types it. Teams and roles (T18) replace pairing. -->
+     devices are connected and when changes last moved, who runs the screens,
+     the service, the stream and the sound (the roster, with a Take button for
+     each and the takeover time), and what each device runs. One device shows
+     a code; the other types it. Teams (T18) replace pairing. -->
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { onEvent, request, type TeamRequest, type TeamStatus } from "../../lib/api";
   import { report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
-  import PresentAction from "../../lib/kit/PresentAction.svelte";
   import RoleTake from "../../lib/kit/RoleTake.svelte";
-  import { ALWAYS_ALLOWED, PANEL_TITLE, ROLES, holderLine, roleOf, runFromHere, runs, stopAlways } from "../../lib/roles";
-  import { ownRoleLine, roleLine } from "../../lib/driving";
-  import { howLong, PLANNING_SCREENS, TAKEOVER_CHOICES } from "../../lib/presenting";
+  import {
+    ALWAYS_ALLOWED,
+    PANEL_TITLE,
+    ROLES,
+    TAKEOVER_HELP,
+    TAKEOVER_LABEL,
+    deviceRunsLine,
+    holderLine,
+    ownRunsLine,
+    roleOf,
+    runs,
+    stopAlways,
+    takeoverOption,
+  } from "../../lib/roles";
+  import { TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
 
   let status: TeamStatus | null = $state(null);
@@ -80,6 +93,9 @@
   <Panel title="This device">
     {#if status}
       <p><strong>{status.name}</strong> <small class="muted">key {status.fingerprint}</small></p>
+      {#if status.paired.length > 0}
+        <p class="muted">{ownRunsLine(status)}</p>
+      {/if}
       {#if status.addresses.length}
         <p class="muted">Address: {status.addresses.join(", ")}</p>
       {/if}
@@ -132,51 +148,6 @@
     {/if}
   </Panel>
 
-  {#if status && presenter}
-    <Panel title="Presenting" description="One device at a time drives the screens and takes a service live. Every device can still plan and sync.">
-      <p>
-        <strong>This device: {ownRoleLine(status)}</strong>
-      </p>
-      {#if presenter.role === "Planning"}
-        <p class="muted">
-          {#if presenter.holder}{presenter.holder_name} is the presenting device.{:else}Nobody is presenting yet.{/if}
-          {PLANNING_SCREENS}
-        </p>
-        <div class="actions">
-          <PresentAction />
-          <RoleTake role="Operator" label={runFromHere("Operator")} />
-        </div>
-        {#if presenter.drive.driving}
-          <p class="muted">This device operates {presenter.drive.driving.name} from its own screen. Present is the place to do it. {presenter.drive.driving.name} keeps the screens and the sound.</p>
-        {/if}
-      {:else if status.paired.length === 0}
-        <p class="muted">This device is the presenter: it is the only one. Once you pair a second device, a device that wants to present has to ask this one first.</p>
-      {:else}
-        <p class="muted">Screens turned on here show the service. Another device can ask to present or to drive; you will be asked to allow it. Driving lets that device press Next and take items live from its own screen; the screens stay here.</p>
-        {#if presenter.drive.active}
-          <p>
-            {presenter.drive.active.name} is driving.
-            <Button size="small" variant="primary" onclick={() => team("DriveTakeBack")}>Take back control</Button>
-          </p>
-        {/if}
-      {/if}
-      <label class="takeover">
-        Take over without asking after
-        <select
-          value={presenter.takeover_secs}
-          onchange={(e) => team({ SetTakeover: { seconds: Number(e.currentTarget.value) } })}
-        >
-          {#each takeoverChoices as s}
-            <option value={s}>{howLong(s)} offline</option>
-          {/each}
-        </select>
-        <small class="muted">
-          If the presenting device is offline this long, another device can present without its permission. Never while it is connected. Set on each device.
-        </small>
-      </label>
-    </Panel>
-  {/if}
-
   {#if status && status.paired.length > 0}
     <Panel title={PANEL_TITLE}>
       <ul class="list roles">
@@ -197,6 +168,20 @@
           {/if}
         {/each}
       </ul>
+      {#if presenter}
+        <label class="takeover">
+          {TAKEOVER_LABEL}
+          <select
+            value={presenter.takeover_secs}
+            onchange={(e) => team({ SetTakeover: { seconds: Number(e.currentTarget.value) } })}
+          >
+            {#each takeoverChoices as s}
+              <option value={s}>{takeoverOption(s)}</option>
+            {/each}
+          </select>
+          <small class="muted">{TAKEOVER_HELP}</small>
+        </label>
+      {/if}
     </Panel>
   {/if}
 
@@ -219,20 +204,10 @@
           <span>
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
-            <small class="role" class:presenting={p.presenting}>{status ? roleLine(status, p) : ""}</small>
+            <small class="role" class:presenting={p.presenting}>{deviceRunsLine(status, p.device)}</small>
             <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>
           <span class="row">
-            {#if presenter?.role === "Presenting"}
-              <label class="always" title="This device can drive the presenting device without asking each time">
-                <input
-                  type="checkbox"
-                  checked={presenter.drive.always.some((d) => d.device === p.device)}
-                  onchange={(e) => team({ DriveAlways: { device: p.device, always: e.currentTarget.checked } })}
-                />
-                Always allow to drive
-              </label>
-            {/if}
             <Button onclick={() => team({ Unpair: { device: p.device } })}>Unpair</Button>
           </span>
         </li>

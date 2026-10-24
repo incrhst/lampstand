@@ -1,21 +1,21 @@
 <!-- Messages about who runs what that need an answer or should not be
      missed, shown across the top of every screen. The role prompts (a
      device asking this one to hand a role over, this device's own ask, a
-     role lost while away) are in RolePrompts; this adds the driver's
-     "took control back" and the note that this device now presents. -->
+     role lost while away) are in RolePrompts; this adds the notice that the
+     screens' device took the service back, and the note that this device
+     now runs the screens. -->
 <script lang="ts">
   import Banner from "./Banner.svelte";
   import Button from "./Button.svelte";
   import { live, presenterRequest } from "../state.svelte";
-  import { takenBackNotice } from "../driving";
-  import { operatorTakenBack } from "../roles";
+  import { RUNS_SCREENS_NOW, operatorTakenBack, operatorTakenBackNotice } from "../roles";
   import DriveBar from "./DriveBar.svelte";
   import RolePrompts from "./RolePrompts.svelte";
 
   let p = $derived(live.team?.presenter ?? null);
   let allowed = $state(false);
   let wasAsking = false;
-  // An ask that ends with this device presenting: say so once.
+  // An ask that ends with this device running the screens: say so once.
   $effect(() => {
     const asking = !!p?.asking && !p.asking.declined;
     if (wasAsking && !asking && p?.role === "Presenting") {
@@ -34,13 +34,12 @@
   <div class="notices">
     {#if p.drive.taken_back_by && operatorTakenBack(live.team)}
       <Banner tone="warn">
-        <span>{takenBackNotice(p.drive.taken_back_by)}</span>
-        <Button size="small" variant="primary" onclick={async () => { await presenterRequest("DriveDismiss"); await presenterRequest("DriveAsk"); }}>Drive again</Button>
+        <span>{operatorTakenBackNotice(p.drive.taken_back_by)}</span>
         <Button size="small" variant="ghost" onclick={() => presenterRequest("DriveDismiss")}>OK</Button>
       </Banner>
     {/if}
     {#if allowed}
-      <Banner tone="ready">This device is presenting now. Its screens are yours.</Banner>
+      <Banner tone="ready">{RUNS_SCREENS_NOW}</Banner>
     {/if}
   </div>
 {/if}

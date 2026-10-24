@@ -852,6 +852,10 @@ async fn a_church_with_one_device_and_no_pairing_sees_nothing_new() {
     // The four roles are reported, all held here, with nothing to answer,
     // nothing to notice and nothing greyed out.
     assert_eq!(t.roles.len(), 4);
+    assert!(
+        !t.scene_cue_waiting,
+        "no stream cue waits until #150 sets it"
+    );
     for r in &t.roles {
         assert!(r.holds, "{:?}", r.role);
         assert_eq!(r.standing, RoleStanding::Holding);
