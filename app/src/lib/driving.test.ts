@@ -54,6 +54,7 @@ const team = (p: PresenterView, paired: DeviceView[]): TeamStatus => ({
   paired,
   nearby: [],
   presenter: p,
+  roles: [],
   sync: { state: "Synced", paired: paired.length, connected: paired.length, reason: null, last_in_ms: null, last_out_ms: null },
 });
 const pill = { tone: "ready" as const, text: "Synced with 1 device", title: "Shared" };

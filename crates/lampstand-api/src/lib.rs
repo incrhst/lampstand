@@ -643,6 +643,47 @@ pub enum TeamRequest {
         device: String,
         always: bool,
     },
+    /// Takes a role when nobody needs to allow it: nobody holds it, or its
+    /// holder has been offline past the takeover time (the screens say so
+    /// and ask first). Answers `Response::Team`, or an error in the
+    /// volunteer's words.
+    RoleClaim {
+        role: RoleName,
+    },
+    /// Asks the holder of a role to hand it over; it shows a prompt.
+    RoleAsk {
+        role: RoleName,
+    },
+    /// Withdraws this device's ask for a role, or clears the "not now" or
+    /// "already asking" it was shown.
+    RoleCancel {
+        role: RoleName,
+    },
+    /// On the holder: hands the role to a device that asked (its key in
+    /// hex). With `always`, remembers the device; only Operator and Stream
+    /// offer that. Passing Projection clears the screens and passing Audio
+    /// stops the music.
+    RoleAllow {
+        role: RoleName,
+        device: String,
+        always: bool,
+    },
+    /// On the holder: says not now to a device that asked.
+    RoleDecline {
+        role: RoleName,
+        device: String,
+    },
+    /// Clears the notice about having lost a role.
+    RoleDismiss {
+        role: RoleName,
+    },
+    /// On the holder: remembers a paired device as always allowed to take
+    /// the role, or stops (its key in hex). Operator and Stream only.
+    RoleAlways {
+        role: RoleName,
+        device: String,
+        always: bool,
+    },
 }
 
 /// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
@@ -811,7 +852,89 @@ pub struct TeamStatus {
     pub nearby: Vec<NearbyView>,
     /// Who may present, and what this device can do about it.
     pub presenter: PresenterView,
+    /// The four roles in order (Projection, Operator, Stream, Audio): who
+    /// holds each, how this device could take it, and any prompt or notice.
+    pub roles: Vec<RoleView>,
     pub sync: SyncSummary,
+}
+
+/// One of the four jobs (docs/roles.md): Projection runs the screens,
+/// Operator the service, Stream what goes out online, Audio the sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleName {
+    Projection,
+    Operator,
+    Stream,
+    Audio,
+}
+
+/// How this device could take a role.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleStanding {
+    /// This device holds it, or is alone.
+    Holding,
+    /// Nobody holds it: `RoleClaim` takes it with no one's permission.
+    Open,
+    /// The holder is connected: `RoleAsk`.
+    Ask,
+    /// The holder has been offline long enough: `RoleClaim` after confirming.
+    TakeOver,
+    /// The holder is offline but only recently: wait `wait_secs`.
+    Wait,
+}
+
+/// What keeps this device from taking a role whatever the holder says.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleBlocked {
+    /// Projection needs screens set up on this device.
+    NoScreens,
+    /// Operator needs somebody to hold Projection.
+    NeedsProjection,
+}
+
+/// This device's own ask for a role.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RoleAskingView {
+    Waiting,
+    /// The holder said not now.
+    Declined,
+    /// Another device is already asking; `by` is its name.
+    Busy {
+        by: String,
+    },
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoleView {
+    pub role: RoleName,
+    /// This device does the job.
+    pub holds: bool,
+    pub standing: RoleStanding,
+    /// The holder's key in hex; `None` while nobody holds it.
+    pub holder: Option<String>,
+    /// The holder's name, empty when unknown.
+    pub holder_name: String,
+    /// How long the holder has been offline, when it is.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub offline_secs: Option<u64>,
+    /// Seconds until takeover opens, when the holder is offline.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub wait_secs: Option<u64>,
+    pub blocked: Option<RoleBlocked>,
+    /// On the holder: the one device asking for the role.
+    pub request: Option<PresentRequestView>,
+    pub asking: Option<RoleAskingView>,
+    /// This device held the role and another now does; shown once.
+    pub replaced_by: Option<String>,
+    /// On the holder: devices handed the role without asking.
+    pub always: Vec<DriverView>,
+    /// "Always allow this device" is offered (Operator and Stream only).
+    pub offers_always: bool,
 }
 
 /// Where sync with the paired devices stands, in one value for the status

@@ -22,6 +22,7 @@ pub mod net;
 mod repo;
 pub mod roles;
 pub mod team;
+pub mod wording;
 
 use std::fmt;
 

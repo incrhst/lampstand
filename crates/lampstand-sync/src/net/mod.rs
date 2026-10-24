@@ -73,6 +73,7 @@ use crate::roles::{
     Record, Role, Roles, Signer, Standing,
 };
 use crate::team::{DeviceKey, DeviceKeypair};
+use crate::wording;
 use crate::Repo;
 use discovery::Discovery;
 use handshake::{Me, Peer};
@@ -199,6 +200,18 @@ pub struct RolesStatus {
     /// The Operator controls work: Projection is on this device or
     /// connected. While it is not, they wait and the seat is kept.
     pub operator_ready: bool,
+}
+
+impl RolesStatus {
+    /// One role's status.
+    pub fn of(&self, role: Role) -> &RoleStatus {
+        match role {
+            Role::Projection => &self.projection,
+            Role::Operator => &self.operator,
+            Role::Stream => &self.stream,
+            Role::Audio => &self.audio,
+        }
+    }
 }
 
 /// Who may present, as the devices screen and the status bar show it.
@@ -1142,7 +1155,7 @@ impl SyncNode {
         let reach = self.reach();
         let allowed = lock(&self.roles)
             .allow(role, device, always, &reach)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| wording::not_allowed(role, &e))?;
         self.role_changed(role, &allowed.record);
         Ok(allowed.on_air)
     }
@@ -1341,19 +1354,12 @@ impl SyncNode {
             }
             // Already the operator of another device: nothing to do.
             Err(Denied::Already) if self.driven_device().is_some() => Ok(()),
-            Err(Denied::Already) => Err("this device is presenting: nothing to ask".into()),
             // Nobody holds the seat, or its holder has long been gone: no
             // one to ask.
-            Err(Denied::NotNeeded) => self.claim_role(Role::Operator).map_err(|e| e.to_string()),
-            Err(Denied::NobodyToAsk) => Err(format!(
-                "{} is not connected",
-                if holder_name.is_empty() {
-                    "the presenting device"
-                } else {
-                    &holder_name
-                }
-            )),
-            Err(e) => Err(e.to_string()),
+            Err(Denied::NotNeeded) => self
+                .claim_role(Role::Operator)
+                .map_err(|e| wording::denied(Role::Operator, &e, &holder_name)),
+            Err(e) => Err(wording::denied(Role::Operator, &e, &holder_name)),
         }
     }
 

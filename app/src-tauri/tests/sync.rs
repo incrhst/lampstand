@@ -52,6 +52,8 @@ struct Device {
     /// `pump` to hand to the app as the shell's app thread does.
     driven: Arc<Mutex<Vec<Request>>>,
     announce: Arc<std::sync::atomic::AtomicBool>,
+    /// Times sync told the app to stop the music (it stopped being the Audio holder).
+    stopped: Arc<std::sync::atomic::AtomicUsize>,
     _dir: tempfile::TempDir,
 }
 
@@ -118,6 +120,11 @@ async fn device_with(name: &str, screens: bool) -> Device {
     .unwrap();
     // As the shell does once sync is running; it tells sync about the screens.
     app.set_sync_link(sync.link());
+    let stopped = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = stopped.clone();
+    sync.on_music_stop(Arc::new(move || {
+        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
     Device {
         app,
         sync,
@@ -126,6 +133,7 @@ async fn device_with(name: &str, screens: bool) -> Device {
         roles,
         driven,
         announce,
+        stopped,
         _dir: dir,
     }
 }
@@ -789,7 +797,7 @@ async fn a_driver_can_open_the_service_when_nothing_is_open_on_the_presenter() {
 
 // ---- Roles --------------------------------------------------------------------
 
-use lampstand_api::PresenterStanding;
+use lampstand_api::{PresenterStanding, RoleName, RoleStanding, RoleView};
 use lampstand_sync::roles::Role;
 
 /// Pairs `other` with `main` (which shows the code) and waits until both
@@ -841,6 +849,17 @@ async fn a_church_with_one_device_and_no_pairing_sees_nothing_new() {
     assert!(d.asking.is_none() && !d.can_drive && d.always.is_empty());
     assert!(d.taken_back_by.is_none());
 
+    // The four roles are reported, all held here, with nothing to answer,
+    // nothing to notice and nothing greyed out.
+    assert_eq!(t.roles.len(), 4);
+    for r in &t.roles {
+        assert!(r.holds, "{:?}", r.role);
+        assert_eq!(r.standing, RoleStanding::Holding);
+        assert!(r.request.is_none() && r.asking.is_none() && r.replaced_by.is_none());
+        assert!(r.blocked.is_none() && r.always.is_empty());
+    }
+    assert_eq!(lone.stopped.load(std::sync::atomic::Ordering::SeqCst), 0);
+
     // Nothing is written for roles until something is claimed.
     assert!(!lone._dir.path().join("sync/roles.json").exists());
 
@@ -848,13 +867,13 @@ async fn a_church_with_one_device_and_no_pairing_sees_nothing_new() {
     // the job. (Claiming on a lone device records the claim, as it did.)
     match lone.sync.handle(TeamRequest::PresenterAsk).await {
         Response::Error { message } => {
-            assert_eq!(message, "this device is already presenting")
+            assert_eq!(message, "This device already runs the screens.")
         }
         other => panic!("{other:?}"),
     }
     match lone.sync.handle(TeamRequest::DriveAsk).await {
         Response::Error { message } => {
-            assert_eq!(message, "this device is presenting: nothing to ask")
+            assert_eq!(message, "This device already runs the service.")
         }
         other => panic!("{other:?}"),
     }
@@ -1026,4 +1045,750 @@ async fn only_passing_projection_clears_the_screens() {
         roles.projection.record.holder,
         Some(laptop.sync.node().device())
     );
+}
+
+// ---- Asking, always-allow and takeover for every role --------------------------
+
+fn role(d: &Device, role: RoleName) -> RoleView {
+    team(d).roles.into_iter().find(|r| r.role == role).unwrap()
+}
+
+async fn send(d: &Device, request: TeamRequest) -> Response {
+    d.sync.handle(request).await
+}
+
+async fn send_ok(d: &Device, request: TeamRequest) {
+    let what = format!("{request:?}");
+    match send(d, request).await {
+        Response::Team(_) => {}
+        other => panic!("{what} on {}: {other:?}", d.sync.status().name),
+    }
+}
+
+async fn send_err(d: &Device, request: TeamRequest) -> String {
+    match send(d, request).await {
+        Response::Error { message } => message,
+        other => panic!("expected an error, got {other:?}"),
+    }
+}
+
+fn key(d: &Device) -> String {
+    d.sync.node().device().to_hex()
+}
+
+/// Pairs a further device with `main`, which shows a code again.
+async fn pair_more(main: &Device, other: &Device, connected: usize) {
+    let code = match send(main, TeamRequest::StartPairing).await {
+        Response::Team(t) => t.pairing.unwrap().code,
+        other => panic!("{other:?}"),
+    };
+    send(
+        other,
+        TeamRequest::Join {
+            invite: code,
+            address: Some(main.address()),
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the new device to connect", || {
+        main.sync.node().status().connected() == connected
+            && other.sync.node().status().connected() == 1
+    })
+    .await;
+}
+
+/// Something on air on `d`, for the on-air rules.
+fn put_on_air(d: &mut Device) -> String {
+    let grace = song_id(d, "Amazing Grace");
+    let service = match d.request(Request::Service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    })) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    d.request(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Song {
+            song: grace,
+            arrangement: None,
+        },
+    }));
+    d.request(Request::Service(ServiceRequest::Open(service.id)));
+    d.request(Request::Live(Command::Next));
+    let on_air = d.on_air();
+    assert!(!on_air.is_empty());
+    on_air
+}
+
+/// Ask, "not now", ask again, allow: for each role, through the app's
+/// requests. "Always allow" sticks for Operator and Stream only.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_role_can_be_asked_for_declined_and_allowed() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    // Pairing leaves Stream unheld; the main machine takes it.
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+    })
+    .await;
+
+    for name in [
+        RoleName::Stream,
+        RoleName::Operator,
+        RoleName::Audio,
+        RoleName::Projection,
+    ] {
+        let always_offered = matches!(name, RoleName::Stream | RoleName::Operator);
+        assert_eq!(role(&main, name).offers_always, always_offered);
+        assert!(role(&main, name).holds, "{name:?}");
+        assert_eq!(role(&laptop, name).standing, RoleStanding::Ask);
+
+        send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+        until(Duration::from_secs(20), "the prompt", || {
+            role(&main, name).request.is_some()
+        })
+        .await;
+        let asker = role(&main, name).request.unwrap();
+        assert_eq!(asker.name, "Mary's laptop");
+        assert_eq!(asker.device, key(&laptop));
+
+        // Not now.
+        send_ok(
+            &main,
+            TeamRequest::RoleDecline {
+                role: name,
+                device: asker.device.clone(),
+            },
+        )
+        .await;
+        until(Duration::from_secs(20), "the answer", || {
+            role(&laptop, name).asking == Some(lampstand_api::RoleAskingView::Declined)
+        })
+        .await;
+        assert!(role(&main, name).request.is_none());
+        send_ok(&laptop, TeamRequest::RoleCancel { role: name }).await;
+        assert!(role(&laptop, name).asking.is_none());
+
+        // Ask again; this time allowed (with "always" where it is offered).
+        send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+        until(Duration::from_secs(20), "the second prompt", || {
+            role(&main, name).request.is_some()
+        })
+        .await;
+        send_ok(
+            &main,
+            TeamRequest::RoleAllow {
+                role: name,
+                device: asker.device.clone(),
+                always: true,
+            },
+        )
+        .await;
+        until(Duration::from_secs(20), "the laptop to hold it", || {
+            role(&laptop, name).holds && !role(&main, name).holds
+        })
+        .await;
+        assert_eq!(
+            role(&main, name).always.len(),
+            usize::from(always_offered),
+            "{name:?}: always-allow is remembered for Operator and Stream only"
+        );
+        // It gave the role up on purpose: no notice.
+        assert!(role(&main, name).replaced_by.is_none());
+        if name == RoleName::Projection {
+            continue;
+        }
+        give_back(&main, &laptop, name).await;
+        // A remembered device is let in without a prompt.
+        if always_offered {
+            send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+            until(Duration::from_secs(20), "the remembered device in", || {
+                role(&laptop, name).holds
+            })
+            .await;
+            assert!(role(&main, name).request.is_none());
+            // Forget it; the next ask prompts again.
+            send_ok(
+                &main,
+                TeamRequest::RoleAlways {
+                    role: name,
+                    device: key(&laptop),
+                    always: false,
+                },
+            )
+            .await;
+            assert!(role(&main, name).always.is_empty());
+            give_back(&main, &laptop, name).await;
+            send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+            until(Duration::from_secs(20), "a prompt again", || {
+                role(&main, name).request.is_some()
+            })
+            .await;
+            send_ok(
+                &main,
+                TeamRequest::RoleDecline {
+                    role: name,
+                    device: key(&laptop),
+                },
+            )
+            .await;
+            send_ok(&laptop, TeamRequest::RoleCancel { role: name }).await;
+        }
+    }
+}
+
+/// The main machine gets a role back from the laptop: the Projection holder
+/// takes the Operator seat with no ask; the rest are asked for.
+async fn give_back(main: &Device, laptop: &Device, name: RoleName) {
+    if name == RoleName::Operator {
+        send_ok(main, TeamRequest::RoleClaim { role: name }).await;
+        until(Duration::from_secs(20), "the laptop to hear", || {
+            !role(laptop, name).holds
+        })
+        .await;
+        // The laptop was told, as a driver is told it was taken back.
+        send_ok(laptop, TeamRequest::RoleDismiss { role: name }).await;
+        return;
+    }
+    send_ok(main, TeamRequest::RoleAsk { role: name }).await;
+    until(Duration::from_secs(20), "the laptop's prompt", || {
+        role(laptop, name).request.is_some()
+    })
+    .await;
+    send_ok(
+        laptop,
+        TeamRequest::RoleAllow {
+            role: name,
+            device: key(main),
+            always: false,
+        },
+    )
+    .await;
+    until(
+        Duration::from_secs(20),
+        "the main machine to hold it",
+        || role(main, name).holds && !role(laptop, name).holds,
+    )
+    .await;
+}
+
+/// Three devices: a second asker is told who is asking and is not queued.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_asker_is_told_who_is_already_asking() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    let tablet = device("Sam's tablet").await;
+    pair_up(&main, &laptop).await;
+    pair_more(&main, &tablet, 2).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "both to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+            && role(&tablet, RoleName::Stream).standing == RoleStanding::Ask
+    })
+    .await;
+
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the first prompt", || {
+        role(&main, RoleName::Stream).request.is_some()
+    })
+    .await;
+    send_ok(
+        &tablet,
+        TeamRequest::RoleAsk {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the tablet to be told", || {
+        role(&tablet, RoleName::Stream).asking
+            == Some(lampstand_api::RoleAskingView::Busy {
+                by: "Mary's laptop".into(),
+            })
+    })
+    .await;
+    // Still the laptop's prompt, one at a time.
+    assert_eq!(
+        role(&main, RoleName::Stream).request.unwrap().name,
+        "Mary's laptop"
+    );
+
+    // The laptop is allowed; the tablet asks again and now asks the laptop.
+    send_ok(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Stream,
+            device: key(&laptop),
+            always: false,
+        },
+    )
+    .await;
+    until(
+        Duration::from_secs(20),
+        "the laptop to hold the stream",
+        || role(&laptop, RoleName::Stream).holds,
+    )
+    .await;
+    send_ok(
+        &tablet,
+        TeamRequest::RoleCancel {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    // Pairing is not transitive: the tablet only knows the main machine, so
+    // it reads the stream as the main machine's record says (a known limit,
+    // PR #142). What matters here: the main machine has no prompt left.
+    assert!(role(&main, RoleName::Stream).request.is_none());
+}
+
+/// A holder that is cut off for the takeover time can be taken from after
+/// confirming (the claim), not before; the returning holder yields, with a
+/// notice, and Audio's music stops on it.
+#[tokio::test(flavor = "multi_thread")]
+async fn takeover_after_a_cut_and_the_returning_holder_yields() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+    })
+    .await;
+    // A claim against a device is judged by that device's own takeover time.
+    send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
+    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
+
+    // Cut both ways, as a dead network would.
+    main.sync.cut();
+    laptop.sync.cut();
+    until(Duration::from_secs(20), "the laptop to see it", || {
+        laptop.sync.node().status().connected() == 0
+    })
+    .await;
+    // Not yet: and with the holder away there is nobody to ask.
+    let soon = send_err(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(soon.contains("went offline only recently"), "{soon}");
+    assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
+    let nobody = send_err(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert_eq!(nobody, "Sanctuary is not connected, so it cannot be asked.");
+
+    until(Duration::from_secs(15), "takeover to open", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
+            && role(&laptop, RoleName::Audio).standing == RoleStanding::TakeOver
+    })
+    .await;
+    assert!(role(&laptop, RoleName::Stream).offline_secs.unwrap() >= 2);
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Audio,
+        },
+    )
+    .await;
+    assert!(role(&laptop, RoleName::Stream).holds && role(&laptop, RoleName::Audio).holds);
+    // The main machine still believes it runs both.
+    assert!(role(&main, RoleName::Stream).holds);
+    assert_eq!(main.stopped.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    main.sync.restore().await.unwrap();
+    laptop.sync.restore().await.unwrap();
+    until(Duration::from_secs(60), "the old holder to yield", || {
+        !role(&main, RoleName::Stream).holds && !role(&main, RoleName::Audio).holds
+    })
+    .await;
+    assert_eq!(
+        role(&main, RoleName::Stream).replaced_by.as_deref(),
+        Some("Mary's laptop")
+    );
+    assert_eq!(
+        role(&main, RoleName::Audio).replaced_by.as_deref(),
+        Some("Mary's laptop")
+    );
+    // Roles are independent: it still runs the screens and the service.
+    assert!(role(&main, RoleName::Projection).holds && role(&main, RoleName::Operator).holds);
+    assert!(role(&main, RoleName::Projection).replaced_by.is_none());
+    // Audio was playing here: it stops.
+    until(Duration::from_secs(10), "the music to stop", || {
+        main.stopped.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
+    // It never resumes by itself, and the notice goes once dismissed.
+    send_ok(
+        &main,
+        TeamRequest::RoleDismiss {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(role(&main, RoleName::Stream).replaced_by.is_none());
+    assert!(role(&laptop, RoleName::Stream).holds);
+}
+
+/// What a hand-over takes off air: the screens for Projection, the music
+/// for Audio; Operator and Stream leave everything as it is.
+#[tokio::test(flavor = "multi_thread")]
+async fn on_air_rules_follow_the_role_handed_over() {
+    let mut main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    let on_air = put_on_air(&mut main);
+
+    for name in [RoleName::Stream, RoleName::Operator] {
+        send_ok(&laptop, TeamRequest::RoleAsk { role: name }).await;
+        until(Duration::from_secs(20), "the prompt", || {
+            role(&main, name).request.is_some()
+        })
+        .await;
+        send_ok(
+            &main,
+            TeamRequest::RoleAllow {
+                role: name,
+                device: key(&laptop),
+                always: false,
+            },
+        )
+        .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        main.pump();
+        assert_eq!(main.on_air(), on_air, "{name:?} leaves the slide up");
+        assert_eq!(
+            main.stopped.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "{name:?} leaves the music"
+        );
+    }
+
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Audio,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the prompt", || {
+        role(&main, RoleName::Audio).request.is_some()
+    })
+    .await;
+    send_ok(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Audio,
+            device: key(&laptop),
+            always: false,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the music to stop", || {
+        main.stopped.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
+    main.pump();
+    assert_eq!(
+        main.on_air(),
+        on_air,
+        "stopping the music leaves the slide up"
+    );
+
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Projection,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the prompt", || {
+        role(&main, RoleName::Projection).request.is_some()
+    })
+    .await;
+    send_ok(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Projection,
+            device: key(&laptop),
+            always: false,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the screens to clear", || {
+        main.pump();
+        main.on_air().is_empty()
+    })
+    .await;
+    assert_eq!(main.stopped.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+/// The Operator seat is kept when Projection moves, the new Projection
+/// holder announces itself to the Operator, the Projection holder may take
+/// the seat back with no ask, and "Stop driving" hands it back with no notice.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_operator_seat_survives_a_projection_hand_over_and_comes_back_without_asking() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    // The laptop runs the service from its own screen (a remembered ask).
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Operator,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the prompt", || {
+        role(&main, RoleName::Operator).request.is_some()
+    })
+    .await;
+    send_ok(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Operator,
+            device: key(&laptop),
+            always: true,
+        },
+    )
+    .await;
+    until(
+        Duration::from_secs(20),
+        "the laptop to run the service",
+        || role(&laptop, RoleName::Operator).holds,
+    )
+    .await;
+
+    // Projection moves to the laptop... which asks the other way round: give
+    // the main machine the Operator seat back is not needed; the seat is
+    // kept by whoever holds it.
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Projection,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the prompt", || {
+        role(&main, RoleName::Projection).request.is_some()
+    })
+    .await;
+    main.announce
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    send_ok(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Projection,
+            device: key(&laptop),
+            always: false,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "projection to move", || {
+        role(&laptop, RoleName::Projection).holds
+    })
+    .await;
+    // The Operator seat did not move with it.
+    assert!(role(&laptop, RoleName::Operator).holds);
+
+    // Now the other way: the main machine asks for the screens back, and
+    // the laptop, which runs the service, still does after the hand-over.
+    send_ok(
+        &main,
+        TeamRequest::RoleAsk {
+            role: RoleName::Projection,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the laptop's prompt", || {
+        role(&laptop, RoleName::Projection).request.is_some()
+    })
+    .await;
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAllow {
+            role: RoleName::Projection,
+            device: key(&main),
+            always: false,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "projection to come back", || {
+        role(&main, RoleName::Projection).holds
+    })
+    .await;
+    assert!(role(&laptop, RoleName::Operator).holds, "the seat is kept");
+    assert!(team(&laptop).presenter.drive.driving.is_some());
+    // The new Projection holder announces its state to the Operator.
+    until(Duration::from_secs(20), "the announcement", || {
+        main.announce.load(std::sync::atomic::Ordering::SeqCst)
+    })
+    .await;
+
+    // The Projection holder takes the seat back with no ask.
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Operator,
+        },
+    )
+    .await;
+    assert!(role(&main, RoleName::Operator).holds);
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        !role(&laptop, RoleName::Operator).holds
+    })
+    .await;
+    // The device that was running the service is told it was taken back,
+    // once (the driver's "took control back").
+    assert_eq!(
+        role(&laptop, RoleName::Operator).replaced_by.as_deref(),
+        Some("Sanctuary")
+    );
+    send_ok(
+        &laptop,
+        TeamRequest::RoleDismiss {
+            role: RoleName::Operator,
+        },
+    )
+    .await;
+
+    // "Stop driving" hands the seat back with no notice on the stopper.
+    send_ok(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Operator,
+        },
+    )
+    .await;
+    until(
+        Duration::from_secs(20),
+        "the laptop to run the service again",
+        || role(&laptop, RoleName::Operator).holds,
+    )
+    .await;
+    send_ok(&laptop, TeamRequest::DriveCancel).await;
+    until(Duration::from_secs(20), "the seat to go back", || {
+        role(&main, RoleName::Operator).holds && !role(&laptop, RoleName::Operator).holds
+    })
+    .await;
+    assert!(role(&laptop, RoleName::Operator).replaced_by.is_none());
+}
+
+/// The words a refusal uses name the job, never "the presenting device".
+#[tokio::test(flavor = "multi_thread")]
+async fn refusals_use_the_roles_words() {
+    let main = device("Sanctuary").await;
+    let laptop = device_with("Mary's laptop", false).await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until(Duration::from_secs(20), "the laptop to hear", || {
+        role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+    })
+    .await;
+    // Taking what is held by a connected device needs an ask.
+    let must = send_err(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert_eq!(must, "Sanctuary is connected: ask it to allow this.");
+    assert_eq!(
+        role(&laptop, RoleName::Projection).blocked,
+        Some(lampstand_api::RoleBlocked::NoScreens)
+    );
+    let none = send_err(
+        &laptop,
+        TeamRequest::RoleAsk {
+            role: RoleName::Projection,
+        },
+    )
+    .await;
+    assert_eq!(none, "No screens are set up on this device");
+    // The holder cannot hand over what it does not hold, or to a device that
+    // is not asking.
+    let not_asking = send_err(
+        &main,
+        TeamRequest::RoleAllow {
+            role: RoleName::Stream,
+            device: key(&laptop),
+            always: false,
+        },
+    )
+    .await;
+    assert_eq!(not_asking, "That device is no longer asking.");
+    let not_holding = send_err(
+        &laptop,
+        TeamRequest::RoleAllow {
+            role: RoleName::Audio,
+            device: key(&main),
+            always: false,
+        },
+    )
+    .await;
+    assert_eq!(not_holding, "This device does not run the sound.");
+    let mine = send_err(
+        &main,
+        TeamRequest::RoleAsk {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert_eq!(mine, "This device already runs the stream.");
 }

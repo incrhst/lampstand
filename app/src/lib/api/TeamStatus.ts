@@ -3,6 +3,7 @@ import type { DeviceView } from "./DeviceView";
 import type { NearbyView } from "./NearbyView";
 import type { PairingView } from "./PairingView";
 import type { PresenterView } from "./PresenterView";
+import type { RoleView } from "./RoleView";
 import type { SyncSummary } from "./SyncSummary";
 
 /**
@@ -28,4 +29,9 @@ nearby: Array<NearbyView>,
 /**
  * Who may present, and what this device can do about it.
  */
-presenter: PresenterView, sync: SyncSummary, };
+presenter: PresenterView, 
+/**
+ * The four roles in order (Projection, Operator, Stream, Audio): who
+ * holds each, how this device could take it, and any prompt or notice.
+ */
+roles: Array<RoleView>, sync: SyncSummary, };

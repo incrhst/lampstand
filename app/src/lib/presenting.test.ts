@@ -34,6 +34,7 @@ const team = (presenter: PresenterView, connected = true): TeamStatus => ({
   paired: [{ device: "aa", fingerprint: "", name: "Mary's laptop", address: null, connected, problem: null, presenting: presenter.role === "Planning" }],
   nearby: [],
   presenter,
+  roles: [],
   sync: { state: "Synced", paired: 1, connected: connected ? 1 : 0, reason: null, last_in_ms: null, last_out_ms: null },
 });
 
