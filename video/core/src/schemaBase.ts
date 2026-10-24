@@ -7,6 +7,8 @@ export const base = {
   enter: z.enum(["rise", "fade", "wipe", "pop"]).default("rise"),
   exit: z.enum(["fade", "drop", "none"]).default("fade"),
   tone: z.enum(TONES).optional(),
+  say: z.string().optional(), // narration script for this scene (not shown; core/scripts/narrate.mjs turns it into audio)
+  narration: z.string().startsWith("narration/").optional(), // audio file in public/, written by narrate.mjs
 };
 
 export const Title = z.object({

@@ -17,6 +17,10 @@ Videos are data. A normal video is one JSON file; you never write React for it.
    - `npm run lamp:render -- projects/lampstand/videos/<slug>.json` writes `out/<slug>.mp4`. Add `--aspect 9:16` or `--aspect 1:1` for other shapes (also on `lamp:sheet`).
 4. Report format, size, length, and what you did not run (for example other aspects). `out/` is not committed.
 
+## Narration
+
+Add `say` to each scene (one to three short spoken sentences; write numbers and names as people say them), then from `video/` run `node core/scripts/narrate.mjs projects/lampstand/videos/<slug>.json`. It uses the `narrate` skill's Google backend (voice Algenib, rate 1.0), writes mp3s to `video/public/narration/<slug>/`, and sets `narration` and `durationSec` per scene so the picture waits for the words. Rerun after editing any `say`. If `uv run` fails with a broken `~/.venv` or no script support, the script already runs it from a temp dir with `--with`; do not upgrade uv without asking. Gemini TTS needs the Vertex AI API enabled on the Google project, which is not on, so do not use it. Narration files are committed with the video.
+
 ## Writing rules
 
 - Audience: church volunteers aged 15 to 70. Plain words, short lines, no jargon (say "the screens", not "outputs"; "the person holding it", not "lease holder"). Role names and plain descriptions live in `video/projects/lampstand/roles.ts`; reuse them.

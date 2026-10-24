@@ -23,7 +23,7 @@ for (const f of files) {
     continue;
   }
   const missing: string[] = [];
-  const walk = (o: any) => { if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) { if (k === "src" && typeof v === "string" && !existsSync(join(publicDir, v))) missing.push(v); else walk(v); } };
+  const walk = (o: any) => { if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) { if ((k === "src" || k === "narration") && typeof v === "string" && !existsSync(join(publicDir, v))) missing.push(v); else walk(v); } };
   walk(r.data.scenes);
   if (missing.length) { bad++; console.error(`FAIL ${f}\n  missing files in public/: ${missing.join(", ")}`); continue; }
   const frames = r.data.scenes.reduce((n: number, s: any) => n + sceneFrames(s, r.data.fps, defaultSec), 0);

@@ -1,5 +1,5 @@
 import React from "react";
-import { Series } from "remotion";
+import { Audio, Sequence, Series, staticFile } from "remotion";
 import { Theme, ThemeProvider } from "./theme";
 import { sceneFrames } from "./duration";
 import { SceneFrame } from "./SceneFrame";
@@ -19,6 +19,7 @@ export function makeMasterVideo(opts: { registry: Registry; customRegistry?: Reg
           return (
             <Series.Sequence key={i} durationInFrames={sceneFrames(s, fps, defaultSec)}>
               <SceneFrame scene={s}><C scene={s} /></SceneFrame>
+              {s.narration && <Sequence from={9}><Audio src={staticFile(s.narration)} /></Sequence>}
             </Series.Sequence>
           );
         })}

@@ -27,6 +27,8 @@ Roles are `projection`, `operator`, `stream`, `audio`. Their plain wording lives
 
 Files: screenshots in `public/shots/` (1-getstarted, 2-plan, 3-quickadd, 4-decks, 5-present, 5b-present-deck, 6-setup, 7-obs, 8-present-obs, 2560x1600); diagrams in `public/diagrams/` (roles-one/two/three/four-machines, roles-confidence-screen; from docs/diagrams, 0.8 design).
 
+Narration: give any scene `say` (the spoken words, plain and short), then run `node core/scripts/narrate.mjs projects/lampstand/videos/X.json` (Google Chirp voice Algenib via the `narrate` skill; needs Google credentials). It writes `public/narration/X/NN.mp3`, sets each scene's `narration` and `durationSec` to fit, and re-runs only for changed text. `say` is not shown on screen.
+
 Default length comes from the words and callouts; set `durationSec` to tighten. A 60-second video is roughly 8 to 10 scenes.
 
 ```bash
