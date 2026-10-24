@@ -24,7 +24,7 @@ One computer runs the screens, the service and OBS. It holds Projection, Operato
 
 ### 2. Two machines
 
-- **Machine A, in the sanctuary:** Projection and Operator. Screens, projector, sound desk.
+- **Machine A, in the house:** Projection and Operator. Screens, projector, sound desk.
 - **Machine B, the stream machine:** Stream. Runs OBS, Zoom and the OBS Virtual Camera. Connects to its own OBS.
 
 Pair B with A. B asks for Stream; A allows (and can say "always allow this device"). Use a wired network with reserved addresses. The browser source in B's OBS reads A's address.
@@ -33,7 +33,7 @@ Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
 ### 3. Three machines
 
-- **A, sanctuary:** Projection (screens, projector).
+- **A, house:** Projection (screens, projector).
 - **B, back of the room:** Operator (runs the service, sees what is on air).
 - **C, stream machine:** Stream (OBS, Zoom, Virtual Camera).
 

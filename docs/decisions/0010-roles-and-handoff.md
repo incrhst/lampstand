@@ -53,7 +53,7 @@ the three duties *roles* only because the app does.
    - A returning holder yields, as the presenter does.
 5. **Operator needs Projection.** While nobody holds Projection the Operator
    controls are disabled and the seat is kept. Projection and Stream depend on
-   nothing: the stream desk can work if the sanctuary machine drops.
+   nothing: the stream desk can work if the house machine drops.
 6. **The Stream holder holds the OBS connection itself.** On a stream machine
    that is its own OBS on localhost, so the OBS password stays there.
    Projection sends the scene of each item that goes live to the Stream
