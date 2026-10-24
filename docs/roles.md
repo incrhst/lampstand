@@ -23,6 +23,10 @@ All four have one holder at a time. A device may hold any mix. A device with no 
 
 You can start with one machine and add the others later. Nothing about the service changes; each role moves to another device by asking, except Projection, which stays with the machine wired to the screens (above).
 
+### How to read the pictures
+
+Each machine is a box, and the roles it holds are the coloured pills inside it. A role has the same colour everywhere: **Projection blue, Operator green, Stream purple, Audio orange**. An arrow takes the colour of the role that owns it (blue for the picture and for graphics and scene cues, orange for sound, green for next, jump and "what is on air", purple for scene control and the Virtual Camera). Grey is equipment, room sound and the network; a dashed line is a link over the church network or a helper. The pictures are drawn by `diagrams/generate.py`.
+
 ### 1. One machine, all roles
 
 One computer runs the screens, the service and OBS. It holds Projection, Operator, Stream and Audio (it holds them automatically; there is nothing to set up). OBS and Zoom, if used, run on the same computer. The house sound is whatever that computer plays, so for Zoom use a mixer feed into the computer. Nothing is paired.
