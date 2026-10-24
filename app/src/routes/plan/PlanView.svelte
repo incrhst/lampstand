@@ -1134,6 +1134,7 @@
   }
   .heading {
     min-width: 0;
+    flex: 1 1 16rem;
   }
   h1 {
     font-size: 1.3rem;
@@ -1164,7 +1165,12 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
+    /* Wrap onto another line rather than run under the library. */
+    min-width: 0;
+    max-width: 100%;
   }
   .order-body {
     flex: 1;
