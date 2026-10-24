@@ -206,6 +206,18 @@ pub fn duration(path: &Path) -> Option<f64> {
     (seconds.is_finite() && seconds > 0.0).then_some(seconds)
 }
 
+/// Whether the file at `path` has sound Lampstand can decode: an audio file,
+/// or a video with an audio track.
+pub fn has_sound(path: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(path).map(Arc::new) else {
+        return false;
+    };
+    deckcraft_media::probe(&bytes)
+        .ok()
+        .and_then(|info| info.audio)
+        .is_some_and(|audio| audio.decodable)
+}
+
 /// Where in a video of `duration` seconds to look for a picture: the start,
 /// then points through it. A duration the file does not give tries the first
 /// few seconds.

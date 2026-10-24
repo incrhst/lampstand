@@ -25,4 +25,10 @@ self_loop: boolean,
 /**
  * Something with no fixed length, such as a countdown.
  */
-open_ended: boolean, };
+open_ended: boolean, 
+/**
+ * How long a music-only item plays; `None` for anything else, and for
+ * a sound whose length the file did not give (that one is also
+ * `open_ended`).
+ */
+sound_ms: number | null, };

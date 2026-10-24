@@ -8,7 +8,7 @@ The types live in `lampstand-core::plan` (T103), with serde and ts-rs derives li
 
 - No people, teams, roles or contact details. Volunteers stay in the planning tool (Breeze, Notion, a spreadsheet). Lampstand holds no people.
 - No lyrics and no Bible text. A plan names songs and gives references; the church's library supplies the words, so a church's licences and edits stay its own.
-- No files. A plan may name a deck ("Sermon") but cannot carry one.
+- No files. A plan may name a deck ("Sermon") but cannot carry one. The same goes for sound: a music-only item or a backing track is added in Plan after the import, because it needs an audio file. The contract is unchanged by sound items (still `lampstand-plan/1`).
 
 ## Shape
 

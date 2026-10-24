@@ -318,6 +318,14 @@ async fn api(
             }))
             .await
         }
+        Request::Library(LibraryRequest::AddSoundFile { path }) => {
+            blocking(Box::new(move || {
+                decks::add_sound_file(&library, &path)
+                    .map(Response::SoundFile)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
         Request::Library(LibraryRequest::AddDeckFromLink { url }) => {
             let link = match decks::classify(&url) {
                 Ok(link) => link,

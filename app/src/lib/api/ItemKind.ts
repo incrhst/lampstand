@@ -2,6 +2,7 @@
 import type { BlobHash } from "./BlobHash";
 import type { CountdownTarget } from "./CountdownTarget";
 import type { Passage } from "./Passage";
+import type { Sound } from "./Sound";
 
 export type ItemKind = { "Header": { title: string, } } | { "Song": { song: string, 
 /**
@@ -15,4 +16,4 @@ title: string, body: string,
 /**
  * A line at the foot of every slide, for a quote's author.
  */
-attribution: string | null, } } | { "Announcements": { slides: Array<BlobHash>, seconds_each: number, } };
+attribution: string | null, } } | { "Announcements": { slides: Array<BlobHash>, seconds_each: number, } } | { "Sound": { sound: Sound, } };

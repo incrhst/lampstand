@@ -45,6 +45,8 @@ export type Line = {
   clickSlides: number;
   /** A video that plays through: its length. */
   videoMs: number | null;
+  /** A music-only item: how long it plays. Counts like a video. */
+  soundMs: number | null;
   /** A video that repeats itself, so the loop never moves on. */
   selfLoop: boolean;
   /** No fixed length (a countdown). */
@@ -75,6 +77,7 @@ export function estimatePass(
     const e = estimates[row.id];
     if (!e) continue;
     const video = e.video_ms != null && !e.self_loop ? e.video_ms : 0;
+    const sound = e.sound_ms ?? 0;
     const open = e.open_ended || e.self_loop;
     lines.push({
       id: row.id,
@@ -82,9 +85,10 @@ export function estimatePass(
       stills: e.stills,
       clickSlides: e.click_slides,
       videoMs: e.video_ms,
+      soundMs: e.sound_ms ?? null,
       selfLoop: e.self_loop,
       openEnded: e.open_ended,
-      ms: open ? 0 : e.stills * seconds * 1000 + video,
+      ms: open ? 0 : e.stills * seconds * 1000 + video + sound,
     });
   }
   return {
@@ -116,6 +120,7 @@ export function describeLine(line: Line, seconds: number): string {
     parts.push(`${line.stills} ${line.stills === 1 ? "slide" : "slides"} × ${seconds} s`);
   }
   if (line.videoMs != null) parts.push(`plays through, ${formatLength(line.videoMs)}`);
+  if (line.soundMs != null) parts.push(`music, ${formatLength(line.soundMs)}`);
   if (line.clickSlides > 0) {
     parts.push(`${line.clickSlides} with click-only builds, shown finished`);
   }

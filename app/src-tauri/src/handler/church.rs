@@ -177,6 +177,11 @@ impl App {
         self.tell_screens();
     }
 
+    /// The link to the sync node, once sync is running.
+    pub(super) fn sync_link(&self) -> Option<std::sync::Arc<dyn SyncLink>> {
+        self.church_sync.link.clone()
+    }
+
     /// Tells sync whether this device has screens set up.
     pub(super) fn tell_screens(&self) {
         if let Some(link) = &self.church_sync.link {

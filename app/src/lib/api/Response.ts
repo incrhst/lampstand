@@ -16,6 +16,8 @@ import type { ServiceSummary } from "./ServiceSummary";
 import type { Song } from "./Song";
 import type { SongDatabase } from "./SongDatabase";
 import type { SongHit } from "./SongHit";
+import type { SoundFile } from "./SoundFile";
+import type { SoundFileStatus } from "./SoundFileStatus";
 import type { TeamStatus } from "./TeamStatus";
 import type { Theme } from "./Theme";
 import type { Translation } from "./Translation";
@@ -26,4 +28,4 @@ export type Response = { "type": "Ok" } | { "type": "Error", "data": { message: 
  * The translation the verses are from: the one typed after the
  * reference, or else the one asked for.
  */
-translation: string, display: string, verses: Array<[number, number, string]>, } } | { "type": "Service", "data": Service } | { "type": "Services", "data": Array<ServiceSummary> } | { "type": "Deck", "data": Deck } | { "type": "Decks", "data": Array<Deck> } | { "type": "Media", "data": MediaFile } | { "type": "MediaFiles", "data": Array<MediaFile> } | { "type": "Outputs", "data": Array<OutputConfig> } | { "type": "Displays", "data": Array<DisplayMatch> } | { "type": "BrowserSources", "data": Array<BrowserSourceStatus> } | { "type": "Loaded", "data": LoadedService } | { "type": "Estimate", "data": Array<ItemEstimate> } | { "type": "SongDatabases", "data": Array<SongDatabase> } | { "type": "Text", "data": string } | { "type": "Team", "data": TeamStatus } | { "type": "Thumbnail", "data": string } | { "type": "DeckSlide", "data": { thumbnail: string, slides: number, } } | { "type": "BrandFile", "data": BrandContents } | { "type": "Obs", "data": ObsView } | { "type": "Settings", "data": DeviceSettings } | { "type": "Church", "data": ChurchStatus } | { "type": "Update", "data": UpdateStatus };
+translation: string, display: string, verses: Array<[number, number, string]>, } } | { "type": "Service", "data": Service } | { "type": "Services", "data": Array<ServiceSummary> } | { "type": "Deck", "data": Deck } | { "type": "Decks", "data": Array<Deck> } | { "type": "Media", "data": MediaFile } | { "type": "MediaFiles", "data": Array<MediaFile> } | { "type": "SoundFile", "data": SoundFile } | { "type": "SoundStatus", "data": Array<SoundFileStatus> } | { "type": "Outputs", "data": Array<OutputConfig> } | { "type": "Displays", "data": Array<DisplayMatch> } | { "type": "BrowserSources", "data": Array<BrowserSourceStatus> } | { "type": "Loaded", "data": LoadedService } | { "type": "Estimate", "data": Array<ItemEstimate> } | { "type": "SongDatabases", "data": Array<SongDatabase> } | { "type": "Text", "data": string } | { "type": "Team", "data": TeamStatus } | { "type": "Thumbnail", "data": string } | { "type": "DeckSlide", "data": { thumbnail: string, slides: number, } } | { "type": "BrandFile", "data": BrandContents } | { "type": "Obs", "data": ObsView } | { "type": "Settings", "data": DeviceSettings } | { "type": "Church", "data": ChurchStatus } | { "type": "Update", "data": UpdateStatus };
