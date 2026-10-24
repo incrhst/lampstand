@@ -61,7 +61,7 @@ No claims about downloads, users or dates appear in the video, in line with
 
 Besides the fly-over above, `video/core` (shared scenes, motion, validation) and `video/projects/lampstand`
 (theme, roles, devices, screenshot callouts) render short explainer videos from a JSON scene list.
-Read `projects/lampstand/MANIFEST.md`, write `projects/lampstand/videos/<name>.json`, then:
+Agents: use the `lampstand-video` skill (`.claude/skills/lampstand-video`). Read `projects/lampstand/MANIFEST.md`, write `projects/lampstand/videos/<name>.json`, then:
 
 ```bash
 npm run lamp:validate
