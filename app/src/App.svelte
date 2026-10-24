@@ -15,7 +15,7 @@
   import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning, withRole } from "./lib/presenting";
   import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
-  import { isDriving } from "./lib/driving";
+  import { drivenBy, isDriving } from "./lib/driving";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
   import { allDone, steps as getStartedSteps, welcomeService, type Facts, type StepId } from "./lib/getStarted";
   import GetStarted from "./lib/kit/GetStarted.svelte";
@@ -55,12 +55,12 @@
   }
   let obsStatus = $derived(obsPill(live.obs));
   let planningOnly = $derived(isPlanning(live.team));
-  // Being allowed to drive opens Present at once: that is where the job is.
-  let wasDriving = false;
+  // Driving, or being driven, opens Present at once: that is where the job is.
+  let wasBusy = false;
   $effect(() => {
-    const driving = isDriving(live.team);
-    if (driving && !wasDriving) screen = "operate";
-    wasDriving = driving;
+    const busy = isDriving(live.team) || drivenBy(live.team) !== null;
+    if (busy && !wasBusy) screen = "operate";
+    wasBusy = busy;
   });
   let syncStatus = $derived(syncPill(live.sync));
   let rolePill = $derived(withRole(syncStatus, live.team));
