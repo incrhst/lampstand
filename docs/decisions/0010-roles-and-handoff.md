@@ -107,6 +107,14 @@ the four duties *roles* only because the app does.
    starts them on Projection's cue. Count-in, a click on a separate output for
    the band, and key or tempo changes are later tickets.
 
+10. **Sound lives in the order of the service.** Music-only items and
+    backing tracks are items in the service document (name, file, length,
+    plays-on-its-own or waits, don't-send-to-the-stream), so they sync, count
+    in the service timing and can be planned by any device. The Audio role
+    decides only which device plays them; moving Audio never edits the order.
+    The Present view shows what sound is playing and what is next, with the
+    panic stop.
+
 Defaults and details that the map did not grill, proposed here for approval:
 see [roles spec](../roles.md), "Proposed details".
 

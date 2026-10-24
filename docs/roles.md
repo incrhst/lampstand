@@ -67,6 +67,17 @@ A video, a music-only item or a backing track has sound. It always plays in the 
   5. With the option off, nothing changes: the stream hears whatever the mixer sends.
 - Until the prototype passes (ticket "Prototype: can the OBS browser source play Lampstand's sound through OBS?"), the mixer route is the documented way, and the lip-sync tip applies: delay the mixer source in OBS (Advanced Audio Properties, Sync Offset) until it matches the picture.
 
+### Audio in the order of the service
+
+Sound is part of the service, so it lives in the service order and syncs like the rest of the plan, whoever holds Audio. The Audio role only decides which device plays it.
+
+- **Sound is an item, or part of one.** A music-only item (walk-in music, a song's backing track, a sound cue) sits in the order like any item, with a name, a file and a length. A song can also carry a backing track that plays with it. Videos keep their sound as part of the item.
+- **It has a place and a time.** The order shows where the sound starts, how long it runs and whether it plays on its own when the item goes live or waits to be started. The service timing counts it, so the planned end time includes the music.
+- **Planners can plan it.** Any device can add or change sound in the order, as it can plan anything else, with no role needed. Files travel by sync to the Audio holder ahead of the service, and Plan says if a file is missing there.
+- **The Operator sees it.** The Present view shows what sound is playing and what is next, with the panic stop, whether Audio is on the same device or not.
+- **The roster shows who plays it.** The status bar says who runs the sound, and Present warns if nobody holds Audio when a sound item is next.
+- **Moving Audio never edits the order.** The order is the plan; only the playing changes hands.
+
 ### Phones and tablets
 
 A phone or tablet in the browser (the tablet remote, paired by QR code and PIN) is a **helper**: it acts for the device that holds a role, today by sending Operator-type commands (next, previous, show, black, logo, clear) to the Projection machine, and later the panic stop for music. It never holds a role, and does not appear in a seat. A browser view for Stream is a later feature.
@@ -100,4 +111,5 @@ The same rules for every role.
 - **Roster.** The status bar shows the roles this device holds ("Runs the screens", "Runs the service", "Runs the stream", "Runs the sound"), and for the others who holds them; "Presenting" and "Driving" are replaced by these. Setup › Devices lists each device with its roles and the takeover time. A device with no role is just "Planning".
 - **Teams check.** Who may hold a role is decided at `Roles::claim` and `Roles::allow` and nowhere else (T18).
 - **Sound.** Room sound (microphones, the band) stays outside Lampstand and outside the roles. Sound that Lampstand plays belongs to the Audio role and goes with the picture to OBS when the church turns it on (above). NDI audio is a later ticket.
+- **Service order.** A sound item or a song's backing track is stored in the service document (name, file, length, "plays on its own" or "wait", "don't send to the stream"), so it syncs and counts in the service timing. This needs a new item kind or a node in the existing one; to be settled in the build ticket.
 - **Audio and the stream option.** The Audio holder plays for the house from its own copy of the file; the stream page plays its own copy through OBS. The two are not locked to each other, which is fine for the room and for the stream.
