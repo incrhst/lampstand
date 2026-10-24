@@ -368,7 +368,7 @@ async fn a_device_that_unpaired_this_one_shows_as_refused_not_just_offline() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_cut_off_peer_is_offline_without_a_problem() {
-    let (presenter, office) = paired().await;
+    let (mut presenter, office) = paired().await;
     until(Duration::from_secs(5), "connected", || {
         office.node.status().connected() == 1
     })
