@@ -95,7 +95,7 @@ export function presentChoice(p: PresenterView | null | undefined, present = "Pr
         hint: `${who} went offline ${howLong(p.offline_secs ?? 0)} ago. You can take over in ${howLong(p.wait_secs ?? 0)}.`,
       };
     default:
-      return { kind: "ask", label: "Ask to present" };
+      return { kind: "ask", label: "Make this device the presenter" };
   }
 }
 

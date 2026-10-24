@@ -41,7 +41,8 @@
     {#if p.drive.taken_back_by}
       <Banner tone="warn">
         <span>{takenBackNotice(p.drive.taken_back_by)}</span>
-        <Button size="small" onclick={() => presenterRequest("DriveDismiss")}>OK</Button>
+        <Button size="small" variant="primary" onclick={async () => { await presenterRequest("DriveDismiss"); await presenterRequest("DriveAsk"); }}>Drive again</Button>
+        <Button size="small" variant="ghost" onclick={() => presenterRequest("DriveDismiss")}>OK</Button>
       </Banner>
     {/if}
     {#each p.requests as r (r.device)}

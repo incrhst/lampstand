@@ -38,7 +38,6 @@
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
-  import DriveAction from "../../lib/kit/DriveAction.svelte";
   import { isPlanning } from "../../lib/presenting";
   import { driverOffline, isDriving } from "../../lib/driving";
 
@@ -495,9 +494,8 @@
       {#if planningOnly}
         <div class="pick-foot gate">
           <Banner tone="neutral" icon="monitor">
-            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter, or drive it from this device.</span>
+            <span>This device is planning{live.team?.presenter.holder_name ? `; ${live.team.presenter.holder_name} is the presenting device` : ""}. To take a service live here, make it the presenter, or drive it from the bar above.</span>
             <PresentAction />
-            <DriveAction />
           </Banner>
         </div>
       {/if}
