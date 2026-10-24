@@ -57,9 +57,15 @@
   let planningOnly = $derived(isPlanning(live.team));
   // Driving, or being driven, opens Present at once: that is where the job is.
   let wasBusy = false;
+  let arriving = $state(false);
   $effect(() => {
     const busy = isDriving(live.team) || drivenBy(live.team) !== null;
-    if (busy && !wasBusy) screen = "operate";
+    if (busy && !wasBusy) {
+      screen = "operate";
+      // A short slide-in and a gold edge, so the change is obvious.
+      arriving = true;
+      setTimeout(() => (arriving = false), 1400);
+    }
     wasBusy = busy;
   });
   let syncStatus = $derived(syncPill(live.sync));
@@ -227,7 +233,7 @@
 
   {#if showStrip}<GetStarted steps={started} onstep={startStep} ontell={told ? undefined : tellUs} onhide={hide} />{/if}
 
-  <main>
+  <main class:arriving>
     {#if screen === "plan"}
       <PlanView onopened={() => (screen = "operate")} />
     {:else if screen === "operate"}
@@ -395,6 +401,28 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  main.arriving {
+    animation: arrive 0.45s ease-out, edge 1.4s ease-out;
+  }
+  @keyframes arrive {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+  }
+  @keyframes edge {
+    from {
+      box-shadow: inset 0 0 0 3px var(--gold);
+    }
+    to {
+      box-shadow: inset 0 0 0 3px transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    main.arriving {
+      animation: edge 1.4s ease-out;
+    }
   }
   .update {
     color: var(--gold);
