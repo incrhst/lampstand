@@ -207,6 +207,20 @@ impl std::fmt::Display for LoadError {
     }
 }
 
+/// The file extensions of the kinds of sound the decoder is built to play:
+/// MP3, WAV, FLAC, M4A (AAC or ALAC), Ogg (Vorbis or Opus), and also AIFF,
+/// CAF and Matroska audio. The words shown to people name the first five.
+pub const PLAYABLE_EXTENSIONS: &[&str] = &[
+    "mp3", "wav", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "aif", "aiff", "caf", "mka",
+    "mkv", "webm",
+];
+
+fn known_extension(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| PLAYABLE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 /// Decodes the audio of the file at `path`, or says why not.
 pub fn load(path: &std::path::Path) -> Result<Arc<Pcm>, LoadError> {
     let unreadable = |detail: String| LoadError {
@@ -217,10 +231,14 @@ pub fn load(path: &std::path::Path) -> Result<Arc<Pcm>, LoadError> {
     match deckcraft_media::audio::decode(&bytes) {
         Ok(pcm) if pcm.frames() > 0 => Ok(Arc::new(pcm)),
         Ok(_) => Err(unreadable("the file has no sound".into())),
-        Err(deckcraft_media::MediaError::Unsupported(what)) => Err(LoadError {
-            kind: LoadKind::Unsupported,
-            detail: format!("{what} isn't supported"),
-        }),
+        // A file whose kind we do play, that will not decode, is damaged; only
+        // a kind we do not play is "unsupported".
+        Err(deckcraft_media::MediaError::Unsupported(what)) if !known_extension(path) => {
+            Err(LoadError {
+                kind: LoadKind::Unsupported,
+                detail: format!("{what} isn't supported"),
+            })
+        }
         Err(e) => Err(unreadable(e.to_string())),
     }
 }
@@ -259,6 +277,9 @@ pub enum OutputState {
     Open,
     /// This computer has no sound output at all.
     NoDevice,
+    /// A particular output was chosen and is not connected. Nothing is played
+    /// on any other output meanwhile.
+    Missing,
     /// The output could not be opened, or died (unplugged, switched off, its
     /// driver gave up).
     Failed,
@@ -267,7 +288,10 @@ pub enum OutputState {
 impl OutputState {
     /// Whether the output is known to be down.
     pub fn down(self) -> bool {
-        matches!(self, OutputState::NoDevice | OutputState::Failed)
+        matches!(
+            self,
+            OutputState::NoDevice | OutputState::Failed | OutputState::Missing
+        )
     }
 
     fn code(self) -> u8 {
@@ -276,6 +300,7 @@ impl OutputState {
             OutputState::Open => 1,
             OutputState::NoDevice => 2,
             OutputState::Failed => 3,
+            OutputState::Missing => 4,
         }
     }
 
@@ -284,6 +309,7 @@ impl OutputState {
             1 => OutputState::Open,
             2 => OutputState::NoDevice,
             3 => OutputState::Failed,
+            4 => OutputState::Missing,
             _ => OutputState::Opening,
         }
     }
@@ -510,7 +536,10 @@ fn open_stream(
             .find(|d| d.name().is_ok_and(|x| x == n))
     });
     if name.is_some() && chosen.is_none() {
-        eprintln!("lampstand-media: no sound output called {name:?}; using the default");
+        // A chosen output that is not there stays silent: music must not
+        // come out of the speakers or the projector instead.
+        eprintln!("lampstand-media: the chosen sound output {name:?} is not connected");
+        return failed(OutputState::Missing);
     }
     let Some(device) = chosen.or_else(|| host.default_output_device()) else {
         eprintln!("lampstand-media: this computer has no sound output");
@@ -722,7 +751,63 @@ mod tests {
         std::fs::write(&path, b"this is not music").unwrap();
         let e = load(&path).unwrap_err();
         let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            e.kind,
+            LoadKind::Unreadable,
+            "an .mp3 that will not decode is damaged"
+        );
+    }
+
+    #[test]
+    fn a_kind_of_file_that_is_not_played_is_unsupported() {
+        let dir = std::env::temp_dir().join(format!("lampstand-wma-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hymn.wma");
+        // The header of an ASF (Windows Media) file.
+        std::fs::write(
+            &path,
+            [
+                0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62,
+                0xCE, 0x6C, 0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+        )
+        .unwrap();
+        let e = load(&path).unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(e.kind, LoadKind::Unsupported);
+    }
+
+    /// A tiny WAV: the decoder takes it, and the list of kinds names it.
+    #[test]
+    fn a_wav_file_plays_and_the_list_of_kinds_names_what_the_decoder_takes() {
+        let mut wav = Vec::new();
+        let samples: Vec<i16> = (0..800).map(|n| (n % 50) as i16 * 100).collect();
+        let data = samples.len() * 2;
+        wav.extend(b"RIFF");
+        wav.extend((36 + data as u32).to_le_bytes());
+        wav.extend(b"WAVEfmt ");
+        wav.extend(16u32.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(8000u32.to_le_bytes());
+        wav.extend(16000u32.to_le_bytes());
+        wav.extend(2u16.to_le_bytes());
+        wav.extend(16u16.to_le_bytes());
+        wav.extend(b"data");
+        wav.extend((data as u32).to_le_bytes());
+        for s in samples {
+            wav.extend(s.to_le_bytes());
+        }
+        let dir = std::env::temp_dir().join(format!("lampstand-wav-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tone.wav");
+        std::fs::write(&path, &wav).unwrap();
+        let pcm = load(&path).expect("a WAV plays");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(pcm.frames() > 0);
+        for kind in ["mp3", "wav", "flac", "m4a", "ogg"] {
+            assert!(PLAYABLE_EXTENSIONS.contains(&kind), "{kind}");
+        }
     }
 
     fn secs(base: Instant, n: u64) -> Instant {
@@ -798,6 +883,7 @@ mod tests {
             OutputState::Open,
             OutputState::NoDevice,
             OutputState::Failed,
+            OutputState::Missing,
         ] {
             assert_eq!(OutputState::from_code(s.code()), s);
         }

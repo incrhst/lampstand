@@ -300,6 +300,9 @@ impl SyncLink for NodeLink {
     fn report_sound_problem(&self, problem: Option<lampstand_sync::net::SoundProblem>) {
         self.0.report_sound_problem(problem);
     }
+    fn resend_sound_problem(&self) {
+        self.0.resend_sound_problem();
+    }
     fn audio_here(&self) -> bool {
         self.0.audio_here()
     }

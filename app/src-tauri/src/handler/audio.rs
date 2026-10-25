@@ -43,9 +43,9 @@ pub fn problem_words(problem: &SoundProblem, device: Option<&str>) -> String {
     let reason = match problem.reason {
         SoundReason::NotOnDevice => match device {
             Some(name) => format!(
-                "The sound file isn't on {name} yet. It will arrive when {name} is connected."
+                "The sound file isn't on {name} yet. Wait for it to arrive, or add the file again."
             ),
-            None => "The sound file isn't on this computer yet. It will arrive when this computer is connected to the device that has it.".to_string(),
+            None => "The sound file isn't on this computer yet. Add the file again, or wait for it to come from another computer.".to_string(),
         },
         SoundReason::Unsupported => {
             format!("{subject} can't play this kind of file. Lampstand can play {FORMATS}.")
@@ -59,6 +59,12 @@ pub fn problem_words(problem: &SoundProblem, device: Option<&str>) -> String {
             ),
             None => "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Setup › Sound.".to_string(),
         },
+        SoundReason::OutputMissing => match device {
+            Some(name) => format!(
+                "The sound output chosen on {name} isn't connected. Plug it in, or choose another in Setup › Sound."
+            ),
+            None => "The sound output you chose isn't connected. Plug it in, or choose another in Setup › Sound.".to_string(),
+        },
         SoundReason::NoOutput => {
             format!("{subject} has no sound output. Plug one in and switch it on.")
         }
@@ -68,7 +74,7 @@ pub fn problem_words(problem: &SoundProblem, device: Option<&str>) -> String {
         (false, SoundReason::NotOnDevice | SoundReason::Unsupported | SoundReason::Unreadable) => {
             format!("{what} couldn't be played. {reason}")
         }
-        (false, SoundReason::OutputDown | SoundReason::NoOutput) => {
+        (false, SoundReason::OutputDown | SoundReason::NoOutput | SoundReason::OutputMissing) => {
             format!("{what} isn't playing. {reason}")
         }
     }
@@ -258,6 +264,13 @@ impl App {
             // Passing Audio stops what is playing.
             self.audio.cut();
         }
+        if here && !self.audio_held {
+            // Audio has just come here: say again what is wrong.
+            if let Some(link) = &link {
+                link.resend_sound_problem();
+            }
+        }
+        self.audio_held = here;
         if here {
             // A dead output is dropped, and tried again every few seconds.
             self.audio.tick(std::time::Instant::now());

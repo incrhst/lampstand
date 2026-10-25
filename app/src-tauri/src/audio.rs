@@ -42,8 +42,19 @@ use lampstand_sync::net::{SoundCommand, SoundHook, SoundNow, SoundProblem, Sound
 /// How a stop fades out unless told otherwise, in seconds.
 pub const STOP_FADE: f64 = 3.0;
 
-/// How long after a failure the deck tries the output again, gently.
-pub const REOPEN: Duration = Duration::from_secs(5);
+/// How long after each failure in a row the deck tries the output again:
+/// 5, 10, 30, then every 60 seconds. A Play, a new output or a success starts
+/// the count over.
+pub const REOPEN: [Duration; 4] = [
+    Duration::from_secs(5),
+    Duration::from_secs(10),
+    Duration::from_secs(30),
+    Duration::from_secs(60),
+];
+
+fn backoff(tries: u32) -> Duration {
+    REOPEN[(tries as usize).min(REOPEN.len() - 1)]
+}
 /// How long a new output may take to ask for its first sound.
 pub const START_GRACE: Duration = Duration::from_secs(5);
 /// How long an output that was asking for sound may stop before it is
@@ -142,6 +153,8 @@ struct Down {
     item: String,
     name: String,
     next_try: Instant,
+    /// Failures in a row, for the back-off.
+    tries: u32,
 }
 
 struct Inner {
@@ -153,6 +166,9 @@ struct Inner {
     generation: u64,
     /// What was asked to play, from the cue until it ends.
     current: Option<Meta>,
+    /// The sound most recently asked for, until it ends or is stopped: what
+    /// a failure is about when it fails before it started.
+    asked: Option<Meta>,
     /// Why the last sound did not play (the file), until the next one plays.
     problem: Option<SoundProblem>,
     /// Set while the output is down, until a new one is seen working.
@@ -169,14 +185,17 @@ struct Inner {
 impl Inner {
     /// Throws a dead output away with the sound on it, and notes why.
     fn fail(&mut self, reason: SoundReason, now: Instant) {
-        let (item, name) = match (&self.current, &self.down) {
-            (Some(m), _) => (m.item.clone(), m.name.clone()),
-            (None, Some(d)) => (d.item.clone(), d.name.clone()),
-            (None, None) => (String::new(), String::new()),
+        let (item, name) = match self.current.as_ref().or(self.asked.as_ref()) {
+            Some(m) => (m.item.clone(), m.name.clone()),
+            None => (String::new(), String::new()),
         };
-        eprintln!(
-            "lampstand: the sound output is not working ({reason:?}); it will be tried again"
-        );
+        let tries = self.down.as_ref().map_or(0, |d| d.tries);
+        // Said once when it starts, not at every attempt.
+        if self.down.as_ref().is_none_or(|d| d.reason != reason) {
+            eprintln!(
+                "lampstand: the sound output is not working ({reason:?}); it will be tried again"
+            );
+        }
         self.out = None;
         self.current = None;
         self.probing = false;
@@ -185,7 +204,8 @@ impl Inner {
             reason,
             item,
             name,
-            next_try: now + REOPEN,
+            next_try: now + backoff(tries),
+            tries: tries + 1,
         });
     }
 
@@ -202,15 +222,16 @@ impl Inner {
                 .beats()
                 .is_some_and(|b| self.watchdog.stalled(now, b, wanted));
         if state.down() || stalled {
-            let reason = if state == OutputState::NoDevice {
-                SoundReason::NoOutput
-            } else {
-                SoundReason::OutputDown
+            let reason = match state {
+                OutputState::NoDevice => SoundReason::NoOutput,
+                OutputState::Missing => SoundReason::OutputMissing,
+                _ => SoundReason::OutputDown,
             };
             self.fail(reason, now);
         } else if self.probing && state == OutputState::Open {
             self.probing = false;
             self.down = None;
+            self.asked = None;
         }
     }
 
@@ -245,6 +266,7 @@ impl AudioDeck {
             out: None,
             generation: 0,
             current: None,
+            asked: None,
             problem: None,
             down: None,
             probing: false,
@@ -286,7 +308,11 @@ impl AudioDeck {
 
     /// Silence now, and forget a sound that was still being decoded.
     pub fn cut(&self) {
-        lock(&self.0).generation += 1;
+        {
+            let mut s = lock(&self.0);
+            s.generation += 1;
+            s.asked = None;
+        }
         self.with_out(|out| out.panic());
     }
 
@@ -301,6 +327,7 @@ impl AudioDeck {
         s.generation += 1;
         s.out = None;
         s.current = None;
+        s.asked = None;
         s.down = None;
         s.probing = false;
         s.watchdog.reset();
@@ -330,6 +357,10 @@ impl AudioDeck {
             }
             s.reap(Instant::now());
             s.current = None;
+            s.asked = Some(Meta {
+                item: item.clone(),
+                name: name.clone(),
+            });
             let hash = BlobHash::from_bytes(file);
             let Some(path) = (s.parts.path)(&hash) else {
                 s.problem = Some(SoundProblem {
@@ -367,7 +398,11 @@ impl AudioDeck {
                     return;
                 }
             };
-            // The next Play is a chance to find the output working again.
+            // The next Play is a chance to find the output working again,
+            // and starts the back-off over.
+            if let Some(d) = s.down.as_mut() {
+                d.tries = 0;
+            }
             s.reap(Instant::now());
             s.ensure_out();
             if let Some(out) = s.out.as_mut() {
@@ -390,8 +425,10 @@ impl AudioDeck {
         let playing = s.out.as_mut().and_then(|out| out.playing());
         let Some(p) = playing else {
             // Nothing plays; a sound still being decoded is `current`'s
-            // absence, not its presence.
-            s.current = None;
+            // absence, not its presence. One that had played has ended.
+            if s.current.take().is_some() {
+                s.asked = None;
+            }
             return None;
         };
         let meta = s.current.as_ref()?;
@@ -952,19 +989,89 @@ mod tests {
         o.deck.tick(at(t, 6));
         assert!(!o.deck.output_ok());
         assert_eq!(o.deck.problem().unwrap().reason, SoundReason::NoOutput);
-        o.deck.tick(at(t, 8));
-        assert_eq!(o.opened(), 2, "gentle: not every tick");
+        o.deck.tick(at(t, 12));
+        assert_eq!(o.opened(), 2, "gentle: the second wait is 10 s");
         // Plugged back in: the next try works and the banner goes.
         *o.next_state.lock().unwrap() = None;
-        o.deck.tick(at(t, 12));
+        o.deck.tick(at(t, 17));
         assert_eq!(o.opened(), 3);
-        o.deck.tick(at(t, 12));
+        o.deck.tick(at(t, 17));
         assert!(o.deck.output_ok());
         assert!(o.deck.problem().is_none());
         assert_eq!(o.deck.problem_changed(), Some(None));
         // And nothing is tried again once it works.
         o.deck.tick(at(t, 60));
         assert_eq!(o.opened(), 3);
+    }
+
+    #[test]
+    fn the_retries_back_off_to_once_a_minute_and_a_play_starts_them_over() {
+        let o = outs();
+        let t = Instant::now();
+        *o.next_state.lock().unwrap() = Some(OutputState::Failed);
+        o.deck.command(play("A"));
+        o.deck.tick(t);
+        // Failures at 0; tries at 5, 15, 45, 105, 165 ...
+        let mut now = 0u64;
+        for wait in [5u64, 10, 30, 60, 60] {
+            let before = o.opened();
+            o.deck.tick(at(t, now + wait - 1));
+            assert_eq!(o.opened(), before, "not before {wait} s");
+            now += wait;
+            o.deck.tick(at(t, now));
+            assert_eq!(o.opened(), before + 1, "at {wait} s");
+            o.deck.tick(at(t, now));
+        }
+        // A Play opens at once and starts the count over.
+        let before = o.opened();
+        o.deck.command(play("B"));
+        assert_eq!(o.opened(), before + 1);
+        o.deck.tick(at(t, now));
+        let after = o.opened();
+        o.deck.tick(at(t, now + 5));
+        assert_eq!(o.opened(), after + 1, "5 s again");
+    }
+
+    #[test]
+    fn a_chosen_output_that_is_not_connected_stays_down_and_recovers_when_it_is_back() {
+        let o = outs();
+        let t = Instant::now();
+        o.deck.set_output(Some("Mixer USB".into()));
+        *o.next_state.lock().unwrap() = Some(OutputState::Missing);
+        o.deck.command(play("Walk-in music"));
+        o.deck.tick(t);
+        assert!(o.deck.now().is_none(), "nothing plays on another output");
+        assert!(!o.deck.output_ok());
+        let p = o.deck.problem().unwrap();
+        assert_eq!(p.reason, SoundReason::OutputMissing);
+        assert_eq!(p.name, "Walk-in music", "names the sound that failed");
+        // Every try is for the chosen output only, and the banner stays.
+        for secs in [6u64, 20, 70, 140] {
+            o.deck.tick(at(t, secs));
+            assert!(!o.deck.output_ok());
+            assert_eq!(o.deck.problem().unwrap().reason, SoundReason::OutputMissing);
+        }
+        // Plugged back in: it recovers on the timer, without a Play.
+        *o.next_state.lock().unwrap() = None;
+        o.deck.tick(at(t, 210));
+        o.deck.tick(at(t, 210));
+        assert!(o.deck.output_ok() && o.deck.problem().is_none());
+        o.deck.command(play("Again"));
+        assert!(o.deck.now().is_some());
+    }
+
+    #[test]
+    fn the_problem_names_the_sound_that_failed_not_an_earlier_one() {
+        let o = outs();
+        let t = Instant::now();
+        o.deck.command(play("First"));
+        o.log(0).lock().unwrap().state = Some(OutputState::Failed);
+        o.deck.tick(t);
+        assert_eq!(o.deck.problem().unwrap().name, "First");
+        *o.next_state.lock().unwrap() = Some(OutputState::Failed);
+        o.deck.command(play("Second"));
+        o.deck.tick(t);
+        assert_eq!(o.deck.problem().unwrap().name, "Second");
     }
 
     #[test]

@@ -118,6 +118,9 @@ pub enum SoundReason {
     OutputDown,
     /// The Audio holder has no sound output at all.
     NoOutput,
+    /// The output chosen on the Audio holder is not connected. Nothing is
+    /// played on another output instead. (Last, so the numbers above hold.)
+    OutputMissing,
 }
 
 /// A sound the Audio holder could not play, and why. Sent with
@@ -169,7 +172,7 @@ pub(super) struct SoundState {
     /// What this device, as the Audio holder, last said went wrong.
     problem_mine: Option<SoundProblem>,
     /// What the Audio holder said went wrong, with who said it.
-    problem_theirs: Option<(DeviceKey, SoundProblem)>,
+    pub(super) problem_theirs: Option<(DeviceKey, SoundProblem)>,
 }
 
 impl SyncNode {
@@ -336,11 +339,35 @@ impl SyncNode {
         }
     }
 
+    /// On a device that has just come to hold Audio: says again what is wrong
+    /// to the devices already connected (they dropped what the old holder
+    /// said). Nothing is sent when nothing is wrong.
+    pub fn resend_sound_problem(&self) {
+        let problem = lock(&self.sound).problem_mine.clone();
+        if problem.is_none() || !lock(&self.roles).holds(Role::Audio) {
+            return;
+        }
+        let frame = Frame::SoundProblem { problem };
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(super::Control::Frame(frame.clone()));
+        }
+    }
+
     /// What the Audio holder, another device, last said went wrong, with its
     /// name. `None` when this device holds Audio, when nobody does, when the
     /// holder is not connected, or when nothing is wrong.
     pub fn sound_problem_elsewhere(&self) -> Option<(String, SoundProblem)> {
-        let (holder, name) = self.audio_elsewhere()?;
+        let elsewhere = self.audio_elsewhere();
+        {
+            // Said by a device that no longer holds Audio: forgotten, so it
+            // cannot come back if that device holds Audio again later.
+            let mut s = lock(&self.sound);
+            let said_by = s.problem_theirs.as_ref().map(|(from, _)| *from);
+            if said_by.is_some() && said_by != elsewhere.as_ref().map(|(h, _)| *h) {
+                s.problem_theirs = None;
+            }
+        }
+        let (holder, name) = elsewhere?;
         if !self.connected(holder) {
             return None;
         }
@@ -360,7 +387,15 @@ impl SyncNode {
         if problem.as_ref().is_some_and(|p| !p.believable()) {
             return;
         }
-        lock(&self.sound).problem_theirs = problem.map(|p| (from, p));
+        let next = problem.map(|p| (from, p));
+        {
+            let mut s = lock(&self.sound);
+            if s.problem_theirs == next {
+                // Said again, nothing new: no screen update.
+                return;
+            }
+            s.problem_theirs = next;
+        }
         self.bump();
     }
 

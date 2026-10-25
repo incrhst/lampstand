@@ -160,6 +160,8 @@ pub struct App {
     audio: AudioDeck,
     /// The sound state the screen was last told.
     told_sound: Option<SoundView>,
+    /// This device held Audio at the last look (to notice it coming here).
+    audio_held: bool,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -255,6 +257,7 @@ impl App {
             sound_sync: SoundSync::default(),
             audio,
             told_sound: None,
+            audio_held: false,
             sink,
             windows,
             emit,

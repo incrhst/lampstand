@@ -338,7 +338,7 @@ fn a_file_that_is_not_on_this_device_says_so_in_words() {
         v.problem.as_deref(),
         Some(
             "Walk-in music couldn't be played. The sound file isn't on this computer yet. \
-             It will arrive when this computer is connected to the device that has it."
+             Add the file again, or wait for it to come from another computer."
         )
     );
     assert_eq!(
@@ -652,7 +652,7 @@ fn the_operator_is_told_why_a_sound_cannot_play_on_the_audio_holder() {
         (
             SoundReason::NotOnDevice,
             "Walk-in music couldn't be played. The sound file isn't on Sound desk yet. \
-             It will arrive when Sound desk is connected.",
+             Wait for it to arrive, or add the file again.",
         ),
         (
             SoundReason::Unsupported,
@@ -668,6 +668,11 @@ fn the_operator_is_told_why_a_sound_cannot_play_on_the_audio_holder() {
             SoundReason::OutputDown,
             "Walk-in music isn't playing. The sound output on Sound desk isn't working. \
              Check it is plugged in and switched on.",
+        ),
+        (
+            SoundReason::OutputMissing,
+            "Walk-in music isn't playing. The sound output chosen on Sound desk isn't connected. \
+             Plug it in, or choose another in Setup \u{203a} Sound.",
         ),
         (
             SoundReason::NoOutput,
@@ -818,4 +823,20 @@ fn a_church_that_never_uses_sound_sends_no_problem_anywhere() {
     assert!(link.problems.lock().unwrap().iter().all(|p| p.is_none()));
     assert!(d.sound_events().iter().all(|v| v.problem.is_none()));
     assert!(d.opened.lock().unwrap().is_empty());
+}
+
+#[test]
+fn the_formats_named_in_the_words_are_the_ones_the_decoder_plays() {
+    use lampstand_media::PLAYABLE_EXTENSIONS;
+    let named = lampstand_app::handler::FORMATS;
+    for (word, ext) in [
+        ("MP3", "mp3"),
+        ("WAV", "wav"),
+        ("FLAC", "flac"),
+        ("M4A", "m4a"),
+        ("Ogg", "ogg"),
+    ] {
+        assert!(named.contains(word), "{word}");
+        assert!(PLAYABLE_EXTENSIONS.contains(&ext), "{ext}");
+    }
 }

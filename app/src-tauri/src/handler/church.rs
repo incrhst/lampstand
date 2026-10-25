@@ -66,6 +66,8 @@ pub trait SyncLink: Send + Sync {
     /// Tells the other devices why a sound did not play here, as the Audio
     /// holder (`None`: nothing is wrong now).
     fn report_sound_problem(&self, _problem: Option<lampstand_sync::net::SoundProblem>) {}
+    /// Audio has just come to this device: says again what is wrong.
+    fn resend_sound_problem(&self) {}
     /// Whether this device plays the sound: it holds Audio, or has nobody to
     /// share with.
     fn audio_here(&self) -> bool {

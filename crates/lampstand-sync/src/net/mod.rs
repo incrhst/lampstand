@@ -3201,6 +3201,15 @@ mod tests {
         long.item = "i".repeat(sound_cue::MAX_ITEM + 1);
         node.sound_problem_received(id(7), Some(long));
         assert!(node.sound_problem_elsewhere().is_none());
+        // Said again, unchanged: nothing new.
+        node.sound_problem_received(id(7), Some(trouble(SoundReason::Unreadable)));
+        assert!(node.sound_problem_elsewhere().is_some());
+        node.sound_problem_received(id(7), None);
+        // Left over from a device that no longer holds Audio: forgotten for
+        // good, so it cannot come back if that device holds Audio again.
+        lock(&node.sound).problem_theirs = Some((id(8), trouble(SoundReason::NoOutput)));
+        assert!(node.sound_problem_elsewhere().is_none());
+        assert!(lock(&node.sound).problem_theirs.is_none());
         // It goes with the connection, and is not brought back by a
         // reconnection until the holder says it again.
         node.sound_problem_received(id(7), Some(trouble(SoundReason::Unreadable)));
