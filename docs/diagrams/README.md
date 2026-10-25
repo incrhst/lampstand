@@ -7,3 +7,5 @@ They are drawn by `generate.py`, which writes the SVGs. Change a box or arrow th
 ```bash
 python3 docs/diagrams/generate.py docs/diagrams
 ```
+
+The website uses copies of these SVGs in `site/docs/diagrams/`. After regenerating, copy them there (`cp docs/diagrams/*.svg site/docs/diagrams/`). The pictures were not changed when the roles were built, so they were not regenerated for the documentation work.
