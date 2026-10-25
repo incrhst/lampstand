@@ -27,10 +27,15 @@
   import { TAKEOVER_CHOICES } from "../../lib/presenting";
   import { ago, syncPill } from "../../lib/sync";
 
-  let status: TeamStatus | null = $state(null);
+  let status = $state<TeamStatus | null>(null);
   let code = $state("");
   let address = $state("");
   let busy = $state(false);
+  /** The address field, for a network that hides computers from each other. */
+  let byAddress = $state(false);
+  const onMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  /** Computers nearby showing a code, the ones the code is typed for. */
+  let ready = $derived(status?.nearby.filter((n) => n.pairing) ?? []);
   let now = $state(Date.now());
 
   async function team(req: TeamRequest) {
@@ -118,21 +123,43 @@
         join();
       }}
     >
+      {#if ready.length === 1}
+        <p class="ready">Ready to pair with <strong>{ready[0].name}</strong>. Type the code it shows.</p>
+      {:else if ready.length > 1}
+        <p class="ready">{ready.length} computers nearby are showing a code. Type the one you want to pair with.</p>
+      {:else}
+        <p class="muted">On the other computer, open Setup › Devices and choose Pair a device. Then type the code it shows here.</p>
+      {/if}
       <label>
         Pairing code
         <input bind:value={code} inputmode="numeric" autocomplete="off" placeholder="123 456" />
       </label>
-      <label>
-        Address <small class="muted">(only if it is not found automatically)</small>
-        <input bind:value={address} autocomplete="off" placeholder="192.168.1.20:7340" />
-      </label>
+      {#if byAddress}
+        <label>
+          Its address <small class="muted">(shown on that computer under This device)</small>
+          <input bind:value={address} autocomplete="off" placeholder="192.168.1.20:7340" />
+        </label>
+      {/if}
       <span class="row">
         <Button variant="primary" disabled={busy || code.replace(/\D/g, "").length !== 6} onclick={join}>Pair</Button>
-        <Button disabled={busy || !address.trim()} onclick={connect} title="Reconnect to a paired device by address">
-          Connect
-        </Button>
+        {#if byAddress}
+          <Button disabled={busy || !address.trim()} onclick={connect} title="Reconnect to a paired device by address">
+            Connect
+          </Button>
+        {:else}
+          <button type="button" class="link" onclick={() => (byAddress = true)}>Can't find it?</button>
+        {/if}
       </span>
     </form>
+    {#if byAddress || (status && status.nearby.length === 0)}
+      <!-- Pairing never needs an address when the computers can see each
+           other; when they can't, say why before asking for one. -->
+      <p class="muted small">
+        Computers find each other on the same network. If the other one isn't found, check that both are on the
+        same Wi-Fi or network, not a guest Wi-Fi that keeps devices apart.{#if onMac}{" "}On a Mac, Lampstand needs <strong>Local Network</strong> access: System Settings › Privacy &amp; Security ›
+          Local Network.{/if}
+      </p>
+    {/if}
     {#if status?.nearby.length}
       <h3>Nearby</h3>
       <ul class="list">
@@ -219,6 +246,26 @@
 </div>
 
 <style>
+  .ready {
+    margin-bottom: 0.5rem;
+  }
+  .link {
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .link:hover {
+    color: var(--text);
+  }
+  .small {
+    font-size: 0.8rem;
+    margin-top: 0.75rem;
+  }
   .actions {
     margin-top: 1rem;
   }

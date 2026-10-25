@@ -61,8 +61,7 @@ impl Discovery {
                                 .into_iter()
                                 .map(|ip| SocketAddr::new(IpAddr::V4(ip), info.port))
                                 .collect();
-                            // Loopback last: it only works on this machine.
-                            addresses.sort_by_key(|a| (a.ip().is_loopback(), *a));
+                            addresses.sort_by_key(|a| (reach_order(a.ip()), *a));
                             node.found(
                                 device,
                                 Found {
@@ -113,8 +112,61 @@ impl Discovery {
     }
 }
 
+/// The order to try a device's addresses in. A computer advertises every
+/// address it has, so a laptop on Wi-Fi with a VPN offers both, and the
+/// VPN's (Tailscale's 100.64/10, say) is no use to a computer that isn't on
+/// it: the home network's addresses come first, then others, then the
+/// shared-address range VPNs use and self-assigned 169.254 ones, and
+/// loopback, which only works on the same machine, last.
+fn reach_order(ip: IpAddr) -> u8 {
+    let IpAddr::V4(v4) = ip else { return 3 };
+    let [a, b, ..] = v4.octets();
+    if v4.is_loopback() {
+        5
+    } else if v4.is_link_local() {
+        4
+    } else if a == 100 && (64..128).contains(&b) {
+        3
+    } else if v4.is_private() {
+        0
+    } else {
+        1
+    }
+}
+
 impl Drop for Discovery {
     fn drop(&mut self) {
         let _ = self.daemon.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn the_home_network_is_tried_before_a_vpn_and_loopback_last() {
+        let ip = |a, b, c, d| IpAddr::V4(Ipv4Addr::new(a, b, c, d));
+        let mut found = vec![
+            ip(127, 0, 0, 1),
+            ip(100, 101, 7, 12),
+            ip(169, 254, 3, 9),
+            ip(192, 168, 1, 20),
+            ip(203, 0, 113, 5),
+            ip(10, 0, 0, 4),
+        ];
+        found.sort_by_key(|a| (reach_order(*a), *a));
+        assert_eq!(
+            found,
+            [
+                ip(10, 0, 0, 4),
+                ip(192, 168, 1, 20),
+                ip(203, 0, 113, 5),
+                ip(100, 101, 7, 12),
+                ip(169, 254, 3, 9),
+                ip(127, 0, 0, 1),
+            ]
+        );
     }
 }
