@@ -1,0 +1,60 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training 1",
+   "heading": "Run a service",
+   "sub": "Ten minutes. Then you run one yourself.",
+   "say": "In the next ten minutes you will learn to run a service, and then run a short one yourself.",
+   "narration": "narration/t1-welcome/01.mp3",
+   "durationSec": 8.5
+  },
+  {
+   "type": "bullets",
+   "heading": "By the end you can",
+   "tone": "table",
+   "items": [
+    "Go live and move through slides",
+    "Show songs, readings and a sermon deck",
+    "Blank the screen in an instant",
+    "Close the service when it ends"
+   ],
+   "say": "By the end you will go live and move through slides, show songs, readings and a sermon deck, blank the screen in an instant, and close the service when it ends.",
+   "narration": "narration/t1-welcome/02.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "quote",
+   "text": "Nothing reaches the screen until you send it.",
+   "attribution": "The one rule",
+   "say": "There is one rule. Nothing reaches the screen in the room until you send it.",
+   "narration": "narration/t1-welcome/03.mp3",
+   "durationSec": 6.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/pick.png",
+   "heading": "On Sunday, open the service",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 65,
+     "y": 38,
+     "label": "Open it for live"
+    }
+   ],
+   "say": "On a Sunday, you start by opening the service for live in Present. This training is already open, so you are ready.",
+   "narration": "narration/t1-welcome/04.mp3",
+   "durationSec": 10.5
+  },
+  {
+   "type": "cta",
+   "heading": "Press Space",
+   "action": "Next: the Present screen",
+   "say": "Press Space for the next part.",
+   "narration": "narration/t1-welcome/05.mp3",
+   "durationSec": 4
+  }
+ ]
+}

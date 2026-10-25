@@ -219,6 +219,8 @@ A church that plans in Notion points Lampstand at its Services database; Lampsta
 | --- | --- |
 | Songs, services, themes, decks (metadata and current file), translations, church settings (look, logo bug, default theme, default idle screen), team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens, as does each screen's own theme and idle override), window layout, OBS connection, clicker mode, start at login, keep awake, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
 
+The training services (Training 0 to 2, #190) are neither: they are built from `training/` at every start and held beside the repo in memory (`lampstand_library::training`), so lookups by ID find them but no document, team index entry or sync message ever carries them. Practice changes (Quick add while one is open for live) last until Reset training or the next start. See `training/README.md`.
+
 ### Teams and roles: signed membership, honest-member threat model
 
 A team is rooted in its founder's device key. Membership entries in the team document are signed by an admin whose own entry chains back to the founder. Any peer, including the relay, can therefore compute every device's role from the document alone.

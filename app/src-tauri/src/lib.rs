@@ -28,6 +28,7 @@ mod shell;
 pub mod stream_cues;
 pub mod sync;
 pub mod theme_preview;
+pub mod training;
 pub mod update;
 
 pub use shell::run;

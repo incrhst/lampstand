@@ -509,6 +509,10 @@ pub enum LibraryRequest {
     },
     /// The decks in the library, by title, as `Response::Decks`.
     ListDecks,
+    /// The decks the training services use (#190), as `Response::Decks`.
+    /// They are not in the library, so `ListDecks` leaves them out; Plan
+    /// reads them only to name a training service's items.
+    ListTrainingDecks,
     /// A PPTX picked from disk (PS-1). It is parsed once to check it,
     /// stored as a blob and added as a `Deck` with a `File` source, titled
     /// by its file name. Answers `Response::Deck`.
@@ -631,6 +635,9 @@ pub enum ServiceRequest {
     /// Takes the open service off air: a clean screen and nothing loaded.
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
+    /// Puts every training service back as it was bundled, undoing what
+    /// practice in Present added (#190). Answers `Response::Ok`.
+    ResetTraining,
     /// Sets the sound of an item: the `sound` of a sound item (`Item`, which
     /// needs `Some`) or a song's backing track (`Backing`, where `None`
     /// takes it off). Answers `Response::Service`.
@@ -1633,6 +1640,9 @@ pub struct ServiceSummary {
     /// Items that put something on screen (headers don't), so Present can
     /// say a service has nothing in it before it is opened.
     pub items: u32,
+    /// A bundled training service (#190): listed after the church's own,
+    /// read-only in Plan, never synced.
+    pub training: bool,
 }
 
 /// Pushed to the UI.
