@@ -1,0 +1,127 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training 2",
+   "heading": "Five surprises",
+   "sub": "Every Sunday has one. Here is the move for each.",
+   "say": "Every Sunday brings a surprise. Here are the five you will meet most, and the move for each.",
+   "narration": "narration/t2-five-surprises/01.mp3",
+   "durationSec": 10
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/song.png",
+   "heading": "1. They sing it again",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 47,
+     "y": 43,
+     "label": "Press the verse number, or C"
+    },
+    {
+     "x": 47,
+     "y": 88,
+     "label": "Or click the slide"
+    }
+   ],
+   "say": "One. The leader repeats a verse or the chorus. Press that verse's number, or C for the chorus. Or click the slide you want.",
+   "narration": "narration/t2-five-surprises/02.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/choose.png",
+   "heading": "2. The order changes",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 10,
+     "y": 66,
+     "label": "Shift+↓ to the new item"
+    },
+    {
+     "x": 47,
+     "y": 43,
+     "label": "Enter starts it"
+    }
+   ],
+   "say": "Two. The order changes. Hold Shift and press Down until the right item is chosen, then press Enter. Only you see the choosing.",
+   "narration": "narration/t2-five-surprises/03.mp3",
+   "durationSec": 13.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/quickadd.png",
+   "heading": "3. Scripture nobody planned",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 50,
+     "y": 16,
+     "label": "Press /, type Rom 8:28"
+    },
+    {
+     "x": 44,
+     "y": 26,
+     "label": "Shift+Enter shows it now"
+    }
+   ],
+   "say": "Three. The preacher asks for a reading nobody planned. Press the slash key, type the reference, and press Shift and Enter to show it now.",
+   "narration": "narration/t2-five-surprises/04.mp3",
+   "durationSec": 11
+  },
+  {
+   "type": "bullets",
+   "heading": "4. An updated deck",
+   "tone": "table",
+   "items": [
+    "The planner adds the new file in Plan",
+    "It appears in your order",
+    "Choose it with Shift+↓, start it with Enter",
+    "Never edit during the service"
+   ],
+   "say": "Four. The preacher sends a corrected slide deck. The planner adds the new file in Plan, from any computer, and it appears in your order. Choose it and press Enter. Never edit during the service.",
+   "narration": "narration/t2-five-surprises/05.mp3",
+   "durationSec": 16.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/blank.png",
+   "heading": "5. Something goes wrong",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 44,
+     "y": 71,
+     "label": "Full stop. Now."
+    }
+   ],
+   "say": "Five. Something goes wrong. Press the full stop. The screen goes black, and you have time to think.",
+   "narration": "narration/t2-five-surprises/06.mp3",
+   "durationSec": 9
+  },
+  {
+   "type": "bullets",
+   "heading": "The rehearsal",
+   "items": [
+    "The trainer reads surprises from the notes",
+    "You keep the screen calm",
+    "Run it twice: Reset training between"
+   ],
+   "say": "Now a rehearsal service. The trainer reads the surprises from the notes, and you keep the screen calm. Run it twice, and press Reset training in Plan between runs.",
+   "narration": "narration/t2-five-surprises/07.mp3",
+   "durationSec": 14.5
+  },
+  {
+   "type": "cta",
+   "heading": "Ready?",
+   "action": "Press Space for the briefing",
+   "say": "Ready? Press Space for the briefing.",
+   "narration": "narration/t2-five-surprises/08.mp3",
+   "durationSec": 4
+  }
+ ]
+}

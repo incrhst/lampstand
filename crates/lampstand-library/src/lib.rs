@@ -9,6 +9,7 @@ pub mod bundled;
 pub mod package;
 pub mod readiness;
 pub mod search;
+pub mod training;
 pub mod usage;
 
 use std::collections::HashMap;
@@ -85,6 +86,8 @@ pub struct Library {
     /// Decoded Bible text by blob hash. Blobs never change, so an entry
     /// is never stale.
     bibles: Mutex<HashMap<BlobHash, Arc<BibleText>>>,
+    /// The training services and what they use; never in the repo.
+    training: Mutex<training::Training>,
 }
 
 impl Library {
@@ -106,6 +109,7 @@ impl Library {
             repo: Arc::new(repo),
             search: Mutex::new(Search { changes, index }),
             bibles: Mutex::new(HashMap::new()),
+            training: Mutex::new(training::Training::default()),
         };
         library.ensure_starter_theme()?;
         Ok(library)
@@ -127,7 +131,14 @@ impl Library {
         Ok(())
     }
 
+    fn training(&self) -> MutexGuard<'_, training::Training> {
+        self.training.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn song(&self, id: SongId) -> Result<Option<Song>, SyncError> {
+        if let Some(song) = self.training().song(id) {
+            return Ok(Some(song));
+        }
         self.repo.get(id.uuid())
     }
 
@@ -166,6 +177,9 @@ impl Library {
     }
 
     pub fn service(&self, id: ServiceId) -> Result<Option<Service>, SyncError> {
+        if let Some(service) = self.training().service(id) {
+            return Ok(Some(service));
+        }
         self.repo.get(id.uuid())
     }
 
@@ -198,11 +212,20 @@ impl Library {
         Ok(scan)
     }
 
+    /// Writes `service`. A training service's practice changes stay in
+    /// memory and never reach the repo (see [`training`]).
     pub fn put_service(&self, service: &Service) -> Result<(), SyncError> {
+        if self.training().put(service) {
+            return Ok(());
+        }
         self.repo.put(service)
     }
 
+    /// Deletes a service. A training service cannot be deleted.
     pub fn delete_service(&self, id: ServiceId) -> Result<(), SyncError> {
+        if self.is_training(id) {
+            return Err(SyncError::Forbidden(DocKind::Service));
+        }
         self.repo.delete(DocKind::Service, id.uuid())
     }
 
@@ -291,6 +314,9 @@ impl Library {
     }
 
     pub fn deck(&self, id: DeckId) -> Result<Option<Deck>, SyncError> {
+        if let Some(deck) = self.training().deck(id) {
+            return Ok(Some(deck));
+        }
         self.repo.get(id.uuid())
     }
 
@@ -307,7 +333,10 @@ impl Library {
     }
 
     pub fn translation(&self, id: TranslationId) -> Result<Option<Translation>, SyncError> {
-        self.repo.get(id.uuid())
+        match self.repo.get(id.uuid())? {
+            Some(translation) => Ok(Some(translation)),
+            None => Ok(self.training().translation(id)),
+        }
     }
 
     pub fn translations(&self) -> Result<Vec<Translation>, SyncError> {

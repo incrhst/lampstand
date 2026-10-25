@@ -466,7 +466,7 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
     assert_eq!(service.items.len(), 1);
 
     let listed = match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
-        Response::Services(s) => s,
+        Response::Services(s) => s.into_iter().filter(|s| !s.training).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
     assert_eq!(
@@ -509,7 +509,12 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
 
 fn list_titles(h: &mut Harness) -> Vec<String> {
     match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
-        Response::Services(s) => s.into_iter().map(|s| s.title).collect(),
+        // The church's own services: training comes after them (training.rs).
+        Response::Services(s) => s
+            .into_iter()
+            .filter(|s| !s.training)
+            .map(|s| s.title)
+            .collect(),
         other => panic!("{other:?}"),
     }
 }

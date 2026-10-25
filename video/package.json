@@ -9,9 +9,11 @@
     "render": "remotion render src/index.ts Demo out/lampstand-demo.mp4 --codec=h264 --crf=18",
     "capture:serve": "vite --config capture/vite.config.ts",
     "capture": "node capture/shoot.mjs",
+    "capture:training": "node capture/training.mjs",
     "sfx": "node audio/make-sfx.mjs",
     "lamp:studio": "remotion studio projects/lampstand/index.ts --public-dir=public",
     "lamp:validate": "tsx core/scripts/validate.ts projects/lampstand projects/lampstand/videos/*.json",
+    "training:validate": "tsx core/scripts/validate.ts projects/lampstand ../training/videos/*.json",
     "lamp:sheet": "node --import tsx core/scripts/render.mjs projects/lampstand",
     "lamp:render": "node --import tsx core/scripts/render.mjs projects/lampstand",
     "lamp:typecheck": "tsc --noEmit -p projects/lampstand"

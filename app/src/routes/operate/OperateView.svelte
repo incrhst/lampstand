@@ -75,10 +75,15 @@
   // upcoming ones first, then undated ones newest first.
   const OFFERED = 5;
   let services: ServiceSummary[] = $state([]);
+  /** Training 0 to 2 (#190), offered below the church's own services. */
+  let trainingServices: ServiceSummary[] = $state([]);
   $effect(() => {
     if (live.loaded) return;
     request({ area: "Service", request: "List" }, "Services")
-      .then((all) => (services = all.slice(0, OFFERED)))
+      .then((all) => {
+        services = all.filter((s) => !s.training).slice(0, OFFERED);
+        trainingServices = all.filter((s) => s.training);
+      })
       .catch(report);
   });
 
@@ -557,6 +562,20 @@
           {/each}
         </ul>
       {/if}
+      {#if trainingServices.length > 0}
+        <p class="pick-group" id="pick-training">Learn by running it</p>
+        <ul class="plain pick-list" aria-labelledby="pick-training">
+          {#each trainingServices as svc (svc.id)}
+            <ListRow title={svc.title} subtitle={`${svc.items} ${svc.items === 1 ? "item" : "items"} · works offline`} divided>
+              {#snippet trailing()}
+                <Button size="small" icon="play" disabled={planningOnly} onclick={() => openService(svc.id)} label="Open {svc.title} for live">
+                  Open
+                </Button>
+              {/snippet}
+            </ListRow>
+          {/each}
+        </ul>
+      {/if}
       {#if onplan}
         <div class="pick-foot">
           <Button icon="calendar" onclick={onplan}>{services.length > 0 ? "All services in Plan" : "Go to Plan"}</Button>
@@ -1028,6 +1047,14 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     background: var(--panel);
+  }
+  .pick-group {
+    margin: 1.25rem 0 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   .pick-foot {
     display: flex;

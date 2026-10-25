@@ -130,7 +130,9 @@
   const lookedUp = new Set<string>();
 
   let decks: Deck[] = $state([]);
-  let deckById = $derived(Object.fromEntries(decks.map((d) => [d.id, d])) as Record<string, Deck>);
+  /** The training services' decks: not in the library, only for naming their items. */
+  let trainingDecks: Deck[] = $state([]);
+  let deckById = $derived(Object.fromEntries([...trainingDecks, ...decks].map((d) => [d.id, d])) as Record<string, Deck>);
 
   let translations: Translation[] = $state([]);
   let translation = $state("");
@@ -158,6 +160,26 @@
       services = list.services;
       newer = list.newer;
       damaged = list.damaged;
+      if (trainingDecks.length === 0 && services.some((s) => s.training)) {
+        trainingDecks = await request({ area: "Library", request: "ListTrainingDecks" }, "Decks");
+      }
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // Training services (#190) are listed apart, after the church's own, and
+  // can't be changed here: they are practised in Present, and Reset
+  // training puts back what practice added.
+  let ownServices = $derived(services.filter((s) => !s.training));
+  let trainingServices = $derived(services.filter((s) => s.training));
+  let readOnly = $derived(selected != null && trainingServices.some((s) => s.id === selected?.id));
+
+  async function resetTraining() {
+    try {
+      await request({ area: "Service", request: "ResetTraining" }, "Ok");
+      if (selected) selected = await request({ area: "Service", request: { Get: selected.id } }, "Service");
+      await refresh();
     } catch (e) {
       report(e);
     }
@@ -174,7 +196,7 @@
   const isOlder = (s: ServiceSummary) => s.starts_at != null && s.starts_at < startOfToday();
   let olderCount = $derived(services.filter((s) => isOlder(s) && s.id !== selected?.id).length);
   let shown = $derived(
-    showOlder ? services : services.filter((s) => !isOlder(s) || s.id === selected?.id),
+    showOlder ? ownServices : ownServices.filter((s) => !isOlder(s) || s.id === selected?.id),
   );
 
   function startRename(s: { id: string; title: string }) {
@@ -1021,7 +1043,7 @@
         <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
           <option value="">Start empty</option>
           <option value={SAMPLE}>Start from the sample service (songs, a verse and music)</option>
-          {#each services as s (s.id)}
+          {#each ownServices as s (s.id)}
             <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
           {/each}
         </select>
@@ -1051,6 +1073,23 @@
             {showOlder ? "Hide older services" : `Show ${olderCount} older`}
           </Button>
         </li>
+      {/if}
+      {#if trainingServices.length > 0}
+        <li class="group-head" id="training-head">Training</li>
+        {#each trainingServices as s (s.id)}
+          <ListRow
+            title={s.title}
+            subtitle={`${s.items} ${s.items === 1 ? "item" : "items"} · Practise in Present`}
+            active={selected?.id === s.id}
+            onclick={() => select(s.id)}
+          >
+            {#snippet details()}
+              {#if live.loaded?.service === s.id}
+                <span class="row-status"><span class="live-dot"></span>Open for live</span>
+              {/if}
+            {/snippet}
+          </ListRow>
+        {/each}
       {/if}
     </ul>
     {#if newer > 0}
@@ -1103,6 +1142,11 @@
               </span>
               <!-- What is done to the service as a whole lives here, beside
                    its name, so the services list stays a plain list. -->
+              {#if readOnly}
+              <span class="service-tools">
+                <Button variant="ghost" size="small" icon="loop" title="Put every training service back as it was" onclick={resetTraining}>Reset training</Button>
+              </span>
+              {:else}
               <span class="service-tools">
                 <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
                 <Button variant="ghost" size="small" icon="pencil" label="Rename" title="Rename" onclick={() => selected && startRename(selected)} />
@@ -1122,6 +1166,7 @@
                   />
                 {/if}
               </span>
+              {/if}
               {#if live.loaded?.service === selected.id}
                 <span class="live-tag"><span class="live-dot"></span>Open for live</span>
                 <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => selected && takeOffAir(selected.id)}>Close</Button>
@@ -1130,6 +1175,7 @@
           {/if}
         </div>
         <div class="actions">
+          {#if !readOnly}
           <label class="look" title="How songs, scripture and text look in this service. A screen's own theme still wins.">
             <span class="muted">Theme</span>
             <ThemePicker label="Theme for {selected.title}" value={selected.theme} onchange={setTheme} />
@@ -1139,11 +1185,19 @@
           {#if offerSound(selected, live.settings?.use_sound)}
             <Button icon="sound" onclick={pickSound} disabled={busy}>{soundWords.addSound}</Button>
           {/if}
+          {/if}
           <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
 
-      <div class="order-body" bind:this={orderBody}>
+      {#if readOnly}
+        <div class="training-note">
+          <Banner tone="neutral" icon="lamp">
+            A training service. It can't be changed here: open it for live and practise. The trainer's notes are on each item. Reset training puts back anything practice added.
+          </Banner>
+        </div>
+      {/if}
+      <div class="order-body" bind:this={orderBody} inert={readOnly}>
         {#if items.length === 0}
           <div class="empty-order" class:target={carryAt !== null}>
             <p><strong>This service is empty</strong></p>
@@ -1372,7 +1426,7 @@
        watch running while it is out of the way. -->
   <div class="library-slot" hidden={!showLibrary}>
   <Library
-    service={selected}
+    service={readOnly ? null : selected}
     {items}
     {decks}
     {translations}
@@ -1551,6 +1605,17 @@
   }
   .older {
     padding: 0.5rem 0.75rem;
+  }
+  .group-head {
+    padding: 1rem 0.75rem 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .training-note {
+    margin-bottom: 0.75rem;
   }
   .row-status {
     display: flex;
