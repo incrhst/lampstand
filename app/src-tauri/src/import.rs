@@ -3,7 +3,7 @@
 //! matching `lampstand-import` importer. Best effort, like the importers:
 //! a file we cannot read is reported, never a failed import.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -171,6 +171,9 @@ pub struct Summary {
     pub songs: usize,
     /// Songs that were in the library already.
     pub existing: usize,
+    /// Songs whose CCLI number was in the library and whose words replaced
+    /// that song's (SongSelect downloads only, [`OnKnownCcli::Update`]).
+    pub updated: usize,
     pub bibles: Vec<String>,
     /// "file: reason" for everything that was not imported.
     pub skipped: Vec<String>,
@@ -184,6 +187,9 @@ impl Summary {
             self.songs,
             if self.songs == 1 { "" } else { "s" }
         )];
+        if self.updated > 0 {
+            parts.push(format!("{} updated", self.updated));
+        }
         if self.existing > 0 {
             parts.push(format!("{} already in the library", self.existing));
         }
@@ -236,6 +242,13 @@ pub fn import_files(library: &Library, paths: &[String], emit: &dyn Fn(Event)) -
 
 pub const PROGRESS_EVERY: usize = 100;
 
+/// What became of one song from a file.
+enum Stored {
+    New,
+    Updated,
+    Existing,
+}
+
 /// `LibraryRequest::ImportSongSelectDownloads`: imports the SongSelect
 /// files in `dir` (not its subfolders) modified at or after `since`. `None`
 /// when there is nothing new, so a watcher stays quiet.
@@ -283,19 +296,52 @@ pub fn import_song_select_downloads(
     files.sort();
     let mut summary = Summary::default();
     for (file, modified) in files {
-        import_path(library, &file, &mut summary, &|_, _| {});
+        // SongSelect is where these songs come from, so a download of one
+        // already here is the newer words for it.
+        import_songs_from(
+            library,
+            &file,
+            &mut summary,
+            &|_, _| {},
+            OnKnownCcli::Update,
+        );
         handled.insert(file, modified);
     }
     Some(summary.message())
 }
 
+/// What an import does with a song whose CCLI number is already in the
+/// library under different words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnKnownCcli {
+    /// Leave the library's song as it is: the file is counted as already in
+    /// the library. Every import but SongSelect's.
+    Skip,
+    /// Put the file's words into that song, keeping its ID, so services
+    /// that use it get them. For SongSelect downloads, whose words are the
+    /// licensed source; edits made in Lampstand to that song are replaced.
+    Update,
+}
+
 /// Imports one file or folder into the library. `progress` hears (songs
-/// stored so far, songs in this file) every [`PROGRESS_EVERY`] songs.
+/// stored so far, songs in this file) every [`PROGRESS_EVERY`] songs. A song
+/// whose CCLI number is already in the library is skipped.
 pub fn import_path(
     library: &Library,
     path: &Path,
     summary: &mut Summary,
     progress: &dyn Fn(usize, usize),
+) {
+    import_songs_from(library, path, summary, progress, OnKnownCcli::Skip)
+}
+
+/// [`import_path`], choosing what a known CCLI number does.
+pub fn import_songs_from(
+    library: &Library,
+    path: &Path,
+    summary: &mut Summary,
+    progress: &dyn Fn(usize, usize),
+    on_known: OnKnownCcli,
 ) {
     let name = path
         .file_name()
@@ -316,33 +362,48 @@ pub fn import_path(
                 // CCLI numbers already in the library, read once and only if
                 // this file has any: a song downloaded again from SongSelect
                 // with a corrected line is the same song, not a new one.
-                let mut known_ccli: HashSet<u32> =
+                let mut known_ccli: HashMap<u32, SongId> =
                     if import.songs.iter().any(|s| s.ccli_number.is_some()) {
                         library
                             .songs()
-                            .map(|all| all.iter().filter_map(|s| s.ccli_number).collect())
+                            .map(|all| {
+                                all.iter()
+                                    .filter_map(|s| s.ccli_number.map(|n| (n, s.id)))
+                                    .collect()
+                            })
                             .unwrap_or_default()
                     } else {
-                        HashSet::new()
+                        HashMap::new()
                     };
                 for (i, mut song) in import.songs.into_iter().enumerate() {
                     if i % PROGRESS_EVERY == 0 && i > 0 {
                         progress(i, of);
                     }
                     song.id = content_id(&song);
-                    let stored = library.song(song.id).and_then(|existing| match existing {
-                        Some(_) => Ok(false),
-                        None if song.ccli_number.is_some_and(|n| known_ccli.contains(&n)) => {
-                            Ok(false)
-                        }
-                        None => library.put_song(&song).map(|()| {
-                            known_ccli.extend(song.ccli_number);
-                            true
-                        }),
-                    });
+                    let known = song.ccli_number.and_then(|n| known_ccli.get(&n).copied());
+                    let stored =
+                        library
+                            .song(song.id)
+                            .and_then(|existing| match (existing, known) {
+                                (Some(_), _) => Ok(Stored::Existing),
+                                (None, Some(_)) if on_known == OnKnownCcli::Skip => {
+                                    Ok(Stored::Existing)
+                                }
+                                (None, Some(id)) => {
+                                    song.id = id;
+                                    library.put_song(&song).map(|()| Stored::Updated)
+                                }
+                                (None, None) => library.put_song(&song).map(|()| {
+                                    if let Some(n) = song.ccli_number {
+                                        known_ccli.insert(n, song.id);
+                                    }
+                                    Stored::New
+                                }),
+                            });
                     match stored {
-                        Ok(true) => summary.songs += 1,
-                        Ok(false) => summary.existing += 1,
+                        Ok(Stored::New) => summary.songs += 1,
+                        Ok(Stored::Updated) => summary.updated += 1,
+                        Ok(Stored::Existing) => summary.existing += 1,
                         Err(e) => summary.skipped.push(format!("{}: {e}", song.title)),
                     }
                 }
@@ -502,5 +563,51 @@ mod tests {
         import_path(&library, &first, &mut summary, &|_, _| {});
         import_path(&library, &second, &mut summary, &|_, _| {});
         assert_eq!((summary.songs, summary.existing), (1, 1));
+    }
+
+    /// A song downloaded again from SongSelect with a line corrected puts the
+    /// new words into the library's song, under the same ID, so a service
+    /// that uses it gets them. Any other import of that file still skips it.
+    #[test]
+    fn a_songselect_download_of_a_known_song_updates_it_in_place() {
+        let downloads = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        let original =
+            std::fs::read_to_string(fixture("songselect/lamp-for-the-path.usr")).unwrap();
+        let first = downloads.path().join("first.usr");
+        std::fs::write(&first, &original).unwrap();
+        let mut summary = Summary::default();
+        import_path(&library, &first, &mut summary, &|_, _| {});
+        let [song] = library.songs().unwrap().try_into().unwrap();
+        assert!(song.ccli_number.is_some(), "the fixture has a CCLI number");
+        let words = |s: &Song| format!("{:?}", s.sections);
+        assert!(words(&song).contains("warm and small"));
+
+        // Dropped on the library, the corrected file is skipped as before.
+        let corrected = downloads.path().join("corrected.usr");
+        std::fs::write(
+            &corrected,
+            original.replacen("warm and small", "warm and bright", 1),
+        )
+        .unwrap();
+        let mut summary = Summary::default();
+        import_path(&library, &corrected, &mut summary, &|_, _| {});
+        assert_eq!(
+            (summary.songs, summary.updated, summary.existing),
+            (0, 0, 1)
+        );
+
+        // From the SongSelect watcher it updates the song.
+        let mut handled = HashMap::new();
+        let message =
+            import_song_select_downloads(&library, downloads.path(), Timestamp(0), &mut handled)
+                .unwrap();
+        assert!(message.contains("1 updated"), "{message}");
+        let songs = library.songs().unwrap();
+        assert_eq!(songs.len(), 1, "still one song, not a copy");
+        assert_eq!(songs[0].id, song.id, "the same song");
+        assert!(words(&songs[0]).contains("warm and bright"));
     }
 }

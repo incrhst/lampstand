@@ -36,7 +36,7 @@
   <Button variant={watching ? "secondary" : "primary"} size="small" icon={watching ? "check" : "download"} onclick={ontoggle} {disabled}>
     {watching ? "Stop watching" : "Watch Downloads"}
   </Button>
-  <p class="note">Needs your church's CCLI SongSelect subscription. Songs already in the library, matched by CCLI number, are skipped.</p>
+  <p class="note">Needs your church's CCLI SongSelect subscription. A song already in the library (same CCLI number) gets the downloaded words, replacing any changes made to it here.</p>
 </section>
 
 <style>

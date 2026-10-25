@@ -148,19 +148,21 @@ export function sortPaths(paths: string[]): Sorted {
   return sorted;
 }
 
-/** Songs and Bibles from `ImportFiles`' summary line ("Imported 3 songs. Bibles: KJV"). */
-export function importedCounts(message: string): { songs: number; bibles: number } {
+/** Songs and Bibles from `ImportFiles`' summary line ("Imported 3 songs. 1 updated. Bibles: KJV"). */
+export function importedCounts(message: string): { songs: number; bibles: number; updated: number } {
   const songs = Number(/Imported (\d+) songs?/.exec(message)?.[1] ?? 0);
+  const updated = Number(/(\d+) updated/.exec(message)?.[1] ?? 0);
   const list = /Bibles: ([^.]*)/.exec(message)?.[1];
-  return { songs, bibles: list ? list.split(", ").filter(Boolean).length : 0 };
+  return { songs, bibles: list ? list.split(", ").filter(Boolean).length : 0, updated };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** "3 songs · 1 deck", or "Nothing new to add" when every count is zero. */
-export function summarize(added: { songs?: number; bibles?: number; decks?: number; media?: number; sounds?: number }): string {
+export function summarize(added: { songs?: number; updated?: number; bibles?: number; decks?: number; media?: number; sounds?: number }): string {
   const parts = [
     added.songs ? plural(added.songs, "song", "songs") : "",
+    added.updated ? `${plural(added.updated, "song", "songs")} updated` : "",
     added.bibles ? plural(added.bibles, "Bible", "Bibles") : "",
     added.decks ? plural(added.decks, "deck", "decks") : "",
     added.media ? plural(added.media, "media file", "media files") : "",

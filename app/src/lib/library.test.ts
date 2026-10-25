@@ -84,15 +84,17 @@ test("dropped paths go to the request that takes them", () => {
 });
 
 test("reads the import summary line", () => {
-  assert.deepEqual(importedCounts("Imported 3 songs. 2 already in the library"), { songs: 3, bibles: 0 });
-  assert.deepEqual(importedCounts("Imported 1 song. Bibles: King James Version, WEB"), { songs: 1, bibles: 2 });
-  assert.deepEqual(importedCounts("Imported 0 songs. skipped 1: photo.png: images"), { songs: 0, bibles: 0 });
+  assert.deepEqual(importedCounts("Imported 3 songs. 2 already in the library"), { songs: 3, bibles: 0, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 1 song. Bibles: King James Version, WEB"), { songs: 1, bibles: 2, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 0 songs. skipped 1: photo.png: images"), { songs: 0, bibles: 0, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 0 songs. 1 updated. 1 already in the library"), { songs: 0, bibles: 0, updated: 1 });
 });
 
 test("summarises what was added", () => {
   assert.equal(summarize({ songs: 3, decks: 1 }), "3 songs · 1 deck");
   assert.equal(summarize({ songs: 1, bibles: 1, media: 2 }), "1 song · 1 Bible · 2 media files");
   assert.equal(summarize({ sounds: 2 }), "2 sounds");
+  assert.equal(summarize({ updated: 1 }), "1 song updated");
   assert.equal(summarize({}), "Nothing new to add");
 });
 
