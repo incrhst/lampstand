@@ -4,18 +4,17 @@ Status: built for 0.8.0, except the parts marked **Planned** (see "Built and pla
 
 A **role** is a job someone is doing right now. It is not a permission; who may do a job is the Teams work (T18).
 
-The roles work is tested on macOS and Windows. It is not yet checked on Linux; Linux installers are being dropped (see PR #151).
+Roles are built and tested on macOS and Windows, and also run on Linux CI (the Linux builds pass); we have not checked real Linux hardware.
 
 ## Built and planned
 
 | Part | State |
 | --- | --- |
 | The four roles, asking, allowing, taking over, signed role records, the roster | Built (#128, #129, #130, #131) |
-| Moving from 0.7.0, the Operator seat, "Hand the service back" | Built (#128, #129) |
+| Moving from 0.7.0, the Operator seat, "Hand the service back"; waiting by the holder's takeover setting as well as one's own (PR #160, protocol 6) | Built (#128, #129, #160) |
 | Stream holder owns OBS, OBS cues, the stream desk view | Built (#132, #133, #134) |
 | Sound in the order of the service, Setup > Sound, playing, the output chooser, the panic stop | Built (#135, #136) |
-| Waiting by the holder's takeover setting as well as one's own | Planned: open PR #160 (a new `Takeover` frame) |
-| Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown) | Planned (issue #153, closed; design in PR #160) |
+| Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown) | Planned (issue #153, closed; design in PR #160's description) |
 | "Send sound to the stream" (the OBS browser source plays Lampstand's sound) | Planned (#137); needs the OBS prototype (#125), which has not been run |
 | A warning in the role bar that names the sound item that will not play | Planned (see "Audio warnings") |
 | The tablet and phone remote, the browser stage page, a Stream view in the browser | Planned (decision 0006; not in the app yet) |
@@ -172,7 +171,7 @@ The same rules for every role.
 
 1. **Ask.** A device presses **Take** for a role. The current holder sees "Mary's laptop wants to run the stream." with **Allow**, **Not now** and, for Operator and Stream only, **Always allow this device**. It works only while the holder is connected. The asker sees "Waiting for {holder} to allow..." and then either holds the role, or "{holder} said not now." with **Ask again**.
 2. **One ask at a time.** A holder answers one ask at a time. A second asker is not queued; it is told "{name} is already asking." with **Ask again**.
-3. **Take over.** If nobody holds the role, Take works at once with no prompt. If the holder has been offline for the takeover time, another device may take it after confirming ("Mary's laptop has been offline for 5 minutes. Run the stream from here?"). The takeover time is set on each device in Setup > Devices (default two minutes). A claimant also waits a **10 second margin** on top (`TAKEOVER_MARGIN`): with the default it can take over from 2 minutes 10 seconds of silence. Until then the button explains how long is left. A short network drop never counts. Open: PR #160 makes the claimant wait by the longer of its own setting and the one the holder tells it (**Planned**); until it lands each device uses its own setting.
+3. **Take over.** If nobody holds the role, Take works at once with no prompt. If the holder has been offline for the takeover time, another device may take it after confirming ("Mary's laptop has been offline for 5 minutes. Run the stream from here?"). The takeover time is set on each device in Setup > Devices (default two minutes). A claimant also waits a **10 second margin** on top (`TAKEOVER_MARGIN`): with the default it can take over from 2 minutes 10 seconds of silence. Until then the button explains how long is left. A short network drop never counts. A claimant also waits by the longer of its own takeover setting and the one the holder tells it (PR #160).
 4. **What is on air.** Passing **Projection** clears the screens ("Allow and clear the screens"), and passing **Audio** stops what is playing ("Allow and stop the music"). Passing **Operator** leaves the slide up. Passing **Stream** leaves OBS on its current scene.
 5. **A returning holder yields.** A device that comes back after losing a role learns it, drops the role and shows a notice ("Mary's laptop took over running the stream while this device was offline. This device no longer runs the stream."). It cannot win the role back by itself.
 6. **Always allow** is offered only for Operator and Stream. It is not offered for Projection or Audio, because handing either over clears something on air. It is remembered per device, listed in Setup > Devices ("Always allowed", "Stop always allowing {name}").
@@ -188,13 +187,13 @@ Each role is a record `{ holder, name, epoch }` with the last **eight** signed s
 
 **What the volunteer sees: nothing yet.** The unverified state is reported in the sync status for each role but no screen shows it. A device in that state keeps what it had; the cure is to unpair and pair again. Showing it is **Planned**.
 
-**Known gap (issue #153):** if the link failed in one direction only, or devices dropped at different times, a claim the holder refuses can leave the claimant believing it holds the role while the holder does too, until a later record moves one of them. The margin and PR #160 narrow it; the issue was closed and the fix is planned in PR #160 (the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once). Not built.
+**Known gap (issue #153):** if the link failed in one direction only, or devices dropped at different times, a claim the holder refuses can leave the claimant believing it holds the role while the holder does too, until a later record moves one of them. The margin and PR #160 narrow it; the issue was closed, and the fix is planned but not built (the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once). Not built.
 
 ### Defaults, restarts, moving from 0.7.0
 
 - **Pairing.** The device that shows the pairing code takes the roles nobody holds: Projection, Operator and Audio, each only if the rules allow. **A first device with no screens gets none of the three** (Audio goes only with Projection). Stream is left unheld, so Projection keeps the OBS duty until someone takes Stream.
 - **Restarts.** Roles are kept in `roles.json` beside `paired.json`, device-local, and when each paired device was last heard is kept in `contact.json`. A restart, crash or sleep leaves a holder that others see as offline; the takeover time applies.
-- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. The sync protocol version is raised in this release (protocol 6 once PR #160 lands; main is 5 today); devices on an older version are refused with the usual message saying which side should update.
+- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. Sync protocol 6 (5 had the roles; 6 adds the takeover setting a device tells the others); devices on an older version are refused with the usual message saying which side should update.
 - **Roster.** The status bar shows what this device runs ("Runs the screens and the service") and who runs the rest ("Mary's laptop runs the stream"); a device with no role says "Planning". "Presenting" and "Driving" are gone. Setup > Devices has the "Who runs what" panel, with each role, who has it, a Take button, the always-allowed devices and the takeover time.
 
 ## Where OBS lives

@@ -154,9 +154,9 @@ adjusted during the build: see "Decided during the build" below and the
   effectively 2 minutes 10 seconds; PR #157, `TAKEOVER_MARGIN`), by its own
   count of the holder's silence, so a holder that returns at once and counts
   the claimant's absence from a slightly earlier last frame agrees with it.
-  PR #160 (open) adds that a claimant also waits by the holder's advertised
+  PR #160 (merged, protocol 6) adds that a claimant also waits by the holder's advertised
   setting when that is longer. A split that remains after this (one-way link
-  failure) is planned in PR #160, not built: the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once.
+  failure) is planned, not built (issue #153, closed): the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once.
 - **Signed role records.** A record carries up to eight signed steps; a device
   takes a newer record only if its steps join its own state and every signer
   is known; one that cannot be joined is *unverified* and waits. The volunteer
@@ -170,8 +170,8 @@ adjusted during the build: see "Decided during the build" below and the
 - **One-click OBS setup** runs on the machine that serves the pictures, with
   OBS on another computer, and writes that machine's network address into the
   browser source (never `localhost`); it is not run on the Stream holder.
-- **Platforms.** Tested on macOS and Windows. Not yet checked on Linux; Linux
-  installers are being dropped (see PR #151).
+- **Platforms.** Built and tested on macOS and Windows, and also run on Linux
+  CI (the Linux builds pass); real Linux hardware has not been checked.
 
 ## Where the Teams check goes
 
@@ -181,7 +181,7 @@ when T18 lands.
 
 ## Consequences
 
-- A role record per role. The sync protocol version is raised in this release (protocol 6 once PR #160 lands; main is 5 today); devices on an older version are refused with the usual message saying which side should update.
+- Sync protocol 6 and a role record per role. Devices on an older version are refused with the usual message saying which side should update.
 - The OBS drawer and scene follower move from "the presenting device" to "the
   device holding Stream, or Projection when nobody does".
 - The browser-source URL must carry the Projection machine's LAN address, not
