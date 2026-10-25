@@ -15,7 +15,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
 
-  let { view, onclose, onsetup }: { view: ObsView | null; onclose: () => void; onsetup?: () => void } = $props();
+  let { view, onclose, onsetup, docked = false }: { view: ObsView | null; onclose?: () => void; onsetup?: () => void; docked?: boolean } = $props();
 
   const PROGRAM_WIDTH = 640;
   const PREVIEW_WIDTH = 400;
@@ -88,7 +88,7 @@
   // reach the other scenes straight away.
   let body: HTMLElement | undefined = $state();
   $effect(() => {
-    if (!body) return;
+    if (!body || docked) return;
     untrack(() => {
       const target = body?.querySelector<HTMLElement>(".scene[aria-pressed='true']") ?? body?.querySelector<HTMLElement>("button");
       target?.focus({ preventScroll: true });
@@ -99,7 +99,7 @@
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onclose();
+      onclose?.();
     }
   }
 
@@ -112,11 +112,13 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<aside id="obs-drawer" class="drawer" aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
+<aside id="obs-drawer" class="drawer" class:docked aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
   <div class="head">
     <h2 class="title">Control OBS</h2>
-    <span class="faint small">O or Esc to close</span>
-    <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={onclose} />
+    {#if !docked}
+      <span class="faint small">O or Esc to close</span>
+      <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={() => onclose?.()} />
+    {/if}
   </div>
 
   {#if !connected}
@@ -233,6 +235,17 @@
     border-left: 1px solid var(--line);
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
     animation: slide 180ms var(--ease);
+  }
+  /* On a stream machine the same panel is the page, not a drawer over it. */
+  .drawer.docked {
+    position: static;
+    width: min(640px, 100%);
+    margin: 0 auto;
+    background: none;
+    border-left: none;
+    box-shadow: none;
+    animation: none;
+    overflow: visible;
   }
   @keyframes slide {
     from {

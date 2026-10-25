@@ -324,3 +324,24 @@ export function screensBar(holderName: string): string {
 
 export const HAND_BACK = "Hand the service back";
 export const RUNS_SCREENS_NOW = "This device runs the screens now.";
+
+// ---- The stream desk (#134) -----------------------------------------------
+
+/**
+ * This device is a stream machine: it runs the stream, someone else runs the
+ * service, and other devices are paired. Only then does Present show OBS
+ * without a service open. A one-device church holds every role, so it is
+ * never a stream desk and sees what it always saw.
+ */
+export function isStreamDesk(team: TeamStatus | null | undefined): boolean {
+  if (!team || team.paired.length === 0) return false;
+  const held = heldRoles(team);
+  return held.includes("Stream") && !held.includes("Operator");
+}
+
+/** Who runs the screens, for the stream desk; nothing when this device does or nobody does. */
+export function screensLine(team: TeamStatus | null | undefined): string | null {
+  const p = roleOf(team, "Projection");
+  if (!p || p.holds || !p.holder) return null;
+  return screensBar(p.holder_name);
+}
