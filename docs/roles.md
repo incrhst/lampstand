@@ -140,6 +140,7 @@ Sound is part of the service, so it lives in the service order and syncs like th
 - **Built.** A music-only item or a song's backing track has a name, a file, a length and "plays on its own" or "waits"; the order shows them, and the service heading shows the music-only total ("Sound: 12:30", or "at least" when a file gave no length). Any device can plan sound, with no role. **Setup > Sound > "Use sound in services"** (off by default) decides whether Plan offers the buttons that add sound ("Add sound", "Add a backing track"). Sound already in a service always shows, with the switch on or off. A church that never turns it on sees nothing about sound.
 - **The Operator sees it.** Present lists the service's sound ("In this service"), what plays now with its position, and the controls above, whether Audio is on the same device or not. The roster says who runs the sound.
 - **Moving Audio never edits the order.** The order is the plan; only the playing changes hands.
+- **Not yet.** The planned end time does not count the music, because there is no planned end time yet (the service heading shows the music's total). "Next" does not start a music-only item; it plays from its Play button.
 - **Older versions.** A Lampstand without sound cannot open a service with a music-only item; it says the service was saved by a newer Lampstand (details in ARCHITECTURE).
 
 ### Audio warnings
