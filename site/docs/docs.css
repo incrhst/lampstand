@@ -58,3 +58,22 @@ figure.clip figcaption {
   font-size: 0.875rem;
   opacity: 0.8;
 }
+
+/* Set-up pictures on the roles page. */
+figure.diagram {
+  margin: 1rem 0 1.5rem;
+}
+figure.diagram img {
+  display: block;
+  width: 100%;
+  max-width: 44rem;
+  height: auto;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: #fff;
+}
+figure.diagram figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
