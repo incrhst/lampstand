@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use lampstand_api::{
     Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
@@ -56,7 +56,7 @@ use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
 use crate::handler::{App, EventSink, Placement, WindowHost};
-use crate::import::import_files;
+use crate::import::{import_files, import_song_select_downloads};
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
@@ -103,6 +103,9 @@ struct Shared {
     /// Fonts for parsing a deck to draw its thumbnail: loaded when the first
     /// one is asked for, and used one at a time.
     thumbnail_fonts: Arc<Mutex<Option<Fonts>>>,
+    /// The SongSelect downloads the watcher has imported, so its
+    /// overlapping looks do not report them twice.
+    song_select_handled: Arc<Mutex<HashMap<PathBuf, SystemTime>>>,
     /// Where updating Lampstand itself stands: what the last check found.
     update: Arc<tokio::sync::Mutex<UpdaterState>>,
     /// Lampstand Remote: `None` when the local server did not start or
@@ -386,6 +389,20 @@ async fn api(
             let paths = vec![path.display().to_string()];
             blocking(Box::new(move || {
                 Response::Text(import_files(&library, &paths, &*emit))
+            }))
+            .await
+        }
+        Request::Library(LibraryRequest::ImportSongSelectDownloads { since }) => {
+            let Ok(dir) = app_handle.path().download_dir() else {
+                return Ok(Response::Text(String::new()));
+            };
+            let handled = state.song_select_handled.clone();
+            blocking(Box::new(move || {
+                let mut handled = handled.lock().unwrap_or_else(|e| e.into_inner());
+                Response::Text(
+                    import_song_select_downloads(&library, &dir, since, &mut handled)
+                        .unwrap_or_default(),
+                )
             }))
             .await
         }
@@ -742,6 +759,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         obs: obs_control,
         thumbnails,
         thumbnail_fonts: Arc::new(Mutex::new(None)),
+        song_select_handled: Arc::default(),
         update: Arc::new(tokio::sync::Mutex::new(UpdaterState {
             state: UpdateState::NotChecked,
             pending: None,

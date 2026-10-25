@@ -25,7 +25,7 @@
   <strong class="label">Get started</strong>
   <ol>
     {#each steps as step, i (step.id)}
-      <li>
+      <li class:done={step.done}>
         <button type="button" class:done={step.done} onclick={() => onstep(step.id)} title={step.hint}>
           {#if step.done}
             <Icon name="checkCircle" size={16} label="Done" />
@@ -48,6 +48,7 @@
 <style>
   .strip {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1rem;
     padding: 0.5rem 1rem;
@@ -61,7 +62,10 @@
     white-space: nowrap;
   }
   ol {
-    flex: 1;
+    /* Wide enough for a step or two before the rest of the strip wraps
+       under it, rather than squeezing each step a word to a line. */
+    flex: 1 1 18rem;
+    min-width: 0;
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem 0.5rem;
@@ -80,6 +84,7 @@
     border-radius: 999px;
     padding: 0.2rem 0.7rem 0.2rem 0.4rem;
     cursor: pointer;
+    white-space: nowrap;
   }
   button:hover {
     background: var(--hover, rgb(255 255 255 / 0.07));
@@ -97,6 +102,25 @@
   }
   .optional {
     color: var(--muted);
+  }
+  /* A narrow window keeps only what is left to do: "Get started" and the
+     close button on the first line, the steps under them. */
+  @media (max-width: 720px) {
+    li.done,
+    .tell {
+      display: none;
+    }
+    .strip {
+      gap: 0.5rem 1rem;
+    }
+    .strip > :global(:last-child) {
+      order: 1;
+      margin-left: auto;
+    }
+    ol {
+      order: 2;
+      flex-basis: 100%;
+    }
   }
   .num {
     display: inline-grid;

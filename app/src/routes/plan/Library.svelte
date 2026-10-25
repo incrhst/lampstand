@@ -42,6 +42,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
+  import SongSelectCard from "./SongSelectCard.svelte";
   import SongEditor from "./SongEditor.svelte";
 
   type Item = NonNullable<Service["items"][string]>;
@@ -57,6 +58,7 @@
     onsongs,
     ondecks,
     ontranslations,
+    onhide,
   }: {
     /** The service rows are added to, if one is selected. */
     service: Service | null;
@@ -74,6 +76,8 @@
     onsongs: (hits: SongHit[]) => void;
     ondecks: () => Promise<void>;
     ontranslations: () => Promise<void>;
+    /** Hides the library; Plan shows a strip to bring it back. */
+    onhide?: () => void;
   } = $props();
 
   // Device-local preferences and history. Storage can be missing or full
@@ -129,6 +133,9 @@
 
   let busy = $state(false);
   let downloading = $state(false);
+  /** Watching Downloads for SongSelect files. */
+  let watching = $state(false);
+  let watchTimer: ReturnType<typeof setInterval> | undefined;
   let dropping = $state(false);
   /** What the last import added, shown for a few seconds. */
   let notice = $state("");
@@ -554,6 +561,35 @@
     }
   }
 
+  /**
+   * Milliseconds before the last look a download may have landed and still
+   * count: a browser stamps a file before it shows up under its own name.
+   * The shell remembers what it imported, so the overlap is not reported twice.
+   */
+  const WATCH_SLACK = 2000;
+  const WATCH_EVERY_MS = 3000;
+
+  function toggleWatching() {
+    watching = !watching;
+    clearInterval(watchTimer);
+    if (!watching) return;
+    let since = Date.now() - WATCH_SLACK;
+    watchTimer = setInterval(async () => {
+      if (busy) return;
+      const asked = Date.now() - WATCH_SLACK;
+      try {
+        const message = await request({ area: "Library", request: { ImportSongSelectDownloads: { since } } }, "Text");
+        since = asked;
+        if (!message) return;
+        live.status = message;
+        announce(summarize(importedCounts(message)));
+      } catch (e) {
+        // Keep watching: one failed look is not worth stopping for.
+        report(e);
+      }
+    }, WATCH_EVERY_MS);
+  }
+
   function overPanel(position: { x: number; y: number }): boolean {
     if (!panel) return false;
     // Tauri gives physical pixels; the page works in CSS pixels.
@@ -602,6 +638,7 @@
       stop?.();
       clearTimeout(addedTimer);
       clearTimeout(noticeTimer);
+      clearInterval(watchTimer);
     };
   });
 </script>
@@ -656,6 +693,9 @@
           Add files
         </Button>
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
+        {#if onhide}
+          <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
+        {/if}
       </div>
     </div>
 
@@ -704,6 +744,7 @@
     {#if showEmpty}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
         {@render dropZone()}
         <p class="muted small center">
           Scripture is built in. Try
@@ -715,12 +756,14 @@
     {#if showSongCard && allSongs.length === 0}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
       </div>
     {:else}
       <div class="rows">
         {#if showSongCard}
           <div class="card-gap">
             <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+            <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
           </div>
         {/if}
         {#if showRecent}

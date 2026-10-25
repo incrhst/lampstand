@@ -17,7 +17,9 @@
     flex-shrink: 0;
     height: 2rem;
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    /* The sides keep their words; a long message in the middle is cut,
+       not run over them. */
+    grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
     align-items: center;
     gap: 1rem;
     padding: 0 1rem;

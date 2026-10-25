@@ -235,13 +235,13 @@
           {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
         </p>
       {/if}
-      <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} onclick={() => (screen = "help")}>
+      <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
-        Help
+        <span class="setup-word">Help</span>
       </button>
-      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} onclick={() => (screen = "setup")}>
+      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
-        Setup
+        <span class="setup-word">Setup</span>
       </button>
     </div>
   </header>
@@ -422,6 +422,35 @@
     text-overflow: ellipsis;
     color: var(--text);
     font-weight: 500;
+  }
+  /* Never over Help and Setup: a narrower bar keeps only the name, and a
+     phone-width one leaves it to Present. */
+  .onair {
+    overflow: hidden;
+  }
+  @media (max-width: 900px) {
+    .onair .label,
+    .onair .when {
+      display: none;
+    }
+  }
+  @media (max-width: 560px) {
+    .onair {
+      display: none;
+    }
+    header {
+      gap: 0.75rem;
+      padding: 0 0.75rem;
+    }
+    /* Help and Setup as their icons; the title still names them. */
+    .setup-word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
   main {
     flex: 1;

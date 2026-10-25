@@ -512,6 +512,10 @@ impl App {
                 // downloads it and then imports as `ImportFiles` does.
                 return Err("song databases are downloaded by the app shell".into());
             }
+            LibraryRequest::ImportSongSelectDownloads { .. } => {
+                // It needs the user's Downloads folder, which the shell knows.
+                return Err("SongSelect downloads are imported by the app shell".into());
+            }
             LibraryRequest::ListDecks => {
                 let mut decks = lib.decks().map_err(err)?;
                 decks.sort_by_key(|d| d.title.to_lowercase());
