@@ -1,15 +1,11 @@
-<!-- Operator panel, in two views chosen in the bar (lib/presentView.ts). The
-     wall (the default) shows every item's slides in the order of service,
-     marked on the cards and the controls in a strip above.
-     Classic slides is the panel below. -->
-<!-- Classic slides: the running order on the left, what is on air and
-     the slides of the item in view in the middle, Next and notes on the
-     right (only when the item has notes). While a deck is on air the middle is its presenter view
-     (current slide at its build step, next click, speaker notes, timer).
-     Where OBS matters, the bar has one OBS control (the scene on air and
-     the next item's scene) that opens the OBS drawer (T91); OBS's
-     connection status is in the footer.
-     T47 replaces this with the full operator view. -->
+<!-- Operator panel: the wall. Every item's slides in the order of
+     service, the slide on air marked LIVE and the one Next shows marked
+     NEXT, so there is no live preview. A strip above holds the controls,
+     the Sound box, the group loop and tips; while a deck slide with builds
+     is on air it also shows the screen and the next click. Where OBS
+     matters, the bar has one OBS control (the scene on air and the next
+     item's scene) that opens the OBS drawer (T91); OBS's connection status
+     is in the footer. -->
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SectionView, type SlideView } from "../../lib/api";
@@ -22,16 +18,13 @@
   import ListRow from "../../lib/kit/ListRow.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
-  import { useLiveLook } from "../../lib/liveLook.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
-  import PresenterView from "./PresenterView.svelte";
   import TipCard from "../../lib/kit/TipCard.svelte";
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
   import SoundPanel from "./SoundPanel.svelte";
   import { musicLine } from "../../lib/audio";
-  import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
@@ -48,15 +41,7 @@
   import { isPlanning } from "../../lib/presenting";
   import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
   import { driverOffline, isDriving } from "../../lib/driving";
-  import { loadView, saveView, slideMark, viewOptions, type PresentView } from "../../lib/presentView";
-
-  /** The wall (every item's slides) or classic slides (the item in view), as chosen on this computer. */
-  let view = $state<PresentView>(loadView());
-  let wall = $derived(view === "wall");
-  function setView(next: PresentView) {
-    view = next;
-    saveView(next);
-  }
+  import { slideMark } from "../../lib/presentView";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
   let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
@@ -233,7 +218,7 @@
       if (chosen) {
         viewing = chosen;
         // Keep the chosen row in view in a long order of service.
-        tick().then(() => document.querySelector(wall ? ".wall-row.viewed" : ".queue .row.active")?.scrollIntoView({ block: "nearest" }));
+        tick().then(() => document.querySelector(".wall-row.viewed")?.scrollIntoView({ block: "nearest" }));
       }
       return;
     }
@@ -379,11 +364,11 @@
     ),
   );
   let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
-  // On the wall, the row on air scrolls into view when the service moves to
+  // The row on air scrolls into view when the service moves to
   // another item, so Next never leaves the operator looking elsewhere.
   $effect(() => {
     const item = live.live?.item;
-    if (!wall || !item) return;
+    if (!item) return;
     tick().then(() => document.querySelector(".wall-row.on-air")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   });
   // A deck on air gets the presenter view, whose Next is the next click.
@@ -458,13 +443,12 @@
     if (viewed) viewed.slides.forEach((s, i) => hasPicture(viewed.id, s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
     // The wall shows every item's slides, so every picture is wanted, after
     // the ones above.
-    if (wall) for (const item of items) item.slides.forEach((s, i) => hasPicture(item.id, s) && want.push([item.id, i, s.steps, THUMB_WIDTH]));
+    for (const item of items) item.slides.forEach((s, i) => hasPicture(item.id, s) && want.push([item.id, i, s.steps, THUMB_WIDTH]));
     untrack(async () => {
       for (const [item, slide, step, width] of want) await fetchThumb(item, slide, step, width);
     });
   });
   let output = $derived(mainOutput(live.outputs));
-  const look = useLiveLook(() => output);
   let showGuide = $state(true);
 
   // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
@@ -538,42 +522,7 @@
   </Banner>
 {/snippet}
 
-{#snippet liveArea()}
-  <div class="live-head">
-    <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-    <span class="muted">{output?.name ?? "No screen yet"}</span>
-    {#if liveItem && live.live}
-      <span class="muted">· {liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>
-  {/if}
-</div>
-<div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
-  <SlidePreview
-    lines={live.shownSlide?.lines ?? []}
-    footer={live.shownSlide?.footer ?? null}
-    image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
-    overlay={live.overlay}
-    safeArea={output?.safe_area}
-    {showGuide}
-    size="large"
-    idle={live.idle ? look.idle : null}
-    brand={look.brand}
-    empty="Nothing on air. Press Space to start."
-  />
-  {#if live.live && live.overlay === "None" && liveSection?.seconds}
-    <LoopProgress seconds={liveSection.seconds} slideKey="{live.live.item}:{live.live.slide}:{live.live.step}" />
-  {/if}
-</div>
-{#if live.idle && live.overlay === "None" && onidle}
-  <button type="button" class="quiet-link idle-link" onclick={onidle}>Change idle screen</button>
-{/if}
-<div class="transport">
-  <Button icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
-  <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
-  <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
-</div>
-{/snippet}
-
-<!-- One slide of an item, marked when it is on air or what Next shows (the wall). -->
+<!-- One slide of an item, marked when it is on air or what Next shows. -->
 {#snippet slideCard(itemId: string, slide: SlideView, i: number, mark: "live" | "next" | null)}
   <button
     class="slide"
@@ -589,27 +538,6 @@
       {#if slide.steps > 0}<span class="faint steps">{slide.steps} {slide.steps === 1 ? "step" : "steps"}</span>{/if}
     </span>
   </button>
-{/snippet}
-
-{#snippet nextPreview()}
-  <section>
-    <div class="side-head">
-      <h2 class="title">Next</h2>
-      {#if upcoming}<span class="muted">{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}</span>{/if}
-    </div>
-    <div class="next">
-      {#if upcoming}
-        <SlidePreview
-          lines={upcoming.slide.lines}
-          footer={upcoming.slide.footer}
-          image={builtThumb(upcoming.cursor.item, upcoming.cursor.slide)}
-          safeArea={output?.safe_area}
-        />
-      {:else}
-        <SlidePreview empty="End of service" />
-      {/if}
-    </div>
-  </section>
 {/snippet}
 
 {#if !live.loaded && live.team === null && live.sync === null}
@@ -695,7 +623,6 @@
         <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
-      <Segmented options={viewOptions} value={view} onchange={setView} label="View" />
       {#if confirmClose}
         <span class="close">
           <span class="close-ask">Something is on air. Close the service?</span>
@@ -748,7 +675,7 @@
 
     <!-- While a deck is on air the presenter view takes the right column
          too; outputs stay in the status bar. -->
-    <div class="grid" class:presenting={!wall && presenting} class:wall>
+    <div class="grid">
       {#if connectOpen}
         <ConnectRemote onclose={() => (connectOpen = false)} />
       {/if}
@@ -764,7 +691,6 @@
       {#if obsOpen}
         <ObsDrawer view={live.obs} onclose={() => setObsOpen(false)} onsetup={onobs} />
       {/if}
-      {#if wall}
       <!-- The wall: every item's slides at once, in the order of service,
            so any slide is a click away. The LIVE and NEXT marks on the
            cards say what is on air and what Next shows, so there is no
@@ -793,7 +719,7 @@
               </p>
               <div class="wall-steps-pair">
                 <figure>
-                  <SlidePreview lines={live.liveSlide.lines} footer={live.liveSlide.footer} image={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)} overlay={live.overlay} size="small" />
+                  <SlidePreview lines={live.liveSlide.lines} footer={live.liveSlide.footer} image={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)} overlay={live.overlay} safeArea={output?.safe_area} {showGuide} size="small" />
                   <figcaption class="muted">On screen</figcaption>
                 </figure>
                 <figure>
@@ -888,132 +814,6 @@
           {/each}
         </div>
       </section>
-      {:else}
-      <nav class="pane pane-side queue" aria-label="Service order">
-        <div class="pane-head">
-          <h2>Service order</h2>
-          <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
-        </div>
-        {#if live.loaded && liveSection}
-          <LiveLoop loaded={live.loaded} section={liveSection} />
-        {/if}
-        <SoundPanel {items} {service} />
-        {#if tip}
-          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
-        {/if}
-        <div class="pane-body groups">
-          {#each groups as group (group.section?.header ?? "ungrouped")}
-            {@const section = group.section}
-            <section class="group" class:boxed={!!section} class:looping={!!section?.seconds} aria-label={section?.title}>
-              {#if section}
-                <div class="eyebrow-row">
-                  <button
-                    type="button"
-                    class="eyebrow fold"
-                    class:folded={collapsed.has(section.header)}
-                    aria-expanded={!collapsed.has(section.header)}
-                    title={collapsed.has(section.header) ? "Expand" : "Collapse"}
-                    onclick={() => toggleSection(section.header)}
-                  >
-                    <Icon name="chevronDown" size={14} />{section.title}
-                  </button>
-                  <button
-                    type="button"
-                    class="loop-toggle"
-                    class:on={section.seconds !== null}
-                    aria-pressed={section.seconds !== null}
-                    title={section.seconds === null ? "Loop this group" : "Stop looping this group"}
-                    onclick={() => toggleLoop(section)}
-                  >
-                    <Icon name="loop" size={14} />{section.seconds === null ? "Loop" : `Looping · ${section.seconds} s`}
-                  </button>
-                </div>
-              {/if}
-              {#if !section || !collapsed.has(section.header)}
-                <ul class="plain">
-                  {#each group.rows as { item, i } (item.id)}
-                    {@const kind = kindOf(item.id)}
-                    <ListRow
-                      title={item.title}
-                      subtitle={item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
-                      accent={i === liveIndex}
-                      active={item.id === viewed?.id && i !== liveIndex}
-                      dim={liveIndex >= 0 && i < liveIndex}
-                      onclick={() => (viewing = item.id)}
-                    >
-                      {#snippet leading()}
-                        <span class="num index" class:current={i === liveIndex}>{i + 1}</span>
-                        <span class:current={i === liveIndex}>
-                          <Icon name={kind ? kindIcon[kind] : "file"} label={kind ? kindLabel[kind] : undefined} />
-                        </span>
-                      {/snippet}
-                    </ListRow>
-                  {/each}
-                </ul>
-              {:else if liveSection?.header === section.header}
-                <p class="muted folded-note">Folded, with the live slide inside.</p>
-              {/if}
-            </section>
-          {/each}
-        </div>
-      </nav>
-
-      <section class="pane centre" aria-label="Live screen">
-        <div class="centre-body">
-          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-          {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
-          {#if presenting && liveItem && live.live}
-            {#key liveItem.id}
-              <PresenterView
-                item={liveItem}
-                cursor={live.live}
-                upcoming={clickNext}
-                current={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)}
-                nextImage={clickNext ? thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH) : undefined}
-                overlay={live.overlay}
-                safeArea={output?.safe_area}
-                {showGuide}
-                plannerNotes={notes}
-                onprevious={() => command("Previous")}
-                onnext={() => command("Next")}
-                onblank={() => command("ToggleBlack")}
-              />
-            {/key}
-          {:else}
-            {@render liveArea()}
-          {/if}
-
-          {#if viewed}
-            <div class="slides-head">
-              <h2 class="title">{viewed.title}</h2>
-            </div>
-            {#if viewed.slides.length === 0}
-              <p class="muted nothing">Nothing to show.</p>
-            {/if}
-            <ul class="plain slides">
-              {#each viewed.slides as slide, i}
-                <li>
-                  {@render slideCard(viewed.id, slide, i, isLive(viewed.id, i) ? "live" : null)}
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      </section>
-
-      {#if !presenting}
-        <aside class="pane pane-side side" aria-label="Next and notes">
-          {@render nextPreview()}
-
-          {#if notes}
-            <section>
-              <h2 class="title">Notes</h2>
-              <p class="notes">{notes}</p>
-            </section>
-          {/if}
-        </aside>
-      {/if}
-      {/if}
     </div>
   </div>
 {/if}
@@ -1167,13 +967,7 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 250px minmax(0, 1fr) 320px;
-  }
-  .grid.presenting {
-    grid-template-columns: 250px minmax(0, 1fr);
-  }
-  .queue {
-    border-right: 1px solid var(--line);
+    grid-template-columns: minmax(0, 1fr);
   }
   .index {
     width: 1rem;
@@ -1252,40 +1046,12 @@
     justify-content: space-between;
     gap: 0.75rem;
   }
-  .centre-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 1.25rem 1.5rem 2rem;
-  }
-  .live-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-    margin-bottom: 0.5rem;
-  }
   .state {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     font-weight: 700;
     letter-spacing: 0.04em;
-  }
-  .groups {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    padding: 0 0.5rem 0.5rem;
-  }
-  .group.boxed {
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-lg);
-    padding: 0.25rem 0.25rem 0.35rem;
-  }
-  .group.looping {
-    border-color: var(--text);
   }
   .eyebrow-row {
     display: flex;
@@ -1341,15 +1107,6 @@
     padding: 0.25rem 0.75rem;
     font-size: 0.75rem;
   }
-  .live-screen {
-    position: relative;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: 0 0 0 2px var(--line);
-  }
-  .live-screen.on {
-    box-shadow: 0 0 0 2px var(--live);
-  }
   .quiet-link {
     font: inherit;
     font-size: 0.8rem;
@@ -1363,28 +1120,8 @@
   .quiet-link:hover {
     color: var(--text);
   }
-  .idle-link {
-    display: block;
-    margin-top: 0.4rem;
-  }
   .pick-head .quiet-link {
     margin-top: 0.35rem;
-  }
-  .transport {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.9rem;
-  }
-  .slides-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-top: 2rem;
-    font-size: 0.75rem;
-  }
-  .nothing {
-    margin-top: 0.75rem;
-    font-size: 0.875rem;
   }
   .slides {
     margin-top: 0.75rem;
@@ -1435,9 +1172,6 @@
     box-shadow: 0 0 0 2px var(--gold);
   }
   /* The wall: the whole service, with a strip of controls above it. */
-  .grid.wall {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .wall-strip {
     display: flex;
     flex-direction: column;
@@ -1581,34 +1315,10 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
-  .side {
-    border-left: 1px solid var(--line);
-    overflow-y: auto;
-    padding: 1.25rem;
-    gap: 1.75rem;
-  }
-  .side-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-  }
-  .side-head span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .next {
     margin-top: 0.5rem;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     overflow: hidden;
-  }
-  .notes {
-    margin-top: 0.5rem;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
   }
 </style>
