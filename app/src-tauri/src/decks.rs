@@ -1,5 +1,5 @@
 //! Decks and media from disk or a link: `AddDeckFile`, `AddDeckFromLink`,
-//! `AddMediaFile` and `ListMedia`, and turning a deck into the slides the
+//! `AddMediaFile`, `AddSoundFromLink` and `ListMedia`, and turning a deck into the slides the
 //! live engine shows.
 //!
 //! A deck is parsed once when it is added, so a file that is not a deck
@@ -13,11 +13,11 @@
 //! live control.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use lampstand_api::{MediaFile, SoundFile};
-use lampstand_connectors::links::{self, Link};
+use lampstand_connectors::links::{self, Link, SoundFetchError, SoundLink, SoundLinkError};
 use lampstand_connectors::{FetchError, Fetched};
 use lampstand_core::deck::{Deck, DeckId, DeckSource, Version};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -261,6 +261,68 @@ pub fn add_sound_file(library: &Library, path: &str) -> Result<SoundFile, String
         name: stem,
         length_ms: length.map(|seconds| (seconds * 1000.0).round() as u32),
     })
+}
+
+/// What a pasted sound link points at, or why it can't be added. A
+/// streaming link is refused here, before anything is requested.
+pub fn classify_sound(url: &str) -> Result<SoundLink, String> {
+    links::classify_sound(url).map_err(|why| match why {
+        SoundLinkError::Streaming => "Lampstand plays sound files your church is licensed to use. \
+            Streaming links can't be added: download the track from where you bought it, \
+            or share the file from Drive or Dropbox."
+            .to_string(),
+        SoundLinkError::Unsupported => {
+            "that link isn't a sound file. Lampstand can add a Google Drive, \
+            OneDrive or Dropbox share link, or a link to a file ending in .mp3, .wav, .m4a, \
+            .flac or .ogg."
+                .to_string()
+        }
+    })
+}
+
+/// A track downloaded from a link, in a folder of its own that goes when
+/// this does.
+pub struct SoundDownload {
+    dir: PathBuf,
+    pub path: PathBuf,
+}
+
+impl Drop for SoundDownload {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// `LibraryRequest::AddSoundFromLink`: downloads the track (async, in the
+/// shell) into a temporary folder under `downloads`; `add_downloaded_sound`
+/// then checks and stores it off the runtime.
+pub async fn download_sound(link: &SoundLink, downloads: &Path) -> Result<SoundDownload, String> {
+    let dir = downloads.join(format!("sound-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not save the download ({e})"))?;
+    let mut guard = SoundDownload {
+        dir: dir.clone(),
+        path: dir.clone(),
+    };
+    guard.path = links::fetch_sound(link, &dir).await.map_err(|e| match e {
+        SoundFetchError::Network(why) => format!("the download failed ({why})"),
+        SoundFetchError::Forbidden => {
+            "the link is private: share it as \"anyone with the link\"".into()
+        }
+        SoundFetchError::NotFound => "nothing is shared at that link".into(),
+        SoundFetchError::WebPage => "the link leads to a web page, not a sound file".into(),
+        SoundFetchError::TooLarge => "the track is bigger than 250 MB".into(),
+        SoundFetchError::Disk(why) => format!("could not save the download ({why})"),
+    })?;
+    Ok(guard)
+}
+
+/// Adds a downloaded track as `AddSoundFile` does, then deletes the
+/// temporary copy.
+pub fn add_downloaded_sound(
+    library: &Library,
+    download: SoundDownload,
+) -> Result<SoundFile, String> {
+    add_sound_file(library, &download.path.display().to_string())
 }
 
 /// `LibraryRequest::DeckThumbnail`: the deck's first slide, after its
@@ -648,5 +710,136 @@ mod tests {
         let missing = BlobHash::of(b"never imported");
         let error = media_thumbnail(&lib, &missing, "x.mp4", 80).unwrap_err();
         assert!(error.contains("not on this device"), "{error}");
+    }
+
+    /// A two-second mono WAV.
+    fn wav() -> Vec<u8> {
+        let data = 8000u32 * 2 * 2;
+        let mut wav = Vec::new();
+        wav.extend(b"RIFF");
+        wav.extend((36 + data).to_le_bytes());
+        wav.extend(b"WAVEfmt ");
+        wav.extend(16u32.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(8000u32.to_le_bytes());
+        wav.extend(16000u32.to_le_bytes());
+        wav.extend(2u16.to_le_bytes());
+        wav.extend(16u16.to_le_bytes());
+        wav.extend(b"data");
+        wav.extend(data.to_le_bytes());
+        wav.extend((0..data / 2).flat_map(|n| ((n % 50) as i16 * 100).to_le_bytes()));
+        wav
+    }
+
+    async fn serve(response: wiremock::ResponseTemplate) -> (wiremock::MockServer, SoundLink) {
+        use wiremock::matchers::{method, path};
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/track"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+        let link = SoundLink {
+            download: format!("{}/track", server.uri()),
+            fallback_name: "From the link.wav".into(),
+        };
+        (server, link)
+    }
+
+    #[tokio::test]
+    async fn a_linked_track_is_added_with_its_name_and_length() {
+        let (_dir, lib) = library();
+        let downloads = tempfile::tempdir().unwrap();
+        let (_server, link) = serve(
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "audio/wav")
+                .insert_header(
+                    "content-disposition",
+                    "attachment; filename=\"Walk-in music.wav\"",
+                )
+                .set_body_bytes(wav()),
+        )
+        .await;
+        let download = download_sound(&link, downloads.path()).await.unwrap();
+        let file = add_downloaded_sound(&lib, download).unwrap();
+        assert_eq!(file.name, "Walk-in music");
+        assert_eq!(file.length_ms, Some(2000));
+        assert_eq!(file.file, BlobHash::of(&wav()));
+        assert!(lib.repo().blobs().path(&file.file).is_some());
+        // The temporary copy is gone.
+        assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 0);
+
+        // The same file added from a disk path comes out the same.
+        let on_disk = downloads.path().join("Walk-in music.wav");
+        std::fs::write(&on_disk, wav()).unwrap();
+        assert_eq!(
+            add_sound_file(&lib, on_disk.to_str().unwrap()).unwrap(),
+            file
+        );
+    }
+
+    #[tokio::test]
+    async fn a_linked_track_takes_its_name_from_the_link() {
+        let (_dir, lib) = library();
+        let downloads = tempfile::tempdir().unwrap();
+        let (_server, link) =
+            serve(wiremock::ResponseTemplate::new(200).set_body_bytes(wav())).await;
+        let download = download_sound(&link, downloads.path()).await.unwrap();
+        let file = add_downloaded_sound(&lib, download).unwrap();
+        assert_eq!(file.name, "From the link");
+    }
+
+    #[tokio::test]
+    async fn a_linked_file_that_is_not_sound_is_refused_and_cleaned_up() {
+        let (_dir, lib) = library();
+        let downloads = tempfile::tempdir().unwrap();
+        let (_server, link) = serve(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_bytes(b"just some words, no sound at all".to_vec()),
+        )
+        .await;
+        let download = download_sound(&link, downloads.path()).await.unwrap();
+        let e = add_downloaded_sound(&lib, download).unwrap_err();
+        assert!(e.contains("does not have sound"), "{e}");
+        assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 0);
+        assert!(list_media(&lib).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn link_problems_say_what_is_wrong() {
+        let downloads = tempfile::tempdir().unwrap();
+        for (response, expect) in [
+            (wiremock::ResponseTemplate::new(403), "private"),
+            (wiremock::ResponseTemplate::new(404), "nothing is shared"),
+            (
+                wiremock::ResponseTemplate::new(200).set_body_raw("<html></html>", "text/html"),
+                "web page",
+            ),
+        ] {
+            let (_server, link) = serve(response).await;
+            let e = download_sound(&link, downloads.path()).await.err().unwrap();
+            assert!(e.contains(expect), "{e}");
+        }
+        // Nothing is left behind.
+        assert_eq!(std::fs::read_dir(downloads.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn streaming_and_unknown_links_are_refused_with_a_reason() {
+        for url in [
+            "https://www.youtube.com/watch?v=abc",
+            "https://open.spotify.com/track/abc",
+            "https://music.apple.com/us/album/x/1",
+            "https://soundcloud.com/a/b",
+        ] {
+            let e = classify_sound(url).unwrap_err();
+            assert!(
+                e.starts_with("Lampstand plays sound files your church is licensed to use."),
+                "{e}"
+            );
+        }
+        let e = classify_sound("https://example.org/page").unwrap_err();
+        assert!(e.contains("Google Drive, OneDrive or Dropbox"), "{e}");
     }
 }

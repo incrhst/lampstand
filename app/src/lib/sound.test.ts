@@ -6,12 +6,14 @@ import {
   hasSound,
   isAudio,
   isComing,
+  linkOffers,
   isMissing,
   lengthLabel,
   missingFiles,
   offerSound,
   soundSubtitle,
   soundTotalLabel,
+  streamingRefusal,
   startLabel,
   words,
 } from "./sound.ts";
@@ -113,4 +115,29 @@ test("the Setup switch turns the offer on for any service", () => {
   const plain = service({ h: header });
   assert.equal(offerSound(plain, true), true);
   assert.equal(offerSound(null, true), true);
+});
+
+test("a pasted link is read as a deck, a sound, or a streaming page to refuse", () => {
+  const sound = { deck: false, sound: true, streaming: false };
+  const deck = { deck: true, sound: false, streaming: false };
+  const either = { deck: true, sound: true, streaming: false };
+  const streaming = { deck: false, sound: false, streaming: true };
+  assert.deepEqual(linkOffers("https://drive.google.com/file/d/abc/view"), either);
+  assert.deepEqual(linkOffers("https://1drv.ms/u/s!AbC"), either);
+  assert.deepEqual(linkOffers("https://www.dropbox.com/scl/fi/x/Walk%20in.mp3?dl=0"), sound);
+  assert.deepEqual(linkOffers("example.org/music/Be-Thou.FLAC"), sound);
+  assert.deepEqual(linkOffers("https://docs.google.com/presentation/d/abc/edit"), deck);
+  assert.deepEqual(linkOffers("https://example.org/deck.pptx"), deck);
+  for (const url of [
+    "https://www.youtube.com/watch?v=abc",
+    "https://youtu.be/abc",
+    "https://music.youtube.com/watch?v=abc",
+    "https://open.spotify.com/track/abc",
+    "https://music.apple.com/us/album/x/1",
+    "https://soundcloud.com/a/b.mp3",
+  ]) {
+    assert.deepEqual(linkOffers(url), streaming, url);
+  }
+  assert.deepEqual(linkOffers("https://notyoutube.com/a.mp3"), sound);
+  assert.match(streamingRefusal, /licensed to use/);
 });

@@ -26,7 +26,7 @@ const sound = (name: string, start: "OnItsOwn" | "Waits" = "Waits", length_ms: n
   keep_off_stream: false,
 });
 
-const item = (id: string, title = id): LoadedItemView => ({ id, title, slides: [] });
+const item = (id: string, title = id): LoadedItemView => ({ id, title, slides: [], sounds: [] });
 
 const service = (): Service =>
   ({
