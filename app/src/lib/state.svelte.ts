@@ -59,6 +59,8 @@ class LiveState {
   realUse = $state(false);
   /** Bumped when a quick tip is put off or dismissed, so the status bar looks again. */
   tipsVersion = $state(0);
+  /** Present's focus mode: the cards only, with the bars hidden. */
+  focus = $state(false);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */

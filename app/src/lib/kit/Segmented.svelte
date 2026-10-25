@@ -1,4 +1,4 @@
-<!-- A row of mutually exclusive choices: Show / Logo / Blank, library
+<!-- A row of mutually exclusive choices: Show / Idle / Blank, library
      tabs, a wizard's decision rows. An option can be disabled with a
      reason, which shows as its tooltip. -->
 <script lang="ts" generics="T extends string">

@@ -25,7 +25,6 @@
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
-  import Logo from "./lib/kit/Logo.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -221,8 +220,9 @@
 <svelte:window {onkeydown} />
 
 <div class="shell">
+  <!-- Present's focus mode shows the cards only, so the bar goes too. -->
+  {#if !(live.focus && screen === "operate")}
   <header>
-    <span class="brand"><Logo size={22} />Lampstand</span>
     <nav aria-label="Screens">
       {#each screens as s}
         <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
@@ -249,6 +249,7 @@
       </button>
     </div>
   </header>
+  {/if}
 
   <PresenterNotices />
 
@@ -347,15 +348,6 @@
     padding: 0 1.25rem;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
-  }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--gold);
   }
   nav {
     display: flex;

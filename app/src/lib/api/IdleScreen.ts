@@ -2,7 +2,8 @@
 import type { BlobHash } from "./BlobHash";
 
 /**
- * What a screen shows when nothing is on air and neither Black nor Logo is
- * on. Black and Logo stay one key away and cover it.
+ * What a screen shows when nothing is on air and Black is not on, and what
+ * the Idle overlay puts on air mid-service. Black stays one key away and
+ * covers it.
  */
 export type IdleScreen = "Blank" | "Default" | { "Image": { blob: BlobHash, name: string, } } | { "Video": { blob: BlobHash, name: string, } } | { "DeckSlide": { deck: string, slide: number, } };

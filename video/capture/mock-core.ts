@@ -303,6 +303,8 @@ function api(req: any): any {
       }
       break;
     case "Live":
+      // As the engine: a move that takes a slide live leaves the idle screen.
+      if (state.overlay === "Idle" && ["Next", "Previous", "NextItem", "PreviousItem", "GoLive", "Show"].includes(typeof r === "string" ? r : Object.keys(r)[0])) state.overlay = "None";
       switch (typeof r === "string" ? r : Object.keys(r)[0]) {
         case "Next": move(1); state.live = state.preview; break;
         case "Previous": move(-1); state.live = state.preview; break;
@@ -312,6 +314,7 @@ function api(req: any): any {
         case "Preview": state.preview = r.Preview; break;
         case "Show": state.live = r.Show; state.preview = r.Show; break;
         case "ToggleBlack": state.overlay = state.overlay === "Black" ? "None" : "Black"; break;
+        case "ToggleIdle": state.overlay = state.overlay === "Idle" ? "None" : "Idle"; break;
         case "ClearAll": state.live = null; state.overlay = "None"; break;
       }
       pushLive();

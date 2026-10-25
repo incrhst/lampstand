@@ -124,7 +124,11 @@ impl Engine {
         } })
     }
 
+    /// Next and Previous, which lift Idle (Black stays), as the engine does.
     fn step(&mut self, by: isize) {
+        if self.overlay == "Idle" {
+            self.overlay = "None";
+        }
         let last = slides().len() - 1;
         self.at = Some(match self.at {
             None => 0,
@@ -155,8 +159,8 @@ fn handle(engine: &Mutex<Engine>, hub: &RemoteHub, request: Value) -> Value {
                 "Black"
             }
         }
-        ("Live", Some("ToggleLogo")) => {
-            e.overlay = if e.overlay == "Logo" { "None" } else { "Logo" }
+        ("Live", Some("ToggleIdle")) => {
+            e.overlay = if e.overlay == "Idle" { "None" } else { "Idle" }
         }
         ("Live", Some("ClearText")) => {}
         ("Sound", Some("Pause")) => {

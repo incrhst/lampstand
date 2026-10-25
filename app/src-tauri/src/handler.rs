@@ -1581,9 +1581,10 @@ impl App {
                 continue;
             };
             let theme = self.resolve_theme(config.theme.or(program.theme).or(service_theme));
-            // Nothing on air: an audience screen shows its idle screen.
-            // Black and Logo are overlays, so `is_idle` is false under
-            // them and they cover it. Stage and stream never show it.
+            // Nothing on air, or the Idle overlay: an audience screen shows
+            // its idle screen. Black is an overlay, so `is_idle` is false
+            // under it and it covers the idle screen. Stage and stream
+            // never show it.
             let mut shown_program = program.clone();
             shown_program.logo = logo.clone();
             // Only audience and stream outputs carry the logo bug.
@@ -1592,7 +1593,9 @@ impl App {
                     l.bug = None;
                 }
             }
-            if idle && matches!(config.role, OutputRole::Audience { .. }) {
+            if (idle || program.overlay == Overlay::Idle)
+                && matches!(config.role, OutputRole::Audience { .. })
+            {
                 shown_program.idle = self.idle_content(&config);
             }
             let sent = Sent {
@@ -1719,7 +1722,7 @@ impl App {
         self.loaded.as_ref()?.slides.get(deck)?.slide(*index)
     }
 
-    /// The logo screen from the church's brand, if it has set one.
+    /// The logo bug from the church's brand, if it has set one.
     fn logo(&mut self) -> Option<Logo> {
         let brand = self.church().brand?;
         let bug = match brand.logo {
@@ -1732,12 +1735,7 @@ impl App {
             }),
             _ => None,
         };
-        Some(Logo {
-            image: brand.logo,
-            background: brand.primary,
-            accent: brand.accent,
-            bug,
-        })
+        Some(Logo { bug })
     }
 
     /// The logo's width over its height, read once. `None` when the
@@ -2282,7 +2280,7 @@ impl App {
         }
         match record.overlay {
             Overlay::Black => commands.push(Command::ToggleBlack),
-            Overlay::Logo => commands.push(Command::ToggleLogo),
+            Overlay::Idle => commands.push(Command::ToggleIdle),
             Overlay::None => {}
         }
         if !record.text {

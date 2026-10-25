@@ -30,8 +30,10 @@ use crate::roles::Role;
 /// holder's signed refusal of a claim against it (`roles::Kind`, added at the
 /// end), which a protocol 7 device cannot read. 9: a claim step carries the
 /// ack of the device it was taken from (`roles::Link::ack`), and a reclaim
-/// may sit above what was built on the claim it refuses.
-pub(crate) const PROTOCOL: u32 = 9;
+/// may sit above what was built on the claim it refuses. 10: the overlay in
+/// the app's JSON (`DriveLive`, the live state a driving device reads) is
+/// `Idle` where 9 had `Logo`, which a protocol 9 device cannot read.
+pub(crate) const PROTOCOL: u32 = 10;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;

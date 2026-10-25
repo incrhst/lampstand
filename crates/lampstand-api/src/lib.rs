@@ -352,7 +352,7 @@ pub struct DeviceSettings {
     #[serde(default)]
     pub default_translation: Option<TranslationId>,
     /// The church's name, logo, colours and font (the quick start). The
-    /// logo is what the Logo overlay shows.
+    /// logo is on the default idle screen and is the logo bug.
     #[serde(default)]
     pub brand: Option<Brand>,
     /// The theme made from `brand`, so saving the brand again updates it.

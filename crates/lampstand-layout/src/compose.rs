@@ -50,20 +50,26 @@ pub enum FitWarning {
 /// system clock, in UTC; the app uses [`compose_at`] to pass the time and
 /// the local UTC offset, which also keeps tests deterministic.
 ///
-/// Overlays: `Black` and `Logo` cover an audience output completely. The
+/// Overlays: `Black` and `Idle` cover an audience output completely. The
 /// stage ignores them (the confidence monitor keeps its slides), and the
-/// stream shows nothing under them, staying transparent. The logo screen is the
-/// church's logo on its brand colour, or a ring until it has set one.
+/// stream shows nothing under them, staying transparent. `Black` is black.
+/// `Idle` is the output's idle screen, drawn exactly as when nothing is on
+/// air: the program's `Idle`, or the theme's background when it carries
+/// none (the idle setting is the plain background).
 ///
 /// Logo bug: audience and stream outputs draw the church's logo small in a
 /// lower corner of the safe area, last so it is over the slide and media. It
-/// is not drawn under `Black` or `Logo`, nor on an idle screen that is the
-/// logo itself, and the stage never has it. It has no animation of its own,
-/// so it stays put across slide changes.
+/// is not drawn under `Black`, nor on an idle screen that is the logo
+/// itself, and the stage never has it. Under `Idle` it does what it does on
+/// the idle screen with nothing on air: it shows over a picture, video,
+/// slide or plain background, but not over the default idle screen or a
+/// picture that is the logo. It has no animation of its own, so it stays
+/// put across slide changes.
 ///
-/// Idle: when the program carries an `Idle` (an audience output with
-/// nothing on air), that picture, video or slide fills the screen in place
-/// of the theme background. Stage and stream outputs never show it.
+/// Idle screen: when the program carries an `Idle` (an audience output with
+/// nothing on air, or under the `Idle` overlay), that picture, video or
+/// slide fills the screen in place of the theme background. Stage and
+/// stream outputs never show it.
 pub fn compose(
     program: &Program,
     output: &OutputConfig,
@@ -259,8 +265,8 @@ impl Compositor<'_> {
 
         match self.program.overlay {
             Overlay::Black => return nodes,
-            Overlay::Logo => {
-                nodes.extend(self.logo_screen());
+            Overlay::Idle => {
+                nodes.extend(self.idle_screen());
                 return nodes;
             }
             Overlay::None => {}
@@ -268,8 +274,8 @@ impl Compositor<'_> {
 
         // Nothing on air: the screen's idle picture, video or slide, in
         // place of the theme's background.
-        if let Some(idle) = self.program.idle.clone() {
-            nodes.extend(self.idle(&idle));
+        if self.program.idle.is_some() {
+            nodes.extend(self.idle_screen());
             return nodes;
         }
 
@@ -358,37 +364,19 @@ impl Compositor<'_> {
         }
     }
 
-    /// The Logo overlay: the church's logo contained in the safe area on
-    /// its background colour, or a ring in its accent colour until it has
-    /// one. Without a brand, the ring is in the theme's text colour on
-    /// black.
-    fn logo_screen(&mut self) -> Vec<Node> {
-        let (image, background, accent) = match &self.program.logo {
-            Some(logo) => (logo.image, logo.background, logo.accent),
-            None => (None, Color::BLACK, self.theme.text.color),
+    /// The idle screen: the program's `Idle`, or with none (the idle
+    /// setting is the plain background) the theme's background, as the
+    /// screen shows with nothing on air.
+    fn idle_screen(&mut self) -> Vec<Node> {
+        if let Some(idle) = self.program.idle.clone() {
+            return self.idle(&idle);
+        }
+        let rect = match self.output.background {
+            BackgroundMode::Bleed => self.full(),
+            BackgroundMode::Fit => self.safe,
         };
-        let mut nodes = Vec::new();
-        if background != Color::BLACK {
-            nodes.push(self.fill_rect(self.full(), background));
-        }
-        match image {
-            Some(blob) => {
-                let inset = Rect {
-                    x: self.safe.x + self.safe.width * 0.2,
-                    y: self.safe.y + self.safe.height * 0.2,
-                    width: self.safe.width * 0.6,
-                    height: self.safe.height * 0.6,
-                };
-                nodes.push(self.node(NodeKind::Image(ImageNode {
-                    blob,
-                    rect: inset,
-                    fit: Fit::Contain,
-                    crop: None,
-                })));
-            }
-            None => nodes.push(self.ring(accent)),
-        }
-        nodes
+        let background = self.theme.background.clone();
+        self.background(&background, rect).into_iter().collect()
     }
 
     /// The idle screen, filling the whole output.
@@ -610,7 +598,7 @@ impl Compositor<'_> {
     /// The logo bug: the logo tight to its corner of the safe area.
     fn bug(&mut self) -> Option<Node> {
         let bug = self.program.logo.as_ref()?.bug.as_ref()?;
-        if self.program.overlay != Overlay::None {
+        if self.program.overlay == Overlay::Black {
             return None;
         }
         // The idle screen is already the logo, large.
@@ -635,38 +623,6 @@ impl Compositor<'_> {
         }));
         node.opacity = opacity.clamp(0.0, 1.0);
         Some(node)
-    }
-
-    fn ring(&mut self, color: Color) -> Node {
-        let r = self.safe.width.min(self.safe.height) * 0.15;
-        let c = Point {
-            x: self.safe.x + self.safe.width / 2.0,
-            y: self.safe.y + self.safe.height / 2.0,
-        };
-        let k = 0.552_284_8 * r;
-        let p = |x: f32, y: f32| Point {
-            x: c.x + x,
-            y: c.y + y,
-        };
-        let commands = vec![
-            PathCommand::MoveTo(p(r, 0.0)),
-            PathCommand::CubicTo(p(r, k), p(k, r), p(0.0, r)),
-            PathCommand::CubicTo(p(-k, r), p(-r, k), p(-r, 0.0)),
-            PathCommand::CubicTo(p(-r, -k), p(-k, -r), p(0.0, -r)),
-            PathCommand::CubicTo(p(k, -r), p(r, -k), p(r, 0.0)),
-            PathCommand::Close,
-        ];
-        let stroke = Stroke {
-            paint: Paint::Solid(color),
-            width: r * 0.1,
-            dash: None,
-        };
-        self.node(NodeKind::Path(PathNode {
-            commands,
-            fill: None,
-            stroke: Some(stroke),
-            shadow: None,
-        }))
     }
 
     /// Body text fitted to `area` (less the footer), then the footer. With
@@ -1005,12 +961,13 @@ struct MarkLayout {
     text_size: f32,
 }
 
-/// The logo box is 40% of the safe area's height and up to half its
-/// width; the name starts a twentieth of the height below it. Logo and name
-/// together are centred in the safe area, so they stay clear of the edges
-/// at any shape of screen.
+/// The logo box is 40% of the safe area's height with a name under it, or
+/// 30% alone (a church's logo, small), and up to half its width; the name
+/// starts a twentieth of the height below it. Logo and name together are
+/// centred in the safe area, so they stay clear of the edges at any shape
+/// of screen.
 fn mark_layout(safe: Rect, named: bool) -> MarkLayout {
-    let logo_h = safe.height * 0.40;
+    let logo_h = safe.height * if named { 0.40 } else { 0.30 };
     let logo_w = (safe.width * 0.5).min(safe.width * 0.8);
     let gap = safe.height * 0.05;
     let text_h = if named { safe.height * 0.12 } else { 0.0 };
@@ -1312,7 +1269,7 @@ mod tests {
             ("scripture", Some(scripture()), Overlay::None),
             ("deck", Some(deck()), Overlay::None),
             ("black", Some(lyrics()), Overlay::Black),
-            ("logo", Some(lyrics()), Overlay::Logo),
+            ("idle", Some(lyrics()), Overlay::Idle),
             ("nothing", None, Overlay::None),
         ]
     }
@@ -1543,14 +1500,16 @@ mod tests {
         );
         assert_eq!(black.scene.nodes.len(), 1);
         assert_eq!(first_fill(&black.scene, 0).width, 1920.0);
-        let logo = run(
-            &program(Some(lyrics()), Overlay::Logo),
+        // Idle with the plain background as the idle setting: the theme's
+        // background, and no slide text.
+        let idle = run(
+            &program(Some(lyrics()), Overlay::Idle),
             &o,
             1920.0,
             1080.0,
             &t,
         );
-        assert_eq!(logo.scene.nodes.len(), 2);
+        assert_eq!(kinds(&idle.scene), ["path", "path"]);
     }
 
     fn blob(n: u8) -> lampstand_core::id::BlobHash {
@@ -1572,36 +1531,67 @@ mod tests {
     }
 
     #[test]
-    fn the_logo_screen_shows_the_church_logo_on_its_colour() {
-        use lampstand_core::program::Logo;
+    fn the_idle_overlay_draws_the_idle_screen_over_a_live_slide() {
         let t = theme(60.0, 30.0);
         let o = output(
             OutputRole::Audience { primary: true },
             BackgroundMode::Bleed,
             safe(),
         );
-        let mut p = program(None, Overlay::Logo);
-        p.logo = Some(Logo {
-            image: Some(blob(1)),
-            background: Color::rgb(20, 30, 90),
-            accent: Color::WHITE,
-            bug: None,
-        });
+        // What the screen shows with nothing on air...
+        let mut off_air = program(None, Overlay::None);
+        off_air.idle = Some(lamp_mark());
+        let expected = run(&off_air, &o, 1920.0, 1080.0, &t);
+        // ...is what Idle shows over a slide that is live.
+        let mut p = program(Some(lyrics()), Overlay::Idle);
+        p.idle = Some(lamp_mark());
         let c = run(&p, &o, 1920.0, 1080.0, &t);
-        assert_eq!(kinds(&c.scene), ["path", "path", "image"]);
-        // No logo chosen yet: a ring in the accent colour.
-        p.logo.as_mut().unwrap().image = None;
-        let c = run(&p, &o, 1920.0, 1080.0, &t);
-        assert_eq!(kinds(&c.scene), ["path", "path", "path"]);
+        assert_eq!(c.scene, expected.scene);
+        for idle in [
+            Idle::Image { blob: blob(2) },
+            Idle::Video { blob: blob(3) },
+            Idle::Deck {
+                scene: deck_scene(),
+            },
+        ] {
+            off_air.idle = Some(idle.clone());
+            p.idle = Some(idle);
+            assert_eq!(
+                run(&p, &o, 1920.0, 1080.0, &t).scene,
+                run(&off_air, &o, 1920.0, 1080.0, &t).scene
+            );
+        }
+        // The plain background as the idle setting: the theme's background.
+        off_air.idle = None;
+        p.idle = None;
+        assert_eq!(
+            run(&p, &o, 1920.0, 1080.0, &t).scene,
+            run(&off_air, &o, 1920.0, 1080.0, &t).scene
+        );
+    }
+
+    #[test]
+    fn the_idle_overlay_leaves_the_stage_alone_and_the_stream_empty() {
+        let t = theme(60.0, 30.0);
+        let mut p = program(Some(lyrics()), Overlay::Idle);
+        p.idle = Some(lamp_mark());
+        let stage = output(OutputRole::Stage, BackgroundMode::Bleed, safe());
+        let shown = run(
+            &program(Some(lyrics()), Overlay::None),
+            &stage,
+            1920.0,
+            1080.0,
+            &t,
+        );
+        assert_eq!(run(&p, &stage, 1920.0, 1080.0, &t).scene, shown.scene);
+        let stream = output(OutputRole::Stream, BackgroundMode::Bleed, safe());
+        assert!(run(&p, &stream, 1920.0, 1080.0, &t).scene.nodes.is_empty());
     }
 
     fn with_bug(mut p: Program, corner: lampstand_core::brand::BugCorner) -> Program {
         use lampstand_core::brand::BugSize;
         use lampstand_core::program::{Bug, Logo};
         p.logo = Some(Logo {
-            image: Some(blob(1)),
-            background: Color::rgb(20, 30, 90),
-            accent: Color::WHITE,
             bug: Some(Bug {
                 image: blob(1),
                 aspect: 2.0,
@@ -1686,7 +1676,7 @@ mod tests {
     }
 
     #[test]
-    fn the_bug_is_hidden_under_black_and_logo_and_on_the_stage() {
+    fn the_bug_is_hidden_under_black_and_on_the_stage() {
         use lampstand_core::brand::BugCorner;
         let t = theme(60.0, 30.0);
         let audience = output(
@@ -1694,17 +1684,13 @@ mod tests {
             BackgroundMode::Bleed,
             safe(),
         );
-        for overlay in [Overlay::Black, Overlay::Logo] {
-            let p = with_bug(program(Some(lyrics()), overlay), BugCorner::LowerRight);
-            let c = run(&p, &audience, 1920.0, 1080.0, &t);
-            // Logo's own full-screen picture is not the bug.
-            assert!(c.scene.nodes.iter().all(|n| match &n.kind {
-                NodeKind::Image(i) => i.rect.width > 1000.0,
-                _ => true,
-            }));
-            let stream = output(OutputRole::Stream, BackgroundMode::Bleed, safe());
-            assert!(run(&p, &stream, 1920.0, 1080.0, &t).scene.nodes.is_empty());
-        }
+        let p = with_bug(
+            program(Some(lyrics()), Overlay::Black),
+            BugCorner::LowerRight,
+        );
+        assert!(bug_of(&run(&p, &audience, 1920.0, 1080.0, &t)).is_none());
+        let stream = output(OutputRole::Stream, BackgroundMode::Bleed, safe());
+        assert!(run(&p, &stream, 1920.0, 1080.0, &t).scene.nodes.is_empty());
         let stage = output(OutputRole::Stage, BackgroundMode::Bleed, safe());
         let p = with_bug(
             program(Some(lyrics()), Overlay::None),
@@ -1811,7 +1797,7 @@ mod tests {
     }
 
     #[test]
-    fn a_church_logo_idle_screen_draws_its_picture_and_name() {
+    fn a_church_logo_idle_screen_draws_its_picture_alone_and_small() {
         use lampstand_core::brand::Brand;
         let t = theme(60.0, 30.0);
         let o = output(
@@ -1831,12 +1817,22 @@ mod tests {
         let mut p = program(None, Overlay::None);
         p.idle = Some(Idle::mark(Some(&brand)));
         let c = run(&p, &o, 1920.0, 1080.0, &t);
-        assert_eq!(kinds(&c.scene), ["path", "path", "image", "text"]);
+        assert_eq!(
+            kinds(&c.scene),
+            ["path", "path", "image"],
+            "the logo with no name"
+        );
         let NodeKind::Image(img) = &c.scene.nodes[2].kind else {
             panic!()
         };
         assert_eq!(img.blob, blob(9));
         assert_eq!(img.fit, Fit::Contain);
+        // Small and centred: 30% of the safe area's height, as tall above
+        // its middle as below.
+        let (top, height) = (1080.0 * 0.05, 1080.0 * (1.0 - 0.05 - 0.08));
+        assert!((img.rect.height - height * 0.30).abs() < 0.5);
+        let mid = img.rect.y + img.rect.height / 2.0;
+        assert!((mid - (top + height / 2.0)).abs() < 0.5);
     }
 
     #[test]
@@ -1933,7 +1929,7 @@ mod tests {
     }
 
     #[test]
-    fn the_default_idle_screen_is_covered_by_black_and_logo_and_hides_the_bug() {
+    fn the_default_idle_screen_is_covered_by_black_and_hides_the_bug() {
         use lampstand_core::brand::BugCorner;
         let t = theme(60.0, 30.0);
         let o = output(
@@ -1944,11 +1940,6 @@ mod tests {
         let mut p = with_bug(program(None, Overlay::Black), BugCorner::LowerRight);
         p.idle = Some(lamp_mark());
         assert_eq!(kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene), ["path"]);
-        p.overlay = Overlay::Logo;
-        assert_eq!(
-            kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene),
-            ["path", "path", "image"]
-        );
         p.overlay = Overlay::None;
         let kinds_now = kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene);
         assert!(
@@ -1973,7 +1964,7 @@ mod tests {
     }
 
     #[test]
-    fn black_and_logo_still_cover_the_idle_screen() {
+    fn black_still_covers_the_idle_screen() {
         let t = theme(60.0, 30.0);
         let o = output(
             OutputRole::Audience { primary: true },
@@ -1983,10 +1974,55 @@ mod tests {
         let mut p = program(None, Overlay::Black);
         p.idle = Some(Idle::Image { blob: blob(2) });
         assert_eq!(kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene), ["path"]);
-        p.overlay = Overlay::Logo;
+    }
+
+    #[test]
+    fn under_idle_the_bug_does_what_it_does_on_the_idle_screen() {
+        use lampstand_core::brand::BugCorner;
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            safe(),
+        );
+        let stream = output(OutputRole::Stream, BackgroundMode::Bleed, safe());
+        for idle in [
+            None,
+            Some(lamp_mark()),
+            Some(Idle::Image { blob: blob(1) }),
+            Some(Idle::Image { blob: blob(2) }),
+            Some(Idle::Video { blob: blob(3) }),
+        ] {
+            let mut off_air = with_bug(program(None, Overlay::None), BugCorner::LowerRight);
+            off_air.idle = idle.clone();
+            let mut on = with_bug(
+                program(Some(lyrics()), Overlay::Idle),
+                BugCorner::LowerRight,
+            );
+            on.idle = idle.clone();
+            assert_eq!(
+                run(&on, &o, 1920.0, 1080.0, &t).scene,
+                run(&off_air, &o, 1920.0, 1080.0, &t).scene,
+                "{idle:?}"
+            );
+        }
+        // Shown over a picture that is not the logo, hidden on the default
+        // idle screen.
+        let mut on = with_bug(
+            program(Some(lyrics()), Overlay::Idle),
+            BugCorner::LowerRight,
+        );
+        on.idle = Some(Idle::Image { blob: blob(2) });
+        assert!(bug_of(&run(&on, &o, 1920.0, 1080.0, &t)).is_some());
+        on.idle = Some(lamp_mark());
+        assert!(bug_of(&run(&on, &o, 1920.0, 1080.0, &t)).is_none());
+        // The stream never has the idle screen, so it keeps the bug, as with
+        // nothing on air.
+        on.idle = None;
+        let off_air = with_bug(program(None, Overlay::None), BugCorner::LowerRight);
         assert_eq!(
-            kinds(&run(&p, &o, 1920.0, 1080.0, &t).scene),
-            ["path", "path"]
+            run(&on, &stream, 1920.0, 1080.0, &t).scene,
+            run(&off_air, &stream, 1920.0, 1080.0, &t).scene
         );
     }
 

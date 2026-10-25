@@ -1,7 +1,7 @@
 <!-- Setup › Idle screen: what the audience screens show when no service is
      open, or when nothing from the open service is on the screen. One choice for every
-     screen, and a screen that needs its own can have one. Logo and Blank in
-     Present still cover it. -->
+     screen, and a screen that needs its own can have one. Blank in Present
+     still covers it, and Idle in Present puts it on air mid-service. -->
 <script lang="ts">
   import { request, type Deck, type OutputConfig } from "../../lib/api";
   import { describeDefaultIdle, describeIdle } from "../../lib/idle";
@@ -47,8 +47,8 @@
     What the screens show when no service is open, or when nothing from the open service is on the screen, such as
     before you start and after you end it. Choose the plain
     theme background, a picture, a video that loops with the sound off, or one slide of a deck. It is not the same as
-    <kbd>Blank</kbd>, which you press in Present to hide a service that is running. <kbd>Blank</kbd> and
-    <kbd>Logo</kbd> both cover the idle screen.
+    <kbd>Blank</kbd>, which you press in Present to hide a service that is running, and which covers the idle
+    screen. <kbd>Idle</kbd> in Present shows the idle screen during a service, until the next slide.
   </p>
 
   <Panel title="All screens" description="Used by every screen that has not chosen its own.">

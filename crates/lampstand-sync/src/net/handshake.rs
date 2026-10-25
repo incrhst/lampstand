@@ -609,12 +609,13 @@ mod tests {
 
     /// A device on the protocol before roles (version 4, 0.7.0), on the one
     /// before the sound problem frame (6, test builds of 0.8.0), or on the
-    /// one before the reclaim step (7, 0.8.1), sends a hello this version can
-    /// read; it is refused with the usual message and is not paired, whether
-    /// or not it brings a code.
+    /// one before the reclaim step (7, 0.8.1), on 0.9.0-preview.1 (8) or on
+    /// the 0.9.0 previews with the Logo overlay (9), sends a hello this
+    /// version can read; it is refused with the usual message and is not
+    /// paired, whether or not it brings a code.
     #[tokio::test]
     async fn a_device_on_the_protocol_before_roles_is_refused_with_the_usual_message() {
-        assert_eq!(PROTOCOL, 9, "the judge's ack is protocol 9");
+        assert_eq!(PROTOCOL, 10, "the Idle overlay is protocol 10");
         for (old_protocol, with_code) in [
             (4, false),
             (4, true),
@@ -624,6 +625,8 @@ mod tests {
             (7, true),
             (8, false),
             (8, true),
+            (9, false),
+            (9, true),
         ] {
             let sanctuary = device("Sanctuary");
             let old = DeviceKeypair::generate();
