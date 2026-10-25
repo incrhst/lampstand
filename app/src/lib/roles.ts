@@ -324,3 +324,42 @@ export function screensBar(holderName: string): string {
 
 export const HAND_BACK = "Hand the service back";
 export const RUNS_SCREENS_NOW = "This device runs the screens now.";
+
+// ---- The stream desk (#134) -----------------------------------------------
+
+/**
+ * This device is a stream machine: it runs the stream, someone else runs the
+ * service, and other devices are paired. Only then does Present show OBS
+ * without a service open. A one-device church holds every role, so it is
+ * never a stream desk and sees what it always saw.
+ */
+export function isStreamDesk(team: TeamStatus | null | undefined): boolean {
+  if (!team || team.paired.length === 0) return false;
+  const held = heldRoles(team);
+  // A device that also runs the screens keeps the whole Present: its screens
+  // prompt, service picker and gate.
+  return held.includes("Stream") && !held.includes("Operator") && !held.includes("Projection");
+}
+
+/**
+ * The Present shortcuts (Space, arrows, full stop...) stay off on a stream
+ * desk with no service open, where they would only raise an error, and
+ * inside the docked OBS panel, where Space and Enter belong to the focused
+ * button.
+ */
+export function shortcutsOff(desk: boolean, serviceOpen: boolean, inDockedPanel: boolean): boolean {
+  return (desk && !serviceOpen) || inDockedPanel;
+}
+
+/**
+ * Who runs the screens, for the stream desk; nothing when this device does or
+ * nobody does. While that device is offline the line says so, and that scene
+ * changes wait for it (owner-approved, #134).
+ */
+export function screensLine(team: TeamStatus | null | undefined): string | null {
+  const p = roleOf(team, "Projection");
+  if (!p || p.holds || !p.holder) return null;
+  const offline = p.offline_secs !== null || p.standing === "Wait" || p.standing === "TakeOver";
+  if (!offline) return screensBar(p.holder_name);
+  return `${p.holder_name || "Another device"} runs the screens and is offline. Scene changes wait for it.`;
+}

@@ -39,7 +39,7 @@
   import MoreMenu from "./MoreMenu.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
-  import { cannotGoLive } from "../../lib/roles";
+  import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
   import { driverOffline, isDriving } from "../../lib/driving";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
@@ -49,6 +49,11 @@
 
   /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen, `ondevices` where devices are paired. */
   let { onsetup, onobs, onplan, ontips, onidle, ondevices }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void; ondevices?: () => void } = $props();
+
+  // A stream machine (#134) runs the stream and not the service, so it has
+  // no service to open: Present is its OBS panel instead.
+  let streamDesk = $derived(isStreamDesk(live.team));
+  let screensNote = $derived(screensLine(live.team));
 
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
@@ -166,6 +171,7 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
       e.preventDefault();
       quickAddOpen = true;
@@ -496,7 +502,18 @@
   </Banner>
 {/snippet}
 
-{#if !live.loaded}
+{#if !live.loaded && live.team === null && live.sync === null}
+  <!-- Who this device is isn't known yet; the picker now would only flash. -->
+  <div class="none" aria-busy="true"></div>
+{:else if !live.loaded && streamDesk}
+  <div class="none desk">
+    <!-- The region is always there, so a change in its text is announced once. -->
+    <p class="muted desk-screens" role="status">{screensNote ?? ""}</p>
+    {#if pill}<p class="desk-pill"><StatusPill tone={pill.tone}>{pill.text}</StatusPill></p>{/if}
+    {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+    <ObsDrawer docked view={live.obs} onsetup={onobs} />
+  </div>
+{:else if !live.loaded}
   <div class="none">
     {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
     {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
@@ -974,6 +991,21 @@
 
   .no-screen {
     margin-bottom: 1rem;
+  }
+  .desk {
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: 1.5rem 1.25rem;
+    overflow-y: auto;
+  }
+  .desk-pill {
+    margin: 0 auto;
+    width: min(640px, 100%);
+  }
+  .desk-screens {
+    margin: 0 auto;
+    width: min(640px, 100%);
+    font-size: 0.875rem;
   }
   .pick {
     width: min(32rem, calc(100% - 2rem));

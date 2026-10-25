@@ -15,7 +15,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
 
-  let { view, onclose, onsetup }: { view: ObsView | null; onclose: () => void; onsetup?: () => void } = $props();
+  let { view, onclose, onsetup, docked = false }: { view: ObsView | null; onclose?: () => void; onsetup?: () => void; docked?: boolean } = $props();
 
   const PROGRAM_WIDTH = 640;
   const PREVIEW_WIDTH = 400;
@@ -26,6 +26,9 @@
   let audio = $derived(view?.audio ?? []);
   let problem = $derived(notice(view));
 
+  const DOCKED_EVERY_MS = 750;
+  let hidden = $state(typeof document !== "undefined" && document.hidden);
+
   // The program picture, while connected.
   let onAir: string | null = $state(null);
   let stale = $state(false);
@@ -34,13 +37,15 @@
       untrack(() => (onAir = null));
       return;
     }
+    if (hidden) return;
     return pollImages(
       () => request({ area: "Obs", request: { Screenshot: { scene: null, width: PROGRAM_WIDTH } } }, "Thumbnail"),
       (image) => {
         onAir = image;
         stale = false;
       },
-      undefined,
+      // As a page it is watched all service: slower, and not at all while hidden.
+      docked ? DOCKED_EVERY_MS : undefined,
       () => (stale = true),
     );
   });
@@ -88,7 +93,7 @@
   // reach the other scenes straight away.
   let body: HTMLElement | undefined = $state();
   $effect(() => {
-    if (!body) return;
+    if (!body || docked) return;
     untrack(() => {
       const target = body?.querySelector<HTMLElement>(".scene[aria-pressed='true']") ?? body?.querySelector<HTMLElement>("button");
       target?.focus({ preventScroll: true });
@@ -96,10 +101,10 @@
   });
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
+    if (!docked && e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onclose();
+      onclose?.();
     }
   }
 
@@ -107,19 +112,25 @@
   // button in here: a scene clicked a moment ago mustn't be picked again
   // (and hold) when the operator presses Space for the next slide.
   function onkeyup(e: KeyboardEvent) {
-    if (e.key === " ") e.preventDefault();
+    if (!docked && e.key === " ") e.preventDefault();
   }
 </script>
 
+<svelte:document onvisibilitychange={() => (hidden = document.hidden)} />
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<aside id="obs-drawer" class="drawer" aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
+<aside id="obs-drawer" class="drawer" class:docked aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
   <div class="head">
-    <h2 class="title">Control OBS</h2>
-    <span class="faint small">O or Esc to close</span>
-    <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={onclose} />
+    {#if docked}<h1 class="title">Control OBS</h1>{:else}<h2 class="title">Control OBS</h2>{/if}
+    {#if !docked}
+      <span class="faint small">O or Esc to close</span>
+      <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={() => onclose?.()} />
+    {/if}
   </div>
 
-  {#if !connected}
+  {#if !connected && docked && problem}
+    <!-- The notice above the panel already says what is wrong and what to do. -->
+  {:else if !connected}
     <div class="offline">
       <p>{problem?.message ?? (view?.connection === "Connecting" ? "Connecting to OBS…" : "OBS isn't connected.")}</p>
       {#if onsetup}<Button size="small" icon="setup" onclick={onsetup}>OBS settings</Button>{/if}
@@ -233,6 +244,17 @@
     border-left: 1px solid var(--line);
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
     animation: slide 180ms var(--ease);
+  }
+  /* On a stream machine the same panel is the page, not a drawer over it. */
+  .drawer.docked {
+    position: static;
+    width: min(640px, 100%);
+    margin: 0 auto;
+    background: none;
+    border-left: none;
+    box-shadow: none;
+    animation: none;
+    overflow: visible;
   }
   @keyframes slide {
     from {
