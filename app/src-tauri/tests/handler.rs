@@ -1980,13 +1980,23 @@ fn idle_shows_until_something_goes_on_air_and_black_and_logo_cover_it() {
     ok(h.app.handle(Request::Live(Command::EndService)));
     assert_eq!(count_kind(&last(&h), "image"), 1, "and it returns");
 
-    // Black and Logo are one key away and cover it.
+    // Black is one key away and covers it.
     ok(h.app.handle(Request::Live(Command::ToggleBlack)));
     assert_eq!(count_kind(&last(&h), "image"), 0);
     ok(h.app.handle(Request::Live(Command::ToggleBlack)));
     assert_eq!(count_kind(&last(&h), "image"), 1);
-    ok(h.app.handle(Request::Live(Command::ToggleLogo)));
+
+    // Idle puts it back on air mid-service, and the next slide lifts it.
+    ok(h.app.handle(Request::Live(Command::Next)));
     assert_eq!(count_kind(&last(&h), "image"), 0);
+    ok(h.app.handle(Request::Live(Command::ToggleIdle)));
+    assert_eq!(
+        count_kind(&last(&h), "image"),
+        1,
+        "Idle shows the idle screen"
+    );
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(count_kind(&last(&h), "image"), 0, "Next goes to the slide");
 }
 
 #[test]

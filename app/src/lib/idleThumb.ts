@@ -34,7 +34,7 @@ export async function loadIdlePicture(idle: IdleScreen | null, width: number, br
   }
 }
 
-/** A picture of the church's logo, for the Logo screen. */
+/** A picture of the church's logo, for the logo bug. */
 export async function loadLogoPicture(blob: string | null, width: number): Promise<string | null> {
   if (!blob) return null;
   try {

@@ -31,11 +31,11 @@ export const words = {
   nextBuild: "The next part of this slide",
   end: "End of the service",
   black: "Black",
-  logo: "Logo",
+  idle: "Idle",
   clear: "Clear",
   clearHint: "Take the words off the screen. The background stays.",
   screenBlack: "The screen is black",
-  screenLogo: "The screen shows the logo",
+  screenIdle: "The screen shows the idle screen. Next goes back to the slides.",
   noAnswer: "The laptop did not answer. Try again.",
 };
 

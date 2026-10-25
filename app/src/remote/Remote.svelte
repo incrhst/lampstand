@@ -1,6 +1,6 @@
 <!-- Lampstand Remote (T100), phones and tablets: a helper's phone held upright, from the top:
      what is on screen now, what is next, big Back and Next for a thumb, a
-     quieter row of Black, Logo and Clear, then the Sound box (what plays,
+     quieter row of Black, Idle and Clear, then the Sound box (what plays,
      the sound that waits for Play, Up next, and the whole list on asking,
      as in Present's Sound box). Nothing to plan
      or edit: Plan stays on the laptop. When the link drops, everything the
@@ -33,6 +33,9 @@
   let shown = $derived(onScreen(link.loaded, link.live));
   let coming = $derived(upNext(link.loaded, link.live));
   let overlay = $derived(link.live?.overlay ?? "None");
+  // Nothing on air, or Idle: the screens show their idle screen, which the
+  // phone draws as an empty slide.
+  let offAir = $derived(!!link.live?.idle || overlay === "Idle");
   let sounds = $derived(remoteSounds(link.loaded));
   let playing = $derived(link.sound?.playing ?? null);
   let can = $derived(transport(playing));
@@ -132,15 +135,15 @@
       </h2>
       {#if online && loaded}
         <SlidePreview
-          lines={shown && !link.live?.idle ? shown.slide.lines : []}
-          footer={shown?.slide.footer ?? null}
-          image={shown && !link.live?.idle && wantsPicture(shown.slide) ? pictureFor(shown.cursor) : null}
-          {overlay}
+          lines={shown && !offAir ? shown.slide.lines : []}
+          footer={shown && !offAir ? (shown.slide.footer ?? null) : null}
+          image={shown && !offAir && wantsPicture(shown.slide) ? pictureFor(shown.cursor) : null}
+          overlay={overlay === "Black" ? "Black" : "None"}
           size="large"
           empty={shown ? (shown.slide.label ?? "") : ""}
         />
         <p class="what">
-          {#if overlay === "Black"}{words.screenBlack}{:else if overlay === "Logo"}{words.screenLogo}{:else if shown}{slideLine(shown.item.title, shown.slide)}{:else}{words.nothingOnScreen}{/if}
+          {#if overlay === "Black"}{words.screenBlack}{:else if overlay === "Idle"}{words.screenIdle}{:else if shown}{slideLine(shown.item.title, shown.slide)}{:else}{words.nothingOnScreen}{/if}
         </p>
       {:else}
         <div class="blank">{online ? words.nothingLoaded : words.offline}</div>
@@ -180,7 +183,7 @@
 
     <div class="quiet">
       <button type="button" disabled={!online} aria-pressed={overlay === "Black"} onclick={() => live("ToggleBlack")}>{words.black}</button>
-      <button type="button" disabled={!online} aria-pressed={overlay === "Logo"} onclick={() => live("ToggleLogo")}>{words.logo}</button>
+      <button type="button" disabled={!online} aria-pressed={overlay === "Idle"} onclick={() => live("ToggleIdle")}>{words.idle}</button>
       <button type="button" disabled={!online} title={words.clearHint} onclick={() => live("ClearText")}>{words.clear}</button>
     </div>
 

@@ -83,7 +83,7 @@ mod tests {
             Request::Live(Command::Next),
             Request::Live(Command::Previous),
             Request::Live(Command::ToggleBlack),
-            Request::Live(Command::ToggleLogo),
+            Request::Live(Command::ToggleIdle),
             Request::Live(Command::ClearAll),
             Request::Sound(SoundRequest::Play {
                 item: item(),
