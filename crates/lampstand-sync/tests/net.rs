@@ -2346,10 +2346,14 @@ async fn a_holder_whose_laptop_slept_with_a_live_connection_yields_on_waking() {
     // The sanctuary waits a minute before it lets go; the office PC only two
     // seconds. Only the sleep makes the sanctuary's absence long enough.
     set_takeovers(&sanctuary, 60, &office, 2).await;
-    // Ten minutes asleep, with the connection up.
+    // Ten minutes asleep, with the connection up. A sleeping device hears
+    // nothing: without that, a beat that lands before the cut would count as
+    // contact after the sleep.
+    sanctuary.node.sleep(true);
     sanctuary.node.skip_wall_clock(Duration::from_secs(600));
     // The office waits by the sanctuary's minute (and the margin), not only
     // its own two seconds: a minute and ten seconds pass for it.
+    office.node.sleep(true);
     office.node.skip_wall_clock(Duration::from_secs(75));
     sanctuary.cut();
     office.cut();
@@ -2371,6 +2375,8 @@ async fn a_holder_whose_laptop_slept_with_a_live_connection_yields_on_waking() {
     for role in [Role::Projection, Role::Operator, Role::Audio] {
         office.node.claim_role(role).unwrap();
     }
+    office.node.sleep(false);
+    sanctuary.node.sleep(false);
     office.restore().await;
     sanctuary.restore().await;
     until(Duration::from_secs(20), "the sanctuary to yield", || {

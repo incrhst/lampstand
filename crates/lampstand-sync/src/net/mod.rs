@@ -429,6 +429,9 @@ pub struct SyncNode {
     contacts_dirty: std::sync::atomic::AtomicBool,
     /// Added to the wall clock for the times kept on disk; tests move it.
     wall_offset_ms: std::sync::atomic::AtomicI64,
+    /// For tests: a device that is asleep hears nothing, so nothing counts as
+    /// heard (see [`SyncNode::sleep`]).
+    asleep: std::sync::atomic::AtomicBool,
     /// Tests: ignore asks that arrive.
     lose_asks: std::sync::atomic::AtomicBool,
     /// Which roles a connected device has told this one about in this run.
@@ -581,6 +584,7 @@ impl SyncNode {
             contacts: Mutex::new(saved::load_contacts(&dir)),
             contacts_dirty: std::sync::atomic::AtomicBool::new(false),
             wall_offset_ms: std::sync::atomic::AtomicI64::new(0),
+            asleep: std::sync::atomic::AtomicBool::new(false),
             lose_asks: std::sync::atomic::AtomicBool::new(false),
             heard_roles: Mutex::new([false; 4]),
             contacts_save: Mutex::new(()),
@@ -1883,6 +1887,9 @@ impl SyncNode {
         if !lock(&self.trust).is_paired(device) {
             return;
         }
+        if self.asleep.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         lock(&self.peers)
             .last_contact
             .insert(device, Instant::now());
@@ -1934,6 +1941,17 @@ impl SyncNode {
             i64::try_from(by.as_millis()).unwrap_or(i64::MAX),
             std::sync::atomic::Ordering::Relaxed,
         );
+    }
+
+    /// For tests: the device falls asleep (`true`) or wakes (`false`). While
+    /// it sleeps no frame counts as heard, as a laptop with its lid shut
+    /// hears none, so a beat that lands between the wall clock jumping and
+    /// the connection ending cannot make the device look as if it had just
+    /// been in touch.
+    #[doc(hidden)]
+    pub fn sleep(&self, asleep: bool) {
+        self.asleep
+            .store(asleep, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Saves when devices were last heard, off the async runtime when there
