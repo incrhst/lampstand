@@ -115,14 +115,16 @@ pub struct Mark {
 }
 
 impl Idle {
-    /// The default idle screen: the church's logo and name when `brand`
-    /// has a logo, else Lampstand's lamp and name. A brand with a name but
-    /// no logo still gets the Lampstand lamp, so the screen is never bare.
+    /// The default idle screen: the church's logo, small and centred on its
+    /// colour, when `brand` has a logo (what the Logo screen was before the
+    /// Idle overlay replaced it), else Lampstand's lamp and name. A brand
+    /// with a name but no logo still gets the Lampstand lamp, so the screen
+    /// is never bare.
     pub fn mark(brand: Option<&Brand>) -> Idle {
         match brand.filter(|b| b.logo.is_some()) {
             Some(brand) => Idle::Mark(Mark {
                 logo: brand.logo,
-                name: brand.name.trim().to_string(),
+                name: String::new(),
                 background: brand.primary,
                 text: brand.text_color(),
             }),
@@ -216,11 +218,11 @@ mod tests {
     }
 
     #[test]
-    fn a_church_logo_brings_its_name_and_colours() {
+    fn a_church_logo_is_its_idle_screen_alone_on_its_colours() {
         let logo = BlobHash::of(b"logo");
         let m = mark(Idle::mark(Some(&brand(" Grace Chapel ", Some(logo)))));
         assert_eq!(m.logo, Some(logo));
-        assert_eq!(m.name, "Grace Chapel");
+        assert_eq!(m.name, "", "the logo alone, as the Logo screen was");
         assert_eq!(m.background, Color::rgb(250, 250, 250));
         assert_eq!(m.text, Color::BLACK, "dark text on a light background");
     }

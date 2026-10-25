@@ -9,7 +9,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { request, send, type Command, type Cursor, type DisplayMatch, type OutputConfig, type Service, type ServiceSummary, type SectionView, type SlideView } from "../../lib/api";
-  import { live, mainOutput, report } from "../../lib/state.svelte";
+  import { live, mainOutput, report, sound } from "../../lib/state.svelte";
   import { sectionCursor } from "../../lib/sections";
   import { neighbourItem, nextClick, nextSlide } from "../../lib/cursor";
   import Button from "../../lib/kit/Button.svelte";
@@ -24,7 +24,7 @@
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
   import SoundPanel from "./SoundPanel.svelte";
-  import { musicLine } from "../../lib/audio";
+  import { musicLine, words } from "../../lib/audio";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
@@ -721,6 +721,9 @@
           <div class="focus-pill" role="status">
             <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
             {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
+            <!-- The panic controls stay within reach in focus. -->
+            <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+            <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
             <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the bars again (F or Esc)">Exit focus</Button>
           </div>
         {:else}
@@ -746,7 +749,9 @@
             <div class="wall-now">
               <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
               <span class="muted wall-where">
-                {#if live.overlay === "Idle"}{"Idle screen · Next goes back to "}{/if}{#if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+                {#if live.overlay === "Idle" && liveItem && live.live}
+                  {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
+                {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
               </span>
             </div>
             <span class="spacer"></span>

@@ -1,8 +1,9 @@
 <!-- Setup › Church look: the quick start. A church says its name, adds its
      logo, picks two or three colours and a font, and Lampstand makes a
      matching theme and uses it everywhere that doesn't choose its own. The
-     logo and name are also the default idle screen, which the Idle button
-     in Present puts on the screens, and the logo is the corner logo bug. -->
+     logo, small and centred on its colour, is also the default idle screen,
+     which the Idle button in Present puts on the screens, and the corner
+     logo bug. -->
 <script lang="ts">
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import { request, type Brand, type BugCorner, type BugSize } from "../../lib/api";
@@ -126,7 +127,7 @@
 <div class="page">
   <h1>Church look</h1>
   <p class="muted intro">
-    Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo and name on the default idle screen. You can change
+    Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo on the default idle screen. You can change
     anything later in Themes.
   </p>
 

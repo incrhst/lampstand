@@ -961,12 +961,13 @@ struct MarkLayout {
     text_size: f32,
 }
 
-/// The logo box is 40% of the safe area's height and up to half its
-/// width; the name starts a twentieth of the height below it. Logo and name
-/// together are centred in the safe area, so they stay clear of the edges
-/// at any shape of screen.
+/// The logo box is 40% of the safe area's height with a name under it, or
+/// 30% alone (a church's logo, small), and up to half its width; the name
+/// starts a twentieth of the height below it. Logo and name together are
+/// centred in the safe area, so they stay clear of the edges at any shape
+/// of screen.
 fn mark_layout(safe: Rect, named: bool) -> MarkLayout {
-    let logo_h = safe.height * 0.40;
+    let logo_h = safe.height * if named { 0.40 } else { 0.30 };
     let logo_w = (safe.width * 0.5).min(safe.width * 0.8);
     let gap = safe.height * 0.05;
     let text_h = if named { safe.height * 0.12 } else { 0.0 };
@@ -1796,7 +1797,7 @@ mod tests {
     }
 
     #[test]
-    fn a_church_logo_idle_screen_draws_its_picture_and_name() {
+    fn a_church_logo_idle_screen_draws_its_picture_alone_and_small() {
         use lampstand_core::brand::Brand;
         let t = theme(60.0, 30.0);
         let o = output(
@@ -1816,12 +1817,22 @@ mod tests {
         let mut p = program(None, Overlay::None);
         p.idle = Some(Idle::mark(Some(&brand)));
         let c = run(&p, &o, 1920.0, 1080.0, &t);
-        assert_eq!(kinds(&c.scene), ["path", "path", "image", "text"]);
+        assert_eq!(
+            kinds(&c.scene),
+            ["path", "path", "image"],
+            "the logo with no name"
+        );
         let NodeKind::Image(img) = &c.scene.nodes[2].kind else {
             panic!()
         };
         assert_eq!(img.blob, blob(9));
         assert_eq!(img.fit, Fit::Contain);
+        // Small and centred: 30% of the safe area's height, as tall above
+        // its middle as below.
+        let (top, height) = (1080.0 * 0.05, 1080.0 * (1.0 - 0.05 - 0.08));
+        assert!((img.rect.height - height * 0.30).abs() < 0.5);
+        let mid = img.rect.y + img.rect.height / 2.0;
+        assert!((mid - (top + height / 2.0)).abs() < 0.5);
     }
 
     #[test]
