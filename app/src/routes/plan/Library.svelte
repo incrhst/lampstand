@@ -348,6 +348,7 @@
   }
 
   async function addLink(url: string) {
+    if (busy) return;
     busy = true;
     try {
       const deck = await request({ area: "Library", request: { AddDeckFromLink: { url } } }, "Deck");
@@ -366,6 +367,7 @@
 
   /** A link to a sound file: fetched into the library, then added to the end of the open service. */
   async function addSoundLink(url: string) {
+    if (busy) return;
     if (!service) {
       live.status = "Pick a service on the left first";
       return;

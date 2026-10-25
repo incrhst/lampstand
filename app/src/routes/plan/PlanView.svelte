@@ -556,7 +556,7 @@
   /** Fetches a sound from a pasted link and adds it as a music-only item, waiting for Play. */
   async function addSoundLink() {
     const url = soundLink?.trim();
-    if (!selected || !url) return;
+    if (busy || !selected || !url) return;
     if (linkOffers(url).streaming) {
       live.status = streamingRefusal;
       return;
