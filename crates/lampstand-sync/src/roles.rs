@@ -3210,6 +3210,437 @@ mod tests {
         }
     }
 
+    /// What one device's node knows of a peer: whether a session is up, and
+    /// when it last heard from it.
+    #[derive(Debug, Clone, Copy, Default)]
+    struct Contact {
+        up: bool,
+        /// Which session, so a frame sent on one that has ended is lost.
+        session: u64,
+        /// When this device last heard the peer (while up, it hears it now).
+        heard: u64,
+        /// When the present session opened, and how long the peer had been
+        /// silent before it.
+        opened: u64,
+        away_before: u64,
+    }
+
+    /// One device's [`Net`], as a node builds it from its contacts: the
+    /// same rules as `net::Reach`, with the ten second fresh session.
+    struct Seen {
+        me: usize,
+        row: Vec<Contact>,
+        now: u64,
+    }
+
+    /// Device `i` of the model has key `i + 1`.
+    fn model_key(i: usize) -> DeviceKey {
+        key(u8::try_from(i).unwrap() + 1)
+    }
+
+    impl Seen {
+        fn index(&self, d: DeviceKey) -> Option<usize> {
+            (0..self.row.len()).find(|i| model_key(*i) == d)
+        }
+    }
+
+    impl Net for Seen {
+        fn has_peers(&self) -> bool {
+            true
+        }
+        fn holder(&self, d: DeviceKey) -> Holder {
+            match self.index(d) {
+                None => Holder::Gone,
+                Some(i) if i == self.me => Holder::Me,
+                Some(i) if self.row[i].up => Holder::Online,
+                Some(i) => Holder::Offline(secs(self.now - self.row[i].heard)),
+            }
+        }
+        fn away(&self, d: DeviceKey) -> Option<Duration> {
+            let c = self.row[self.index(d)?];
+            if c.up {
+                (self.now - c.opened <= 10).then(|| secs(c.away_before))
+            } else {
+                Some(secs(self.now - c.heard))
+            }
+        }
+        fn paired(&self, d: DeviceKey) -> bool {
+            self.index(d).is_some()
+        }
+        fn now_ms(&self) -> i64 {
+            i64::try_from(self.now * 1000).unwrap()
+        }
+    }
+
+    /// Four paired devices whose links drop and come back, each judging by
+    /// what its own node has seen, with frames that are lost when their
+    /// session ends and otherwise arrive in any order. Each device does what
+    /// its node does: a record that changes its own goes to every connected
+    /// device, and a record its own beats is answered with its own.
+    struct World {
+        ds: Vec<Roles>,
+        now: u64,
+        /// `contact[x][y]`: what device `x` knows of device `y`.
+        contact: Vec<Vec<Contact>>,
+        sessions: u64,
+        /// Frames on their way: from, to, the session, the record.
+        queue: Vec<(usize, usize, u64, Record)>,
+        log: Vec<String>,
+    }
+
+    impl World {
+        fn new(n: usize) -> Self {
+            let names = ["Sanctuary", "Office PC", "Laptop", "Back room"];
+            let ds: Vec<Roles> = (0..n)
+                .map(|i| device(u8::try_from(i).unwrap() + 1, names[i]))
+                .collect();
+            let mut w = World {
+                ds,
+                now: 1000,
+                contact: vec![vec![Contact::default(); n]; n],
+                sessions: 0,
+                queue: Vec::new(),
+                log: Vec::new(),
+            };
+            for x in 0..n {
+                for y in 0..n {
+                    if x < y {
+                        w.link_up(x, y, false);
+                    }
+                }
+            }
+            // Device 0 holds the role, and everyone knows it.
+            let seen = w.seen(0);
+            w.ds[0].claim(Role::Stream, &seen).unwrap();
+            let first = w.ds[0].record(Role::Stream).clone();
+            for d in w.ds.iter_mut().skip(1) {
+                m(d, Role::Stream, &first);
+            }
+            // A while later: no session is fresh any more.
+            w.now += 60;
+            w
+        }
+
+        fn seen(&self, me: usize) -> Seen {
+            Seen {
+                me,
+                row: self.contact[me].clone(),
+                now: self.now,
+            }
+        }
+
+        fn up(&self, x: usize, y: usize) -> bool {
+            self.contact[x][y].up
+        }
+
+        /// The link comes up: a session opens, each side counts how long the
+        /// other had been silent, and both send their records.
+        fn link_up(&mut self, x: usize, y: usize, exchange: bool) {
+            self.sessions += 1;
+            for (a, b) in [(x, y), (y, x)] {
+                let c = &mut self.contact[a][b];
+                c.away_before = self.now - c.heard;
+                c.opened = self.now;
+                c.heard = self.now;
+                c.up = true;
+                c.session = self.sessions;
+            }
+            if exchange {
+                self.send(x, y);
+                self.send(y, x);
+            }
+        }
+
+        /// The link drops. Each side last heard the other a little before
+        /// (a session is closed after some silence), not at the same moment.
+        fn link_down(&mut self, x: usize, y: usize, lag: [u64; 2]) {
+            for ((a, b), lag) in [(x, y), (y, x)].into_iter().zip(lag) {
+                let c = &mut self.contact[a][b];
+                c.up = false;
+                c.heard = self.now.saturating_sub(lag).max(c.opened);
+            }
+        }
+
+        fn send(&mut self, from: usize, to: usize) {
+            let record = self.ds[from].record(Role::Stream).clone();
+            self.send_record(from, to, record);
+        }
+
+        fn send_record(&mut self, from: usize, to: usize, record: Record) {
+            if self.up(from, to) {
+                let session = self.contact[from][to].session;
+                self.queue.push((from, to, session, record));
+            }
+        }
+
+        fn broadcast(&mut self, from: usize) {
+            for to in 0..self.ds.len() {
+                if to != from {
+                    self.send(from, to);
+                }
+            }
+        }
+
+        /// The `n`th frame on its way arrives, if its session is still up.
+        fn deliver(&mut self, n: usize) {
+            let (from, to, session, record) = self.queue.swap_remove(n);
+            let c = self.contact[to][from];
+            if !c.up || c.session != session {
+                return;
+            }
+            let seen = self.seen(to);
+            let merged = self.ds[to].merge(Role::Stream, &record, model_key(from), &seen);
+            if merged.changed {
+                self.log.push(format!(
+                    "{from} -> {to}: {:?}",
+                    self.who(self.ds[to].record(Role::Stream).holder)
+                ));
+                self.broadcast(to);
+            } else if self.ds[to].record(Role::Stream).beats(&record) {
+                self.send(to, from);
+            }
+        }
+
+        fn who(&self, d: Option<DeviceKey>) -> Option<usize> {
+            d.and_then(|d| (0..self.ds.len()).find(|i| model_key(*i) == d))
+        }
+
+        fn max_epoch(&self) -> u64 {
+            self.ds
+                .iter()
+                .map(|d| d.record(Role::Stream).epoch)
+                .max()
+                .unwrap_or(0)
+        }
+
+        /// One random thing happens.
+        fn act(&mut self, next: &mut dyn FnMut(u64) -> u64) {
+            let n = self.ds.len();
+            let (x, y) = (next(n as u64) as usize, next(n as u64) as usize);
+            // Keep histories inside what a record carries, so every device
+            // can always follow (a longer gap is the "can't check" case).
+            let room = self.max_epoch() < 7;
+            match next(9) {
+                0 => {
+                    let d = 1 + next(200);
+                    self.now += d;
+                    self.log.push(format!("{d}s pass"));
+                }
+                1 if x != y && self.up(x, y) => {
+                    self.link_down(x, y, [next(36), next(36)]);
+                    self.log.push(format!("{x} and {y} part"));
+                }
+                2 if x != y && !self.up(x, y) => {
+                    self.log.push(format!("{x} and {y} meet"));
+                    self.link_up(x, y, true);
+                }
+                // `x` takes over, if it may by what it has seen.
+                3 if room => {
+                    let seen = self.seen(x);
+                    if self.ds[x].claim(Role::Stream, &seen).is_ok() {
+                        self.log.push(format!("{x} claims"));
+                        self.broadcast(x);
+                    }
+                }
+                // `y` asks `x`, which it believes holds the role; `x` allows.
+                4 if room && x != y && self.up(x, y) => {
+                    let (sx, sy) = (self.seen(x), self.seen(y));
+                    if self.ds[y].record(Role::Stream).holder == Some(model_key(x))
+                        && self.ds[y].ask(Role::Stream, &sy).is_ok()
+                    {
+                        let name = self.ds[y].name.clone();
+                        self.ds[x].receive_ask(Role::Stream, model_key(y), name);
+                        if self.ds[x]
+                            .allow(Role::Stream, model_key(y), false, &sx)
+                            .is_ok()
+                        {
+                            self.log.push(format!("{x} hands to {y}"));
+                            self.broadcast(x);
+                        }
+                        self.ds[y].cancel_ask(Role::Stream);
+                    }
+                }
+                _ if !self.queue.is_empty() => {
+                    let k = next(self.queue.len() as u64) as usize;
+                    self.deliver(k);
+                }
+                _ => {}
+            }
+        }
+
+        /// Every link comes up and stays up, and every frame arrives.
+        fn heal(&mut self, next: &mut dyn FnMut(u64) -> u64) -> bool {
+            let n = self.ds.len();
+            for x in 0..n {
+                for y in x + 1..n {
+                    if !self.up(x, y) {
+                        self.link_up(x, y, true);
+                    }
+                }
+            }
+            for _ in 0..10_000 {
+                if self.queue.is_empty() {
+                    return true;
+                }
+                let k = next(self.queue.len() as u64) as usize;
+                self.deliver(k);
+            }
+            false
+        }
+
+        /// What is wrong at the end, if anything: every device should agree
+        /// on the holder, and exactly that one device should hold the role.
+        fn split(&self) -> Option<String> {
+            let agreed = self.ds[0].record(Role::Stream).holder;
+            let holders = self.ds.iter().filter(|d| d.holds(Role::Stream)).count();
+            if agreed.is_some()
+                && holders == 1
+                && self
+                    .ds
+                    .iter()
+                    .all(|d| d.record(Role::Stream).holder == agreed)
+            {
+                return None;
+            }
+            let states: Vec<_> = self
+                .ds
+                .iter()
+                .map(|d| {
+                    let r = d.record(Role::Stream);
+                    let steps: Vec<_> = r
+                        .chain
+                        .iter()
+                        .map(|l| (l.kind, self.who(l.prev_holder), self.who(l.holder), l.epoch))
+                        .collect();
+                    (self.who(r.holder), r.epoch, d.unverified(Role::Stream), steps)
+                })
+                .collect();
+            Some(format!("{:?}\n{states:?}", self.log))
+        }
+    }
+
+    /// The wider case: links drop and come back, at different moments on
+    /// each side; devices take over when what they have seen allows it, hand
+    /// the role on, and relay records in any order. Claims are made against
+    /// devices that are no longer the holder, and records reach devices by
+    /// every path. Once every link is back and every frame has arrived, all
+    /// four agree on the holder and exactly that device holds the role.
+    #[test]
+    fn whatever_the_links_do_every_device_ends_agreeing_on_one_holder() {
+        let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        let mut failed = Vec::new();
+        let runs = 3000;
+        for run in 0..runs {
+            let mut w = World::new(4);
+            for _ in 0..80 {
+                w.act(&mut next);
+            }
+            let settled = w.heal(&mut next);
+            if !settled {
+                failed.push(format!("run {run}: never settles\n{:?}", w.log));
+            } else if let Some(what) = w.split() {
+                failed.push(format!("run {run}: {what}"));
+            }
+        }
+        assert!(
+            failed.is_empty(),
+            "{} of {runs} runs end split; the first:\n{}",
+            failed.len(),
+            failed[0]
+        );
+    }
+
+    /// A paired device that has been connected to the holder all along signs
+    /// a claim against it and then hands the role on at once, so the claim
+    /// is no longer the newest step; with two hand-overs or more its record
+    /// also outruns the holder's refusal by epoch. The holder does not give
+    /// the role up, a device that sees the holder connected does not take
+    /// the record in, whoever passes it on, and once records have gone round
+    /// every honest device is back on the holder.
+    #[test]
+    fn a_forged_chain_cannot_take_a_role_from_a_connected_holder() {
+        // A step on top of `rec`, signed by `by`.
+        let forge = |rec: &Record, kind: Kind, to: u8, by: u8| {
+            let mut l = rec.chain[0].clone();
+            l.kind = kind;
+            l.holder = Some(key(to));
+            l.epoch = rec.epoch + 1;
+            l.prev_holder = rec.holder;
+            l.prev_epoch = rec.epoch;
+            l.sig = kp(by)
+                .sign(&Link::bytes(
+                    Role::Stream,
+                    kind,
+                    l.holder,
+                    l.epoch,
+                    l.prev_holder,
+                    l.prev_epoch,
+                ))
+                .to_vec();
+            let mut chain = vec![l];
+            chain.extend(rec.chain.iter().take(CHAIN - 1).cloned());
+            Record {
+                holder: Some(key(to)),
+                name: "Forged".into(),
+                epoch: rec.epoch + 1,
+                chain,
+            }
+        };
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        // Everyone connected, on sessions that have been up for a while.
+        let all_on = net_away(&online, None);
+        for hops in 0..=3 {
+            for last in [2, 3] {
+                let (a, b, c) = church();
+                let held = a.record(Role::Stream).clone();
+                let mut forger = b.clone();
+                let mut forged = forger.claim(Role::Stream, &net(true, &off)).unwrap();
+                for hop in 0..hops {
+                    let to = if hop + 1 == hops { last } else { 2 };
+                    forged = forge(&forged, Kind::HandOver, to, 2);
+                }
+                let what = format!("{hops} hand-overs, to device {last}");
+                // From the forger, or passed on by a fourth paired device.
+                for from in [key(2), key(4)] {
+                    // The holder keeps the role, and its record now beats the
+                    // forged one everywhere.
+                    let mut holder = a.clone();
+                    holder.merge(Role::Stream, &forged, from, &all_on);
+                    assert!(holder.holds(Role::Stream), "{what}");
+                    assert!(holder.record(Role::Stream).beats(&forged), "{what}");
+                    // A device that sees the holder connected does not move.
+                    let mut third = c.clone();
+                    third.merge(Role::Stream, &forged, from, &all_on);
+                    assert_eq!(third.record(Role::Stream), &held, "{what}");
+                    assert!(!third.holds(Role::Stream), "{what}");
+                    // The holder's answer reaches it: still the holder.
+                    let answer = holder.record(Role::Stream).clone();
+                    third.merge(Role::Stream, &answer, key(1), &all_on);
+                    assert_eq!(third.record(Role::Stream).holder, Some(key(1)), "{what}");
+                    // And so does the forger's own honest twin, which only
+                    // ever saw the forged record (it had been told of it).
+                    let mut twin = b.clone();
+                    twin.merge(Role::Stream, &forged, key(4), &net(true, &off));
+                    twin.merge(Role::Stream, &answer, key(1), &all_on);
+                    assert_eq!(twin.record(Role::Stream).holder, Some(key(1)), "{what}");
+                    // The forged record, met again, changes nothing.
+                    for d in [&mut holder, &mut third] {
+                        assert!(
+                            !d.merge(Role::Stream, &forged, from, &all_on).changed,
+                            "{what}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_forged_record_from_a_paired_device_is_ignored() {
         let (mut a, mut b, _) = church();

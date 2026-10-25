@@ -114,3 +114,8 @@ deckcraft-vp9.opt-level = 3
 deckcraft-av1.opt-level = 3
 deckcraft-isobmff.opt-level = 3
 deckcraft-matroska.opt-level = 3
+# Every role record carries signed steps, checked on every merge: unoptimised
+# signature checks make the sync tests' random models crawl.
+curve25519-dalek.opt-level = 3
+ed25519-dalek.opt-level = 3
+sha2.opt-level = 3
