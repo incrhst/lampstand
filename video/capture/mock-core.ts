@@ -41,7 +41,7 @@ const trainingDecks = [
 ];
 deckSlides["deck-t1-screen"] = [
   { label: "Slide 1", lines: ["The Present screen", "Four places to look. One rule."], steps: 0, notes: "Trainer: point at each part of the screen as we go." },
-  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "Left is the order. The middle is live. The right is Next and Notes." },
+  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is what Space puts up. The strip on top is the main screen and the controls." },
 ];
 deckSlides["deck-t1-sermon"] = [
   { label: "Slide 1", lines: ["The Lord is my shepherd", "Psalm 23"], steps: 0, notes: "Preacher: Good morning. Our reading today is Psalm 23.\nOperator: each Space press brings in one point." },
@@ -96,7 +96,7 @@ const training = [
     b5: item({ Header: { title: "Practice. Run these as if it were Sunday" } }),
     b6: item({ Song: { song: "amazing-grace", arrangement: null } }, "Practice: press Space for each verse. At the last verse, press 1 to jump back to verse 1."),
     b7: item({ Scripture: { passage: john, translation: "kjv" } }, "Practice: a Bible reading. Space through the verses."),
-    b8: item({ Media: { blob: "v3", name: "Blank, Logo, Clear.mp4", looped: false } }),
+    b8: item({ Media: { blob: "v3", name: "Blank, Idle, Clear.mp4", looped: false } }),
     b9: item({ Deck: { deck: "deck-t1-sermon" } }, "Practice: five slides with builds. Try Blank (full stop) once in the middle."),
   } as Record<string, any> },
   { id: "training-2", title: "Training 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
@@ -139,7 +139,8 @@ function slidesFor(kind: any) {
   if (kind.Scripture?.passage.book === 19) return verses["Psalm 23:1"].map(([c, v, t]) => ({ label: `Psalm ${c}:${v}`, lines: [t], steps: 0, notes: "" }));
   if (kind.Scripture?.passage.book === 45) return [{ label: "Romans 8:28", lines: [verses["Romans 8:28"][0][2]], steps: 0, notes: "" }];
   if (kind.Scripture) return [{ label: "John 3:16", lines: [verses["John 3:16"][0][2]], steps: 0, notes: "" }];
-  if (kind.Deck) return deckSlides[kind.Deck.deck] ?? [];
+  // As the engine: a deck's slides are pictures (no lines), drawn by SlideThumbnail at their build step.
+  if (kind.Deck) return (deckSlides[kind.Deck.deck] ?? []).map((sl) => ({ ...sl, lines: [] }));
   if (kind.Media) return [{ label: "Video", lines: [], steps: 0, notes: "" }];
   if (kind.Text) {
     const groups: string[][] = [];
@@ -197,12 +198,29 @@ setInterval(() => {
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
 function move(dir: number, byItem = false) {
   const f = flat(); if (!f.length) return;
+  // As the engine: Next plays a slide's builds one click at a time before moving on.
+  const cur = state.live;
+  if (!byItem && cur) {
+    const steps = state.loaded.items.find((i: any) => i.id === cur.item)?.slides[cur.slide]?.steps ?? 0;
+    const step = cur.step + dir;
+    if (step >= 0 && step <= steps) { state.preview = { ...cur, step }; return; }
+  }
   const base = state.live ?? state.preview; let at = base ? f.findIndex((c: any) => c.item === base.item && c.slide === base.slide) : -1;
   if (byItem) { const cur = base?.item; let n = at; while (n >= 0 && n < f.length && f[n].item === cur) n += dir; at = n < 0 ? 0 : Math.min(n, f.length - 1); if (dir < 0) { const it = f[at].item; at = f.findIndex((c: any) => c.item === it); } }
   else at = Math.max(0, Math.min(f.length - 1, at + dir));
   state.preview = f[Math.max(0, at)];
 }
 const svgThumb = (label: string) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='95' fill='#f5f1e8' font-family='serif' font-size='20' text-anchor='middle'>${label}</text></svg>`);
+
+/** A training deck's slide as the core draws it: the heading, then one point per build step. */
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/'/g, "&apos;");
+function deckThumb(sl: any, step: number) {
+  const [head, ...rest] = sl.lines as string[];
+  const shown = sl.steps > 0 ? rest.slice(0, step) : rest;
+  const body = shown.map((l, i) => `<text x='160' y='${92 + i * 20}' fill='#f5f1e8' font-family='sans-serif' font-size='14' text-anchor='middle'>${esc(l)}</text>`).join("");
+  return "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='${rest.length ? 58 : 96}' fill='#e9b949' font-family='sans-serif' font-weight='700' font-size='${head.length > 30 ? 13 : 20}' text-anchor='middle'>${esc(head)}</text>${body}</svg>`);
+}
+const logoThumb = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><circle cx='160' cy='80' r='18' fill='none' stroke='#e9b949' stroke-width='3'/><path d='M160 68v24M150 78h20' stroke='#e9b949' stroke-width='3'/><text x='160' y='120' fill='#f5f1e8' font-family='serif' font-size='13' text-anchor='middle'>Grace Chapel</text></svg>`);
 
 const summaries = () => state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length, training: !!s.training }));
 
@@ -241,7 +259,9 @@ function api(req: any): any {
         case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks.filter((d) => !trainingDecks.includes(d)) };
         case "ListTrainingDecks": return { type: "Decks", data: trainingDecks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
-        case "DeckThumbnail": case "MediaThumbnail": case "IdlePreview": return { type: "Thumbnail", data: svgThumb("Slides") };
+        case "DeckThumbnail": case "MediaThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        // With a logo, the default idle screen is the logo, small and centred.
+        case "IdlePreview": return { type: "Thumbnail", data: logoThumb };
       }
       break;
     case "Service":
@@ -298,7 +318,11 @@ function api(req: any): any {
           })) };
         }
         case "Open": { state.loaded = load(arg); emit({ type: "Loaded", data: state.loaded }); return { type: "Loaded", data: state.loaded }; }
-        case "SlideThumbnail": return { type: "Thumbnail", data: svgThumb("Slide") };
+        case "SlideThumbnail": {
+          const kind = state.services.flatMap((sv: any) => Object.entries(sv.items)).find(([id]: any) => id === arg.item)?.[1]?.kind;
+          const sl = kind?.Deck ? deckSlides[kind.Deck.deck]?.[arg.slide] : null;
+          return { type: "Thumbnail", data: sl ? deckThumb(sl, arg.step) : svgThumb("Slide") };
+        }
         case "Readiness": return { type: "Text", data: "ready" };
       }
       break;

@@ -52,24 +52,29 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 47,
-     "y": 43,
+     "x": 8.5,
+     "y": 21,
      "label": "What the room sees"
     },
     {
-     "x": 36,
-     "y": 71,
+     "x": 42,
+     "y": 74,
+     "label": "LIVE: on air now"
+    },
+    {
+     "x": 89,
+     "y": 22,
      "label": "Space moves on"
     },
     {
-     "x": 87,
-     "y": 49,
+     "x": 11,
+     "y": 80,
      "label": "Notes only you see"
     }
    ],
-   "say": "Present is for Sunday. One service is open at a time. The picture in the red frame is what the room sees. Press Space to move on.",
+   "say": "Present is for Sunday. One service is open at a time, and every slide of it is laid out. The card marked LIVE is what the room sees. Press Space to move on.",
    "narration": "narration/t0-welcome/04.mp3",
-   "durationSec": 11
+   "durationSec": 13.5
   },
   {
    "type": "bullets",

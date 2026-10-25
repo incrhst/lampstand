@@ -5,7 +5,7 @@
 The decks are real PowerPoint files: the app imports them with the same deck importer
 as a church's own, so they double as fidelity fixtures. Each slide's speaker notes hold
 the trainer's script, and in Training 2 the surprises the trainer calls, so a trainer
-reads them on the confidence monitor or in Present's Notes pane.
+reads them on the confidence monitor or beside the item on air in Present.
 
 Builds are ordinary PowerPoint "appear by paragraph" click effects, written as the XML
 PowerPoint writes, and some slides have a Fade transition. Text uses Noto Sans, which
@@ -216,8 +216,9 @@ Say: nothing you do in Plan reaches the screen in the room."""},
         "Move through it with Space",
         "The room sees only what you send",
     ], "notes": """
-Trainer: Present is the operator's screen. One service is open at a time.
-The big picture with the red frame is what the room sees. Everything else is only for you.
+Trainer: Present is the operator's screen. One service is open at a time, and every slide
+of it is laid out as cards. The card marked LIVE, in red, is what the room sees, and so is the
+small picture at the top left. Everything else is only for you.
 This training is itself a service, open in Present right now."""},
     {"kind": "bullets", "heading": "Setup: once, then rarely", "fade": True, "items": [
         "Screens: which screen is the projector",
@@ -247,18 +248,21 @@ save("t1-present-screen.pptx", "The Present screen", T1, [
 Trainer: Ten minutes from now you will run a short practice service with no wrong slide
 and no desktop showing. Point at each part of the screen as we go."""},
     {"kind": "bullets", "heading": "Four places to look", "builds": True, "items": [
-        "Left: the order of the service",
-        "Middle, red frame: what the room sees now",
-        "Right: what comes next, and the notes",
-        "Top right: Show, Logo and Blank",
+        "The wall: every slide of the service",
+        "Red LIVE: what the room sees now",
+        "Gold NEXT: what Space puts up",
+        "The strip on top: the main screen and the buttons",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
-Left is the order. The middle is live. The right is Next and Notes, which is where you
-are reading this. Top right switches the room between the slide, the church logo and black."""},
+The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
+NEXT card is what Space shows next. The notes, where you are reading this, sit beside the
+item on air. The strip on top has a small picture of the main screen, then Next, Previous
+and Blank. Show, Idle and Blank, top right, switch the room between the slide, the idle
+screen and black. Press F for Focus to see only the cards; F or Esc brings the rest back."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
-Trainer: Clicking an item in the order only shows it to you. It goes on air when you start
-it with Enter, or click one of its slides. Space always moves on from what is live."""},
+Trainer: Choosing an item with Shift and Down only shows it to you. It goes on air when you
+start it with Enter, or click one of its cards. Space always moves on from what is live."""},
     {"kind": "keys", "heading": "The keys you need today", "rows": [
         ("Space  →", "Next slide"),
         ("←", "Previous slide"),
@@ -275,7 +279,8 @@ save("t1-sermon-practice.pptx", "Practice sermon: The Lord is my shepherd", T1, 
      "notes": """
 Preacher: Good morning. Our reading today is Psalm 23.
 Operator: this deck has builds. Each Space press brings in one point. When the slide is
-complete, the next Space goes to the next slide. Watch Next on the right to see which."""},
+complete, the next Space goes to the next slide. While a slide with builds is on air, a panel
+above the wall shows what is on screen beside the next click, and how many clicks are left."""},
     {"kind": "bullets", "heading": "He leads me", "builds": True, "fade": True, "items": [
         "Green pastures",
         "Still waters",
@@ -294,13 +299,13 @@ Operator: a quote slide has no builds. Leave it up while the preacher talks abou
         "You are not alone",
     ], "notes": """
 Preacher: Three things to take home this week.
-Operator: if the preacher jumps ahead ("skip to the last slide"), click that slide in the
-strip under the live picture. It goes on air straight away."""},
+Operator: if the preacher jumps ahead ("skip to the last slide"), click that slide's card on
+the wall. It goes on air straight away."""},
     {"kind": "quote", "text": "Surely goodness and mercy shall follow me all the days of my life.",
      "source": "Psalm 23:6 (KJV)", "fade": True, "notes": """
 Preacher: Let us pray.
 Operator: this is the last slide. When the prayer ends, press Space to move to the next item,
-or Blank if nothing should be on the screen."""},
+or Idle if the room should see the idle screen."""},
 ])
 
 save("t1-ready.pptx", "You're ready", T1, [
@@ -311,7 +316,7 @@ Trainer: Well done. Ask the trainee: what would you do if the wrong slide went u
 (Answer: press full stop to blank, find the right slide, then bring it back.)"""},
     {"kind": "bullets", "heading": "Sunday, step by step", "builds": True, "items": [
         "Before: screens on, open the service for live",
-        "Start on the logo or a blank screen",
+        "Start on the idle screen; Space puts the first slide up",
         "During: Space to move on, full stop to blank",
         "After: Close service, top right",
     ], "notes": """
@@ -328,7 +333,7 @@ save("t2-briefing.pptx", "Briefing: five surprises", T2, [
      "sub": "A rehearsal service. The trainer calls the surprises. You keep the screen calm.",
      "notes": """
 Trainer: This takes about thirty minutes. The surprises are written in the notes of each
-item in the rehearsal service below, so read them from the Notes pane as each item comes up.
+item in the rehearsal service below, so read them beside each item as it comes on air.
 Do not tell the trainee which surprise is coming. Run the rehearsal twice: once slowly,
 then again at the speed of a real service. Press Reset training in Plan between runs."""},
     {"kind": "keys", "heading": "The five moves", "rows": [
