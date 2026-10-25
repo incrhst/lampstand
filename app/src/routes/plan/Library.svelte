@@ -23,6 +23,7 @@
     countKinds,
     importedCounts,
     isLink,
+    linkEntries,
     mightBeReference,
     rank,
     newSongs,
@@ -33,7 +34,7 @@
     type Entry,
     type Filter,
   } from "../../lib/library";
-  import { soundItem } from "../../lib/sound";
+  import { linkOffers, soundItem, streamingRefusal } from "../../lib/sound";
   import { deckSourceLabel, mediaKind } from "../../lib/media";
   import { formatPassage, parseReferenceVersioned } from "../../lib/passage";
   import { chooseTranslation } from "../../lib/bibles";
@@ -269,13 +270,9 @@
   let everything = $derived(sortByTitle([...allSongs.map(songEntry), ...others]));
   let libraryCount = $derived(allSongs.length + others.length);
 
-  let linkEntry = $derived<Entry | null>(
-    isLink(trimmed)
-      ? { key: "link", kind: "deck", title: "Add deck from link", subtitle: trimmed, item: null }
-      : null,
-  );
+  let linkRows = $derived(isLink(trimmed) ? linkEntries(trimmed) : []);
   let results = $derived(
-    trimmed ? [...(linkEntry ? [linkEntry] : []), ...rank(trimmed, passage, hits.map(songEntry), others)] : everything,
+    trimmed ? [...linkRows, ...rank(trimmed, passage, hits.map(songEntry), others)] : everything,
   );
   let counts = $derived(countKinds(results));
 
@@ -337,6 +334,11 @@
 
   async function add(entry: Entry) {
     if (entry.key === "link") return addLink(entry.subtitle);
+    if (entry.key === "link:sound") return addSoundLink(entry.subtitle);
+    if (entry.key === "link:streaming") {
+      live.status = entry.subtitle;
+      return;
+    }
     if (!entry.item) return;
     if (!service) {
       live.status = "Pick a service on the left first";
@@ -346,6 +348,7 @@
   }
 
   async function addLink(url: string) {
+    if (busy) return;
     busy = true;
     try {
       const deck = await request({ area: "Library", request: { AddDeckFromLink: { url } } }, "Deck");
@@ -360,6 +363,57 @@
     } finally {
       busy = false;
     }
+  }
+
+  /** A link to a sound file: fetched into the library, then added to the end of the open service. */
+  async function addSoundLink(url: string) {
+    if (busy) return;
+    if (!service) {
+      live.status = "Pick a service on the left first";
+      return;
+    }
+    busy = true;
+    try {
+      const file = await request({ area: "Library", request: { AddSoundFromLink: { url } } }, "SoundFile");
+      query = "";
+      if (await onadd(soundItem(file))) live.status = `Added ${file.name}`;
+      else live.status = `${file.name} could not be added to the service`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /**
+   * A link dropped or pasted on the library, with a service open. One that
+   * can only be a sound or a deck is added; a Drive or OneDrive link could
+   * be either, so it goes in the search to pick from.
+   */
+  function takeLink(text: string): boolean {
+    const url = text.trim();
+    if (!service || !isLink(url)) return false;
+    const offers = linkOffers(url);
+    if (offers.sound && !offers.deck) void addSoundLink(url);
+    else if (offers.streaming) live.status = streamingRefusal;
+    else if (offers.deck && !offers.sound) void addLink(url);
+    else tryQuery(url);
+    return true;
+  }
+
+  function onpaste(e: ClipboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (takeLink(e.clipboardData?.getData("text/plain") ?? "")) e.preventDefault();
+  }
+
+  function ondropover(e: DragEvent) {
+    if (service && e.dataTransfer?.types.some((t) => t === "text/uri-list" || t === "text/plain")) e.preventDefault();
+  }
+
+  function ondrop(e: DragEvent) {
+    const text = e.dataTransfer?.getData("text/uri-list") || e.dataTransfer?.getData("text/plain") || "";
+    if (takeLink(text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "")) e.preventDefault();
   }
 
   // --- Dragging a row into the order -----------------------------------------
@@ -622,6 +676,9 @@
           else if (payload.type === "drop") {
             const here = overPanel(payload.position);
             dropping = false;
+            // A link dragged from a browser may arrive as a "path".
+            const link = payload.paths.find((p) => isLink(p));
+            if (here && link && takeLink(link)) return;
             if (here) importPaths(payload.paths);
           }
         }),
@@ -643,7 +700,7 @@
   });
 </script>
 
-<svelte:window onkeydown={onwindowkey} />
+<svelte:window onkeydown={onwindowkey} {onpaste} />
 
 {#if editing}
   <SongEditor song={editing} onclose={() => (editing = null)} />
@@ -674,7 +731,7 @@
   </div>
 {/snippet}
 
-<aside class="pane pane-side library" aria-label="Library" bind:this={panel}>
+<aside class="pane pane-side library" aria-label="Library" bind:this={panel} ondragover={ondropover} {ondrop}>
   <header class="head">
     <div class="title-row">
       <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>

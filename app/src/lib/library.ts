@@ -5,7 +5,7 @@
 
 import type { ItemKind, SongHit } from "./api";
 import { deckExtensions, imageExtensions, videoExtensions } from "./media.ts";
-import { audioExtensions } from "./sound.ts";
+import { audioExtensions, linkOffers, streamingRefusal } from "./sound.ts";
 
 export type Kind = "song" | "scripture" | "deck" | "media";
 export type Filter = "all" | Kind;
@@ -103,6 +103,23 @@ export function newSongs(before: Iterable<string>, after: SongHit[], max = 6): S
 /** A pasted share link, which adds a deck rather than searching. */
 export function isLink(query: string): boolean {
   return /^https?:\/\/\S+$/i.test(query.trim());
+}
+
+/**
+ * The rows a pasted link offers: a deck, a sound, or (for a streaming page)
+ * the reason it can't be added. A Drive or OneDrive link could be either,
+ * so it offers both.
+ */
+export function linkEntries(link: string): Entry[] {
+  const url = link.trim();
+  const offers = linkOffers(url);
+  const rows: Entry[] = [];
+  if (offers.deck) rows.push({ key: "link", kind: "deck", title: "Add deck from link", subtitle: url, item: null });
+  if (offers.sound) rows.push({ key: "link:sound", kind: "media", title: "Add sound from link", subtitle: url, item: null });
+  if (offers.streaming) {
+    rows.push({ key: "link:streaming", kind: "media", title: "This link can't be added", subtitle: streamingRefusal, item: null });
+  }
+  return rows;
 }
 
 /** Whether a search should be read as a Bible reference: it has a number in it. */

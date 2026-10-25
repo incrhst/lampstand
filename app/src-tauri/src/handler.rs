@@ -538,6 +538,11 @@ impl App {
             LibraryRequest::AddSoundFile { path } => {
                 Response::SoundFile(decks::add_sound_file(lib, &path)?)
             }
+            LibraryRequest::AddSoundFromLink { .. } => {
+                // A download, like a deck link: the shell fetches it and
+                // then adds it as `AddSoundFile` does.
+                return Err("sound links are downloaded by the app shell".into());
+            }
             LibraryRequest::DeckThumbnail { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("deck thumbnails are drawn by the app shell".into());

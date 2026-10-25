@@ -27,7 +27,7 @@ Each layer uses only the layers below it, except the arrows within a layer: `ren
 | `sync` | Automerge documents, blob store, sync protocol, LAN discovery, teams and roles | core |
 | `library` | Typed access to documents, song search, service packages, readiness check, CCLI usage | core, sync |
 | `import` | Song and Bible importers, finding other apps' data | core |
-| `connectors` | Google Drive and Slides, share links | — |
+| `connectors` | Google Drive and Slides, share links (decks, and sound files) | — |
 | `server` | Local HTTP and WebSocket server: OBS browser source, peer sync, picker page | core, render, sync |
 | `api` | Messages between the UI and the core | core, live, sync |
 | `relay` | Self-hostable sync relay binary; guest upload links | sync |

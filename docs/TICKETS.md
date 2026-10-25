@@ -484,7 +484,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T109 | Update a service from its plan | **O** | T107, T108 | PL-4 | `library/src/plan_update.rs`, `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T110 | Setup › Connections: Notion | S | T104 | PL-4 | `app/src/routes/setup/`, `app/src-tauri/src/notion.rs` | Not started |
-| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | Not started |
+| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
 T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
@@ -517,7 +517,7 @@ Lampstand plays files the church is licensed to play: a track it bought, a multi
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T113 | Add sound from a link | S | — | — | `connectors/src/links.rs`, `api/src/lib.rs`, `app/src-tauri/src/decks.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/plan/` | Not started |
+| T113 | Add sound from a link | S | — | — | `connectors/src/links.rs`, `api/src/lib.rs`, `app/src-tauri/src/decks.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/plan/` | In review (#194) |
 
 **T113. Add sound from a link.** Add `LibraryRequest::AddSoundFromLink { url }`, answered with `Response::SoundFile` as `AddSoundFile` is, so the planner adds it to the service as a music-only item (`soundItem` in `lib/sound.ts`).
 

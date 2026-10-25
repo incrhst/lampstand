@@ -327,6 +327,44 @@ async fn api(
             }))
             .await
         }
+        Request::Library(LibraryRequest::AddSoundFromLink { url }) => {
+            let link = match decks::classify_sound(&url) {
+                Ok(link) => link,
+                Err(message) => return Ok(Response::Error { message }),
+            };
+            emit(Event::ImportProgress {
+                done: 0,
+                total: 1,
+                message: "Downloading the track".into(),
+            });
+            let done = |message: String| {
+                emit(Event::ImportProgress {
+                    done: 1,
+                    total: 1,
+                    message,
+                })
+            };
+            let download = match decks::download_sound(&link, &state.downloads).await {
+                Ok(download) => download,
+                Err(why) => {
+                    let message = format!("Could not add the track: {why}");
+                    done(message.clone());
+                    return Ok(Response::Error { message });
+                }
+            };
+            let response = blocking(Box::new(move || {
+                decks::add_downloaded_sound(&library, download)
+                    .map(Response::SoundFile)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await;
+            done(match &response {
+                Ok(Response::SoundFile(file)) => format!("Added {}", file.name),
+                Ok(Response::Error { message }) => format!("Could not add the track: {message}"),
+                _ => String::new(),
+            });
+            response
+        }
         Request::Library(LibraryRequest::AddDeckFromLink { url }) => {
             let link = match decks::classify(&url) {
                 Ok(link) => link,
