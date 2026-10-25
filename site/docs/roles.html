@@ -17,7 +17,7 @@
       <nav aria-label="Documentation"><a href="./">Docs</a><a href="getting-started.html">Getting started</a><a href="using.html">Using Lampstand</a><a href="roles.html" aria-current="page">Roles</a><a href="how-it-works.html">How it works</a><a href="contributing.html">Contributing</a><a href="decisions.html">Decisions</a></nav>
     </header>
     <div class="docs-wrap">
-      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#video">Watch: who runs what</a></li><li><a href="#what">What a role is</a></li><li><a href="#jobs">The four jobs</a></li><li><a href="#setups">One computer or several</a></li><li><a href="#handover">Passing a job on</a></li><li><a href="#helpers">Phones, tablets and the house</a></li><li><a href="#transcript">Transcript</a></li></ol></aside>
+      <aside class="toc" aria-label="On this page"><h2>On this page</h2><ol><li><a href="#video">Watch: who runs what</a></li><li><a href="#what">What a role is</a></li><li><a href="#jobs">The four jobs</a></li><li><a href="#setups">One computer or several</a></li><li><a href="#handover">Passing a job on</a></li><li><a href="#sound">Sound that Lampstand plays</a></li><li><a href="#helpers">Phones, tablets and the house</a></li><li><a href="#transcript">Transcript</a></li></ol></aside>
       <article class="doc">
         <h1>Roles: who runs what</h1>
         <p class="lede">On Sunday a few jobs need doing at once: the screens, the service, the stream and the sound. Roles let a team share those jobs across their computers.</p>
@@ -43,29 +43,46 @@
 </table>
         <p>Only a computer that has screens set up can hold Projection. On any other computer the Take button for Projection is greyed out and says &ldquo;No screens are set up on this device&rdquo;.</p>
         <h2 id="setups">One computer or several</h2>
-        <p>You can start with one computer and add others later. The service works the same way; each job moves to another computer by asking, except Projection, which stays with the computer wired to the screens.</p>
-        <ul>
-          <li><b>One computer.</b> It holds all four jobs, and there is nothing to set up. OBS and Zoom, if you use them, run on the same computer.</li>
-          <li><b>Two computers.</b> The one at the projector keeps Projection, Operator and Audio. A second computer, the stream desk, takes Stream and runs OBS and Zoom. Use a wired network if you can.</li>
-          <li><b>Three computers.</b> A laptop at the back of the room takes Operator, so someone can run the service from where they can see everything. If the projector computer drops off, the Operator waits and wakes when Projection is back, and the stream desk keeps working.</li>
-          <li><b>Four computers.</b> Where the mixer is far from the projector, a computer at the sound desk takes Audio, so music and videos play straight into the mixer. Projection keeps drawing the screens and stays silent.</li>
-        </ul>
+        <p>You can start with one computer and add others later. The service works the same way; each job moves to another computer by asking, except Projection, which stays with the computer wired to the screens. In the pictures, each computer is a box and the jobs it holds are the coloured tags inside it: Projection blue, Operator green, Stream purple, Audio orange. Grey is equipment, sound from the room and the network.</p>
+        <h3>One computer</h3>
+        <p>It holds all four jobs, and there is nothing to set up. OBS and Zoom, if you use them, run on the same computer. For Zoom, bring the mixer&rsquo;s feed into the computer.</p>
+        <figure class="diagram"><img src="diagrams/roles-one-machine.svg" width="1100" height="800" alt="One computer holds Projection, Operator, Stream and Audio. It draws the picture for the projector and screens, runs OBS and Zoom, and sends the sound it plays to the mixer and the house speakers. Cameras, and microphones and the band, come in from the room."><figcaption>One computer holds every job.</figcaption></figure>
+        <h3>Two computers</h3>
+        <p>The one at the projector keeps Projection, Operator and Audio, and can sit there with nobody at it. A second computer, the stream desk, takes Stream and runs OBS and Zoom. Pair them, press Take for Stream on the stream desk, and Allow on the projector computer (you can choose &ldquo;Always allow this device&rdquo;). Use a wired network if you can. OBS on the stream desk reads its pictures from the projector computer, and Lampstand writes that computer&rsquo;s network address into OBS for you.</p>
+        <figure class="diagram"><img src="diagrams/roles-two-machines.svg" width="1100" height="800" alt="Two computers. The projector computer holds Projection, Operator and Audio, and draws the projector and stage screens. The stream desk holds Stream and runs OBS, Zoom and the virtual camera. The projector computer sends graphics and scene changes to the stream desk over the church network."><figcaption>The projector computer and the stream desk.</figcaption></figure>
+        <h3>Three computers</h3>
+        <p>A laptop at the back of the room takes Operator, so someone can run the service from where they can see everything. If the projector computer drops off, the Operator&rsquo;s controls wait and wake when Projection is back, and the stream desk keeps working.</p>
+        <figure class="diagram"><img src="diagrams/roles-three-machines.svg" width="1100" height="800" alt="Three computers. The projector computer holds Projection and Audio. A laptop at the back of the room holds Operator and sends next, back and jump to the projector computer. The stream desk holds Stream and runs OBS and Zoom."><figcaption>Projector, operator and stream desk.</figcaption></figure>
+        <h3>Four computers</h3>
+        <p>Where the mixer is far from the projector, a computer at the sound desk takes Audio, so music and videos play straight into the mixer. Projection keeps drawing the screens and stays silent.</p>
+        <figure class="diagram"><img src="diagrams/roles-four-machines.svg" width="1100" height="800" alt="Four computers. The projector computer holds Projection, a laptop at the back holds Operator, the stream desk holds Stream and runs OBS and Zoom, and a computer at the sound desk holds Audio and plays music and videos into the mixer."><figcaption>With the sound desk as a fourth computer.</figcaption></figure>
         <h2 id="handover">Passing a job on</h2>
         <p>The same four steps work for every job.</p>
         <ol>
           <li><b>Ask.</b> On the computer that wants the job, press <b>Take</b>.</li>
-          <li><b>Allow or Not now.</b> The computer holding the job sees who is asking and chooses. If they choose Not now, nothing changes.</li>
-          <li><b>Take over.</b> If the holder has been gone for two minutes (the network dropped, or the computer shut), or nobody holds the job, another computer can take it after confirming. You can change the two minutes in Setup.</li>
+          <li><b>Allow or Not now.</b> The computer holding the job sees who is asking and chooses. If they choose Not now, nothing changes. Operator and Stream also offer &ldquo;Always allow this device&rdquo;; Projection and Audio never do, because passing them clears something on air.</li>
+          <li><b>Take over.</b> If the holder has been gone for two minutes and a few seconds more (the network dropped, or the computer shut), or nobody holds the job, another computer can take it after confirming. You can change the two minutes in Setup &rsaquo; Devices, on each computer.</li>
           <li><b>A computer that comes back</b> learns it lost the job and shows a notice. It does not take the job back by itself.</li>
         </ol>
-        <p>What happens on the screen: passing Projection clears the screens, and passing Audio stops what is playing, and the question says so before you agree. Passing Operator leaves the slide up, and passing Stream leaves OBS on its current scene.</p>
+        <p>What happens on the screen: passing Projection clears the screens, and passing Audio stops what is playing, and the question says so before you agree (&ldquo;Allow and clear the screens&rdquo;, &ldquo;Allow and stop the music&rdquo;). Passing Operator leaves the slide up, and passing Stream leaves OBS on its current scene. The status bar and Setup &rsaquo; Devices always show who runs what.</p>
+        <h2 id="sound">Sound that Lampstand plays</h2>
+        <p>Videos, music and backing tracks play in the house, once, from the computer that holds Audio. Pick where the sound comes out in <b>Setup &rsaquo; Sound</b>, so it goes to the mixer&rsquo;s interface and not the projector&rsquo;s. Changing it stops what is playing.</p>
+        <ul>
+          <li><b>Planning it.</b> Turn on &ldquo;Use sound in services&rdquo; in Setup &rsaquo; Sound, then add music or a backing track in Plan. A backing track belongs to a song. Each one says whether it plays on its own or waits for someone to press play. Any computer can plan sound, and the files travel to the other computers by themselves, so they are there before the service. Plan says if a file is missing.</li>
+          <li><b>Playing it.</b> Present has a Sound box when the service has sound. It shows what is playing, with Pause, Resume, Fade out, and <b>Stop the sound now</b>, which always works. It works from any computer, not only the one that plays: the request goes to the Audio computer. A backing track that plays on its own starts when its song goes live. A music-only item has no picture, so it starts when someone presses Play in the Sound box.</li>
+          <li><b>If something is wrong,</b> the box says so in words: the sound computer is not connected, nobody runs the sound, the file is not on this computer yet, or the sound output is not working.</li>
+          <li><b>If the projector computer is away,</b> what is playing keeps playing and can still be stopped, but nothing new starts.</li>
+        </ul>
+        <h3>Sound for the stream</h3>
+        <p>Today, the sound for people watching online comes from your mixer, not from Lampstand: feed the mixer into the stream desk and use it in OBS. A common way is a cable from the mixing desk into a USB audio interface on the stream desk, used as the Zoom microphone (with &ldquo;Original sound&rdquo; on) and as an OBS audio source. If the sound arrives a little before or after the picture, delay the mixer&rsquo;s source in OBS (Advanced Audio Properties, Sync Offset) until they match. A way to send Lampstand&rsquo;s own sound to the stream through OBS is planned; it is not in 0.8.0.</p>
         <h2 id="helpers">Phones, tablets and the house</h2>
         <ul>
           <li><b>Phones and tablets</b> in a browser, such as the tablet remote, are helpers. They send next, back and blank to the computer that runs the screens, but they never hold a job.</li>
-          <li><b>Stage screens</b> for the band can be a second display on the projector computer, or a web page on a tablet on a music stand.</li>
-          <li><b>Cameras, microphones and the band</b> do not go through Lampstand. Cameras plug into the stream desk&rsquo;s OBS, and the microphones come from your mixing desk.</li>
+          <li><b>Stage screens and confidence screens</b> for the band or the speaker are not a job. They can be a second display on the projector computer, or, where the stage is far away, a web page on a tablet on a music stand. That page is planned and is built separately from roles.</li>
+          <li><b>Cameras, microphones and the band</b> do not go through Lampstand, and no job owns them. Cameras plug into the stream desk (USB, or an HDMI capture box) or come into OBS over the network. Microphones and the house mix come from your mixing desk.</li>
         </ul>
-        <p>The full design is in the <a href="https://github.com/incrhst/lampstand/blob/main/docs/roles.md">roles guide on GitHub</a> and in <a href="https://github.com/incrhst/lampstand/blob/main/docs/decisions/0010-roles-and-handoff.md">decision 0010</a>.</p>
+        <figure class="diagram"><img src="diagrams/roles-confidence-screen.svg" width="1100" height="800" alt="A confidence screen is either a second display on the projector computer, or a web page on a tablet. The page only shows what the projector computer shows, and never affects the main screens if it drops off the network."><figcaption>Two ways to give the band or the speaker a screen.</figcaption></figure>
+        <p>The full design is in the <a href="https://github.com/incrhst/lampstand/blob/main/docs/roles.md">roles guide on GitHub</a> and in <a href="https://github.com/incrhst/lampstand/blob/main/docs/decisions/0010-roles-and-handoff.md">decision 0010</a>. The end of the guide lists what 0.8.0 does and what comes later.</p>
         <h2 id="transcript">Transcript</h2>
         <details>
           <summary>Read the video&rsquo;s words</summary>
