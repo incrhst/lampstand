@@ -284,7 +284,7 @@ export function streamOfflineLine(team: TeamStatus | null | undefined): string |
 /** Setup › Devices: the takeover time control. */
 export const TAKEOVER_LABEL = "Take over without asking after";
 export const TAKEOVER_HELP =
-  "If the device that runs a job has been offline this long, another device can take the job without asking. Never while it is connected. Set on each device.";
+  "If the device that runs a job has been offline this long, plus ten seconds, another device can take the job without asking. Never while it is connected. Set on each device.";
 export function takeoverOption(seconds: number): string {
   return `${howLong(seconds)} offline`;
 }

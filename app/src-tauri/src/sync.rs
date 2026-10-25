@@ -249,10 +249,7 @@ pub type MusicStop = Arc<dyn Fn() + Send + std::marker::Sync>;
 /// The sync node and the server it listens on.
 pub struct Sync {
     node: Arc<SyncNode>,
-    server: Mutex<Option<Server>>,
-    /// Where the server listens, kept for [`Sync::restore`].
-    addr: SocketAddr,
-    backend: Arc<AppBackend>,
+    server: Server,
     mirrored: Arc<Mirrored>,
     music_stop: Arc<Mutex<Option<MusicStop>>>,
 }
@@ -464,35 +461,25 @@ impl Sync {
                 }
             }
         });
-        let addr = server.local_addr();
         Ok(Self {
             node,
-            server: Mutex::new(Some(server)),
-            addr,
-            backend,
+            server,
             mirrored,
             music_stop,
         })
     }
 
-    /// For tests: the network is cut. Stops listening and drops every
-    /// connection; paired devices reconnect with backoff once
-    /// [`Sync::restore`] listens again.
+    /// For tests: the network is cut. Every connection is dropped and none
+    /// can register until [`Sync::restore`] (see `SyncNode::set_offline`).
+    /// The port stays bound, so another process cannot take it meanwhile.
     #[doc(hidden)]
     pub fn cut(&self) {
-        // Offline first: from here no connection can register, whichever
-        // way it was on its way (accepted, or dialled by this node).
         self.node.set_offline(true);
-        *self.server.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
-    /// For tests: listens again on the same port after [`Sync::cut`].
+    /// For tests: the network is back after [`Sync::cut`].
     #[doc(hidden)]
     pub async fn restore(&self) -> Result<(), String> {
-        let server = Server::start(self.addr, self.backend.clone())
-            .await
-            .map_err(|e| e.to_string())?;
-        *self.server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server);
         self.node.set_offline(false);
         Ok(())
     }
@@ -514,7 +501,7 @@ impl Sync {
     }
 
     pub fn local_addr(&self) -> SocketAddr {
-        self.addr
+        self.server.local_addr()
     }
 
     /// `host:port` for URLs other machines (OBS) open: this machine's LAN

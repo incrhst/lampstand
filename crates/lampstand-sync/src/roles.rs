@@ -24,7 +24,7 @@
 //!   ([`Answer::Busy`]).
 //! - It may *take over* without asking ([`Roles::claim`]) only when the
 //!   holder has been offline for [`Roles::takeover_after`] (two minutes by
-//!   default), or when nobody holds the role.
+//!   default, and then ten seconds more: [`TAKEOVER_MARGIN`]), or when nobody holds the role.
 //! - A holder that comes back finds a newer record and drops the role, with
 //!   a [`Notice`]. It never resumes by itself.
 //! - "Always allow this device" is remembered for Operator and Stream, never
@@ -415,6 +415,12 @@ pub trait Net {
     fn away(&self, device: DeviceKey) -> Option<Duration>;
     /// Whether the device is paired with this one, connected or not.
     fn paired(&self, device: DeviceKey) -> bool;
+    /// The takeover setting the device last told this one about, if it has.
+    /// A claimant waits at least this long for a holder (and never less than
+    /// its own setting): see [`TAKEOVER_MARGIN`].
+    fn takeover_of(&self, _device: DeviceKey) -> Option<Duration> {
+        None
+    }
 }
 
 /// How this device could take a role right now.
@@ -814,16 +820,34 @@ impl Roles {
             Holder::Me => Standing::Holding,
             Holder::Gone => Standing::Open,
             Holder::Online => Standing::Ask,
-            // The takeover time, and then the margin that lets the holder's
-            // own count of this device's absence reach it too.
-            Holder::Offline(offline) if offline >= self.takeover_after + TAKEOVER_MARGIN => {
-                Standing::TakeOver { offline }
+            Holder::Offline(offline) => {
+                let wait = self.claim_wait(role, net);
+                if offline >= wait {
+                    Standing::TakeOver { offline }
+                } else {
+                    Standing::Wait {
+                        offline,
+                        remaining: wait - offline,
+                    }
+                }
             }
-            Holder::Offline(offline) => Standing::Wait {
-                offline,
-                remaining: self.takeover_after + TAKEOVER_MARGIN - offline,
-            },
         }
+    }
+
+    /// How long the holder of `role` must have been silent before this
+    /// device claims: the longer of its own takeover time and the one the
+    /// holder last advertised (the holder judges a claim by its own setting),
+    /// then the margin that lets the holder's count of this device's absence
+    /// reach it too. What the holder advertised is honoured up to
+    /// [`MAX_TAKEOVER`], so a device that lies about it can delay a takeover
+    /// of its own role by at most that, and never hurry one.
+    fn claim_wait(&self, role: Role, net: &dyn Net) -> Duration {
+        let theirs = self
+            .record(role)
+            .holder
+            .and_then(|h| net.takeover_of(h))
+            .map_or(Duration::ZERO, |d| d.min(MAX_TAKEOVER));
+        self.takeover_after.max(theirs) + TAKEOVER_MARGIN
     }
 
     // ---- Taking a role -------------------------------------------------
@@ -1983,21 +2007,55 @@ mod tests {
         }
     }
 
-    /// Why the margin is what it is: two devices' counts of the same silence
-    /// differ by at most one heartbeat (plus a late timer), so a claimant
-    /// that waited the takeover time plus the margin is believed by a
-    /// judge that asks only for the takeover time. The judge keeps its
-    /// strict rule, so a claimant cannot lie its way past it.
+    /// A holder with a longer takeover setting than the claimant's: the
+    /// claimant waits by the holder's, plus the margin. A shorter one changes
+    /// nothing, and an absurd one is capped at the longest setting.
     #[test]
-    fn the_margin_covers_the_difference_between_two_counts_of_the_same_silence() {
-        assert!(TAKEOVER_MARGIN >= HEARTBEAT * 2);
-        for takeover in [secs(1), secs(2), DEFAULT_TAKEOVER, secs(3600)] {
-            let claimant_waited = takeover + TAKEOVER_MARGIN;
-            for judge_sees_less_by in 0..=HEARTBEAT.as_secs() + 3 {
-                let judge_count = claimant_waited - secs(judge_sees_less_by);
-                assert!(judge_count >= takeover, "{takeover:?} {judge_sees_less_by}");
+    fn a_claimant_waits_by_the_holders_takeover_setting_when_it_is_longer() {
+        struct Advertised<'a>(Peers<'a>, Option<Duration>);
+        impl Net for Advertised<'_> {
+            fn has_peers(&self) -> bool {
+                self.0.has_peers()
+            }
+            fn holder(&self, d: DeviceKey) -> Holder {
+                self.0.holder(d)
+            }
+            fn away(&self, d: DeviceKey) -> Option<Duration> {
+                self.0.away(d)
+            }
+            fn paired(&self, d: DeviceKey) -> bool {
+                self.0.paired(d)
+            }
+            fn takeover_of(&self, _: DeviceKey) -> Option<Duration> {
+                self.1
             }
         }
+        let (_, mut b) = pair();
+        b.set_takeover_after(secs(60));
+        let standing = |b: &Roles, offline: u64, theirs: Option<Duration>| {
+            let f = move |_: DeviceKey| Holder::Offline(secs(offline));
+            let n = Advertised(net(true, &f), theirs);
+            b.standing(Role::Audio, &n)
+        };
+        let opens = |s: Standing| matches!(s, Standing::TakeOver { .. });
+        // Holder 120 s, claimant 60 s: not before 130 s.
+        assert!(!opens(standing(&b, 70, Some(secs(120)))));
+        assert!(!opens(standing(&b, 129, Some(secs(120)))));
+        assert!(opens(standing(&b, 130, Some(secs(120)))));
+        // Nothing advertised, or a shorter holder: the claimant's own.
+        assert!(opens(standing(&b, 70, None)));
+        assert!(opens(standing(&b, 70, Some(secs(30)))));
+        // A lie is honoured only up to the longest setting there is.
+        let huge = Some(secs(u64::from(u32::MAX)));
+        assert!(!opens(standing(&b, 24 * 3600, huge)));
+        assert!(opens(standing(&b, 24 * 3600 + 10, huge)));
+        assert_eq!(
+            match standing(&b, 100, Some(secs(120))) {
+                Standing::Wait { remaining, .. } => remaining,
+                other => panic!("{other:?}"),
+            },
+            secs(30)
+        );
     }
 
     /// The judge's rule is unchanged and strict: a claim against it is

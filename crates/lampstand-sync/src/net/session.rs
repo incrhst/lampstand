@@ -85,6 +85,7 @@ pub(crate) async fn run(
     for frame in node.record_frames() {
         s.send(frame);
     }
+    s.send(node.takeover_frame());
     node.session_opened(peer);
     // The sweep: offer every document.
     let repo = node.repo.clone();
@@ -311,6 +312,7 @@ impl State {
                 self.node.scene_cue_received(self.peer, run, seq, scene)
             }
             Frame::ObsCueAck { run, seq } => self.node.scene_cue_ack_received(self.peer, run, seq),
+            Frame::Takeover { secs } => self.node.takeover_received(self.peer, secs),
             Frame::Beat => {}
             // Handshake frames after the handshake: ignore.
             Frame::Hello(_) | Frame::Proof { .. } | Frame::Refused { .. } => {}

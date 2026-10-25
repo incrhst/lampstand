@@ -90,6 +90,17 @@ pub(crate) enum Frame {
     RoleYield {
         role: Role,
     },
+    /// How long the sender waits before it takes a role from a device that
+    /// has gone, in seconds (its takeover setting). Sent when a session opens
+    /// and when the setting changes. The receiver, when it is the one that
+    /// would claim from the sender, waits at least this long too, so a device
+    /// with a shorter setting does not claim before the sender would count the
+    /// other as gone. It can only make a device wait longer than its own
+    /// setting, never shorter, and what is honoured is capped at the longest
+    /// setting there is.
+    Takeover {
+        secs: u32,
+    },
     /// Proof of life, every few seconds, so a silent connection is told
     /// from a quiet one.
     Beat,
@@ -313,6 +324,7 @@ mod tests {
                     sig: vec![5; 64],
                 }],
             },
+            Frame::Takeover { secs: 120 },
             Frame::RoleAsk { role: Role::Audio },
             Frame::RoleCancel { role: Role::Stream },
             Frame::RoleAnswer {

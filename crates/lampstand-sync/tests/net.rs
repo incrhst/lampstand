@@ -66,6 +66,24 @@ impl Peer {
     }
 }
 
+/// Sets each device's takeover time and waits until the other has heard it:
+/// a device that claims waits by the longer of its own setting and the
+/// holder's, and a setting still in flight when the network is cut has not
+/// reached the other side.
+async fn set_takeovers(a: &Peer, a_secs: u64, b: &Peer, b_secs: u64) {
+    a.node.set_takeover_after(Duration::from_secs(a_secs));
+    b.node.set_takeover_after(Duration::from_secs(b_secs));
+    until(
+        Duration::from_secs(20),
+        "the takeover settings to cross",
+        || {
+            b.node.advertised_takeover(a.node.device()) == Some(Duration::from_secs(a_secs))
+                && a.node.advertised_takeover(b.node.device()) == Some(Duration::from_secs(b_secs))
+        },
+    )
+    .await;
+}
+
 fn serve(node: Arc<SyncNode>, listener: TcpListener) -> JoinHandle<()> {
     tokio::spawn(async move {
         // Aborting the server drops the set, which aborts every accepted
@@ -864,8 +882,7 @@ async fn declining_keeps_the_presenter_and_tells_the_asker() {
 async fn takeover_waits_for_the_timeout_and_the_old_presenter_yields_on_return() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
     // A claim against a device is judged by that device's own takeover time.
-    sanctuary.node.set_takeover_after(Duration::from_secs(2));
-    office.node.set_takeover_after(Duration::from_secs(2));
+    set_takeovers(&sanctuary, 2, &office, 2).await;
 
     // A cut network cuts both ways: if the office kept listening, the
     // sanctuary's own dialler could reach it again and every reconnect
@@ -1558,8 +1575,7 @@ async fn a_cut_network_cannot_split_a_role_between_two_devices() {
 async fn takeover_of_any_role_waits_for_the_timeout_and_the_old_holder_yields_on_return() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
     // A claim against a device is judged by that device's own takeover time.
-    sanctuary.node.set_takeover_after(Duration::from_secs(2));
-    office.node.set_takeover_after(Duration::from_secs(2));
+    set_takeovers(&sanctuary, 2, &office, 2).await;
     sanctuary.cut();
     office.cut();
     until(Duration::from_secs(20), "disconnected", || {
@@ -2241,8 +2257,7 @@ async fn a_device_cut_off_during_hand_overs_catches_up_when_it_meets_them_again(
 #[tokio::test(flavor = "multi_thread")]
 async fn a_holder_that_restarted_yields_every_role_taken_while_it_was_down() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
-    sanctuary.node.set_takeover_after(Duration::from_secs(2));
-    office.node.set_takeover_after(Duration::from_secs(2));
+    set_takeovers(&sanctuary, 2, &office, 2).await;
     sanctuary.cut();
     office.cut();
     until(Duration::from_secs(20), "disconnected", || {
@@ -2324,10 +2339,12 @@ async fn a_holder_whose_laptop_slept_with_a_live_connection_yields_on_waking() {
     let (mut sanctuary, mut office) = paired_and_leased().await;
     // The sanctuary waits a minute before it lets go; the office PC only two
     // seconds. Only the sleep makes the sanctuary's absence long enough.
-    sanctuary.node.set_takeover_after(Duration::from_secs(60));
-    office.node.set_takeover_after(Duration::from_secs(2));
+    set_takeovers(&sanctuary, 60, &office, 2).await;
     // Ten minutes asleep, with the connection up.
     sanctuary.node.skip_wall_clock(Duration::from_secs(600));
+    // The office waits by the sanctuary's minute (and the margin), not only
+    // its own two seconds: a minute and ten seconds pass for it.
+    office.node.skip_wall_clock(Duration::from_secs(75));
     sanctuary.cut();
     office.cut();
     until(Duration::from_secs(20), "disconnected", || {

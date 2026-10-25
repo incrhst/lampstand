@@ -377,6 +377,8 @@ struct Peers {
     /// The network is cut (see [`SyncNode::set_offline`]): no connection may
     /// be registered.
     offline: bool,
+    /// The takeover setting each paired device last advertised.
+    takeover: HashMap<DeviceKey, Duration>,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -446,6 +448,7 @@ struct Reach {
     /// How long each connected device's present connection has been open.
     session_age: HashMap<DeviceKey, Duration>,
     fresh_session: Duration,
+    takeover: HashMap<DeviceKey, Duration>,
 }
 
 impl Reach {
@@ -475,6 +478,10 @@ impl Net for Reach {
 
     fn paired(&self, device: DeviceKey) -> bool {
         self.paired.contains(&device)
+    }
+
+    fn takeover_of(&self, device: DeviceKey) -> Option<Duration> {
+        self.takeover.get(&device).copied()
     }
 
     fn away(&self, device: DeviceKey) -> Option<Duration> {
@@ -725,6 +732,7 @@ impl SyncNode {
             peers.away_before.remove(&device);
             peers.session_started.remove(&device);
             peers.recent_away.remove(&device);
+            peers.takeover.remove(&device);
         }
         if lock(&self.contacts).remove(&device).is_some() {
             self.save_contacts_in_background();
@@ -1065,6 +1073,7 @@ impl SyncNode {
         Reach {
             session_age,
             fresh_session: *lock(&self.fresh_session),
+            takeover: peers.takeover.clone(),
             away_before: peers.away_before.clone(),
             paired,
             connected,
@@ -1322,7 +1331,39 @@ impl SyncNode {
     pub fn set_takeover_after(&self, after: Duration) {
         lock(&self.roles).set_takeover_after(after);
         self.save_roles();
+        // The devices that would claim from this one wait by it too.
+        let frame = self.takeover_frame();
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(Control::Frame(frame.clone()));
+        }
         self.bump();
+    }
+
+    /// The takeover setting a paired device last advertised (tests).
+    #[doc(hidden)]
+    pub fn advertised_takeover(&self, device: DeviceKey) -> Option<Duration> {
+        lock(&self.peers).takeover.get(&device).copied()
+    }
+
+    /// This device's takeover setting, for the devices it is connected to.
+    pub(crate) fn takeover_frame(&self) -> Frame {
+        let secs = lock(&self.roles).takeover_after().as_secs();
+        Frame::Takeover {
+            secs: u32::try_from(secs).unwrap_or(u32::MAX),
+        }
+    }
+
+    /// A paired device says how long it waits before taking a role from a
+    /// device that has gone. Kept (within the limits of the setting) so this
+    /// device waits at least as long before claiming from it.
+    pub(crate) fn takeover_received(&self, from: DeviceKey, secs: u32) {
+        let setting = Duration::from_secs(u64::from(secs))
+            .clamp(crate::roles::MIN_TAKEOVER, crate::roles::MAX_TAKEOVER);
+        let mut peers = lock(&self.peers);
+        if peers.takeover.insert(from, setting) != Some(setting) {
+            drop(peers);
+            self.bump();
+        }
     }
 
     /// A role's record changed here (a claim, a hand-over, a newer record
