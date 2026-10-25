@@ -685,11 +685,18 @@ async fn update_request(
     use tauri_plugin_updater::UpdaterExt;
 
     let status = |u: &UpdaterState| {
+        // One lock for both: a guard lives to the end of its statement, so
+        // a second `lock` in the same expression waits on this thread
+        // forever, and every request after it waits too.
+        let (blocked, caution) = {
+            let app = lock(&state.app);
+            (app.update_blocker(), app.update_caution())
+        };
         Response::Update(UpdateStatus {
             current: app.package_info().version.to_string(),
             state: u.state.clone(),
-            blocked: lock(&state.app).update_blocker(),
-            caution: lock(&state.app).update_caution(),
+            blocked,
+            caution,
         })
     };
 
