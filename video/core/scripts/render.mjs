@@ -20,14 +20,15 @@ const outDir = resolve("out");
 mkdirSync(outDir, { recursive: true });
 
 const serveUrl = await bundle({ entryPoint: join(dir, "index.ts"), publicDir: resolve("public") });
-const comp = await selectComposition({ serveUrl, id: "Video", inputProps: props });
+const id = props.composition ?? "Video"; // e.g. "Tour" for the site's fly-over (videos/hero-tour.json)
+const comp = await selectComposition({ serveUrl, id, inputProps: props });
 console.log(`composition: ${comp.width}x${comp.height} ${comp.fps}fps ${(comp.durationInFrames / comp.fps).toFixed(1)}s`);
 
 if (flag("--sheet")) {
   // Each scene's hold point: just before its exit starts. Scene lengths mirror MasterVideo (calculateMetadata sums them).
   const { sceneFrames } = await import("../src/duration.ts");
-  const { defaultSec } = await import(join(dir, "duration.ts"));
-  const { VideoProps } = await import(join(dir, "schema.ts"));
+  const { compositions } = await import(join(dir, "compositions.ts"));
+  const { defaultSec, schema: VideoProps } = compositions[id];
   const sheetDir = join(outDir, `${slug}-sheet`);
   rmSync(sheetDir, { recursive: true, force: true });
   mkdirSync(sheetDir, { recursive: true });
@@ -41,9 +42,14 @@ if (flag("--sheet")) {
     start += n;
   }
   const cols = comp.width < comp.height ? 5 : 4;
-  const rows = Math.ceil(props.scenes.length / cols);
   const tileW = comp.width < comp.height ? 360 : 480;
-  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", join(sheetDir, "%02d.png"), "-vf", `scale=${tileW}:-1,tile=${cols}x${rows}:padding=8:color=0x222222`, "-frames:v", "1", join(outDir, `${slug}-sheet.png`)]);
+  // xstack, not the tile filter: ffmpeg 8's tile drops all but the last frame of an image sequence here.
+  const n = props.scenes.length;
+  const ins = Array.from({ length: n }, (_, i) => ["-i", join(sheetDir, String(i + 1).padStart(2, "0") + ".png")]).flat();
+  const cell = (k, d) => (k ? Array(k).fill(d).join("+") : "0");
+  const scaled = Array.from({ length: n }, (_, i) => `[${i}:v]scale=${tileW}:-1,pad=iw+8:ih+8:0:0:color=0x222222[v${i}]`).join(";");
+  const graph = n === 1 ? scaled.replace("[v0]", "") : `${scaled};${Array.from({ length: n }, (_, i) => `[v${i}]`).join("")}xstack=inputs=${n}:layout=${Array.from({ length: n }, (_, i) => `${cell(i % cols, "w0")}_${cell(Math.floor(i / cols), "h0")}`).join("|")}:fill=0x222222`;
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...ins, "-filter_complex", graph, "-frames:v", "1", join(outDir, `${slug}-sheet.png`)]);
   console.log(`contact sheet: out/${slug}-sheet.png (${props.scenes.length} scenes)`);
 } else {
   const out = val("--out") ?? join(outDir, `${slug}.mp4`);
