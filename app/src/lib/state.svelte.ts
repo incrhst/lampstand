@@ -9,6 +9,8 @@ import {
   type ObsRequest,
   type ObsView,
   type OutputConfig,
+  type SoundRequest,
+  type SoundView,
   type Overlay,
   type SlideView,
   type TeamRequest,
@@ -45,6 +47,10 @@ class LiveState {
   churchVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** What plays, and who plays it (the Audio role); null until first asked. */
+  sound: SoundView | null = $state(null);
+  /** When `sound` was said, in ms, so its position can move on with the clock. */
+  soundAt: number = $state(0);
   /** Where sync with the paired devices stands; null until first asked. */
   sync: SyncSummary | null = $state(null);
   /** The church plans or presents for real, not just the Welcome service (see tips.ts). */
@@ -110,6 +116,10 @@ onEvent((event) => {
       break;
     case "Obs":
       live.obs = event.data;
+      break;
+    case "Sound":
+      live.sound = event.data;
+      live.soundAt = Date.now();
       break;
     case "SyncStatus":
       live.sync = event.data.sync;
@@ -271,6 +281,28 @@ export async function obs(req: ObsRequest): Promise<ObsView> {
   const view = await request({ area: "Obs", request: req }, "Obs");
   live.obs = view;
   return view;
+}
+
+/**
+ * Asks for sound to play, pause, stop or be cut, and keeps `live.sound`
+ * current with the answer. Throws on failure, like `request`: the message
+ * is the core's own sentence (the sound device is away, nobody runs the
+ * sound, and so on).
+ */
+export async function sound(req: SoundRequest): Promise<SoundView> {
+  const view = await request({ area: "Sound", request: req }, "Sound");
+  live.sound = view;
+  live.soundAt = Date.now();
+  return view;
+}
+
+/** Refetches what plays, reporting a failure in the status bar. */
+export async function refreshSound() {
+  try {
+    await sound("Status");
+  } catch (e) {
+    report(e);
+  }
 }
 
 /** Asks sync where it stands; a sync engine that is not running shows as an error. */
