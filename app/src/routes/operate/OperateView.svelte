@@ -1,6 +1,6 @@
 <!-- Operator panel, in two views chosen in the bar (lib/presentView.ts). The
      wall (the default) shows every item's slides in the order of service,
-     with what is on air, Next and the controls in a dock on the right.
+     marked on the cards and the controls in a strip above.
      Classic slides is the panel below. -->
 <!-- Classic slides: the running order on the left, what is on air and
      the slides of the item in view in the middle, Next and notes on the
@@ -389,6 +389,8 @@
   // A deck on air gets the presenter view, whose Next is the next click.
   let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
+  /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
+  let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
   let liveWidth = $derived(presenting || mediaOf(live.shown?.item) ? 1280 : 480);
@@ -764,9 +766,57 @@
       {/if}
       {#if wall}
       <!-- The wall: every item's slides at once, in the order of service,
-           so any slide is a click away. What is on air, Next and the
-           controls stay in the dock beside it. -->
+           so any slide is a click away. The LIVE and NEXT marks on the
+           cards say what is on air and what Next shows, so there is no
+           live preview; a strip above keeps the controls and the Sound box. -->
       <section class="pane wall-pane" aria-label="The whole service">
+        <div class="wall-strip">
+          <div class="wall-controls">
+            <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+            <span class="muted wall-where">
+              {output?.name ?? "No screen yet"}{#if liveItem && live.live}{" "}· {liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{/if}
+            </span>
+            <span class="spacer"></span>
+            <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
+            <Button size="small" icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
+            <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
+            <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+          </div>
+          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
+          {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+          {#if stepped && liveItem && live.live && live.liveSlide}
+            {@const left = live.liveSlide.steps - live.live.step}
+            <section class="wall-steps" aria-label="Builds on this slide">
+              <p class="wall-steps-head">
+                <strong>{liveItem.title} · {live.liveSlide.label ?? live.live.slide + 1}</strong>
+                <span class="muted">{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}</span>
+              </p>
+              <div class="wall-steps-pair">
+                <figure>
+                  <SlidePreview lines={live.liveSlide.lines} footer={live.liveSlide.footer} image={thumbFor(liveItem.id, live.live.slide, live.live.step, LARGE_WIDTH)} overlay={live.overlay} size="small" />
+                  <figcaption class="muted">On screen</figcaption>
+                </figure>
+                <figure>
+                  {#if clickNext}
+                    <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
+                  {:else}
+                    <SlidePreview empty="End of service" size="small" />
+                  {/if}
+                  <figcaption class="muted">Next click</figcaption>
+                </figure>
+              </div>
+            </section>
+          {/if}
+          <div class="wall-boxes">
+            <SoundPanel {items} {service} />
+            {#if live.loaded && liveSection}
+              <LiveLoop loaded={live.loaded} section={liveSection} />
+            {/if}
+            {#if tip}
+              <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
+            {/if}
+          </div>
+        </div>
         <div class="wall-body">
           {#each groups as group (group.section?.header ?? "ungrouped")}
             {@const section = group.section}
@@ -815,7 +865,11 @@
                         <p class="muted">
                           {item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
                         </p>
-                        {#if i === liveIndex}<p class="on-air-tag"><Dot tone="live" size={6} />On air</p>{/if}
+                        {#if i === liveIndex}
+                          <p class="on-air-tag"><Dot tone="live" size={6} />On air</p>
+                          {#if presenting && live.liveSlide?.notes}<p class="wall-notes"><span class="faint">Speaker notes</span>{live.liveSlide.notes}</p>{/if}
+                          {#if notes}<p class="wall-notes"><span class="faint">Notes</span>{notes}</p>{/if}
+                        {/if}
                       </div>
                     </div>
                     {#if item.slides.length > 0}
@@ -834,33 +888,6 @@
           {/each}
         </div>
       </section>
-
-      <aside class="pane pane-side dock" aria-label="On screen now">
-        {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-        {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
-        <div>{@render liveArea()}</div>
-        {@render nextPreview()}
-        {#if live.loaded && liveSection}
-          <LiveLoop loaded={live.loaded} section={liveSection} />
-        {/if}
-        <SoundPanel {items} {service} />
-        <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
-        {#if tip}
-          <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
-        {/if}
-        {#if presenting && live.liveSlide?.notes}
-          <section>
-            <h2 class="title">Speaker notes</h2>
-            <p class="notes">{live.liveSlide.notes}</p>
-          </section>
-        {/if}
-        {#if notes}
-          <section>
-            <h2 class="title">Notes</h2>
-            <p class="notes">{notes}</p>
-          </section>
-        {/if}
-      </aside>
       {:else}
       <nav class="pane pane-side queue" aria-label="Service order">
         <div class="pane-head">
@@ -1407,9 +1434,72 @@
   .slide.next {
     box-shadow: 0 0 0 2px var(--gold);
   }
-  /* The wall: the service on the left, the dock on the right. */
+  /* The wall: the whole service, with a strip of controls above it. */
   .grid.wall {
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wall-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .wall-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .wall-where {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The Sound box, the group's loop and a tip, side by side when there is room. */
+  .wall-boxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: 0.6rem;
+    align-items: start;
+  }
+  .wall-boxes:empty {
+    display: none;
+  }
+  .wall-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .wall-steps-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    font-size: 0.8rem;
+  }
+  .wall-steps-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 18rem));
+    gap: 0.75rem;
+  }
+  .wall-steps-pair figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+  }
+  .wall-notes {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
   }
   .wall-body {
     flex: 1;
@@ -1487,25 +1577,9 @@
   }
   /* A narrow window: the label sits above the slides. */
   @media (max-width: 900px) {
-    .grid.wall {
-      grid-template-columns: minmax(0, 1fr) 320px;
-    }
     .wall-row {
       grid-template-columns: minmax(0, 1fr);
     }
-  }
-  .dock {
-    border-left: 1px solid var(--line);
-    overflow-y: auto;
-    padding: 1rem;
-    gap: 1.25rem;
-  }
-  /* The dock is narrow: Blank wraps under the others rather than off the edge. */
-  .dock .transport {
-    flex-wrap: wrap;
-  }
-  .dock .no-screen {
-    margin-bottom: 0;
   }
   .side {
     border-left: 1px solid var(--line);
