@@ -427,6 +427,14 @@ pub enum LibraryRequest {
     },
     GetSong(SongId),
     PutSong(Song),
+    /// Reads lyrics pasted into the app and answers `Response::ParsedSong`
+    /// with the song it would make and what it guessed, without saving
+    /// anything. `title` is what the person typed, if anything. The person
+    /// checks the result and saves it with `PutSong`.
+    ParseLyrics {
+        text: String,
+        title: Option<String>,
+    },
     ListThemes,
     PutTheme(Theme),
     /// Deletes a theme. Refused for the last one and for the Starter
@@ -1415,6 +1423,8 @@ pub enum Response {
         message: String,
     },
     Song(Song),
+    /// The song `ParseLyrics` made, not yet saved.
+    ParsedSong(ParsedSong),
     Songs(Vec<SongHit>),
     Themes(Vec<Theme>),
     Translations(Vec<Translation>),
@@ -1494,6 +1504,17 @@ pub struct SoundFile {
     pub name: String,
     /// How long it plays, if the file says.
     pub length_ms: Option<u32>,
+}
+
+/// Pasted lyrics, read.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParsedSong {
+    pub song: Song,
+    /// What was guessed or left out, in words for the person.
+    pub warnings: Vec<String>,
+    /// A song already in the library with this title, if there is one.
+    pub same_title: Option<SongId>,
 }
 
 /// Where one sound file of a service stands on this device.

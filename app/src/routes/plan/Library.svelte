@@ -45,6 +45,8 @@
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
   import SongSelectCard from "./SongSelectCard.svelte";
   import SongEditor from "./SongEditor.svelte";
+  import PasteSong from "./PasteSong.svelte";
+  import { words as pasteWords } from "../../lib/pasteSong";
 
   type Item = NonNullable<Service["items"][string]>;
 
@@ -321,6 +323,7 @@
 
   /** The song open in the editor. */
   let editing: string | null = $state(null);
+  let pasting = $state(false);
 
   // --- Adding --------------------------------------------------------------
 
@@ -702,6 +705,9 @@
 
 <svelte:window onkeydown={onwindowkey} {onpaste} />
 
+{#if pasting}
+  <PasteSong {service} {onadd} onclose={() => (pasting = false)} />
+{/if}
 {#if editing}
   <SongEditor song={editing} onclose={() => (editing = null)} />
 {/if}
@@ -749,6 +755,7 @@
         <Button size="small" icon="upload" onclick={() => browse()} disabled={busy} title="Add files, or drop them anywhere on the library">
           Add files
         </Button>
+        <Button size="small" variant="ghost" icon="song" onclick={() => (pasting = true)} label={pasteWords.button} title={pasteWords.buttonTitle} />
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
         {#if onhide}
           <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
@@ -806,7 +813,9 @@
         <p class="muted small center">
           Scripture is built in. Try
           <button type="button" class="link" onclick={() => tryQuery("John 3:16")}>John 3:16</button>
-          or <button type="button" class="link" onclick={() => tryQuery("Ps 23")}>Ps 23</button>
+          or <button type="button" class="link" onclick={() => tryQuery("Ps 23")}>Ps 23</button>.
+          Have the words of a song?
+          <button type="button" class="link" onclick={() => (pasting = true)}>{pasteWords.button}</button>
         </p>
       </div>
     {/if}

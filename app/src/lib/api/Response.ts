@@ -10,6 +10,7 @@ import type { LoadedService } from "./LoadedService";
 import type { MediaFile } from "./MediaFile";
 import type { ObsView } from "./ObsView";
 import type { OutputConfig } from "./OutputConfig";
+import type { ParsedSong } from "./ParsedSong";
 import type { Passage } from "./Passage";
 import type { RemotesView } from "./RemotesView";
 import type { Service } from "./Service";
@@ -27,7 +28,7 @@ import type { Theme } from "./Theme";
 import type { Translation } from "./Translation";
 import type { UpdateStatus } from "./UpdateStatus";
 
-export type Response = { "type": "Ok" } | { "type": "Error", "data": { message: string, } } | { "type": "Song", "data": Song } | { "type": "Songs", "data": Array<SongHit> } | { "type": "Themes", "data": Array<Theme> } | { "type": "Translations", "data": Array<Translation> } | { "type": "Passage", "data": { passage: Passage, 
+export type Response = { "type": "Ok" } | { "type": "Error", "data": { message: string, } } | { "type": "Song", "data": Song } | { "type": "ParsedSong", "data": ParsedSong } | { "type": "Songs", "data": Array<SongHit> } | { "type": "Themes", "data": Array<Theme> } | { "type": "Translations", "data": Array<Translation> } | { "type": "Passage", "data": { passage: Passage, 
 /**
  * The translation the verses are from: the one typed after the
  * reference, or else the one asked for.
