@@ -76,8 +76,13 @@ pub struct SoundView {
     /// The sound output is open and working (only said where it plays).
     pub output_ok: bool,
     pub playing: Option<SoundPlaying>,
-    /// Why the last sound did not play, in words, if it did not.
+    /// Why the last sound did not play, or why the sound output is not
+    /// working, in plain words, if so. Said on every device that shows the
+    /// sound, not only the one that plays it.
     pub problem: Option<String>,
+    /// The item `problem` belongs to, so a screen can show it next to that
+    /// item ("" or `None` when it is about the sound output as a whole).
+    pub problem_item: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

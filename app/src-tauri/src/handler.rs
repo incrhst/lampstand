@@ -75,7 +75,7 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
-pub use audio::{AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED};
+pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
 use sound::SoundSync;

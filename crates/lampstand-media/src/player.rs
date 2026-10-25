@@ -8,10 +8,11 @@
 //! must stay on the thread that made it), so nothing here waits on audio
 //! hardware.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
@@ -183,13 +184,44 @@ fn sample(pcm: &Pcm, at: f64, c: usize, out_channels: usize) -> f32 {
     pcm.at(i, ch) * (1.0 - t) + pcm.at(i + 1, ch) * t
 }
 
+/// Why a sound file did not load, in the terms the screens care about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadKind {
+    /// A kind of file Lampstand cannot play.
+    Unsupported,
+    /// The file could not be read, or is damaged, or holds no sound.
+    Unreadable,
+}
+
+/// A sound file that did not load: what kind of trouble, and the details for
+/// the log (never for a screen: they can hold a path).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadError {
+    pub kind: LoadKind,
+    pub detail: String,
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.detail)
+    }
+}
+
 /// Decodes the audio of the file at `path`, or says why not.
-pub fn load(path: &std::path::Path) -> Result<Arc<Pcm>, String> {
-    let bytes = Arc::new(std::fs::read(path).map_err(|e| e.to_string())?);
+pub fn load(path: &std::path::Path) -> Result<Arc<Pcm>, LoadError> {
+    let unreadable = |detail: String| LoadError {
+        kind: LoadKind::Unreadable,
+        detail,
+    };
+    let bytes = Arc::new(std::fs::read(path).map_err(|e| unreadable(e.to_string()))?);
     match deckcraft_media::audio::decode(&bytes) {
         Ok(pcm) if pcm.frames() > 0 => Ok(Arc::new(pcm)),
-        Ok(_) => Err("the file has no sound".into()),
-        Err(e) => Err(e.to_string()),
+        Ok(_) => Err(unreadable("the file has no sound".into())),
+        Err(deckcraft_media::MediaError::Unsupported(what)) => Err(LoadError {
+            kind: LoadKind::Unsupported,
+            detail: format!("{what} isn't supported"),
+        }),
+        Err(e) => Err(unreadable(e.to_string())),
     }
 }
 
@@ -218,10 +250,133 @@ pub struct Playing {
     pub length: f64,
 }
 
+/// How an output device is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputState {
+    /// Still being opened.
+    Opening,
+    /// Open and (as far as the device has said) working.
+    Open,
+    /// This computer has no sound output at all.
+    NoDevice,
+    /// The output could not be opened, or died (unplugged, switched off, its
+    /// driver gave up).
+    Failed,
+}
+
+impl OutputState {
+    /// Whether the output is known to be down.
+    pub fn down(self) -> bool {
+        matches!(self, OutputState::NoDevice | OutputState::Failed)
+    }
+
+    fn code(self) -> u8 {
+        match self {
+            OutputState::Opening => 0,
+            OutputState::Open => 1,
+            OutputState::NoDevice => 2,
+            OutputState::Failed => 3,
+        }
+    }
+
+    fn from_code(code: u8) -> OutputState {
+        match code {
+            1 => OutputState::Open,
+            2 => OutputState::NoDevice,
+            3 => OutputState::Failed,
+            _ => OutputState::Opening,
+        }
+    }
+}
+
+/// Where the audio thread and the device's callbacks tell the player how
+/// the output is doing.
+#[derive(Clone)]
+struct Health {
+    state: Arc<AtomicU8>,
+    /// Counts the device's render callbacks: a stream that stops calling
+    /// back has stopped, whether or not it said so.
+    beats: Arc<AtomicU64>,
+}
+
+impl Health {
+    fn new() -> Health {
+        Health {
+            state: Arc::new(AtomicU8::new(OutputState::Opening.code())),
+            beats: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn set(&self, state: OutputState) {
+        self.state.store(state.code(), Ordering::SeqCst);
+    }
+
+    /// A dead stream stays dead: a late "open" does not undo a failure.
+    fn opened(&self) {
+        let _ = self.state.compare_exchange(
+            OutputState::Opening.code(),
+            OutputState::Open.code(),
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
+    }
+}
+
+/// Notices an output that has stopped calling back while a sound is meant to
+/// be playing. The caller gives the time, so the rule is tested without
+/// waiting.
+///
+/// A stream that has never called back gets the longer `grace` (devices can
+/// be slow to start); one that was calling back and stopped gets `stall`.
+#[derive(Debug, Clone)]
+pub struct Watchdog {
+    grace: Duration,
+    stall: Duration,
+    last: u64,
+    /// When the count last moved, or when a sound was first meant to play.
+    since: Option<Instant>,
+}
+
+impl Watchdog {
+    pub fn new(grace: Duration, stall: Duration) -> Watchdog {
+        Watchdog {
+            grace,
+            stall,
+            last: 0,
+            since: None,
+        }
+    }
+
+    /// Looks at the callback count `beats` at time `now`. `wanted` says a
+    /// sound is meant to be playing; when nothing is, there is nothing to
+    /// stall and the clock starts over. True when the output has stalled.
+    pub fn stalled(&mut self, now: Instant, beats: u64, wanted: bool) -> bool {
+        if !wanted {
+            self.since = None;
+            self.last = beats;
+            return false;
+        }
+        let since = *self.since.get_or_insert(now);
+        if beats != self.last {
+            self.last = beats;
+            self.since = Some(now);
+            return false;
+        }
+        let limit = if beats == 0 { self.grace } else { self.stall };
+        now.saturating_duration_since(since) > limit
+    }
+
+    /// Forgets everything (a new output).
+    pub fn reset(&mut self) {
+        self.last = 0;
+        self.since = None;
+    }
+}
+
 /// A voice on an output device. Dropping the player stops the sound.
 pub struct Player {
     voice: Arc<Mutex<Option<Voice>>>,
-    open: Arc<AtomicBool>,
+    health: Health,
     stop: Option<Sender<()>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -232,35 +387,48 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl Player {
     /// Opens the output called `device` (the default output if `None`, or if
-    /// no output has that name). Never waits: [`Player::output_open`] says
+    /// no output has that name). Never waits: [`Player::output_state`] says
     /// whether the output came up.
     pub fn start(device: Option<String>) -> Player {
         let voice = Arc::new(Mutex::new(None));
-        let open = Arc::new(AtomicBool::new(false));
+        let health = Health::new();
         let (stop, stopped) = channel::<()>();
         let thread = {
-            let (voice, open) = (voice.clone(), open.clone());
+            let (voice, health) = (voice.clone(), health.clone());
             std::thread::Builder::new()
                 .name("lampstand-audio".into())
                 .spawn(move || {
-                    let _stream = open_stream(device.as_deref(), voice, open.clone());
+                    let _stream = open_stream(device.as_deref(), voice, &health);
                     // Holds the stream open until the player drops its sender.
                     let _ = stopped.recv();
-                    open.store(false, Ordering::SeqCst);
                 })
                 .ok()
         };
+        if thread.is_none() {
+            health.set(OutputState::Failed);
+        }
         Player {
             voice,
-            open,
+            health,
             stop: Some(stop),
             thread,
         }
     }
 
+    /// How the output is doing.
+    pub fn output_state(&self) -> OutputState {
+        OutputState::from_code(self.health.state.load(Ordering::SeqCst))
+    }
+
     /// Whether the output is open and working.
     pub fn output_open(&self) -> bool {
-        self.open.load(Ordering::SeqCst)
+        self.output_state() == OutputState::Open
+    }
+
+    /// How many times the device has asked for sound. A count that stops
+    /// moving while a sound plays is an output that has stopped.
+    pub fn beats(&self) -> u64 {
+        self.health.beats.load(Ordering::Relaxed)
     }
 
     /// Starts `pcm` at `from` seconds in, replacing what plays.
@@ -282,14 +450,19 @@ impl Player {
 
     /// Fades out over `secs` and stops.
     pub fn stop(&self, secs: f64) {
-        if let Some(v) = lock(&self.voice).as_mut() {
+        if self.output_state().down() {
+            // Nothing renders, so a fade would never finish.
+            *lock(&self.voice) = None;
+        } else if let Some(v) = lock(&self.voice).as_mut() {
             v.stop(secs);
         }
     }
 
     /// Silence at once.
     pub fn panic(&self) {
-        if let Some(v) = lock(&self.voice).as_mut() {
+        if self.output_state().down() {
+            *lock(&self.voice) = None;
+        } else if let Some(v) = lock(&self.voice).as_mut() {
             v.panic();
         }
     }
@@ -324,8 +497,12 @@ impl Drop for Player {
 fn open_stream(
     name: Option<&str>,
     voice: Arc<Mutex<Option<Voice>>>,
-    open: Arc<AtomicBool>,
+    health: &Health,
 ) -> Option<cpal::Stream> {
+    let failed = |state: OutputState| {
+        health.set(state);
+        None
+    };
     let host = cpal::default_host();
     let chosen = name.and_then(|n| {
         host.output_devices()
@@ -337,31 +514,34 @@ fn open_stream(
     }
     let Some(device) = chosen.or_else(|| host.default_output_device()) else {
         eprintln!("lampstand-media: this computer has no sound output");
-        return None;
+        return failed(OutputState::NoDevice);
     };
     let config = match device.default_output_config() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("lampstand-media: cannot read the sound output's settings: {e}");
-            return None;
+            return failed(OutputState::Failed);
         }
     };
     let format = config.sample_format();
     let config: cpal::StreamConfig = config.into();
     let stream = match format {
-        SampleFormat::F32 => build::<f32>(&device, &config, voice, open.clone()),
-        SampleFormat::I16 => build::<i16>(&device, &config, voice, open.clone()),
-        SampleFormat::U16 => build::<u16>(&device, &config, voice, open.clone()),
+        SampleFormat::F32 => build::<f32>(&device, &config, voice, health.clone()),
+        SampleFormat::I16 => build::<i16>(&device, &config, voice, health.clone()),
+        SampleFormat::U16 => build::<u16>(&device, &config, voice, health.clone()),
         other => {
             eprintln!("lampstand-media: unsupported sample format {other:?}");
-            return None;
+            return failed(OutputState::Failed);
         }
-    }?;
+    };
+    let Some(stream) = stream else {
+        return failed(OutputState::Failed);
+    };
     if let Err(e) = stream.play() {
         eprintln!("lampstand-media: cannot start the sound output: {e}");
-        return None;
+        return failed(OutputState::Failed);
     }
-    open.store(true, Ordering::SeqCst);
+    health.opened();
     Some(stream)
 }
 
@@ -369,15 +549,17 @@ fn build<T: SizedSample + FromSample<f32> + Send + 'static>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     voice: Arc<Mutex<Option<Voice>>>,
-    open: Arc<AtomicBool>,
+    health: Health,
 ) -> Option<cpal::Stream> {
     let channels = usize::from(config.channels.max(1));
     let rate = config.sample_rate.0;
     let mut scratch: Vec<f32> = Vec::new();
+    let beats = health.beats.clone();
     device
         .build_output_stream(
             config,
             move |out: &mut [T], _| {
+                beats.fetch_add(1, Ordering::Relaxed);
                 scratch.clear();
                 scratch.resize(out.len(), 0.0);
                 // A callback that cannot get the voice this instant plays
@@ -392,8 +574,10 @@ fn build<T: SizedSample + FromSample<f32> + Send + 'static>(
                 }
             },
             move |e| {
+                // A device that is unplugged or switched off says so here;
+                // whoever owns the player then drops it.
                 eprintln!("lampstand-media: audio output: {e}");
-                open.store(false, Ordering::SeqCst);
+                health.set(OutputState::Failed);
             },
             None,
         )
@@ -520,11 +704,139 @@ mod tests {
         p.stop(0.1);
         p.panic();
         let _ = p.playing();
-        let _ = p.output_open();
+        let _ = p.output_state();
+        let _ = p.beats();
     }
 
     #[test]
     fn a_file_that_is_not_sound_is_refused_with_a_reason() {
-        assert!(load(std::path::Path::new("/no/such/file.wav")).is_err());
+        let e = load(std::path::Path::new("/no/such/file.wav")).unwrap_err();
+        assert_eq!(e.kind, LoadKind::Unreadable);
+    }
+
+    #[test]
+    fn a_file_that_is_not_audio_at_all_is_a_kind_of_file_that_cannot_be_played() {
+        let dir = std::env::temp_dir().join(format!("lampstand-load-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("notes.mp3");
+        std::fs::write(&path, b"this is not music").unwrap();
+        let e = load(&path).unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(e.kind, LoadKind::Unsupported);
+    }
+
+    fn secs(base: Instant, n: u64) -> Instant {
+        base + Duration::from_secs(n)
+    }
+
+    fn dog() -> Watchdog {
+        Watchdog::new(Duration::from_secs(5), Duration::from_secs(2))
+    }
+
+    #[test]
+    fn the_watchdog_is_quiet_while_the_output_keeps_calling_back() {
+        let t = Instant::now();
+        let mut w = dog();
+        for n in 0..30u64 {
+            assert!(!w.stalled(secs(t, n), n + 1, true));
+        }
+    }
+
+    #[test]
+    fn the_watchdog_trips_when_the_count_stops_for_longer_than_the_stall() {
+        let t = Instant::now();
+        let mut w = dog();
+        assert!(!w.stalled(secs(t, 0), 10, true));
+        assert!(!w.stalled(secs(t, 1), 20, true));
+        // Stuck at 20 from here.
+        assert!(!w.stalled(secs(t, 2), 20, true));
+        assert!(
+            !w.stalled(secs(t, 3), 20, true),
+            "exactly the stall is not over it"
+        );
+        assert!(w.stalled(secs(t, 4), 20, true));
+    }
+
+    #[test]
+    fn a_stream_that_never_called_back_gets_the_longer_grace() {
+        let t = Instant::now();
+        let mut w = dog();
+        assert!(!w.stalled(secs(t, 0), 0, true));
+        assert!(!w.stalled(secs(t, 4), 0, true));
+        assert!(!w.stalled(secs(t, 5), 0, true));
+        assert!(w.stalled(secs(t, 6), 0, true));
+    }
+
+    #[test]
+    fn the_watchdog_does_not_count_time_when_nothing_is_meant_to_play() {
+        let t = Instant::now();
+        let mut w = dog();
+        assert!(!w.stalled(secs(t, 0), 5, false));
+        assert!(!w.stalled(secs(t, 100), 5, false));
+        // A sound starts now: the clock starts now, not 100 s ago.
+        assert!(!w.stalled(secs(t, 101), 5, true));
+        assert!(!w.stalled(secs(t, 102), 5, true));
+        assert!(w.stalled(secs(t, 104), 5, true));
+    }
+
+    #[test]
+    fn a_stream_that_comes_back_is_forgiven_and_reset_starts_over() {
+        let t = Instant::now();
+        let mut w = dog();
+        assert!(!w.stalled(secs(t, 0), 3, true));
+        assert!(w.stalled(secs(t, 10), 3, true));
+        assert!(!w.stalled(secs(t, 11), 4, true), "it called back");
+        w.reset();
+        assert!(!w.stalled(secs(t, 30), 0, true));
+        assert!(!w.stalled(secs(t, 34), 0, true));
+    }
+
+    #[test]
+    fn output_states_round_trip_and_say_when_they_are_down() {
+        for s in [
+            OutputState::Opening,
+            OutputState::Open,
+            OutputState::NoDevice,
+            OutputState::Failed,
+        ] {
+            assert_eq!(OutputState::from_code(s.code()), s);
+        }
+        assert!(OutputState::Failed.down() && OutputState::NoDevice.down());
+        assert!(!OutputState::Opening.down() && !OutputState::Open.down());
+    }
+
+    #[test]
+    fn a_late_open_does_not_undo_a_failure() {
+        let h = Health::new();
+        h.set(OutputState::Failed);
+        h.opened();
+        assert_eq!(
+            OutputState::from_code(h.state.load(Ordering::SeqCst)),
+            OutputState::Failed
+        );
+    }
+
+    #[test]
+    fn stop_and_panic_clear_the_voice_at_once_when_the_output_is_known_dead() {
+        // A player with no thread behind it, whose output has failed.
+        let health = Health::new();
+        health.set(OutputState::Failed);
+        let (stop, _stopped) = channel::<()>();
+        let p = Player {
+            voice: Arc::new(Mutex::new(None)),
+            health,
+            stop: Some(stop),
+            thread: None,
+        };
+        for end in [0, 1] {
+            p.play(tone(5), 0.0);
+            assert!(p.playing().is_some(), "a dead stream never finishes it");
+            if end == 0 {
+                p.stop(3.0);
+            } else {
+                p.panic();
+            }
+            assert!(p.playing().is_none());
+        }
     }
 }

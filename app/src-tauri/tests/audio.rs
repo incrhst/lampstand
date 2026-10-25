@@ -10,7 +10,8 @@ use lampstand_api::{
 };
 use lampstand_app::audio::{AudioDeck, Out, Parts};
 use lampstand_app::handler::{
-    App, AudioRemote, Placement, SyncLink, WindowHost, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED,
+    problem_words, App, AudioRemote, Placement, SyncLink, WindowHost, AUDIO_AWAY, AUDIO_NOBODY,
+    AUDIO_NOT_ALLOWED,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -18,10 +19,10 @@ use lampstand_core::service::{ItemId, ItemKind, Service, Sound, SoundStart};
 use lampstand_core::song::{Section, Song};
 use lampstand_layout::Fonts;
 use lampstand_live::{Command, Cursor};
-use lampstand_media::{Pcm, Playing};
+use lampstand_media::{OutputState, Pcm, Playing};
 use lampstand_render::output::DisplayInfo;
 use lampstand_render::{OutputCommand, OutputSink};
-use lampstand_sync::net::{SoundCommand, SoundNow, SoundRoute};
+use lampstand_sync::net::{SoundCommand, SoundNow, SoundProblem, SoundReason, SoundRoute};
 
 struct Sink;
 impl OutputSink for Sink {
@@ -43,6 +44,8 @@ impl WindowHost for Host {
 struct Log {
     calls: Vec<String>,
     playing: Option<Playing>,
+    /// `None` is working; a test sets it to make the output die.
+    state: Option<OutputState>,
 }
 
 struct Fake(Arc<Mutex<Log>>);
@@ -87,8 +90,8 @@ impl Out for Fake {
     fn playing(&mut self) -> Option<Playing> {
         self.0.lock().unwrap().playing
     }
-    fn open(&self) -> bool {
-        true
+    fn state(&self) -> OutputState {
+        self.0.lock().unwrap().state.unwrap_or(OutputState::Open)
     }
 }
 
@@ -99,6 +102,7 @@ struct Link {
     remote: Mutex<Option<AudioRemote>>,
     sent: Mutex<Vec<SoundCommand>>,
     reported: Mutex<Vec<Option<SoundNow>>>,
+    problems: Mutex<Vec<Option<SoundProblem>>>,
 }
 
 impl Link {
@@ -109,6 +113,7 @@ impl Link {
             remote: Mutex::new(None),
             sent: Mutex::new(Vec::new()),
             reported: Mutex::new(Vec::new()),
+            problems: Mutex::new(Vec::new()),
         })
     }
 }
@@ -133,6 +138,9 @@ impl SyncLink for Link {
     }
     fn report_sound(&self, now: Option<SoundNow>) {
         self.reported.lock().unwrap().push(now);
+    }
+    fn report_sound_problem(&self, problem: Option<SoundProblem>) {
+        self.problems.lock().unwrap().push(problem);
     }
     fn audio_here(&self) -> bool {
         *self.here.lock().unwrap()
@@ -328,7 +336,15 @@ fn a_file_that_is_not_on_this_device_says_so_in_words() {
     assert!(v.playing.is_none());
     assert_eq!(
         v.problem.as_deref(),
-        Some("Walk-in music is not on this device yet.")
+        Some(
+            "Walk-in music couldn't be played. The sound file isn't on this computer yet. \
+             It will arrive when this computer is connected to the device that has it."
+        )
+    );
+    assert_eq!(
+        v.problem_item,
+        Some(item.to_string()),
+        "shown next to the item"
     );
     assert!(d.opened.lock().unwrap().is_empty());
 }
@@ -427,6 +443,7 @@ fn a_cue_goes_to_the_audio_holder_when_it_is_another_device() {
         name: "Sound desk".into(),
         connected: true,
         playing: None,
+        problem: None,
     });
     d.app.set_sync_link(link.clone());
     let (_, item) = d.music_service(WALK, SoundStart::Waits);
@@ -492,6 +509,7 @@ fn the_screens_know_when_the_audio_holder_is_away_or_nobody() {
         name: "Sound desk".into(),
         connected: false,
         playing: None,
+        problem: None,
     });
     let v = d.sound_request(SoundRequest::Status);
     assert!(v.away && !v.nobody && v.holder == "Sound desk");
@@ -515,6 +533,7 @@ fn what_the_audio_holder_plays_is_shown_here_from_what_it_said() {
             position_ms: 4000,
             length_ms: 90_000,
         }),
+        problem: None,
     });
     d.app.set_sync_link(link);
     let v = d.sound_request(SoundRequest::Status);
@@ -612,4 +631,191 @@ fn a_church_that_never_uses_sound_hears_nothing_new() {
         .sound_events()
         .iter()
         .all(|v| v.playing.is_none() && v.problem.is_none()));
+}
+
+fn trouble(reason: SoundReason, item: &str) -> SoundProblem {
+    SoundProblem {
+        reason,
+        item: item.into(),
+        name: "Walk-in music".into(),
+    }
+}
+
+#[test]
+fn the_operator_is_told_why_a_sound_cannot_play_on_the_audio_holder() {
+    let mut d = device();
+    let link = Link::new(SoundRoute::Sent, false);
+    d.app.set_sync_link(link.clone());
+    let (_, item) = d.music_service(WALK, SoundStart::Waits);
+    let item = item.to_string();
+    for (reason, expected) in [
+        (
+            SoundReason::NotOnDevice,
+            "Walk-in music couldn't be played. The sound file isn't on Sound desk yet. \
+             It will arrive when Sound desk is connected.",
+        ),
+        (
+            SoundReason::Unsupported,
+            "Walk-in music couldn't be played. Sound desk can't play this kind of file. \
+             Lampstand can play MP3, WAV, FLAC, M4A and Ogg.",
+        ),
+        (
+            SoundReason::Unreadable,
+            "Walk-in music couldn't be played. Sound desk couldn't read the sound file. \
+             It may be damaged. Try adding it to the service again.",
+        ),
+        (
+            SoundReason::OutputDown,
+            "Walk-in music isn't playing. The sound output on Sound desk isn't working. \
+             Check it is plugged in and switched on.",
+        ),
+        (
+            SoundReason::NoOutput,
+            "Walk-in music isn't playing. Sound desk has no sound output. \
+             Plug one in and switch it on.",
+        ),
+    ] {
+        *link.remote.lock().unwrap() = Some(AudioRemote {
+            name: "Sound desk".into(),
+            connected: true,
+            playing: None,
+            problem: Some(trouble(reason, &item)),
+        });
+        let v = d.sound_request(SoundRequest::Status);
+        assert_eq!(v.problem.as_deref(), Some(expected), "{reason:?}");
+        assert_eq!(v.problem_item.as_deref(), Some(item.as_str()));
+        assert!(!v.here, "this is the Operator's view");
+    }
+    // Nothing wrong, nothing said.
+    *link.remote.lock().unwrap() = Some(AudioRemote {
+        name: "Sound desk".into(),
+        connected: true,
+        playing: None,
+        problem: None,
+    });
+    let v = d.sound_request(SoundRequest::Status);
+    assert!(v.problem.is_none() && v.problem_item.is_none());
+    // The holder being away is said as away, not as a sound problem.
+    *link.remote.lock().unwrap() = Some(AudioRemote {
+        name: "Sound desk".into(),
+        connected: false,
+        playing: None,
+        problem: Some(trouble(SoundReason::OutputDown, &item)),
+    });
+    let v = d.sound_request(SoundRequest::Status);
+    assert!(v.away && v.problem.is_none());
+}
+
+#[test]
+fn a_problem_with_no_sound_named_reads_as_one_sentence_and_names_no_path() {
+    let p = SoundProblem {
+        reason: SoundReason::OutputDown,
+        item: String::new(),
+        name: String::new(),
+    };
+    assert_eq!(
+        problem_words(&p, Some("Sound desk")),
+        "The sound output on Sound desk isn't working. Check it is plugged in and switched on."
+    );
+    assert_eq!(
+        problem_words(&p, None),
+        "The sound output on this computer isn't working. Check it is plugged in and \
+         switched on, or choose another in Setup \u{203a} Sound."
+    );
+}
+
+#[test]
+fn a_dead_output_on_a_one_device_church_is_said_once_and_goes_when_it_comes_back() {
+    let mut d = device();
+    let (_, item) = d.music_service(WALK, SoundStart::Waits);
+    let v = d.sound_request(SoundRequest::Play {
+        item,
+        backing: false,
+    });
+    assert!(v.output_ok && v.problem.is_none());
+    // The interface is unplugged mid-play.
+    d.log.lock().unwrap().state = Some(OutputState::Failed);
+    d.app.tick();
+    let v = d.sound_request(SoundRequest::Status);
+    assert!(v.playing.is_none(), "not playing, not 'PLAYING' forever");
+    assert!(!v.output_ok);
+    assert_eq!(
+        v.problem.as_deref(),
+        Some(
+            "Walk-in music isn't playing. The sound output on this computer isn't working. \
+             Check it is plugged in and switched on, or choose another in Setup \u{203a} Sound."
+        )
+    );
+    assert_eq!(v.problem_item, Some(item.to_string()));
+    // Many ticks later it is still one message, not a new one each time.
+    for _ in 0..20 {
+        d.app.tick();
+    }
+    let with_problem = d
+        .sound_events()
+        .iter()
+        .filter(|v| v.problem.is_some())
+        .count();
+    assert_eq!(with_problem, 1, "the screen is told once");
+    // Pause, fade out and the panic stop answer with a clear screen.
+    for r in [SoundRequest::Pause, SoundRequest::Stop, SoundRequest::Panic] {
+        assert!(d.sound_request(r).playing.is_none());
+    }
+    // The interface is back and Play is pressed: it plays, and the message
+    // goes.
+    d.log.lock().unwrap().state = None;
+    let v = d.sound_request(SoundRequest::Play {
+        item,
+        backing: false,
+    });
+    assert_eq!(playing(&v).name, "Walk-in music");
+    d.app.tick();
+    let v = d.sound_request(SoundRequest::Status);
+    assert!(v.output_ok && v.problem.is_none() && v.problem_item.is_none());
+    assert!(d.sound_events().last().unwrap().problem.is_none());
+}
+
+#[test]
+fn the_audio_holder_sends_why_a_sound_did_not_play_to_the_others() {
+    let mut d = device();
+    let link = Link::new(SoundRoute::Local, true);
+    d.app.set_sync_link(link.clone());
+    let (_, item) = d.music_service(b"never fetched", SoundStart::Waits);
+    d.sound_request(SoundRequest::Play {
+        item,
+        backing: false,
+    });
+    let said = link.problems.lock().unwrap().clone();
+    assert_eq!(
+        said.last().unwrap().as_ref().map(|p| p.reason),
+        Some(SoundReason::NotOnDevice)
+    );
+    assert_eq!(
+        said.last().unwrap().as_ref().unwrap().item,
+        item.to_string()
+    );
+    let count = said.len();
+    d.app.tick();
+    d.app.tick();
+    assert_eq!(link.problems.lock().unwrap().len(), count, "said once");
+    // The next sound that plays ends it.
+    let (_, ok) = d.music_service(WALK, SoundStart::Waits);
+    d.sound_request(SoundRequest::Play {
+        item: ok,
+        backing: false,
+    });
+    assert_eq!(link.problems.lock().unwrap().last(), Some(&None));
+}
+
+#[test]
+fn a_church_that_never_uses_sound_sends_no_problem_anywhere() {
+    let mut d = device();
+    let link = Link::new(SoundRoute::Local, true);
+    d.app.set_sync_link(link.clone());
+    for _ in 0..5 {
+        d.app.tick();
+    }
+    assert!(link.problems.lock().unwrap().iter().all(|p| p.is_none()));
+    assert!(d.sound_events().iter().all(|v| v.problem.is_none()));
+    assert!(d.opened.lock().unwrap().is_empty());
 }

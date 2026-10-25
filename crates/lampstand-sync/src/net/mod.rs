@@ -47,8 +47,9 @@
 //! - **Sound cues.** The Projection and Operator holders tell the device that
 //!   holds Audio what to play, pause, stop or cut (`SoundCue`; a panic counts
 //!   from any paired device), and the Audio holder tells every device what is
-//!   playing (`SoundNow`); see [`sound_cue`]. Nothing is kept for an Audio
-//!   holder that is away.
+//!   playing (`SoundNow`) and why a sound did not play (`SoundProblem`, a
+//!   reason from a fixed list); see [`sound_cue`]. Nothing is kept for an
+//!   Audio holder that is away.
 //! - **Blobs** are fetched by hash on request ([`SyncNode::fetch_blob`]),
 //!   in 256 KiB chunks, and verified on arrival ([`BlobStore::put_verified`]).
 //!
@@ -77,7 +78,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 use uuid::Uuid;
 
 pub use cue::{CueHook, CueRoute};
-pub use sound_cue::{SoundCommand, SoundHook, SoundNow, SoundRoute};
+pub use sound_cue::{
+    SoundCommand, SoundHook, SoundNow, SoundProblem, SoundReason, SoundRoute, MAX_ITEM, MAX_NAME,
+};
 pub use trust::{PairedDevice, PairingCode, PAIRING_TTL};
 pub use wire::Link;
 
@@ -2923,7 +2926,11 @@ mod tests {
     fn sound_in(frames: &mut mpsc::UnboundedReceiver<Control>) -> Vec<Frame> {
         std::iter::from_fn(|| frames.try_recv().ok())
             .filter_map(|c| match c {
-                Control::Frame(f @ (Frame::SoundCue { .. } | Frame::SoundNow { .. })) => Some(f),
+                Control::Frame(
+                    f @ (Frame::SoundCue { .. }
+                    | Frame::SoundNow { .. }
+                    | Frame::SoundProblem { .. }),
+                ) => Some(f),
                 _ => None,
             })
             .collect()
@@ -3157,6 +3164,97 @@ mod tests {
         // Not told once this device no longer holds Audio.
         lock(&node.roles).release(Role::Audio);
         node.report_sound_now(Some(now("Again")));
+        assert!(sound_in(&mut seven).is_empty());
+    }
+
+    fn trouble(reason: SoundReason) -> SoundProblem {
+        SoundProblem {
+            reason,
+            item: "item-1".into(),
+            name: "Walk-in music".into(),
+        }
+    }
+
+    #[test]
+    fn why_a_sound_did_not_play_is_believed_only_from_the_connected_audio_holder() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        paired(&node, 8);
+        let (_, held) = claimed(7, Role::Audio);
+        node.record_received(id(7), Role::Audio, held);
+        let _frames = connected_to(&node, 7);
+        // A device that does not hold Audio is not believed.
+        node.sound_problem_received(id(8), Some(trouble(SoundReason::OutputDown)));
+        assert!(node.sound_problem_elsewhere().is_none());
+        node.sound_problem_received(id(7), Some(trouble(SoundReason::NotOnDevice)));
+        let (who, problem) = node.sound_problem_elsewhere().unwrap();
+        assert_eq!(problem, trouble(SoundReason::NotOnDevice));
+        assert_eq!(who, node.audio_elsewhere().unwrap().1);
+        // It says the trouble is over.
+        node.sound_problem_received(id(7), None);
+        assert!(node.sound_problem_elsewhere().is_none());
+        // A name or an id that is too long is not believed.
+        let mut long = trouble(SoundReason::Unsupported);
+        long.name = "x".repeat(sound_cue::MAX_NAME + 1);
+        node.sound_problem_received(id(7), Some(long));
+        let mut long = trouble(SoundReason::Unsupported);
+        long.item = "i".repeat(sound_cue::MAX_ITEM + 1);
+        node.sound_problem_received(id(7), Some(long));
+        assert!(node.sound_problem_elsewhere().is_none());
+        // It goes with the connection, and is not brought back by a
+        // reconnection until the holder says it again.
+        node.sound_problem_received(id(7), Some(trouble(SoundReason::Unreadable)));
+        assert!(node.sound_problem_elsewhere().is_some());
+        lock(&node.peers).sessions.remove(&id(7));
+        assert!(node.sound_problem_elsewhere().is_none());
+        let _again = connected_to(&node, 7);
+        node.session_opened(id(7));
+        assert!(node.sound_problem_elsewhere().is_none());
+    }
+
+    #[test]
+    fn the_audio_holder_tells_every_device_why_a_sound_did_not_play_and_each_one_that_connects() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        paired(&node, 8);
+        let mut seven = connected_to(&node, 7);
+        heard_roles_from(&node, 7);
+        node.claim_role(Role::Audio).unwrap();
+        // Nothing wrong at the start is not news.
+        node.report_sound_problem(None);
+        assert!(sound_in(&mut seven).is_empty());
+        let problem = trouble(SoundReason::OutputDown);
+        node.report_sound_problem(Some(problem.clone()));
+        assert_eq!(
+            sound_in(&mut seven),
+            vec![Frame::SoundProblem {
+                problem: Some(problem.clone())
+            }]
+        );
+        // The same again says nothing new.
+        node.report_sound_problem(Some(problem.clone()));
+        assert!(sound_in(&mut seven).is_empty());
+        // A device that connects later is told.
+        let mut eight = connected_to(&node, 8);
+        node.session_opened(id(8));
+        assert_eq!(
+            sound_in(&mut eight),
+            vec![Frame::SoundProblem {
+                problem: Some(problem)
+            }]
+        );
+        node.report_sound_problem(None);
+        assert_eq!(
+            sound_in(&mut seven),
+            vec![Frame::SoundProblem { problem: None }]
+        );
+        // A device that connects when nothing is wrong hears nothing.
+        let mut nine = connected_to(&node, 8);
+        node.session_opened(id(8));
+        assert!(sound_in(&mut nine).is_empty());
+        // Not told once this device no longer holds Audio.
+        lock(&node.roles).release(Role::Audio);
+        node.report_sound_problem(Some(trouble(SoundReason::NoOutput)));
         assert!(sound_in(&mut seven).is_empty());
     }
 

@@ -25,7 +25,10 @@
 mod player;
 mod sound;
 pub use deckcraft_media::Pcm;
-pub use player::{default_output, load as load_sound, output_devices, Player, Playing, Voice};
+pub use player::{
+    default_output, load as load_sound, output_devices, LoadError, LoadKind, OutputState, Player,
+    Playing, Voice, Watchdog,
+};
 pub use sound::Sound;
 
 use std::path::Path;
