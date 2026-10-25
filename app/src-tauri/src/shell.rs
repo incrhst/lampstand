@@ -33,7 +33,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use lampstand_api::{
     Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
-    UpdateState, UpdateStatus,
+    UpdateState,
 };
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
@@ -64,6 +64,7 @@ use crate::seed;
 use crate::sync::{
     mirroring, public_address_on, AddressWatch, DriveSinks, NodeCell, Obs, Sync, SyncConfig,
 };
+use crate::update;
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -871,19 +872,11 @@ async fn update_request(
     use tauri_plugin_updater::UpdaterExt;
 
     let status = |u: &UpdaterState| {
-        // One lock for both: a guard lives to the end of its statement, so
-        // a second `lock` in the same expression waits on this thread
-        // forever, and every request after it waits too.
-        let (blocked, caution) = {
-            let app = lock(&state.app);
-            (app.update_blocker(), app.update_caution())
-        };
-        Response::Update(UpdateStatus {
-            current: app.package_info().version.to_string(),
-            state: u.state.clone(),
-            blocked,
-            caution,
-        })
+        Response::Update(update::status(
+            &state.app,
+            app.package_info().version.to_string(),
+            u.state.clone(),
+        ))
     };
 
     match request {
@@ -894,20 +887,12 @@ async fn update_request(
                 Err(e) => Err(e.to_string()),
                 Ok(updater) => updater.check().await.map_err(|e| e.to_string()),
             };
-            match found {
-                Ok(Some(update)) => {
-                    u.state = UpdateState::Available {
-                        version: update.version.clone(),
-                        notes: update.body.clone().filter(|n| !n.trim().is_empty()),
-                    };
-                    u.pending = Some(update);
-                }
-                Ok(None) => {
-                    u.state = UpdateState::UpToDate;
-                    u.pending = None;
-                }
-                Err(message) => u.state = UpdateState::Failed { message },
-            }
+            u.state = update::checked(found.as_ref().map_err(String::clone).map(|found| {
+                found
+                    .as_ref()
+                    .map(|update| (update.version.clone(), update.body.clone()))
+            }));
+            u.pending = found.ok().flatten();
             status(&u)
         }
         UpdateRequest::Install => {
