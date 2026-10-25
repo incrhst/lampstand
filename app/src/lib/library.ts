@@ -5,6 +5,7 @@
 
 import type { ItemKind, SongHit } from "./api";
 import { deckExtensions, imageExtensions, videoExtensions } from "./media.ts";
+import { audioExtensions } from "./sound.ts";
 
 export type Kind = "song" | "scripture" | "deck" | "media";
 export type Filter = "all" | Kind;
@@ -117,6 +118,8 @@ export interface Sorted {
   decks: string[];
   /** Images and video, for `AddMediaFile`. */
   media: string[];
+  /** Music and other sound, for `AddSoundFile`, then the open service. */
+  sounds: string[];
 }
 
 function extension(path: string): string {
@@ -132,13 +135,14 @@ function extension(path: string): string {
  * Hidden files (".DS_Store") are dropped.
  */
 export function sortPaths(paths: string[]): Sorted {
-  const sorted: Sorted = { imports: [], decks: [], media: [] };
+  const sorted: Sorted = { imports: [], decks: [], media: [], sounds: [] };
   for (const path of paths) {
     const name = path.split(/[\\/]/).pop() ?? "";
     if (!name || name.startsWith(".")) continue;
     const ext = extension(path);
     if (deckExtensions.includes(ext)) sorted.decks.push(path);
     else if (videoExtensions.includes(ext) || imageExtensions.includes(ext)) sorted.media.push(path);
+    else if (audioExtensions.includes(ext)) sorted.sounds.push(path);
     else sorted.imports.push(path);
   }
   return sorted;
@@ -154,12 +158,13 @@ export function importedCounts(message: string): { songs: number; bibles: number
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** "3 songs · 1 deck", or "Nothing new to add" when every count is zero. */
-export function summarize(added: { songs?: number; bibles?: number; decks?: number; media?: number }): string {
+export function summarize(added: { songs?: number; bibles?: number; decks?: number; media?: number; sounds?: number }): string {
   const parts = [
     added.songs ? plural(added.songs, "song", "songs") : "",
     added.bibles ? plural(added.bibles, "Bible", "Bibles") : "",
     added.decks ? plural(added.decks, "deck", "decks") : "",
     added.media ? plural(added.media, "media file", "media files") : "",
+    added.sounds ? plural(added.sounds, "sound", "sounds") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "Nothing new to add";
 }

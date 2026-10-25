@@ -35,7 +35,9 @@
     isAudio,
     isComing,
     isMissing,
+    newSound,
     offerSound,
+    soundItem,
     soundSubtitle,
     soundTotalLabel,
     words as soundWords,
@@ -431,17 +433,26 @@
     try {
       const path = onePath(
         await pickFiles({
-          title: "Add a video or image",
+          title: "Add a video, image or sound",
           filters: [
-            { name: "Video and images", extensions: [...videoExtensions, ...imageExtensions] },
+            { name: "Video, images and sound", extensions: [...videoExtensions, ...imageExtensions, ...audioExtensions] },
             { name: "Video", extensions: videoExtensions },
             { name: "Images", extensions: imageExtensions },
+            { name: soundWords.pickFilter, extensions: audioExtensions },
           ],
         }),
       );
       if (!path) return;
       busy = true;
       live.status = "Copying into the library…";
+      // A sound picked here is a music-only item, whether or not this
+      // device offers sound in Plan: the planner chose the file.
+      if (isAudio(path)) {
+        const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+        await addItem(soundItem(file));
+        live.status = `Added ${file.name}`;
+        return;
+      }
       const file = await request({ area: "Library", request: { AddMediaFile: { path } } }, "Media");
       await addMedia(file);
       live.status = `Added ${file.name}`;
@@ -450,11 +461,6 @@
     } finally {
       busy = false;
     }
-  }
-
-  /** A sound as a file arrives: it waits for somebody to press play. */
-  function newSound(file: SoundFile): Sound {
-    return { name: file.name, file: file.file, length_ms: file.length_ms, start: "Waits", keep_off_stream: false };
   }
 
   /** Changes the sound of a music-only item, or a song's backing track. */

@@ -71,11 +71,15 @@ test("dropped paths go to the request that takes them", () => {
     "/Users/me/kjv.xml",
     "/Users/me/.DS_Store",
     "/Users/me/Amazing Grace",
+    "/Users/me/Walk-in.MP3",
+    "/Users/me/track.m4a",
+    "/Users/me/bell.wav",
   ]);
   assert.deepEqual(sorted, {
     imports: ["/Users/me/Songs", "/Users/me/Downloads/English.osb", "/Users/me/kjv.xml", "/Users/me/Amazing Grace"],
     decks: ["C:\\Talks\\Sermon.PPTX"],
     media: ["/Users/me/Welcome loop.mp4", "/Users/me/photo.JPG"],
+    sounds: ["/Users/me/Walk-in.MP3", "/Users/me/track.m4a", "/Users/me/bell.wav"],
   });
 });
 
@@ -88,6 +92,7 @@ test("reads the import summary line", () => {
 test("summarises what was added", () => {
   assert.equal(summarize({ songs: 3, decks: 1 }), "3 songs · 1 deck");
   assert.equal(summarize({ songs: 1, bibles: 1, media: 2 }), "1 song · 1 Bible · 2 media files");
+  assert.equal(summarize({ sounds: 2 }), "2 sounds");
   assert.equal(summarize({}), "Nothing new to add");
 });
 
