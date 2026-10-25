@@ -131,14 +131,11 @@ jobs:
           npm run build
           git diff --exit-code obs/dist
 
-      # T100: the phone remote's page is built from app/src/remote into the
-      # server crate and committed, like the OBS page, so it must be fresh.
-      - name: Phone remote page (built bundle is current)
-        if: needs.changes.outputs.heavy == 'true' && runner.os == 'Linux'
-        working-directory: app
-        run: |
-          npm run build:remote
-          git diff --exit-code ../crates/lampstand-server/web/remote/dist
+      # T100: the phone remote's page (crates/lampstand-server/web/remote/dist)
+      # is not checked for freshness. `npm run build` above rebuilt it from
+      # this commit before cargo compiled, as the release's build does, so
+      # what is tested and shipped is never stale. The checked-in copy only
+      # serves builds without Node, and may lag main.
 
       # Also runs the phone remote's test (tests/remote.spec.ts).
       - name: OBS browser source (Playwright)

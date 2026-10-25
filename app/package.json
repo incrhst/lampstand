@@ -5,8 +5,8 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "npm run build:remote && vite",
+    "build": "vite build && npm run build:remote",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
     "test": "node --test --experimental-strip-types src/lib/*.test.ts",
