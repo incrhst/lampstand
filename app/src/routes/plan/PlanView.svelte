@@ -57,6 +57,53 @@
 
   let { onopened }: { onopened: () => void } = $props();
 
+  // The side columns hide on a narrow window so the running order keeps
+  // its room: below these widths they start hidden. Showing or hiding one
+  // by hand is remembered on this device and wins over the width. Below
+  // DRAWERS_BELOW they are drawers over the running order instead, one at
+  // a time and not remembered, so the order is never squeezed to nothing.
+  const SERVICES_FROM = 1100;
+  const LIBRARY_FROM = 1280;
+  const DRAWERS_BELOW = 900;
+  const choice = (key: string): boolean | null => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? null : v === "1";
+    } catch {
+      return null;
+    }
+  };
+  const remember = (key: string, shown: boolean) => {
+    try {
+      localStorage.setItem(key, shown ? "1" : "0");
+    } catch {
+      // Not remembered this time.
+    }
+  };
+  let width = $state(typeof window === "undefined" ? 1440 : window.innerWidth);
+  let servicesChoice = $state(choice("lampstand.plan.services"));
+  let libraryChoice = $state(choice("lampstand.plan.library"));
+  let narrow = $derived(width < DRAWERS_BELOW);
+  let drawer: "services" | "library" | null = $state(null);
+  let showServices = $derived(narrow ? drawer === "services" : (servicesChoice ?? width >= SERVICES_FROM));
+  let showLibrary = $derived(narrow ? drawer === "library" : (libraryChoice ?? width >= LIBRARY_FROM));
+  function setServices(shown: boolean) {
+    if (narrow) {
+      drawer = shown ? "services" : null;
+      return;
+    }
+    servicesChoice = shown;
+    remember("lampstand.plan.services", shown);
+  }
+  function setLibrary(shown: boolean) {
+    if (narrow) {
+      drawer = shown ? "library" : null;
+      return;
+    }
+    libraryChoice = shown;
+    remember("lampstand.plan.library", shown);
+  }
+
   let services: ServiceSummary[] = $state([]);
   let selected: Service | null = $state(null);
   let creating = $state(false);
@@ -290,6 +337,8 @@
 
   async function select(id: string) {
     editWhen = null;
+    // A drawer has done its job once a service is picked.
+    if (narrow && drawer === "services") drawer = null;
     try {
       selected = await request({ area: "Service", request: { Get: id } }, "Service");
       live.planning = id;
@@ -929,10 +978,29 @@
   </select>
 {/snippet}
 
-<div class="plan">
-  <aside class="pane pane-side services" aria-label="Services">
+<svelte:window bind:innerWidth={width} onkeydown={(e) => narrow && drawer && e.key === "Escape" && (drawer = null)} />
+
+<div class="plan" class:narrow class:no-services={!showServices} class:no-library={!showLibrary}>
+  {#if !showServices || narrow}
+    <button
+      type="button"
+      class="rail rail-left"
+      class:open={showServices}
+      title={showServices ? "Hide the services" : "Show the services"}
+      aria-expanded={showServices}
+      onclick={() => setServices(!showServices)}
+    >
+      <Icon name="panelLeft" size={16} />
+      <span class="rail-label">Services</span>
+    </button>
+  {/if}
+  <!-- Hidden, not removed: what it holds (a half-typed new service) stays. -->
+  <aside class="pane pane-side services" aria-label="Services" hidden={!showServices}>
     <div class="pane-head">
-      <h2>Services</h2>
+      <span class="head-start">
+        <Button size="small" variant="ghost" icon="panelLeft" label="Hide the services" title="Hide the services" onclick={() => setServices(false)} />
+        <h2>Services</h2>
+      </span>
       <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
     </div>
     {#if creating}
@@ -1300,6 +1368,9 @@
     {/if}
   </section>
 
+  <!-- Hidden, not removed: the library keeps its search and a SongSelect
+       watch running while it is out of the way. -->
+  <div class="library-slot" hidden={!showLibrary}>
   <Library
     service={selected}
     {items}
@@ -1311,14 +1382,112 @@
     onsongs={songsFound}
     ondecks={loadDecks}
     ontranslations={loadTranslations}
+    onhide={() => setLibrary(false)}
   />
+  </div>
+  {#if !showLibrary || narrow}
+    <button
+      type="button"
+      class="rail rail-right"
+      class:open={showLibrary}
+      title={showLibrary ? "Hide the library" : "Show the library"}
+      aria-expanded={showLibrary}
+      onclick={() => setLibrary(!showLibrary)}
+    >
+      <Icon name="panelRight" size={16} />
+      <span class="rail-label">Library</span>
+    </button>
+  {/if}
 </div>
 
 <style>
   .plan {
+    --services: 248px;
+    --library: 340px;
     display: grid;
-    grid-template-columns: 248px minmax(0, 1fr) 340px;
+    grid-template-columns: var(--services) minmax(0, 1fr) var(--library);
     height: 100%;
+  }
+  .plan.no-services,
+  .plan.narrow {
+    --services: 2.5rem;
+  }
+  .plan.no-library,
+  .plan.narrow {
+    --library: 2.5rem;
+  }
+  /* On a narrow window an open side column is a drawer over the running
+     order, beside its strip, instead of a column that squeezes it. */
+  .plan.narrow {
+    position: relative;
+  }
+  .plan.narrow > .services:not([hidden]),
+  .plan.narrow > .library-slot:not([hidden]) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(340px, calc(100% - 5rem));
+    background: var(--panel);
+    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.45);
+  }
+  .plan.narrow > .services {
+    left: 2.5rem;
+  }
+  .plan.narrow > .library-slot {
+    right: 2.5rem;
+  }
+  .rail.open {
+    color: var(--text);
+    background: var(--raised);
+  }
+  .plan > [hidden] {
+    display: none;
+  }
+  .library-slot:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .library-slot > :global(*) {
+    flex: 1;
+  }
+  .head-start {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: -0.4rem;
+  }
+  /* A hidden side column leaves a strip at the edge to bring it back. */
+  .rail {
+    font: inherit;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+    border: none;
+    padding: 1.25rem 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    min-height: 0;
+  }
+  .rail:hover {
+    color: var(--text);
+    background: var(--raised);
+  }
+  .rail-left {
+    border-right: 1px solid var(--line);
+  }
+  .rail-right {
+    border-left: 1px solid var(--line);
+  }
+  .rail-label {
+    writing-mode: vertical-rl;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
   }
   .services {
     border-right: 1px solid var(--line);
@@ -1415,7 +1584,9 @@
   }
   .heading {
     min-width: 0;
-    flex: 1 1 16rem;
+    /* Room for the date, its tools and the live tag before the actions
+       beside it are pushed underneath. */
+    flex: 1 1 26rem;
   }
   h1 {
     font-size: 1.3rem;
@@ -1431,8 +1602,12 @@
   }
   .when-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem;
+  }
+  .when-line > span:first-child {
+    white-space: nowrap;
   }
   .reschedule {
     display: flex;
