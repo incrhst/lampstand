@@ -1,6 +1,14 @@
 # Roles: ideas for later
 
-Status: not part of 0.8.0. These came up while designing [roles](roles.md) ([decision 0010](decisions/0010-roles-and-handoff.md)) and were set aside on purpose, not rejected. Each says what it would add and what it would have to settle first.
+Status: not part of 0.8.0. These came up while designing [roles](roles.md) ([decision 0010](decisions/0010-roles-and-handoff.md)) and were set aside on purpose, not rejected. Each says what it would add and what it would have to settle first. Work that is planned and already ticketed (not merely an idea) is in the next section.
+
+## Planned and ticketed, not built
+
+- **Send sound to the stream** (#137). The OBS browser source plays Lampstand's sound and OBS captures it, with "Control audio via OBS" set on Lampstand's own browser source only. Waits for the prototype (#125), which has not been run. Until then the mixer route and the lip-sync tip are the documented way.
+- **Settling a refused claim** (issue #153, closed; planned, not built: the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once).
+- **Showing the volunteer an unverified role record.** The state exists in the sync status; no screen shows it yet.
+- **The audio warning that names the item** ("Nobody runs the sound, so {item} will not play."); today the panel says "Nobody runs the sound."
+- **The tablet and phone remote** (decision 0006; tickets T99 to T101), with the panic stop for music, and the browser stage page.
 
 ## More roles
 

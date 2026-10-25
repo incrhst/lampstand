@@ -1,6 +1,6 @@
 # 0010. Roles: Projection, Operator, Stream and Audio, held by devices
 
-- Status: accepted (for 0.8.0; the map is [issue 114](https://github.com/incrhst/lampstand/issues/114))
+- Status: accepted and built for 0.8.0, except point 8 (sound to the stream), which is planned and unbuilt (the map is [issue 114](https://github.com/incrhst/lampstand/issues/114)); amended after the build, see "Decided during the build"
 - Date: 2026-10-24
 
 ## Question
@@ -52,9 +52,10 @@ the four duties *roles* only because the app does.
    - *Ask and approve:* "Mary's laptop wants to run the stream. Allow / Not
      now", possible only while the holder is connected.
    - *Takeover:* only when the holder has been offline for the takeover time
-     (two minutes by default, per device, and a margin of ten seconds so that a
-     holder that comes straight back always agrees; see #153), or nobody holds
-     the role.
+     (two minutes by default, per device), or nobody holds the role. The
+     claimant waits ten seconds longer than the takeover time (see below).
+   - *One ask at a time:* a holder answers one ask; a second asker is told
+     who is already asking and is not queued.
    - *Always allow this device:* for Operator and Stream, remembered per
      device. Never for Projection or Audio, because handing either over
      clears what is on air (the screens, or the music that is playing).
@@ -63,9 +64,13 @@ the four duties *roles* only because the app does.
      "Allow and stop the music"). Operator leaves the current slide up.
      Stream leaves OBS on its current scene. No fallback scene.
    - A returning holder yields, as the presenter does.
+   - The Projection holder may take the Operator seat back at any time without
+     being allowed, and the Operator may hand the seat back (silently).
 5. **Operator needs Projection. Audio needs Projection for new cues.** While
    nobody holds Projection the Operator controls are disabled and the seat is
-   kept. The Audio holder receives its cues (start this file, stop) from
+   kept. Roles are otherwise independent: handing Projection to another device
+   moves neither the Operator seat nor Audio, and the new Projection holder
+   announces its state to the Operator. The Audio holder receives its cues (start this file, stop) from
    Projection, so it starts nothing new without it, but what is already
    playing keeps playing and its stop and pause stay on the Audio holder.
    Projection and Stream depend on nothing: the stream desk can work if the
@@ -98,15 +103,18 @@ the four duties *roles* only because the app does.
    to the stream through the mixer leaves the option off, or the sound doubles;
    the setup screen says so. Contracts for music-only items are in the
    [roles spec](../roles.md#sound-that-lampstand-plays).
-   Needs a prototype first (ticket "Prototype: can the OBS browser source play
-   Lampstand's sound through OBS?"); until it passes, the mixer route is the
-   documented way.
+   Needs a prototype first (ticket #125, "Prototype: can the OBS browser source
+   play Lampstand's sound through OBS?"); until it passes, the mixer route is
+   the documented way. **Planned, not built** (ticket #137; the prototype has
+   not been run). The only OBS audio setting Lampstand may change is
+   "Control audio via OBS" on its own browser source; it never touches
+   another source or any other audio setting. Today Lampstand sets none of it.
 
 9. **Audio is a role for backing tracks.** For 0.8.0: a music-only item
    (a song's backing track, walk-in music), attached to a song or on its own;
    "play when this goes live" or "wait for me to press play"; play, pause,
    stop with a fade, and a panic stop that always works, on the Audio holder
-   and from the Operator and helpers; and a choice of sound output on the
+   and from the Operator and helpers (helpers planned); and a choice of sound output on the
    Audio holder (Setup › Sound), so the track goes to the mixer's interface
    and not the projector's. The Audio holder gets the files from sync and
    starts them on Projection's cue. Count-in, a click on a separate output for
@@ -127,8 +135,43 @@ the four duties *roles* only because the app does.
     second Lampstand machine would be a later Stage display role, not
     single-holder, since a church can have several stage screens.
 
-Defaults and details that the map did not grill, proposed here for approval:
-see [roles spec](../roles.md), "Proposed details".
+Defaults and details that the map did not grill were approved with it and
+adjusted during the build: see "Decided during the build" below and the
+[roles spec](../roles.md).
+
+## Decided during the build
+
+- **The Projection holder retakes Operator unasked.** It is the machine that
+  can always step in. The device that held Operator is told once.
+- **"Hand the service back"** (0.7.0's "Stop driving") is silent: the seat goes
+  back to the Projection holder, or is let go if that device is not connected.
+- **Moving from 0.7.0** gives Operator and Audio to the Projection holder, at
+  the lease's epoch. A first device that has no screens gets none of the
+  three (Audio only goes with Projection). Stream is left unheld.
+- **Roles are independent on a Projection hand-over.** Operator and Audio stay
+  where they are.
+- **The claimant waits the takeover time plus ten seconds** (default
+  effectively 2 minutes 10 seconds; PR #157, `TAKEOVER_MARGIN`), by its own
+  count of the holder's silence, so a holder that returns at once and counts
+  the claimant's absence from a slightly earlier last frame agrees with it.
+  PR #160 (merged, protocol 6) adds that a claimant also waits by the holder's advertised
+  setting when that is longer. A split that remains after this (one-way link
+  failure) is planned, not built (issue #153, closed): the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once.
+- **Signed role records.** A record carries up to eight signed steps; a device
+  takes a newer record only if its steps join its own state and every signer
+  is known; one that cannot be joined is *unverified* and waits. The volunteer
+  sees nothing about this yet.
+- **Always allow only for Operator and Stream**; one ask at a time.
+- **Warnings.** Stream: none (Projection keeps the OBS duty when nobody holds
+  Stream). Audio: "Nobody runs the sound." is built; the wording "Nobody runs
+  the sound, so {item} will not play." is not.
+- **Sound is opt-in.** Setup > Sound > "Use sound in services" is off by
+  default and only decides whether Plan offers the buttons that add sound.
+- **One-click OBS setup** runs on the machine that serves the pictures, with
+  OBS on another computer, and writes that machine's network address into the
+  browser source (never `localhost`); it is not run on the Stream holder.
+- **Platforms.** Built and tested on macOS and Windows, and also run on Linux
+  CI (the Linux builds pass); real Linux hardware has not been checked.
 
 ## Where the Teams check goes
 
@@ -138,12 +181,11 @@ when T18 lands.
 
 ## Consequences
 
-- Sync protocol 7 and a role record per role (a device on version 5 or 4 is
-  refused with the usual message saying which side should update).
+- Sync protocol 7 and a role record per role. Devices on an older version are refused with the usual message saying which side should update.
 - The OBS drawer and scene follower move from "the presenting device" to "the
   device holding Stream, or Projection when nobody does".
 - The browser-source URL must carry the Projection machine's LAN address, not
-  localhost, and the address must be pinnable.
+  localhost, and the address must be pinnable (built in #133).
 - Going live depends on a second device (the Stream holder) being online for
   the OBS part, though never for the screens. The status bar says when it is
   not.
