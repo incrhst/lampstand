@@ -19,6 +19,20 @@ clicker_mode: boolean,
  */
 use_sound: boolean, 
 /**
+ * Setup › This computer › "Start Lampstand when this computer starts":
+ * Lampstand opens when someone signs in to this computer. Off by
+ * default, and the only startup item Lampstand ever adds. Kept on this
+ * device: it is about this computer, not the church.
+ */
+start_at_login: boolean, 
+/**
+ * Setup › This computer › "Keep this computer awake while it is showing
+ * the screens": while an output window is open or an OBS picture is
+ * served, the computer is stopped from sleeping or dimming its screen.
+ * Off by default. Kept on this device, like `start_at_login`.
+ */
+keep_awake: boolean, 
+/**
  * Setup › Sound › Output: the sound output this device plays through
  * when it holds Audio, by name. Unset, or no longer on this computer,
  * means the computer's own default.

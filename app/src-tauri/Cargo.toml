@@ -34,10 +34,13 @@ base64.workspace = true
 chrono.workspace = true
 gethostname.workspace = true
 if-addrs = "0.15"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 image.workspace = true
+keepawake.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
+tauri-plugin-autostart.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-global-shortcut.workspace = true
 tauri-plugin-updater.workspace = true
@@ -51,6 +54,7 @@ futures-util.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio-tungstenite.workspace = true
+wiremock.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
 
 # Product names for displays (the window system only gives a model number).

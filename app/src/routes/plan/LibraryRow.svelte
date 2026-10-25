@@ -33,8 +33,11 @@
     onedit?: () => void;
   } = $props();
 
+  /** A pasted link's row that fetches something; the streaming row only says why not. */
+  const fetchable = (e: Entry) => e.key === "link" || e.key === "link:sound";
+
   const icon = (e: Entry): IconName =>
-    e.kind === "media" ? (isVideo(e.title) ? "media" : "announcements") : e.kind === "song" ? "song" : e.kind;
+    e.key === "link" ? "deck" : e.key.startsWith("link:") ? "sound" : e.kind === "media" ? (isVideo(e.title) ? "media" : "announcements") : e.kind === "song" ? "song" : e.kind;
 </script>
 
 <li class="item">
@@ -43,7 +46,7 @@
     {id}
     class="row"
     class:active
-    class:unavailable={!entry.item && entry.key !== "link"}
+    class:unavailable={!entry.item && !fetchable(entry)}
     onclick={onadd}
     onmouseenter={onhover}
     {onpointerdown}
@@ -54,7 +57,7 @@
     {:else if entry.item && "Deck" in entry.item}
       <DeckThumb deck={entry.item.Deck.deck} version={entry.version} />
     {:else}
-      <span class="kind"><Icon name={entry.key === "link" ? "deck" : icon(entry)} /></span>
+      <span class="kind"><Icon name={icon(entry)} /></span>
     {/if}
     <span class="text">
       <span class="title">{entry.title}{#if entry.fresh && !inService}<span class="new">New</span>{/if}</span>
@@ -64,7 +67,7 @@
       <span class="hint added"><Icon name="check" size={14} />Added</span>
     {:else if inService}
       <span class="hint in-service"><Icon name="check" size={14} /><span class="label">In service</span><span class="again">Add again</span></span>
-    {:else if entry.item || entry.key === "link"}
+    {:else if entry.item || fetchable(entry)}
       <span class="hint add"><Icon name="plus" size={14} />Add</span>
     {/if}
   </button>

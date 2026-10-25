@@ -5,6 +5,7 @@ import {
   countKinds,
   importedCounts,
   isLink,
+  linkEntries,
   mightBeReference,
   newSongs,
   rank,
@@ -128,4 +129,15 @@ test("a few new songs are listed as recent; a whole songbook is not", () => {
   const book = Array.from({ length: 40 }, (_, i) => hit(`s${i}`));
   assert.deepEqual(newSongs(before, [...book, hit("a")]), [], "too many to be recent");
   assert.equal(newSongs(before, book, 50).length, 40, "unless the limit allows it");
+});
+
+test("a pasted link offers the rows it could be added as", () => {
+  const keys = (url: string) => linkEntries(url).map((e) => e.key);
+  assert.deepEqual(keys("https://docs.google.com/presentation/d/abc/edit"), ["link"]);
+  assert.deepEqual(keys("https://drive.google.com/file/d/abc/view"), ["link", "link:sound"]);
+  assert.deepEqual(keys("https://www.dropbox.com/s/abc/Walk-in.mp3?dl=0"), ["link:sound"]);
+  const [refused] = linkEntries("https://open.spotify.com/track/abc");
+  assert.equal(refused.key, "link:streaming");
+  assert.equal(refused.item, null);
+  assert.match(refused.subtitle, /Streaming links can't be added/);
 });

@@ -35,6 +35,73 @@ pub enum Request {
     Sound(SoundRequest),
     Update(UpdateRequest),
     About(AboutRequest),
+    Remote(RemoteRequest),
+}
+
+/// Phones and tablets that drive the service from their browser (decision
+/// 0006, T99). Each answers `Response::Remotes`. Never allowed from a remote
+/// itself, nor from a device driving this one.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoteRequest {
+    Status,
+    /// Shows a fresh PIN for five minutes, replacing any shown before, with
+    /// the addresses a phone opens.
+    StartPairing,
+    StopPairing,
+    /// Forgets a paired phone (`RemoteSessionView::id`): its open page is
+    /// disconnected at once and it must pair again.
+    Revoke {
+        id: String,
+    },
+}
+
+/// Lampstand Remote as the Connect dialog and the devices screen show it.
+/// Also pushed as `Event::Remotes` whenever it changes.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotesView {
+    /// The PIN shown now, while a phone may pair.
+    pub pairing: Option<RemotePinView>,
+    /// Where a phone opens the remote, the likeliest first, while pairing:
+    /// `http://<lan-ip>:<port>/remote` with the port the server got. Empty
+    /// when not pairing, or when this computer has no network.
+    pub addresses: Vec<RemoteAddress>,
+    /// The paired phones, oldest first.
+    pub sessions: Vec<RemoteSessionView>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePinView {
+    /// Six digits.
+    pub pin: String,
+    /// Unix milliseconds.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub expires_ms: i64,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteAddress {
+    pub url: String,
+    /// The URL as a QR code: an SVG made by the core, safe to put in the page.
+    pub qr_svg: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteSessionView {
+    /// For `Revoke`.
+    pub id: String,
+    /// "Sam's phone", as typed when it paired.
+    pub name: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub paired_ms: i64,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_seen_ms: Option<i64>,
+    /// Its remote page is open now.
+    pub connected: bool,
 }
 
 /// Playing the sound in a service (decision 0010, the Audio role). Any
@@ -262,6 +329,18 @@ pub struct DeviceSettings {
     /// controls on for every device that has it anyway.
     #[serde(default)]
     pub use_sound: bool,
+    /// Setup › This computer › "Start Lampstand when this computer starts":
+    /// Lampstand opens when someone signs in to this computer. Off by
+    /// default, and the only startup item Lampstand ever adds. Kept on this
+    /// device: it is about this computer, not the church.
+    #[serde(default)]
+    pub start_at_login: bool,
+    /// Setup › This computer › "Keep this computer awake while it is showing
+    /// the screens": while an output window is open or an OBS picture is
+    /// served, the computer is stopped from sleeping or dimming its screen.
+    /// Off by default. Kept on this device, like `start_at_login`.
+    #[serde(default)]
+    pub keep_awake: bool,
     /// Setup › Sound › Output: the sound output this device plays through
     /// when it holds Audio, by name. Unset, or no longer on this computer,
     /// means the computer's own default.
@@ -455,6 +534,14 @@ pub enum LibraryRequest {
     /// the caller inserts the item.
     AddSoundFile {
         path: String,
+    },
+    /// A pasted link to a sound file: a Google Drive, OneDrive or Dropbox
+    /// share link, or an `https://` link to a file. It is downloaded
+    /// (250 MB at most), checked and added as `AddSoundFile` does, so the
+    /// service plays it offline. YouTube, Spotify, Apple Music and
+    /// SoundCloud links are refused. Answers `Response::SoundFile`.
+    AddSoundFromLink {
+        url: String,
     },
     /// A small picture of an image or video in the blob store, `width`
     /// pixels wide, for the library and the service order. For a video it
@@ -1367,6 +1454,7 @@ pub enum Response {
     Settings(DeviceSettings),
     Church(ChurchStatus),
     Update(UpdateStatus),
+    Remotes(RemotesView),
 }
 
 /// The services, and the ones that cannot be shown.
@@ -1500,6 +1588,22 @@ pub struct LoadedItemView {
     pub title: String,
     /// Empty for headers and for items that cannot be shown yet.
     pub slides: Vec<SlideView>,
+    /// The sound the item has: a music-only item's, or a song's backing
+    /// track. For screens that cannot read the service, such as the phone
+    /// remote's Sound box.
+    #[serde(default)]
+    pub sounds: Vec<ItemSoundView>,
+}
+
+/// One sound of a loaded item.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ItemSoundView {
+    pub name: String,
+    /// A song's backing track rather than a music-only item.
+    pub backing: bool,
+    pub length_ms: Option<u32>,
+    pub start: lampstand_core::service::SoundStart,
 }
 
 /// One slide as the operator sees it.
@@ -1557,6 +1661,9 @@ pub enum Event {
     /// A service was loaded or reloaded (an edit synced in mid-service):
     /// the operator view should show these slides.
     Loaded(LoadedService),
+    /// The service on air was closed, or this device stopped presenting:
+    /// nothing is loaded now.
+    Unloaded,
     /// A document changed (here or on another device); refetch if shown.
     /// When many change at once (an import, a first sync), one event with
     /// an empty `id` stands for all of that kind.
@@ -1586,4 +1693,7 @@ pub enum Event {
     Obs(Box<ObsView>),
     /// What is playing, or who plays it, changed.
     Sound(Box<SoundView>),
+    /// A phone paired or was revoked, a remote page connected or left, or
+    /// the PIN changed.
+    Remotes(Box<RemotesView>),
 }
