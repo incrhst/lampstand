@@ -56,3 +56,15 @@ CSS transforms in `src/Demo.tsx`.
 
 No claims about downloads, users or dates appear in the video, in line with
 `PRODUCT.md`.
+
+## Explainer videos from scene lists (parametric)
+
+Besides the fly-over above, `video/core` (shared scenes, motion, validation) and `video/projects/lampstand`
+(theme, roles, devices, screenshot callouts) render short explainer videos from a JSON scene list.
+Agents: use the `lampstand-video` skill (`.claude/skills/lampstand-video`). Read `projects/lampstand/MANIFEST.md`, write `projects/lampstand/videos/<name>.json`, then:
+
+```bash
+npm run lamp:validate
+npm run lamp:sheet -- projects/lampstand/videos/<name>.json --sheet    # contact sheet in out/
+npm run lamp:render -- projects/lampstand/videos/<name>.json           # out/<name>.mp4 (add --aspect 9:16 or 1:1)
+```
