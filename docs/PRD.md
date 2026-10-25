@@ -47,7 +47,7 @@ The operator on Sunday is usually a volunteer who runs the system twice a month.
 | Worship leader | Plans songs each week | Pick songs and keys, set arrangement order, see the next lyric on a stage screen |
 | Pastor or speaker | Builds sermon slides in PowerPoint or Google Slides | Hand over a deck late on Saturday and trust it to look the same on Sunday, with notes on a confidence monitor |
 | Church admin | Runs the office, keeps licences | Manage the song library, file CCLI usage reports, keep announcements current |
-| Media or stream lead | Runs the live stream | Send lower thirds and lyrics to the stream with a transparent background |
+| Media or stream lead | Runs the live stream | Send lower thirds and lyrics to the stream with a transparent background; have the sermon recorded and ready to publish after the service |
 | Tech director | Larger churches, several screens and rooms | Map outputs to projectors, LED walls and stage screens, trigger lights and audio cues |
 
 ## Goals, non-goals and success metrics
@@ -187,6 +187,18 @@ Many churches project onto screens they cannot adjust: a rented venue TV that cr
 | TS-8 | Preview and live panes show each output's safe area as an overlay, so the operator sees what the room sees. | P0 |
 | TS-9 | Each output adapts its layout to its aspect ratio (4:3, 16:9, 16:10, ultra-wide LED walls), not one stretched layout. | P0 |
 | TS-10 | Calibration profiles are saved per room and recognised by the display's hardware ID, so plugging in the same screen restores them. | P1 |
+
+### Recording the sermon
+
+Churches want the sermon as a file for their website or podcast the same day. Lampstand records its audio; video stays in OBS. See [decision 0012](decisions/0012-recording-the-sermon.md).
+
+| ID | Requirement | Priority |
+| --- | --- | --- |
+| RC-1 | Record the sermon's audio from one chosen input (a mixer feed into a USB interface) on the computer that runs the stream, as a WAV master that survives a crash. Files stay on that computer. | P0 |
+| RC-2 | An item marked "Record this" starts the recording when it goes live and stops it when the next item does. Record and Stop in Present work at any time; stopping by hand asks first. | P0 |
+| RC-3 | Optionally start and stop OBS's own recording with the sermon, so the video file holds just the sermon. Never stop an OBS recording Lampstand did not start. | P0 |
+| RC-4 | Trim the start and end of a recording, and export an MP3 with the service and sermon in its tags and the level evened out. | P0 |
+| RC-5 | Publish a recording to the church's website or podcast host. | P2 |
 
 ### Reporting
 

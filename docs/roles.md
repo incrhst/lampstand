@@ -23,6 +23,7 @@ Roles are built and tested on macOS and Windows, and also run on Linux CI (the L
 | The tablet and phone remote, the browser stage page, a Stream view in the browser | Planned (decision 0006; not in the app yet) |
 | Showing the volunteer that a role's record could not be checked | Built (#184): the roster and the status bar say so, with what to do |
 | The role bar: a strip in the role colours for the roles a machine holds, in the status bar and beside each device in Setup > Devices | Built (0.9.0) |
+| Recording the sermon: the Stream holder (or the Projection holder, with nobody on Stream) records the sermon's audio from one input, and can start OBS's video recording with it | Planned for 1.0.0 ([decision 0012](decisions/0012-recording-the-sermon.md), T117 to T124) |
 
 ## The four roles
 
@@ -104,7 +105,7 @@ Where the machine running the screens is far from the mixer, spin Audio off to a
 
 ### What comes from the house: cameras, microphones, the band
 
-None of it goes through Lampstand, and no role owns it. Lampstand never carries camera video or sound from the room.
+None of it goes through Lampstand, and no role owns it. Lampstand never carries camera video or sound from the room. (**Planned for 1.0.0**, [decision 0012](decisions/0012-recording-the-sermon.md): it will record the sermon's audio from one input, on the computer that runs the stream, and send it nowhere.)
 
 - **Cameras** belong to OBS. Plug them into the stream machine (USB or an HDMI capture box), or bring them in over the network (network cameras, NDI or RTSP) into OBS. Putting the stream machine near the cameras and the mixer is the simplest.
 - **Microphones, the band and the house mix** come from the church's mixing board. Whatever the mixer sends has to reach the machine running Zoom and the OBS Virtual Camera. One common way, as an example and not a requirement: a feed from the board into a USB audio interface on the stream machine, used as the Zoom microphone (with "Original sound" on) and as an OBS audio source.
