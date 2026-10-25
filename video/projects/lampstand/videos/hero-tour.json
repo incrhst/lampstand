@@ -1,0 +1,86 @@
+{
+ "composition": "Tour",
+ "aspect": "16:9",
+ "fps": 30,
+ "music": { "src": "music/lampstand-intro.m4a", "volume": 0.38, "fadeInSec": 1.5, "fadeOutSec": 4 },
+ "world": {
+  "windows": [
+   { "id": "start", "src": "shots/1-getstarted.png", "title": "Lampstand", "x": 0, "y": 0 },
+   { "id": "plan", "src": "shots/2-plan.png", "title": "Lampstand · Plan", "x": 1500, "y": 40, "z": -60, "yaw": -7 },
+   { "id": "quick", "src": "shots/3-quickadd.png", "title": "Quick add", "x": 2150, "y": 360, "z": 170, "yaw": -7, "scale": 0.72 },
+   { "id": "decks", "src": "shots/4-decks.png", "title": "Lampstand · Plan", "x": 3450, "y": -40, "z": -30, "yaw": -7 },
+   { "id": "present", "src": "shots/5-present.png", "title": "Lampstand · Present", "x": 5000, "y": 20, "yaw": -5 },
+   { "id": "notes", "src": "shots/5b-present-deck.png", "title": "Speaker notes", "x": 5620, "y": 380, "z": 170, "yaw": -5, "scale": 0.72 },
+   { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Setup", "x": 8650, "y": 10, "z": -20, "yaw": 6 },
+   { "id": "obslive", "src": "shots/8-present-obs.png", "title": "Lampstand · Present", "x": 9300, "y": 400, "z": 170, "yaw": 6, "scale": 0.72 },
+   { "id": "screens", "src": "shots/6-setup.png", "title": "Lampstand · Setup", "x": 10800, "y": 0, "yaw": 4 }
+  ],
+  "screen": {
+   "x": 6850, "y": -20, "yaw": -3, "w": 1600, "h": 900,
+   "lyrics": [
+    ["Amazing grace, how sweet the sound", "That saved a wretch like me"],
+    ["'Twas grace that taught my heart to fear", "And grace my fears relieved"],
+    ["Through many dangers, toils and snares", "I have already come"]
+   ],
+   "credit": "Amazing Grace · John Newton",
+   "everySec": 2.2,
+   "delaySec": 0.6
+  },
+  "backdrop": {
+   "x": -3000, "y": -4600, "w": 17000, "h": 10600, "z": -420,
+   "folds": { "count": 7, "from": 500, "every": 1700 },
+   "labels": [
+    { "text": "PLAN", "x": 3700, "y": 5300 },
+    { "text": "PRESENT", "x": 7200, "y": 5300 },
+    { "text": "THE SCREEN", "x": 9050, "y": 5300 },
+    { "text": "OBS", "x": 10900, "y": 5300 },
+    { "text": "SETUP", "x": 12900, "y": 5300 }
+   ]
+  }
+ },
+ "scenes": [
+  { "type": "open", "durationSec": 3.6, "captionOut": 0.2,
+    "tag": "Lampstand", "title": "Free projection for your church service.", "sub": "Songs, scripture and slides. Works offline.",
+    "stops": [{ "x": 2600, "y": 200, "d": 3600, "yaw": -26, "pitch": 34, "roll": -4 }] },
+  { "type": "stop", "durationSec": 7.6, "captionIn": 0.6, "captionOut": 0.8,
+    "tag": "1 · Start", "title": "Try the Welcome service first.", "sub": "A Get started strip walks you through it.",
+    "stops": [
+     { "on": "start", "x": 40, "y": 20, "d": 1790, "yaw": 16, "pitch": 12, "roll": -1.5 },
+     { "on": "start", "x": -120, "y": -300, "d": 1060, "yaw": 10, "pitch": 6, "atSec": 3.6 }
+    ] },
+  { "type": "stop", "durationSec": 5.2,
+    "tag": "2 · Plan", "title": "Build the order of service.", "sub": "Songs, scripture, slides and video, in order.",
+    "stops": [{ "on": "plan", "y": 20, "d": 1610, "yaw": 12, "pitch": 11, "roll": -1 }] },
+  { "type": "stop", "durationSec": 5,
+    "tag": "Quick add", "title": "Type John 3:16 and press Enter.", "sub": "Songs and verses drop straight into the order.", "keys": ["/"],
+    "stops": [{ "on": "quick", "y": 10, "d": 1260, "yaw": 8, "pitch": 10, "roll": 1 }] },
+  { "type": "stop", "durationSec": 5,
+    "tag": "Slides", "title": "Bring your PowerPoint or Google Slides.", "sub": "Animation steps and speaker notes come too.",
+    "stops": [{ "on": "decks", "d": 1540, "yaw": 12, "pitch": 11, "roll": -1 }] },
+  { "type": "stop", "durationSec": 8.2, "captionOut": 0.6,
+    "tag": "3 · Present", "title": "Choose the next item. Start it.", "sub": "Space moves on. Left goes back. Period blanks the screen.", "keys": ["⇧", "↓", "Enter"],
+    "stops": [
+     { "on": "present", "x": -20, "y": 10, "d": 1540, "yaw": 8, "pitch": 12, "roll": 0.5 },
+     { "on": "present", "x": -380, "d": 1060, "yaw": 6, "pitch": 8, "atSec": 4 }
+    ] },
+  { "type": "stop", "durationSec": 5.8,
+    "tag": "Notes", "title": "Your notes stay on your screen.", "sub": "The congregation never sees them.",
+    "stops": [{ "on": "notes", "x": 120, "y": -10, "d": 1260, "yaw": 8, "pitch": 10, "roll": -1 }] },
+  { "type": "stop", "durationSec": 6.8, "captionOut": 0.2,
+    "tag": "The screen", "title": "The congregation sees only the words.", "sub": "Words stay inside the safe area of each screen.",
+    "stops": [{ "on": "screen", "y": 20, "d": 1900, "yaw": 4, "pitch": 8 }] },
+  { "type": "stop", "durationSec": 11.2,
+    "tag": "OBS", "title": "Send lyrics to your live stream.", "sub": "A browser source in OBS, no plugin. Switch scenes with the service.",
+    "stops": [
+     { "on": "obs", "y": 10, "d": 1540, "yaw": -12, "pitch": 10, "roll": 1 },
+     { "on": "obslive", "x": -10, "d": 1330, "yaw": -10, "pitch": 10, "roll": -1, "atSec": 5.2 }
+    ] },
+  { "type": "stop", "durationSec": 6,
+    "tag": "Setup", "title": "Fit each screen once.", "sub": "Calibrate so words never fall off the edge.",
+    "stops": [{ "on": "screens", "d": 1470, "yaw": -8, "pitch": 11, "roll": 0.5 }] },
+  { "type": "close", "durationSec": 7.6, "captionIn": 0.6,
+    "tag": "Lampstand", "title": "Free and open source.", "sub": "GPL-3.0 · github.com/incrhst/lampstand",
+    "stops": [{ "on": "screens", "x": 600, "y": 200, "d": 2800, "yaw": -18, "pitch": 30, "roll": 2 }],
+    "sfx": [{ "sound": "bell", "atSec": 1, "volume": 0.35 }] }
+ ]
+}
