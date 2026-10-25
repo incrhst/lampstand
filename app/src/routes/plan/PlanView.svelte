@@ -130,7 +130,7 @@
     showOlder ? services : services.filter((s) => !isOlder(s) || s.id === selected?.id),
   );
 
-  function startRename(s: ServiceSummary) {
+  function startRename(s: { id: string; title: string }) {
     confirmDelete = null;
     renaming = s.id;
     renameTitle = s.title;
@@ -962,42 +962,18 @@
     {/if}
     <ul class="plain pane-body">
       {#each shown as s (s.id)}
-        {#if renaming === s.id}
-          <li class="rename">
-            <!-- svelte-ignore a11y_autofocus -->
-            <input
-              aria-label="Service name"
-              bind:value={renameTitle}
-              onkeydown={onKeys(saveRename, () => (renaming = null))}
-              onblur={saveRename}
-              autofocus
-            />
-          </li>
-        {:else}
-          <ListRow title={s.title} subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`} active={selected?.id === s.id} onclick={() => select(s.id)}>
-            {#snippet details()}
-              {#if live.loaded?.service === s.id}
-                <span class="row-status"><span class="live-dot"></span>Open for live</span>
-              {/if}
-            {/snippet}
-            {#snippet trailing()}
-              {#if selected?.id === s.id}
-                <span class="row-actions">
-                  <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
-                  <Button variant="ghost" size="small" title="Start a new service from this one" onclick={() => startFrom(s.id)}>Duplicate</Button>
-                  {#if live.loaded?.service === s.id}
-                    <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => takeOffAir(s.id)}>Close</Button>
-                  {/if}
-                  {#if confirmDelete === s.id}
-                    <Button variant="danger" size="small" onclick={() => deleteService(s.id)}>Delete?</Button>
-                  {:else}
-                    <Button variant="ghost" size="small" icon="trash" label="Delete service" title="Delete service" onclick={() => deleteService(s.id)} />
-                  {/if}
-                </span>
-              {/if}
-            {/snippet}
-          </ListRow>
-        {/if}
+        <ListRow
+          title={s.title}
+          subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`}
+          active={selected?.id === s.id}
+          onclick={() => select(s.id)}
+        >
+          {#snippet details()}
+            {#if live.loaded?.service === s.id}
+              <span class="row-status"><span class="live-dot"></span>Open for live</span>
+            {/if}
+          {/snippet}
+        </ListRow>
       {:else}
         <li class="empty muted">No services yet.</li>
       {/each}
@@ -1026,7 +1002,19 @@
     {#if selected}
       <div class="order-head">
         <div class="heading">
-          <h1 id="service-title">{selected.title}</h1>
+          {#if renaming === selected.id}
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              class="title-edit"
+              aria-label="Service name"
+              bind:value={renameTitle}
+              onkeydown={onKeys(saveRename, () => (renaming = null))}
+              onblur={saveRename}
+              autofocus
+            />
+          {:else}
+            <h1 id="service-title">{selected.title}</h1>
+          {/if}
           {#if editWhen}
             <form
               class="reschedule"
@@ -1045,7 +1033,31 @@
                 {formatWhen(selected.starts_at, selected.time_zone)} · {items.length}
                 {items.length === 1 ? "item" : "items"}{#if soundTotalLabel(selected)} · {soundTotalLabel(selected)}{/if}
               </span>
-              <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
+              <!-- What is done to the service as a whole lives here, beside
+                   its name, so the services list stays a plain list. -->
+              <span class="service-tools">
+                <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
+                <Button variant="ghost" size="small" icon="pencil" label="Rename" title="Rename" onclick={() => selected && startRename(selected)} />
+                <Button variant="ghost" size="small" icon="copy" label="Duplicate" title="Start a new service from this one" onclick={() => selected && startFrom(selected.id)} />
+                {#if confirmDelete === selected.id}
+                  <Button variant="danger" size="small" onclick={() => selected && deleteService(selected.id)}>Delete?</Button>
+                {:else}
+                  {@const onAir = live.loaded?.service === selected.id}
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    icon="trash"
+                    label="Delete service"
+                    title={onAir ? "Close this service before deleting it" : "Delete service"}
+                    disabled={onAir}
+                    onclick={() => selected && deleteService(selected.id)}
+                  />
+                {/if}
+              </span>
+              {#if live.loaded?.service === selected.id}
+                <span class="live-tag"><span class="live-dot"></span>Open for live</span>
+                <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => selected && takeOffAir(selected.id)}>Close</Button>
+              {/if}
             </p>
           {/if}
         </div>
@@ -1339,9 +1351,24 @@
   .create > :global(button) {
     align-self: flex-end;
   }
-  .row-actions {
-    display: flex;
-    gap: 0.25rem;
+  .live-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+  }
+  .service-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+  }
+  .title-edit {
+    font-size: 1.3rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    min-width: 0;
+    width: 100%;
   }
   .look {
     display: inline-flex;
@@ -1353,18 +1380,13 @@
     max-width: 11rem;
     padding: 0.3rem 0.5rem;
   }
-  .rename {
-    padding: 0.5rem 0.75rem;
-  }
-  .rename input {
-    width: 100%;
-  }
   .older {
     padding: 0.5rem 0.75rem;
   }
   .row-status {
     display: flex;
     align-items: center;
+    white-space: nowrap;
     gap: 0.4rem;
     margin-top: 0.3rem;
     font-size: 0.75rem;

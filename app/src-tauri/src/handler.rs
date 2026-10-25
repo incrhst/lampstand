@@ -633,7 +633,13 @@ impl App {
             }
             ServiceRequest::Delete(service) => {
                 get(service)?;
-                self.close_service(service);
+                // A service open for live is never deleted from under the
+                // operator: it is closed first, on purpose.
+                if self.loaded.as_ref().map(|l| l.view.service) == Some(service) {
+                    return Err(
+                        "This service is open for live. Close it before deleting it.".into(),
+                    );
+                }
                 self.library.delete_service(service).map_err(err)?;
                 Response::Ok
             }

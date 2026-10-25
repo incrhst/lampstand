@@ -1641,7 +1641,14 @@ fn a_service_is_renamed_closed_and_deleted() {
     ok(service_request(&mut h, ServiceRequest::Close(service.id)));
     assert_eq!(list_titles(&mut h), ["Easter"], "off air keeps the service");
 
+    // Open for live, it cannot be deleted; closed, it can.
     open_service(&mut h, &service);
+    match service_request(&mut h, ServiceRequest::Delete(service.id)) {
+        Response::Error { message } => assert!(message.contains("open for live"), "{message}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(list_titles(&mut h), ["Easter"], "still there");
+    ok(service_request(&mut h, ServiceRequest::Close(service.id)));
     ok(service_request(&mut h, ServiceRequest::Delete(service.id)));
     assert!(list_titles(&mut h).is_empty());
 }
