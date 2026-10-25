@@ -32,7 +32,7 @@ use crate::{DocKind, SyncMessage};
 const BATCH: usize = 512;
 
 /// How often a session says it is alive.
-const BEAT: Duration = Duration::from_secs(5);
+const BEAT: Duration = crate::roles::HEARTBEAT;
 
 /// A session that has heard nothing for this long is over: the other
 /// device is gone even if the socket has not noticed.
@@ -307,6 +307,12 @@ impl State {
             Frame::RoleYield { role } => self.node.role_yield_received(self.peer, role),
             Frame::DriveCommand { payload } => self.node.drive_command_received(self.peer, payload),
             Frame::DriveLive { payload } => self.node.drive_live_received(self.peer, payload),
+            Frame::ObsCue { run, seq, scene } => {
+                self.node.scene_cue_received(self.peer, run, seq, scene)
+            }
+            Frame::ObsCueAck { run, seq } => self.node.scene_cue_ack_received(self.peer, run, seq),
+            Frame::SoundCue { cmd } => self.node.sound_cue_received(self.peer, cmd),
+            Frame::SoundNow { now } => self.node.sound_now_received(self.peer, now),
             Frame::Beat => {}
             // Handshake frames after the handshake: ignore.
             Frame::Hello(_) | Frame::Proof { .. } | Frame::Refused { .. } => {}

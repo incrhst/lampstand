@@ -3278,10 +3278,13 @@ dependencies = [
 name = "lampstand-app"
 version = "0.7.0"
 dependencies = [
+ "automerge",
+ "autosurgeon",
  "base64 0.23.1",
  "chrono",
  "futures-util",
  "gethostname",
+ "if-addrs",
  "image",
  "lampstand-api",
  "lampstand-connectors",
@@ -3376,6 +3379,8 @@ dependencies = [
 name = "lampstand-library"
 version = "0.7.0"
 dependencies = [
+ "automerge",
+ "autosurgeon",
  "lampstand-core",
  "lampstand-sync",
  "postcard",

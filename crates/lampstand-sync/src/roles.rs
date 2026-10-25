@@ -66,6 +66,26 @@ pub const MIN_TAKEOVER: Duration = Duration::from_secs(1);
 /// The longest time that can be set.
 pub const MAX_TAKEOVER: Duration = Duration::from_secs(24 * 3600);
 
+/// How much longer than the takeover time a claimant waits before it claims.
+///
+/// Every device counts a silence from the last frame it heard, and a session
+/// sends a frame at least every [`HEARTBEAT`]. So when a holder drops off, the
+/// last frame the claimant heard from it and the last frame it heard from the
+/// claimant can be up to one heartbeat apart (a little more on a busy machine
+/// whose timer runs late). The device that judges a claim counts the other's
+/// absence for itself, strictly: it believes the claim only if that is at
+/// least the takeover time. A claimant that claimed at exactly the takeover
+/// time by its own count could therefore be refused by a holder that came
+/// back at once, and both would believe they hold the role. Waiting this much
+/// longer (two heartbeats) means the judge's count is at least the takeover
+/// time whatever the phase of the heartbeats, so the judge's rule needs no
+/// leniency and a claimant cannot lie its way past it: the judge's own
+/// measurement still decides.
+pub const TAKEOVER_MARGIN: Duration = Duration::from_secs(10);
+
+/// How often a session sends something (see `net::session`).
+pub const HEARTBEAT: Duration = Duration::from_secs(5);
+
 /// One of the four jobs. The order is the order they are listed in.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
@@ -447,6 +467,9 @@ pub enum Denied {
     NeedsProjection,
     /// Teams (T18) does not let this device hold the role.
     NotPermitted,
+    /// This device has just connected and has not yet been told who holds
+    /// the roles, so a role that looks unheld may not be.
+    Settling,
 }
 
 /// Teams (T18) does not let a device hold a role. Never returned until T18.
@@ -465,25 +488,20 @@ impl From<Blocked> for Denied {
 impl std::fmt::Display for Denied {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Denied::MustAsk => write!(
-                f,
-                "the presenting device is connected: ask it to allow this"
-            ),
+            Denied::MustAsk => write!(f, "the holder is connected: ask it to allow this"),
             Denied::TooSoon { remaining, .. } => write!(
                 f,
-                "the presenting device went offline only recently; you can take over in {}s",
+                "the holder went offline only recently; you can take over in {}s",
                 remaining.as_secs().max(1)
             ),
-            Denied::Already => write!(f, "this device is already presenting"),
-            Denied::NobodyToAsk => write!(
-                f,
-                "the presenting device is not connected, so it cannot be asked"
-            ),
-            Denied::NotNeeded => write!(f, "nobody needs to allow this: present from here"),
+            Denied::Already => write!(f, "this device already holds that role"),
+            Denied::NobodyToAsk => write!(f, "the holder is not connected, so it cannot be asked"),
+            Denied::NotNeeded => write!(f, "nobody needs to allow this: take it from here"),
             Denied::NoScreens => write!(f, "No screens are set up on this device"),
-            // The wording the driver's bar already used when nothing presents.
-            Denied::NeedsProjection => write!(f, "nobody is presenting"),
+            Denied::NeedsProjection => write!(f, "nobody runs the screens"),
             Denied::NotPermitted => write!(f, "this device may not hold that role"),
+            // What the bar said in 0.7.0 before it had heard who presents.
+            Denied::Settling => write!(f, "nobody is presenting"),
         }
     }
 }
@@ -533,9 +551,9 @@ pub enum NotAllowed {
 impl std::fmt::Display for NotAllowed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NotAllowed::NotHolding => write!(f, "this device is not presenting"),
+            NotAllowed::NotHolding => write!(f, "this device does not hold that role"),
             NotAllowed::NotAsking => write!(f, "that device is no longer asking"),
-            NotAllowed::NeedsProjection => write!(f, "nobody is presenting"),
+            NotAllowed::NeedsProjection => write!(f, "nobody runs the screens"),
             NotAllowed::NotPermitted => write!(f, "that device may not hold that role"),
         }
     }
@@ -796,12 +814,14 @@ impl Roles {
             Holder::Me => Standing::Holding,
             Holder::Gone => Standing::Open,
             Holder::Online => Standing::Ask,
-            Holder::Offline(offline) if offline >= self.takeover_after => {
+            // The takeover time, and then the margin that lets the holder's
+            // own count of this device's absence reach it too.
+            Holder::Offline(offline) if offline >= self.takeover_after + TAKEOVER_MARGIN => {
                 Standing::TakeOver { offline }
             }
             Holder::Offline(offline) => Standing::Wait {
                 offline,
-                remaining: self.takeover_after - offline,
+                remaining: self.takeover_after + TAKEOVER_MARGIN - offline,
             },
         }
     }
@@ -1314,6 +1334,12 @@ impl Roles {
         self.unverified = [true; 4];
     }
 
+    /// Some role is still waiting to be taught again after its state was
+    /// lost.
+    pub fn reseeding(&self) -> bool {
+        self.reseed.iter().any(|r| *r)
+    }
+
     /// Roles this device has asked `holder` for and still waits on: to be
     /// asked again when a connection to it opens, in case the ask was lost.
     pub fn waiting_asks(&self, holder: DeviceKey) -> Vec<Role> {
@@ -1347,8 +1373,12 @@ impl Roles {
                 self.seed_heard = [false; 4];
             }
         }
-        if merged.changed {
-            self.reseed[role.index()] = false;
+        let i = role.index();
+        // Taught again: by a record that took, or by a device that has the
+        // same or less to say.
+        if self.reseed[i] && (merged.changed || !remote.beats(&self.records[i])) {
+            self.reseed[i] = false;
+            self.unverified[i] = false;
         }
         merged
     }
@@ -1888,19 +1918,20 @@ mod tests {
     fn takeover_only_after_the_timeout() {
         let (_, mut b) = pair();
         let at = |s: u64| move |_: DeviceKey| Holder::Offline(secs(s));
-        let (f30, f119, f120, f300) = (at(30), at(119), at(120), at(300));
+        // The takeover time (120 s) plus the margin (10 s) before a claim.
+        let (f30, f119, f120, f300) = (at(30), at(129), at(130), at(300));
         for role in [Role::Projection, Role::Audio] {
             assert_eq!(
                 b.standing(role, &net(true, &f30)),
                 Standing::Wait {
                     offline: secs(30),
-                    remaining: secs(90)
+                    remaining: secs(100)
                 }
             );
             assert_eq!(
                 b.claim(role, &net(true, &f119)),
                 Err(Denied::TooSoon {
-                    offline: secs(119),
+                    offline: secs(129),
                     remaining: secs(1)
                 })
             );
@@ -1908,7 +1939,7 @@ mod tests {
             assert!(!b.holds(role), "a refused claim changes nothing");
             assert_eq!(
                 b.standing(role, &net(true, &f120)),
-                Standing::TakeOver { offline: secs(120) }
+                Standing::TakeOver { offline: secs(130) }
             );
             assert_eq!(b.ask(role, &net(true, &f300)), Err(Denied::NotNeeded));
         }
@@ -1917,11 +1948,88 @@ mod tests {
         assert_eq!(b.mode(&net(true, &online)), Mode::Presenter);
     }
 
+    /// The boundary, with the default takeover time and the margin: a claim
+    /// is not allowed until the takeover time plus the margin, and the
+    /// device that judges it believes it from the takeover time on.
+    #[test]
+    fn a_claim_waits_for_the_takeover_time_plus_the_margin() {
+        let (_, mut b) = pair();
+        assert_eq!(b.takeover_after(), DEFAULT_TAKEOVER);
+        let after = |s: u64| move |_: DeviceKey| Holder::Offline(secs(s));
+        let t = DEFAULT_TAKEOVER.as_secs();
+        let m = TAKEOVER_MARGIN.as_secs();
+        for (offline, allowed) in [
+            (t - 1, false),
+            (t, false),
+            (t + m - 1, false),
+            (t + m, true),
+            (t + m + 5, true),
+        ] {
+            let f = after(offline);
+            let standing = b.standing(Role::Audio, &net(true, &f));
+            assert_eq!(
+                matches!(standing, Standing::TakeOver { .. }),
+                allowed,
+                "offline {offline}s: {standing:?}"
+            );
+            assert_eq!(
+                b.claim(Role::Audio, &net(true, &f)).is_ok(),
+                allowed,
+                "offline {offline}s"
+            );
+            if allowed {
+                return;
+            }
+        }
+    }
+
+    /// Why the margin is what it is: two devices' counts of the same silence
+    /// differ by at most one heartbeat (plus a late timer), so a claimant
+    /// that waited the takeover time plus the margin is believed by a
+    /// judge that asks only for the takeover time. The judge keeps its
+    /// strict rule, so a claimant cannot lie its way past it.
+    #[test]
+    fn the_margin_covers_the_difference_between_two_counts_of_the_same_silence() {
+        assert!(TAKEOVER_MARGIN >= HEARTBEAT * 2);
+        for takeover in [secs(1), secs(2), DEFAULT_TAKEOVER, secs(3600)] {
+            let claimant_waited = takeover + TAKEOVER_MARGIN;
+            for judge_sees_less_by in 0..=HEARTBEAT.as_secs() + 3 {
+                let judge_count = claimant_waited - secs(judge_sees_less_by);
+                assert!(judge_count >= takeover, "{takeover:?} {judge_sees_less_by}");
+            }
+        }
+    }
+
+    /// The judge's rule is unchanged and strict: a claim against it is
+    /// believed from a device that was away for the takeover time and not
+    /// before, and never from one that has been connected all along.
+    #[test]
+    fn the_device_that_judges_a_claim_still_asks_for_the_whole_takeover_time() {
+        let t = DEFAULT_TAKEOVER;
+        for (away, believed) in [
+            (None, false),
+            (Some(secs(3)), false),
+            (Some(t - secs(1)), false),
+            (Some(t), true),
+            (Some(t + secs(30)), true),
+        ] {
+            let (mut a, _, _) = church();
+            let mut c = device(3, "Laptop");
+            for role in Role::ALL {
+                m(&mut c, role, a.record(role));
+            }
+            let off = |_: DeviceKey| Holder::Offline(secs(999));
+            let claim = c.claim(Role::Stream, &net(true, &off)).unwrap();
+            let merged = a.merge(Role::Stream, &claim, key(3), &net_away(&online, away));
+            assert_eq!(merged.changed, believed, "away {away:?}");
+        }
+    }
+
     #[test]
     fn the_timeout_is_configurable() {
         let (_, mut b) = pair();
         let off = |s: u64| move |_: DeviceKey| Holder::Offline(secs(s));
-        let (f300, f61) = (off(300), off(61));
+        let (f300, f61) = (off(300), off(71));
         b.set_takeover_after(secs(600));
         assert!(b.claim(Role::Audio, &net(true, &f300)).is_err());
         b.set_takeover_after(secs(60));

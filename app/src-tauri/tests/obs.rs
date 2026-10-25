@@ -384,3 +384,29 @@ async fn one_browser_source_switches_between_lower_thirds_and_full_screen() {
     ok(app.handle(Request::Outputs(OutputRequest::Put(output))));
     assert!(is_lower_third(&next_verse_scene(&mut ws).await));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn set_up_obs_gets_the_same_address_and_the_size_from_the_app() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = open(dir.path());
+    let sync = serve(&mut app, dir.path()).await;
+    let output = stream_output();
+    ok(app.handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let shown = url(&mut app, output.id);
+
+    let (picture, width, height) = app.obs_picture(output.id).unwrap();
+    assert_eq!(picture, shown, "the same address and key as Setup shows");
+    assert_eq!((width, height), (1280, 720));
+
+    // The address follows the one the shell last gave the server.
+    app.set_server_address("192.168.1.20:7340".into());
+    assert!(app
+        .obs_picture(output.id)
+        .unwrap()
+        .0
+        .starts_with("http://192.168.1.20:7340/obs/"));
+
+    // Not an OBS picture, or not an output at all.
+    assert!(app.obs_picture(OutputId::generate()).is_err());
+    drop(sync);
+}

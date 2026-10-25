@@ -28,3 +28,16 @@ still runs on macOS and Windows CI and locally. The takeover path is also
 exercised there and by the two-device tests, but it is **not** exercised on
 Linux until this is fixed. That means a real Linux-only takeover race, if one
 exists, could be hidden by this skip.
+
+Update (PR #148): the cut in this test and in the app tests is now atomic
+(`SyncNode::set_offline`: while offline no connection can register, so none
+survives a cut). The test still could not be made to fail locally, with or
+without that change, under 16 parallel copies, 6 CPU burners and two worker
+threads (64 runs each), so whether this fixes the Ubuntu failure is unknown;
+it stays ignored on Linux until a CI run says so. A different cause of
+flaky takeover tests was found and fixed in the app tests: a takeover time
+shorter than the five-second heartbeat lets the claimant count its absence
+from an earlier last frame than the holder counts from, so the holder can
+rightly refuse a claim made too soon after the cut. Those tests now wait
+until the claimant really was out of reach for the takeover time. The claim timing is no longer a cause: a claimant now waits the takeover
+time plus ten seconds (issue #153).

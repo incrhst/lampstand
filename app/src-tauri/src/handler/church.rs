@@ -52,6 +52,35 @@ pub trait SyncLink: Send + Sync {
     /// Whether this device has screens set up (an output turned on): only
     /// then can it hold the Projection role.
     fn screens(&self, _set_up: bool) {}
+    /// Where a sound cue made here goes: played here (the default, for a
+    /// device with nobody to share with), or sent to the Audio holder.
+    fn route_sound(
+        &self,
+        _cmd: lampstand_sync::net::SoundCommand,
+    ) -> lampstand_sync::net::SoundRoute {
+        lampstand_sync::net::SoundRoute::Local
+    }
+    /// Tells the other devices what this one, as the Audio holder, is
+    /// playing (`None`: nothing).
+    fn report_sound(&self, _now: Option<lampstand_sync::net::SoundNow>) {}
+    /// Whether this device plays the sound: it holds Audio, or has nobody to
+    /// share with.
+    fn audio_here(&self) -> bool {
+        true
+    }
+    /// When another device holds Audio: its name, whether it is connected,
+    /// and what it last said it is playing.
+    fn audio_remote(&self) -> Option<AudioRemote> {
+        None
+    }
+}
+
+/// The device that plays the sound, when it is not this one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioRemote {
+    pub name: String,
+    pub connected: bool,
+    pub playing: Option<lampstand_sync::net::SoundNow>,
 }
 
 /// A first-time agreement waits this long for the other device's copy to
@@ -177,6 +206,11 @@ impl App {
         self.tell_screens();
     }
 
+    /// The link to the sync node, once sync is running.
+    pub(super) fn sync_link(&self) -> Option<std::sync::Arc<dyn SyncLink>> {
+        self.church_sync.link.clone()
+    }
+
     /// Tells sync whether this device has screens set up.
     pub(super) fn tell_screens(&self) {
         if let Some(link) = &self.church_sync.link {
@@ -262,6 +296,9 @@ impl App {
     pub(super) fn put_device_settings(&mut self, sent: DeviceSettings) -> Result<()> {
         let mut own = self.settings.get().clone();
         own.clicker_mode = sent.clicker_mode;
+        own.use_sound = sent.use_sound;
+        own.sound_output = sent.sound_output;
+        self.audio.set_output(own.sound_output.clone());
         own.default_translation = sent.default_translation;
         if own != *self.settings.get() {
             self.settings.put(own).map_err(err)?;

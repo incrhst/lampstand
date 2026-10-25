@@ -15,7 +15,7 @@ use lampstand_core::output::{DisplayMatch, IdleScreen, OutputConfig};
 use lampstand_core::program::Overlay;
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scripture::{Passage, Translation, TranslationId};
-use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId, Sound};
 use lampstand_core::song::{Song, SongId};
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_live::{Command, Cursor};
@@ -32,8 +32,76 @@ pub enum Request {
     Team(TeamRequest),
     Obs(ObsRequest),
     Settings(SettingsRequest),
+    Sound(SoundRequest),
     Update(UpdateRequest),
     About(AboutRequest),
+}
+
+/// Playing the sound in a service (decision 0010, the Audio role). Any
+/// device may ask; the device that holds Audio plays, and a device that may
+/// not control the sound is told so in words.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SoundRequest {
+    /// Plays the music-only item `item`, or the backing track of the song
+    /// `item` when `backing` is set, from the start.
+    Play {
+        item: ItemId,
+        backing: bool,
+    },
+    Pause,
+    Resume,
+    /// Fades out over a few seconds, then stops.
+    Stop,
+    /// Silence at once. Always works, whoever holds what.
+    Panic,
+    /// The sound outputs on this computer: `Response::SoundOutputs`.
+    Outputs,
+    /// What is playing, for a screen that has just opened: `Response::Sound`.
+    Status,
+}
+
+/// What the screens show of the sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundView {
+    /// This device plays the sound (it holds Audio, or it is alone).
+    pub here: bool,
+    /// Who plays it, when it is another device; empty when nobody does.
+    pub holder: String,
+    /// Another device holds Audio but is not connected now.
+    pub away: bool,
+    /// Nobody holds Audio, so a sound would play nowhere.
+    pub nobody: bool,
+    /// The sound output is open and working (only said where it plays).
+    pub output_ok: bool,
+    pub playing: Option<SoundPlaying>,
+    /// Why the last sound did not play, in words, if it did not.
+    pub problem: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundPlaying {
+    pub item: String,
+    pub name: String,
+    pub paused: bool,
+    /// A fade out is running.
+    pub ending: bool,
+    /// Where it was, in milliseconds, when this was said.
+    pub position_ms: u32,
+    pub length_ms: u32,
+}
+
+/// The sound outputs on this computer, for Setup > Sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundOutputs {
+    pub devices: Vec<String>,
+    /// The output used when none is chosen.
+    pub default: Option<String>,
+    /// The output chosen on this device, if one is.
+    pub chosen: Option<String>,
 }
 
 /// Telling the project about a problem or an idea, or asking for help. Each
@@ -76,6 +144,11 @@ pub struct UpdateStatus {
     pub state: UpdateState,
     /// Why `Install` would be refused right now, if it would be.
     pub blocked: Option<String>,
+    /// Something to ask the person before installing, which does not refuse
+    /// it: the next service's start cannot be known. The screen asks, and
+    /// then `Install` goes ahead.
+    #[serde(default)]
+    pub caution: Option<String>,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -177,6 +250,18 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
+    /// Setup › Sound › "Use sound in services": this device offers music-only
+    /// items and backing tracks in Plan. Off by default. A service that
+    /// already has sound shows it whatever this says. Kept on this device
+    /// (not in the synced church settings): a service with sound turns the
+    /// controls on for every device that has it anyway.
+    #[serde(default)]
+    pub use_sound: bool,
+    /// Setup › Sound › Output: the sound output this device plays through
+    /// when it holds Audio, by name. Unset, or no longer on this computer,
+    /// means the computer's own default.
+    #[serde(default)]
+    pub sound_output: Option<String>,
     /// The Bible version scripture is read from when a reference does not
     /// name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
     /// longer on this device, means the first version by name.
@@ -351,6 +436,13 @@ pub enum LibraryRequest {
     AddMediaFile {
         path: String,
     },
+    /// An audio file picked from disk, copied into the blob store for a
+    /// sound item or a song's backing track. Answers `Response::SoundFile`
+    /// with the blob, a name to start from and the length the file gives;
+    /// the caller inserts the item.
+    AddSoundFile {
+        path: String,
+    },
     /// A small picture of an image or video in the blob store, `width`
     /// pixels wide, for the library and the service order. For a video it
     /// is the first frame that is not blank (a fade-in from black is
@@ -430,6 +522,21 @@ pub enum ServiceRequest {
     /// Takes the open service off air: a clean screen and nothing loaded.
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
+    /// Sets the sound of an item: the `sound` of a sound item (`Item`, which
+    /// needs `Some`) or a song's backing track (`Backing`, where `None`
+    /// takes it off). Answers `Response::Service`.
+    SetSound {
+        service: ServiceId,
+        item: ItemId,
+        slot: SoundSlot,
+        sound: Option<Sound>,
+    },
+    /// Where each sound file of a service stands on this device, as
+    /// `Response::SoundStatus`: Plan says which are not here yet.
+    SoundStatus(ServiceId),
+    /// Like `List`, and also says which services cannot be shown, as
+    /// `Response::ServiceList`: one read of every service for both.
+    ListChecked,
     /// Plays a media item once or on repeat. A video that repeats by itself
     /// holds a looping section on it for good. Answers `Response::Service`.
     SetMediaLooped {
@@ -643,6 +750,47 @@ pub enum TeamRequest {
         device: String,
         always: bool,
     },
+    /// Takes a role when nobody needs to allow it: nobody holds it, or its
+    /// holder has been offline past the takeover time (the screens say so
+    /// and ask first). Answers `Response::Team`, or an error in the
+    /// volunteer's words.
+    RoleClaim {
+        role: RoleName,
+    },
+    /// Asks the holder of a role to hand it over; it shows a prompt.
+    RoleAsk {
+        role: RoleName,
+    },
+    /// Withdraws this device's ask for a role, or clears the "not now" or
+    /// "already asking" it was shown.
+    RoleCancel {
+        role: RoleName,
+    },
+    /// On the holder: hands the role to a device that asked (its key in
+    /// hex). With `always`, remembers the device; only Operator and Stream
+    /// offer that. Passing Projection clears the screens and passing Audio
+    /// stops the music.
+    RoleAllow {
+        role: RoleName,
+        device: String,
+        always: bool,
+    },
+    /// On the holder: says not now to a device that asked.
+    RoleDecline {
+        role: RoleName,
+        device: String,
+    },
+    /// Clears the notice about having lost a role.
+    RoleDismiss {
+        role: RoleName,
+    },
+    /// On the holder: remembers a paired device as always allowed to take
+    /// the role, or stops (its key in hex). Operator and Stream only.
+    RoleAlways {
+        role: RoleName,
+        device: String,
+        always: bool,
+    },
 }
 
 /// Running OBS from Lampstand (T89; docs/decisions/0005). Each answers
@@ -681,6 +829,18 @@ pub enum ObsRequest {
     Screenshot { scene: Option<String>, width: u32 },
     /// Mutes or unmutes one of OBS's audio inputs (T91).
     SetMute { input: String, muted: bool },
+    /// "Set up OBS" (T93, #133): makes a "Lampstand" scene collection in
+    /// OBS with starter scenes, each showing the picture `output` (a
+    /// browser-source output). The core makes the picture's address itself;
+    /// the window sends no address. Run again, it changes only that source.
+    /// When OBS is on another computer the address is this computer's
+    /// network address (the pinned one, if there is one), and never
+    /// `localhost`. Answers `Response::Text` with what was done.
+    SetUp { output: OutputId },
+    /// Pins the address OBS on another computer uses to reach this one, for
+    /// a computer that has several ("Use this address"). `None` goes back
+    /// to the address Lampstand picks.
+    UseAddress { address: Option<String> },
 }
 
 /// OBS as the operator and Setup see it. Also pushed as `Event::Obs`
@@ -717,6 +877,14 @@ pub struct ObsView {
     /// OBS's audio inputs (microphones, desktop audio, media with sound)
     /// in OBS's order, while connected, for the mute toggles (T91).
     pub audio: Vec<ObsAudioInput>,
+    /// OBS is on another computer (its host isn't this one). Everything
+    /// below is empty or false for a church with OBS on this computer.
+    pub remote: bool,
+    /// This computer's network addresses, when `remote`, for the "Use this
+    /// address" picker.
+    pub addresses: Vec<String>,
+    /// The address pinned for OBS to reach this computer, when `remote`.
+    pub pinned_address: Option<String>,
 }
 
 /// One of OBS's audio inputs and whether it is muted.
@@ -775,8 +943,13 @@ pub enum ObsProblem {
     ServerOff,
     PasswordRequired,
     WrongPassword,
-    /// OBS is on another machine and doesn't answer.
+    /// OBS is on another machine and doesn't answer: wrong name or address,
+    /// another network, or a firewall.
     Unreachable,
+    /// OBS is on another machine that answers, but nothing is listening on
+    /// OBS's port: OBS isn't open there, its WebSocket server is off, or the
+    /// port differs.
+    RemoteNotListening,
 }
 
 /// Streaming or recording, for the status pill.
@@ -811,7 +984,95 @@ pub struct TeamStatus {
     pub nearby: Vec<NearbyView>,
     /// Who may present, and what this device can do about it.
     pub presenter: PresenterView,
+    /// The four roles in order (Projection, Operator, Stream, Audio): who
+    /// holds each, how this device could take it, and any prompt or notice.
+    pub roles: Vec<RoleView>,
+    /// A scene change is waiting for the device that runs the stream, which
+    /// is offline (docs/roles.md, "Where OBS lives"). Drives the status bar
+    /// line "{Name} runs the stream and is offline. OBS will catch up when it
+    /// is back." Always false until the OBS cue work (#132, PR #150) sets it
+    /// from `SyncNode::scene_cue_waiting()`.
+    pub scene_cue_waiting: bool,
     pub sync: SyncSummary,
+}
+
+/// One of the four jobs (docs/roles.md): Projection runs the screens,
+/// Operator the service, Stream what goes out online, Audio the sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleName {
+    Projection,
+    Operator,
+    Stream,
+    Audio,
+}
+
+/// How this device could take a role.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleStanding {
+    /// This device holds it, or is alone.
+    Holding,
+    /// Nobody holds it: `RoleClaim` takes it with no one's permission.
+    Open,
+    /// The holder is connected: `RoleAsk`.
+    Ask,
+    /// The holder has been offline long enough: `RoleClaim` after confirming.
+    TakeOver,
+    /// The holder is offline but only recently: wait `wait_secs`.
+    Wait,
+}
+
+/// What keeps this device from taking a role whatever the holder says.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleBlocked {
+    /// Projection needs screens set up on this device.
+    NoScreens,
+    /// Operator needs somebody to hold Projection.
+    NeedsProjection,
+}
+
+/// This device's own ask for a role.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RoleAskingView {
+    Waiting,
+    /// The holder said not now.
+    Declined,
+    /// Another device is already asking; `by` is its name.
+    Busy {
+        by: String,
+    },
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoleView {
+    pub role: RoleName,
+    /// This device does the job.
+    pub holds: bool,
+    pub standing: RoleStanding,
+    /// The holder's key in hex; `None` while nobody holds it.
+    pub holder: Option<String>,
+    /// The holder's name, empty when unknown.
+    pub holder_name: String,
+    /// How long the holder has been offline, when it is.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub offline_secs: Option<u64>,
+    /// Seconds until takeover opens, when the holder is offline.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub wait_secs: Option<u64>,
+    pub blocked: Option<RoleBlocked>,
+    /// On the holder: the one device asking for the role.
+    pub request: Option<PresentRequestView>,
+    pub asking: Option<RoleAskingView>,
+    /// This device held the role and another now does; shown once.
+    pub replaced_by: Option<String>,
+    /// On the holder: devices handed the role without asking.
+    pub always: Vec<DriverView>,
+    /// "Always allow this device" is offered (Operator and Stream only).
+    pub offers_always: bool,
 }
 
 /// Where sync with the paired devices stands, in one value for the status
@@ -1041,6 +1302,12 @@ pub enum Response {
     /// A file added to the blob store by `AddMediaFile`.
     Media(MediaFile),
     MediaFiles(Vec<MediaFile>),
+    /// A file added to the blob store by `AddSoundFile`.
+    SoundFile(SoundFile),
+    SoundStatus(Vec<SoundFileStatus>),
+    Sound(SoundView),
+    SoundOutputs(SoundOutputs),
+    ServiceList(ServiceList),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
     Displays(Vec<DisplayMatch>),
@@ -1063,6 +1330,53 @@ pub enum Response {
     Settings(DeviceSettings),
     Church(ChurchStatus),
     Update(UpdateStatus),
+}
+
+/// The services, and the ones that cannot be shown.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServiceList {
+    pub services: Vec<ServiceSummary>,
+    /// Saved by a newer Lampstand than this one.
+    pub newer: u32,
+    /// Files that could not be loaded. `ServiceRequest::Delete` reaches them.
+    pub damaged: Vec<ServiceId>,
+}
+
+/// Which sound of an item `SetSound` changes.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SoundSlot {
+    /// The sound of a music-only item.
+    Item,
+    /// A song's backing track.
+    Backing,
+}
+
+/// An audio file added to the blob store by `AddSoundFile`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundFile {
+    pub file: BlobHash,
+    /// The file's name without its extension: "Walk-in music".
+    pub name: String,
+    /// How long it plays, if the file says.
+    pub length_ms: Option<u32>,
+}
+
+/// Where one sound file of a service stands on this device.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundFileStatus {
+    pub item: ItemId,
+    /// A song's backing track rather than a sound item.
+    pub backing: bool,
+    pub file: BlobHash,
+    /// Whether its bytes are on this device.
+    pub on_device: bool,
+    /// Not here, and being fetched from the other devices: somebody is
+    /// connected and the service is one that is fetched ahead.
+    pub coming: bool,
 }
 
 /// An image or video in the blob store, as a `Media` item names it.
@@ -1131,6 +1445,15 @@ pub struct ItemEstimate {
     pub self_loop: bool,
     /// Something with no fixed length, such as a countdown.
     pub open_ended: bool,
+    /// How long a music-only item plays; `None` for anything else, and for
+    /// a sound whose length the file did not give.
+    #[serde(default)]
+    pub sound_ms: Option<u32>,
+    /// A music-only item. The live engine skips an item with no slides, so a
+    /// loop does not play it (until Audio exists), and a pass does not count
+    /// it.
+    #[serde(default)]
+    pub sound: bool,
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -1224,4 +1547,6 @@ pub enum Event {
     /// OBS's connection, streaming, recording, scenes or mutes changed.
     /// Boxed: the view is much bigger than the other events.
     Obs(Box<ObsView>),
+    /// What is playing, or who plays it, changed.
+    Sound(Box<SoundView>),
 }

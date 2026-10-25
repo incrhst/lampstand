@@ -12,12 +12,17 @@
     type ItemKind,
     type MediaFile,
     type Service,
+    type Sound,
+    type SoundFile,
+    type SoundFileStatus,
+    type SoundSlot,
     type ServiceSummary,
     type SongHit,
     type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
@@ -25,6 +30,17 @@
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
   import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
+  import {
+    audioExtensions,
+    isAudio,
+    isComing,
+    isMissing,
+    offerSound,
+    soundSubtitle,
+    soundTotalLabel,
+    words as soundWords,
+  } from "../../lib/sound";
+  import SoundEditor from "./SoundEditor.svelte";
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
   import SongOrder from "./SongOrder.svelte";
@@ -71,9 +87,26 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
+  /** Services saved by a newer Lampstand, and files that could not be loaded. */
+  let newer = $state(0);
+  let damaged: string[] = $state([]);
+
+  /** Deletes a service file that could not be loaded. */
+  async function removeDamaged(id: string) {
+    try {
+      await request({ area: "Service", request: { Delete: id } }, "Ok");
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
   async function refresh() {
     try {
-      services = await request({ area: "Service", request: "List" }, "Services");
+      const list = await request({ area: "Service", request: "ListChecked" }, "ServiceList");
+      services = list.services;
+      newer = list.newer;
+      damaged = list.damaged;
     } catch (e) {
       report(e);
     }
@@ -414,6 +447,85 @@
     }
   }
 
+  /** A sound as a file arrives: it waits for somebody to press play. */
+  function newSound(file: SoundFile): Sound {
+    return { name: file.name, file: file.file, length_ms: file.length_ms, start: "Waits", keep_off_stream: false };
+  }
+
+  /** Changes the sound of a music-only item, or a song's backing track. */
+  async function setSound(item: string, slot: SoundSlot, sound: Sound | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetSound: { service: selected.id, item, slot, sound } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** Picks an audio file and adds it as a music-only item. */
+  async function pickSound() {
+    if (!selected) return;
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: soundWords.pickTitle,
+          filters: [{ name: soundWords.pickFilter, extensions: audioExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+      await addItem({ Sound: { sound: newSound(file) } });
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Picks an audio file and makes it the backing track of a song. */
+  async function addBacking(item: string) {
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: soundWords.pickTitle,
+          filters: [{ name: soundWords.pickFilter, extensions: audioExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+      await setSound(item, "Backing", newSound(file));
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** The song whose backing track is being asked about before it goes. */
+  let confirmBacking: string | null = $state(null);
+
+  /** Where each sound file of the open service stands on this device. */
+  let soundStatus: SoundFileStatus[] = $state([]);
+  let soundTicket = 0;
+  async function loadSoundStatus(service: Service) {
+    const ticket = ++soundTicket;
+    try {
+      const list = await request({ area: "Service", request: { SoundStatus: service.id } }, "SoundStatus");
+      if (ticket === soundTicket) soundStatus = list;
+    } catch {
+      // Without it Plan cannot say a file is missing, and says nothing.
+    }
+  }
+
   async function addMedia(file: MediaFile) {
     await addItem({ Media: { blob: file.blob, name: file.name, looped: false } });
   }
@@ -526,6 +638,7 @@
     if ("Scripture" in k) return formatPassage(k.Scripture.passage);
     if ("Deck" in k) return deckById[k.Deck.deck]?.title ?? "Presentation";
     if ("Media" in k) return k.Media.name;
+    if ("Sound" in k) return k.Sound.sound.name;
     if ("Countdown" in k) return k.Countdown.label;
     if ("Text" in k) return textTitle(k.Text.title, k.Text.body);
     return "Announcements";
@@ -551,6 +664,7 @@
       return `${label} · ${n === 1 ? "1 slide" : `${n} slides`}`;
     }
     if ("Media" in k) return `${mediaKind(k.Media.name)}${k.Media.looped ? " · loops" : ""}`;
+    if ("Sound" in k) return soundSubtitle(k.Sound.sound);
     return label;
   }
 
@@ -735,6 +849,18 @@
     }
   });
 
+  // Which sound files are on this device, for a service that has sound; read
+  // again when files arrive from another device.
+  $effect(() => {
+    const service = selected;
+    void live.soundVersion;
+    if (service && Object.values(service.items).some((i) => i && ("Sound" in i.kind || i.backing))) {
+      untrack(() => loadSoundStatus(service));
+    } else {
+      soundStatus = [];
+    }
+  });
+
   // Refetch decks when one is added or synced in.
   $effect(() => {
     void live.decksVersion;
@@ -873,6 +999,17 @@
         </li>
       {/if}
     </ul>
+    {#if newer > 0}
+      <Banner tone="warn">
+        {newer === 1 ? "1 service was" : `${newer} services were`} saved by a newer Lampstand and can't be opened here. Update Lampstand to see {newer === 1 ? "it" : "them"}.
+      </Banner>
+    {/if}
+    {#each damaged as id (id)}
+      <Banner tone="warn">
+        A service file is damaged and can't be shown.
+        <Button variant="ghost" size="small" icon="trash" onclick={() => removeDamaged(id)}>Delete it</Button>
+      </Banner>
+    {/each}
   </aside>
 
   <section class="pane order" aria-labelledby="service-title">
@@ -896,7 +1033,7 @@
             <p class="muted when-line">
               <span>
                 {formatWhen(selected.starts_at, selected.time_zone)} · {items.length}
-                {items.length === 1 ? "item" : "items"}
+                {items.length === 1 ? "item" : "items"}{#if soundTotalLabel(selected)} · {soundTotalLabel(selected)}{/if}
               </span>
               <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
             </p>
@@ -909,6 +1046,9 @@
           </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
+          {#if offerSound(selected, live.settings?.use_sound)}
+            <Button icon="sound" onclick={pickSound} disabled={busy}>{soundWords.addSound}</Button>
+          {/if}
           <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
@@ -1010,6 +1150,13 @@
                         <span class="tag warn">Loops by itself</span>
                       {/if}
                       {#if "Song" in item.kind && item.kind.Song.arrangement}<span class="tag">Custom order</span>{/if}
+                      {#if item.backing}<span class="tag">{soundWords.backingTag}</span>{/if}
+                      {#if "Sound" in item.kind && item.kind.Sound.sound.keep_off_stream || item.backing?.keep_off_stream}
+                        <span class="tag">{soundWords.keptOffStreamTag}</span>
+                      {/if}
+                      {#if ("Sound" in item.kind && isMissing(soundStatus, id, false)) || (item.backing && isMissing(soundStatus, id, true))}
+                        <span class="tag warn"><Icon name="alert" size={12} /> {soundWords.missingTag}</span>
+                      {/if}
                       {#if loops}<span class="tag">Loops {item.loop_seconds} s</span>{/if}
                       {#if item.obs_scene}<span class="tag">OBS: {item.obs_scene}</span>{/if}
                       <button
@@ -1039,6 +1186,39 @@
                             />
                           </div>
                         {/if}
+                        {#if "Sound" in item.kind}
+                          <div class="option">
+                            <SoundEditor
+                              sound={item.kind.Sound.sound}
+                              label={itemTitle(item)}
+                              missing={isMissing(soundStatus, id, false)}
+                              coming={isComing(soundStatus, id, false)}
+                              onchange={(sound) => setSound(id, "Item", sound)}
+                            />
+                          </div>
+                        {/if}
+                        {#if "Song" in item.kind && item.backing}
+                          <div class="option">
+                            <span class="eyebrow">{soundWords.backing}</span>
+                            <SoundEditor
+                              sound={item.backing}
+                              label="{soundWords.backing} of {itemTitle(item)}"
+                              missing={isMissing(soundStatus, id, true)}
+                              coming={isComing(soundStatus, id, true)}
+                              onchange={(sound) => setSound(id, "Backing", sound)}
+                            />
+                            {#if confirmBacking === id}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => { confirmBacking = null; setSound(id, "Backing", null); }}>{soundWords.removeBackingSure}</Button>
+                              <Button variant="ghost" size="small" onclick={() => (confirmBacking = null)}>Keep it</Button>
+                            {:else}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => (confirmBacking = id)}>{soundWords.removeBacking}</Button>
+                            {/if}
+                          </div>
+                        {:else if "Song" in item.kind && offerSound(selected, live.settings?.use_sound)}
+                          <div class="option">
+                            <Button size="small" icon="sound" onclick={() => addBacking(id)} disabled={busy}>{soundWords.addBacking}</Button>
+                          </div>
+                        {/if}
                         {#if "Text" in item.kind}
                           {@const text = item.kind.Text}
                           <div class="option">
@@ -1052,12 +1232,14 @@
                           </div>
                         {/if}
                         <div class="option row-options">
-                          <LoopPicker
-                            value={item.loop_seconds}
-                            section={false}
-                            label="Loop {itemTitle(item)}"
-                            onchange={(seconds) => setLoop(id, seconds)}
-                          />
+                          {#if !("Sound" in item.kind)}
+                            <LoopPicker
+                              value={item.loop_seconds}
+                              section={false}
+                              label="Loop {itemTitle(item)}"
+                              onchange={(seconds) => setLoop(id, seconds)}
+                            />
+                          {/if}
                           <!-- Only where OBS matters; a scene already set always shows. -->
                           {#if live.obs?.relevant || item.obs_scene}
                             <ObsScenePicker

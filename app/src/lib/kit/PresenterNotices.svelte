@@ -1,21 +1,21 @@
-<!-- Messages about who presents that need an answer or should not be
-     missed, shown across the top of every screen: another device asking
-     this one (the presenter) to hand over, this device's own ask, and
-     being replaced as presenter while it was away. -->
+<!-- Messages about who runs what that need an answer or should not be
+     missed, shown across the top of every screen. The role prompts (a
+     device asking this one to hand a role over, this device's own ask, a
+     role lost while away) are in RolePrompts; this adds the notice that the
+     screens' device took the service back, and the note that this device
+     now runs the screens. -->
 <script lang="ts">
   import Banner from "./Banner.svelte";
   import Button from "./Button.svelte";
   import { live, presenterRequest } from "../state.svelte";
-  import { replacedNotice, requestPrompt } from "../presenting";
-  import { drivePrompt, takenBackNotice } from "../driving";
+  import { RUNS_SCREENS_NOW, operatorTakenBack, operatorTakenBackNotice } from "../roles";
   import DriveBar from "./DriveBar.svelte";
+  import RolePrompts from "./RolePrompts.svelte";
 
   let p = $derived(live.team?.presenter ?? null);
-  /** Something is on air here, so allowing takes it off. */
-  let onAir = $derived(!!live.live || live.overlay !== "None" || (!!live.loaded && !live.idle));
   let allowed = $state(false);
   let wasAsking = false;
-  // An ask that ends with this device presenting: say so once.
+  // An ask that ends with this device running the screens: say so once.
   $effect(() => {
     const asking = !!p?.asking && !p.asking.declined;
     if (wasAsking && !asking && p?.role === "Presenting") {
@@ -28,52 +28,18 @@
 
 <DriveBar />
 
-{#if p && (p.requests.length > 0 || p.drive.requests.length > 0 || p.drive.taken_back_by || p.replaced_by || allowed || (p.asking && p.role === "Planning"))}
+<RolePrompts />
+
+{#if p && ((p.drive.taken_back_by && operatorTakenBack(live.team)) || allowed)}
   <div class="notices">
-    {#each p.drive.requests as r (r.device)}
-      <Banner tone="warn" icon="monitor">
-        <span>{drivePrompt(r.name)}</span>
-        <Button variant="primary" size="small" onclick={() => presenterRequest({ DriveAllow: { device: r.device, always: false } })}>Allow</Button>
-        <Button size="small" onclick={() => presenterRequest({ DriveAllow: { device: r.device, always: true } })} title="Remember this device, so it can drive without asking next time">Always allow this device</Button>
-        <Button variant="ghost" size="small" onclick={() => presenterRequest({ DriveDecline: { device: r.device } })}>Not now</Button>
-      </Banner>
-    {/each}
-    {#if p.drive.taken_back_by}
+    {#if p.drive.taken_back_by && operatorTakenBack(live.team)}
       <Banner tone="warn">
-        <span>{takenBackNotice(p.drive.taken_back_by)}</span>
-        <Button size="small" variant="primary" onclick={async () => { await presenterRequest("DriveDismiss"); await presenterRequest("DriveAsk"); }}>Drive again</Button>
+        <span>{operatorTakenBackNotice(p.drive.taken_back_by)}</span>
         <Button size="small" variant="ghost" onclick={() => presenterRequest("DriveDismiss")}>OK</Button>
       </Banner>
     {/if}
-    {#each p.requests as r (r.device)}
-      <Banner tone="warn" icon="monitor">
-        <span>{requestPrompt(r.name, onAir)}</span>
-        <Button variant="primary" size="small" onclick={() => presenterRequest({ PresenterAllow: { device: r.device } })}>
-          {onAir ? "Allow and clear the screens" : "Allow"}
-        </Button>
-        <Button size="small" onclick={() => presenterRequest({ PresenterDecline: { device: r.device } })}>Not now</Button>
-      </Banner>
-    {/each}
-    {#if p.replaced_by}
-      <Banner tone="warn">
-        <span>{replacedNotice(p.replaced_by)}</span>
-        <Button size="small" onclick={() => presenterRequest("PresenterDismiss")}>OK</Button>
-      </Banner>
-    {/if}
-    {#if p.asking && p.role === "Planning"}
-      <Banner tone="neutral" icon="monitor">
-        {#if p.asking.declined}
-          <span>{p.holder_name} said not now.</span>
-          <Button size="small" onclick={() => presenterRequest("PresenterAsk")}>Ask again</Button>
-          <Button variant="ghost" size="small" onclick={() => presenterRequest("PresenterCancel")}>OK</Button>
-        {:else}
-          <span>Waiting for {p.holder_name} to allow this device to present…</span>
-          <Button size="small" onclick={() => presenterRequest("PresenterCancel")}>Cancel</Button>
-        {/if}
-      </Banner>
-    {/if}
     {#if allowed}
-      <Banner tone="ready">This device is presenting now. Its screens are yours.</Banner>
+      <Banner tone="ready">{RUNS_SCREENS_NOW}</Banner>
     {/if}
   </div>
 {/if}

@@ -102,6 +102,11 @@ pub enum ObsStatus {
     /// people: "nothing is listening on localhost:4455".
     Disconnected {
         reason: String,
+        /// The computer answered and refused the connection
+        /// (`io::ErrorKind::ConnectionRefused`): nothing listens on OBS's
+        /// port. False for a timeout, no route, or a name that doesn't
+        /// resolve.
+        refused: bool,
     },
     /// OBS asks for a password and none is set. Not retried.
     PasswordRequired,
@@ -464,6 +469,19 @@ impl Obs {
         Ok(raw.active)
     }
 
+    /// Whether the replay buffer is running. An OBS without one answers with
+    /// a request error, which is the same as not running.
+    pub async fn replay_buffer_active(&self) -> bool {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(rename = "outputActive")]
+            active: bool,
+        }
+        self.call::<Raw>("GetReplayBufferStatus", Value::Null)
+            .await
+            .is_ok_and(|raw| raw.active)
+    }
+
     pub async fn start_virtual_cam(&self) -> Result<(), ObsError> {
         self.request("StartVirtualCam", Value::Null).await.map(drop)
     }
@@ -643,6 +661,48 @@ impl Obs {
         }
     }
 
+    /// The names of the sources in `scene`, top of its list first.
+    pub async fn scene_sources(&self, scene: &str) -> Result<Vec<String>, ObsError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Item {
+            source_name: String,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Raw {
+            scene_items: Vec<Item>,
+        }
+        let raw: Raw = self
+            .call("GetSceneItemList", json!({ "sceneName": scene }))
+            .await?;
+        Ok(raw.scene_items.into_iter().map(|i| i.source_name).collect())
+    }
+
+    /// The URL, width and height a browser source is set to now.
+    pub async fn browser_source_settings(
+        &self,
+        name: &str,
+    ) -> Result<(String, u32, u32), ObsError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Raw {
+            input_settings: Value,
+        }
+        let raw: Raw = self
+            .call("GetInputSettings", json!({ "inputName": name }))
+            .await?;
+        let s = &raw.input_settings;
+        Ok((
+            s["url"].as_str().unwrap_or_default().to_string(),
+            // OBS leaves out settings that equal its defaults.
+            s["width"].as_u64().unwrap_or(BROWSER_DEFAULT_WIDTH.into()) as u32,
+            s["height"]
+                .as_u64()
+                .unwrap_or(BROWSER_DEFAULT_HEIGHT.into()) as u32,
+        ))
+    }
+
     /// Points an existing browser source at a new URL or size (a rotated
     /// key, a resized stream output).
     pub async fn update_browser_source(
@@ -664,6 +724,10 @@ impl Obs {
         .map(drop)
     }
 }
+
+/// A browser source's size when OBS's settings don't say.
+const BROWSER_DEFAULT_WIDTH: u32 = 800;
+const BROWSER_DEFAULT_HEIGHT: u32 = 600;
 
 fn browser_settings(url: &str, width: u32, height: u32) -> Value {
     json!({
@@ -696,7 +760,11 @@ enum End {
     /// New settings; connect again now.
     Reconfigured,
     /// Retry after a backoff. `identified` resets the backoff.
-    Lost { reason: String, identified: bool },
+    Lost {
+        reason: String,
+        identified: bool,
+        refused: bool,
+    },
     /// Retry only after new settings.
     Refused(ObsStatus),
 }
@@ -724,8 +792,12 @@ async fn supervise(
                 backoff = BACKOFF_START;
                 continue;
             }
-            End::Lost { reason, identified } => {
-                status.send_replace(ObsStatus::Disconnected { reason });
+            End::Lost {
+                reason,
+                identified,
+                refused,
+            } => {
+                status.send_replace(ObsStatus::Disconnected { reason, refused });
                 if identified {
                     backoff = BACKOFF_START;
                 }
@@ -783,10 +855,16 @@ async fn connect(
             return lost(format!("OBS at {address} did not answer"), false);
         }
         Ok(Err(e)) => {
-            return lost(
-                format!("nothing is listening on {address} ({e}); is OBS running with its WebSocket server on?"),
-                false,
+            let refused = matches!(
+                &e,
+                tokio_tungstenite::tungstenite::Error::Io(io)
+                    if io.kind() == std::io::ErrorKind::ConnectionRefused
             );
+            return End::Lost {
+                reason: format!("nothing is listening on {address} ({e}); is OBS running with its WebSocket server on?"),
+                identified: false,
+                refused,
+            };
         }
         Ok(Ok((ws, _))) => ws,
     };
@@ -805,7 +883,11 @@ async fn connect(
 }
 
 fn lost(reason: String, identified: bool) -> End {
-    End::Lost { reason, identified }
+    End::Lost {
+        reason,
+        identified,
+        refused: false,
+    }
 }
 
 /// `Hello` → `Identify` → `Identified`, then `GetVersion` for the status.
@@ -821,6 +903,7 @@ async fn identify(ws: &mut Ws, config: &ObsConfig) -> Result<(String, String), E
     {
         return Err(End::Refused(ObsStatus::Disconnected {
             reason: format!("OBS's WebSocket server ({websocket_version}) is too old; Lampstand needs OBS 28 or later"),
+            refused: false,
         }));
     }
     let mut identify = json!({
@@ -890,6 +973,7 @@ fn closed(frame: Option<&CloseFrame>, identified: bool) -> End {
         CLOSE_AUTH_FAILED => End::Refused(ObsStatus::WrongPassword),
         CLOSE_UNSUPPORTED_RPC => End::Refused(ObsStatus::Disconnected {
             reason: "OBS's WebSocket server doesn't speak protocol v5".into(),
+            refused: false,
         }),
         _ if frame.code == CloseCode::Away => lost("OBS is closing".into(), identified),
         code => lost(

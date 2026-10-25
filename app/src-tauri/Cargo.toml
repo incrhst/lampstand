@@ -33,6 +33,7 @@ lampstand-sync = { workspace = true, features = ["net"] }
 base64.workspace = true
 chrono.workspace = true
 gethostname.workspace = true
+if-addrs = "0.15"
 image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -44,6 +45,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+autosurgeon.workspace = true
+automerge.workspace = true
 futures-util.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

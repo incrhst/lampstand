@@ -36,7 +36,7 @@ use std::sync::Arc;
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
     OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
-    SlideView, SongDatabase, SongHit,
+    SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -62,9 +62,12 @@ use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
+use crate::audio::{AudioDeck, Parts};
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
 
+mod audio;
 mod church;
+mod sound;
 
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
@@ -72,8 +75,10 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+pub use audio::{AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED};
 use church::ChurchSync;
-pub use church::SyncLink;
+pub use church::{AudioRemote, SyncLink};
+use sound::SoundSync;
 
 /// Where an output window goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +154,12 @@ pub struct App {
     settings: SettingsStore,
     /// Bookkeeping for the settings shared with the church's other devices.
     church_sync: ChurchSync,
+    /// Bookkeeping for sound files that travel by sync.
+    sound_sync: SoundSync,
+    /// What plays on this device when it holds Audio.
+    audio: AudioDeck,
+    /// The sound state the screen was last told.
+    told_sound: Option<SoundView>,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -230,6 +241,10 @@ impl App {
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
+        let audio = AudioDeck::new(
+            Parts::real(library.clone()),
+            settings.get().sound_output.clone(),
+        );
         let mut app = Self {
             library,
             live: LiveEngine::new(),
@@ -237,6 +252,9 @@ impl App {
             outputs,
             settings,
             church_sync: ChurchSync::default(),
+            sound_sync: SoundSync::default(),
+            audio,
+            told_sound: None,
             sink,
             windows,
             emit,
@@ -351,6 +369,7 @@ impl App {
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
+            Request::Sound(r) => self.sound_request(r),
             // The shell answers these from `crate::sync` and
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
@@ -502,6 +521,9 @@ impl App {
             LibraryRequest::AddMediaFile { path } => {
                 Response::Media(decks::add_media_file(lib, &path)?)
             }
+            LibraryRequest::AddSoundFile { path } => {
+                Response::SoundFile(decks::add_sound_file(lib, &path)?)
+            }
             LibraryRequest::DeckThumbnail { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("deck thumbnails are drawn by the app shell".into());
@@ -526,25 +548,14 @@ impl App {
                 .ok_or("no such service".into())
         };
         Ok(match request {
-            ServiceRequest::List => {
-                let mut services: Vec<ServiceSummary> = lib
-                    .services()
-                    .map_err(err)?
-                    .into_iter()
-                    .map(|s| ServiceSummary {
-                        id: s.id,
-                        title: s.title,
-                        starts_at: s.starts_at,
-                        time_zone: s.time_zone,
-                        items: s
-                            .items
-                            .values()
-                            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                            .count() as u32,
-                    })
-                    .collect();
-                sort_services(&mut services, now());
-                Response::Services(services)
+            ServiceRequest::List => Response::Services(summaries(lib.services().map_err(err)?)),
+            ServiceRequest::ListChecked => {
+                let scan = lib.services_checked().map_err(err)?;
+                Response::ServiceList(lampstand_api::ServiceList {
+                    services: summaries(scan.services),
+                    newer: scan.newer as u32,
+                    damaged: scan.damaged,
+                })
             }
             ServiceRequest::Get(id) => Response::Service(get(id)?),
             ServiceRequest::Create {
@@ -748,6 +759,45 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetSound {
+                service,
+                item,
+                slot,
+                sound,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                let sound = sound.map(|mut sound| {
+                    sound.name = sound.name.trim().to_string();
+                    sound
+                });
+                if sound.as_ref().is_some_and(|sound| sound.name.is_empty()) {
+                    return Err("Give the sound a name.".into());
+                }
+                match (slot, sound) {
+                    (SoundSlot::Item, Some(sound)) => match &mut entry.kind {
+                        ItemKind::Sound { sound: slot } => *slot = sound,
+                        _ => return Err("That item is not a music-only item.".into()),
+                    },
+                    (SoundSlot::Item, None) => {
+                        return Err("A music-only item needs its sound.".into())
+                    }
+                    (SoundSlot::Backing, sound) => {
+                        if !matches!(entry.kind, ItemKind::Song { .. }) {
+                            return Err("Only a song can have a backing track.".into());
+                        }
+                        entry.backing = sound;
+                    }
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                // A new file may need fetching from the other devices.
+                self.sound_sync.service_changed(service.uuid());
+                Response::Service(s)
+            }
+            ServiceRequest::SoundStatus(service) => {
+                Response::SoundStatus(self.sound_status(service)?)
+            }
             ServiceRequest::SetLiveLoop { header, seconds } => {
                 let Some(service) = self.loaded.as_ref().map(|l| l.view.service) else {
                     return Err("no service is open for live".into());
@@ -814,16 +864,7 @@ impl App {
                 Response::Ok
             }
             OutputRequest::BrowserSourceUrl(output) => {
-                self.browser_source(output)?;
-                let key = match self.keys.get(output) {
-                    Some(key) => key.to_string(),
-                    None => {
-                        let key = fresh_key();
-                        self.keys.put(output, &key).map_err(err)?;
-                        key
-                    }
-                };
-                Response::Text(self.browser_source_url(output, &key)?)
+                Response::Text(self.browser_source_address(output)?)
             }
             OutputRequest::BrowserSourceStatus => Response::BrowserSources(
                 self.outputs
@@ -843,6 +884,31 @@ impl App {
                 Response::Text(self.browser_source_url(output, &key)?)
             }
         })
+    }
+
+    /// A browser-source output's URL, making its key if it has none.
+    fn browser_source_address(&mut self, output: OutputId) -> Result<String> {
+        self.browser_source(output)?;
+        let key = match self.keys.get(output) {
+            Some(key) => key.to_string(),
+            None => {
+                let key = fresh_key();
+                self.keys.put(output, &key).map_err(err)?;
+                key
+            }
+        };
+        self.browser_source_url(output, &key)
+    }
+
+    /// What "Set up OBS" puts in OBS for `output`: its URL as the local
+    /// server has it now (so it follows the address the shell watches) and
+    /// its size. The caller may then swap in a pinned address.
+    pub fn obs_picture(&mut self, output: OutputId) -> Result<(String, u32, u32)> {
+        let url = self.browser_source_address(output)?;
+        match self.outputs.get(output).map(|o| &o.target) {
+            Some(OutputTarget::BrowserSource { width, height }) => Ok((url, *width, *height)),
+            _ => Err("that output is not an OBS browser source".into()),
+        }
     }
 
     /// Checks that `output` is a browser-source output.
@@ -908,7 +974,14 @@ impl App {
                 video_ms: None,
                 self_loop: false,
                 open_ended: false,
+                sound_ms: None,
+                sound: false,
             };
+            if let ItemKind::Sound { sound } = &item.kind {
+                // Reported, but not part of a loop's length: nothing plays it.
+                e.sound = true;
+                e.sound_ms = sound.length_ms;
+            }
             for slide in &loaded.slides {
                 match &slide.content {
                     Content::Video { blob, looped } => {
@@ -1090,6 +1163,9 @@ impl App {
         };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
+            // Sound has no picture: the screens stay as they are. Playing
+            // it is the Audio role's job.
+            ItemKind::Sound { sound } => item(sound.name.clone(), Vec::new()),
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
                 Some(s) => {
                     let slides = paginate_song(&s, arrangement.as_deref(), theme)
@@ -1248,6 +1324,7 @@ impl App {
                 lampstand_live::Event::ItemLive { item } => {
                     cursors_changed = true;
                     self.cue_obs(*item);
+                    self.cue_sound(*item);
                 }
                 // Comes with `ProgramChanged`: `present_with` sends it as
                 // `Animate` to the outputs showing the step before.
@@ -1940,6 +2017,19 @@ impl App {
         crate::update::blocker(self.live.is_idle(), next_service, now)
     }
 
+    /// Something to ask before installing an update, which does not refuse it:
+    /// some services cannot be read here (a newer Lampstand saved them), so
+    /// when the next one starts is not known. Refusing would trap the person,
+    /// since installing is how they become readable.
+    pub fn update_caution(&self) -> Option<String> {
+        let scan = self.library.services_checked().ok()?;
+        (scan.newer > 0).then(|| {
+            "Some services were saved by a newer Lampstand, so this one cannot tell when the next \
+             service starts. Make sure none is about to begin."
+                .to_string()
+        })
+    }
+
     /// Drives announcement loops and countdowns. Call every 100 ms or so;
     /// the engine reports events only when something on air changed.
     pub fn tick(&mut self) {
@@ -1955,6 +2045,8 @@ impl App {
         // The heartbeat while live, and an fsync a burst of clicks put off.
         self.write_journal(now);
         self.church_tick();
+        self.sound_tick(now);
+        self.audio_tick();
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -2084,6 +2176,14 @@ impl App {
             .any(|c| c.kind == lampstand_sync::DocKind::Theme)
         {
             self.present();
+        }
+        // A service changed: it may name sound files this device lacks. Only
+        // that service is read.
+        for change in changes
+            .iter()
+            .filter(|c| c.kind == lampstand_sync::DocKind::Service)
+        {
+            self.sound_sync.service_changed(change.id);
         }
         if changes
             .iter()
@@ -2247,6 +2347,26 @@ fn local_utc_offset_minutes() -> i32 {
 /// A new browser-source key: what `SceneHub` makes, 32 hex digits.
 fn fresh_key() -> String {
     uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// The services as the list shows them, in order.
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services
+        .into_iter()
+        .map(|s| ServiceSummary {
+            id: s.id,
+            title: s.title,
+            starts_at: s.starts_at,
+            time_zone: s.time_zone,
+            items: s
+                .items
+                .values()
+                .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+                .count() as u32,
+        })
+        .collect();
+    sort_services(&mut services, now());
+    services
 }
 
 fn now() -> Timestamp {
