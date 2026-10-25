@@ -32,7 +32,7 @@ use crate::{DocKind, SyncMessage};
 const BATCH: usize = 512;
 
 /// How often a session says it is alive.
-const BEAT: Duration = Duration::from_secs(5);
+const BEAT: Duration = crate::roles::HEARTBEAT;
 
 /// A session that has heard nothing for this long is over: the other
 /// device is gone even if the socket has not noticed.
