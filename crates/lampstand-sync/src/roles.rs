@@ -1574,12 +1574,6 @@ impl Roles {
         if steps[..i].iter().any(|s| s.signer() == Some(judge)) {
             return Verdict::Stands;
         }
-        // The role ends with the judge in this record: nothing was taken
-        // from it. It stands here only, unacked, so a record that parts from
-        // above it is judged again (see `doubtful`).
-        if holder == Some(judge) {
-            return Verdict::Stands;
-        }
         // The Projection holder takes the Operator seat back when it likes.
         if role == Role::Operator && self.record(Role::Projection).holder == Some(claimant) {
             return Verdict::Stands;
@@ -1593,6 +1587,12 @@ impl Roles {
                 .any(|mine| mine.ack.is_some() && same_step(mine, l));
             return if acked || self.claim_ok(role, claimant, Some(judge), net) {
                 Verdict::Accept
+            } else if holder == Some(judge) {
+                // The role ends with this device in this record: nothing was
+                // taken from it. The claim stands here only, unacked, so a
+                // record that parts from above it is judged again (see
+                // `doubtful`).
+                Verdict::Stands
             } else if from == claimant && net.holder(claimant) != Holder::Online {
                 // The claimant's own frame, still arriving on a connection
                 // that is being replaced, is judged with nothing known of
@@ -1602,6 +1602,11 @@ impl Roles {
             } else {
                 Verdict::Refuse
             };
+        }
+        // The role ends with the judge in this record: nothing was taken
+        // from it (see above).
+        if holder == Some(judge) {
+            return Verdict::Stands;
         }
         match net.holder(judge) {
             Holder::Gone | Holder::Me => Verdict::Stands,
