@@ -19,7 +19,7 @@ use lampstand_app::obs_control::{ObsControl, Os, Probe, SceneCue};
 use lampstand_connectors::obs::auth_response;
 use lampstand_core::output::OutputId;
 use serde_json::{json, Value};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpSocket};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
@@ -574,6 +574,17 @@ impl Harness {
     }
 }
 
+/// A port nothing listens on, for as long as the socket is kept: bound, so
+/// no other test can be handed it, but never listening, so a connection
+/// is refused. (A port found by binding and dropping a listener can be
+/// taken by someone else before it is used.)
+fn unused_port(ip: &str) -> (TcpSocket, u16) {
+    let socket = TcpSocket::new_v4().unwrap();
+    socket.bind(format!("{ip}:0").parse().unwrap()).unwrap();
+    let port = socket.local_addr().unwrap().port();
+    (socket, port)
+}
+
 fn connected(v: &ObsView) -> bool {
     matches!(v.connection, ObsConnection::Connected { .. })
 }
@@ -700,14 +711,8 @@ async fn passwords_are_checked_and_never_shown() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unconfigured_obs_matters_only_with_a_stream_output() {
-    // Nothing listening on the default port is a fair assumption for a
-    // test machine, but use a port that was just free to be sure.
-    let free = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    // Nothing listens on this port for the whole test.
+    let (_reserved, free) = unused_port("127.0.0.1");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().to_path_buf();
     let h = start(dir, path).await;
@@ -720,7 +725,9 @@ async fn unconfigured_obs_matters_only_with_a_stream_output() {
     assert!(h.status().await.relevant);
 
     // Settings saved for a free port: not running, and Open OBS starts it.
-    let Response::Obs(view) = h
+    // Configuring answers while the first connection attempt is still under
+    // way, so wait for it to fail before looking for the problem.
+    let Response::Obs(_) = h
         .control
         .handle(ObsRequest::Configure {
             host: "localhost".into(),
@@ -731,6 +738,9 @@ async fn unconfigured_obs_matters_only_with_a_stream_output() {
     else {
         panic!("configure failed")
     };
+    let view = h
+        .wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
+        .await;
     assert_eq!(view.problem, Some(ObsProblem::NotRunning), "{view:?}");
     assert!(matches!(
         h.control.handle(ObsRequest::Launch).await,
@@ -959,9 +969,7 @@ async fn a_missing_scene_warns_without_stopping_anything() {
 async fn a_switch_while_obs_is_away_happens_when_it_connects() {
     use lampstand_core::service::ItemId;
     // OBS isn't running yet: reserve a port for it.
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
+    let (reserved, port) = unused_port("127.0.0.1");
     let h = harness(port, None).await;
     h.wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
         .await;
@@ -977,7 +985,8 @@ async fn a_switch_while_obs_is_away_happens_when_it_connects() {
     );
 
     // OBS starts on that port: the sermon's scene goes on air.
-    let mock = MockObs::start_on(TcpListener::bind(("127.0.0.1", port)).await.unwrap(), None);
+    // The reserved socket starts listening, so the port is never up for grabs.
+    let mock = MockObs::start_on(reserved.listen(1024).unwrap(), None);
     let view = h
         .wait_for(|v| v.program_scene.as_deref() == Some("Sermon"))
         .await;
@@ -1312,9 +1321,7 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
 async fn a_remote_obs_that_is_closed_is_diagnosed_in_plain_words() {
     let lan = own_lan_address().expect("this computer needs a network address for this test");
     // This computer answers but nothing listens on OBS's port.
-    let free = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
-    let port = free.local_addr().unwrap().port();
-    drop(free);
+    let (_reserved, port) = unused_port("0.0.0.0");
     let h = harness_on(&lan, port, None).await;
     let view = h
         .wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
