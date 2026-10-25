@@ -262,6 +262,18 @@ pub struct DeviceSettings {
     /// controls on for every device that has it anyway.
     #[serde(default)]
     pub use_sound: bool,
+    /// Setup › This computer › "Start Lampstand when this computer starts":
+    /// Lampstand opens when someone signs in to this computer. Off by
+    /// default, and the only startup item Lampstand ever adds. Kept on this
+    /// device: it is about this computer, not the church.
+    #[serde(default)]
+    pub start_at_login: bool,
+    /// Setup › This computer › "Keep this computer awake while it is showing
+    /// the screens": while an output window is open or an OBS picture is
+    /// served, the computer is stopped from sleeping or dimming its screen.
+    /// Off by default. Kept on this device, like `start_at_login`.
+    #[serde(default)]
+    pub keep_awake: bool,
     /// Setup › Sound › Output: the sound output this device plays through
     /// when it holds Audio, by name. Unset, or no longer on this computer,
     /// means the computer's own default.

@@ -45,6 +45,7 @@ getrandom = "0.3"
 glyphon = "0.12"
 insta = { version = "1.43", features = ["json"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "tiff"] }
+keepawake = "0.6"
 libc = "0.2"
 lyon = "1.0"
 mdns-sd = "0.21"
@@ -68,6 +69,7 @@ sha2 = "0.10"
 spake2 = "0.4"
 tauri = { version = "2.12", features = ["unstable"] }
 tauri-build = { version = "2.7", features = [] }
+tauri-plugin-autostart = "2.7"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-global-shortcut = "2.3"
 tauri-plugin-updater = "2"
