@@ -139,6 +139,16 @@ On a Linux container with a null sink the same example was recorded and measured
 
 - **Every device must update together again.** 0.9.0 is sync protocol 8 (a role step may be a `Reclaim`, the holder's signed refusal of a takeover; `docs/roles.md`). 0.8.1 is protocol 7 and is refused at the handshake with "the other device runs an older Lampstand; update it" (and the 0.9.0 side is told the same from the other end), so a church updates every paired computer before the next service. Say so first in the release notes.
 - **Going back to 0.8.1 loses settings.** 0.8.1 cannot read a `roles.json` whose history holds a refused takeover. It moves the file aside as `roles.json.bad` and starts from defaults. That resets more than who runs what: this device's takeover time goes back to two minutes, and its "Always allow this device" lists for Operator and Stream are emptied. Paired devices do not teach those back, so set them again by hand. Who runs what is taught again only by other 0.8.1 devices, because a 0.9.0 device (protocol 8) refuses a 0.8.1 one. Downgrade every paired computer together, or not at all.
+- **Check on real hardware before tagging `v0.9.0`.** CI can't do these. Install `v0.9.0-preview.1`, then:
+  - **Sound (#186):** the playback check above, on a Mac and on Windows. Also, in the app: Next onto a music item set to "Plays on its own" fades what's playing and starts it. Walk-in music started by hand doesn't restart when Next reaches it. And "Stop the sound now", from the Sound box and from a phone.
+  - **Lampstand Remote (#179):** pair and run a service from a real iPhone, an Android phone and a tablet. Check Next, Back, Black, Logo, Clear and the Sound box. Revoke a phone in Setup › Devices and check its page disconnects.
+  - **Sound from a link:** add a track from a real Google Drive link and play it. Drop a link onto the library.
+  - **Start at login and keep awake:**
+    - On a Mac: the Login Items entry appears and goes, and Lampstand opens after logging out and in. `pmset -g assertions` lists Lampstand while a screen is open.
+    - On Windows: the Startup apps entry appears and goes. `powercfg /requests` still lists Lampstand under DISPLAY and SYSTEM after it has been idle for more than 10 seconds with a screen open.
+  - **Pairing on a Mac:** two Macs pair, with the Local Network prompt shown once.
+  - **Training:** each of Training 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
+  - **The role bar:** looks right in the status bar and in Setup › Devices.
 
 ### Releasing 0.8.0: roles and sound
 
