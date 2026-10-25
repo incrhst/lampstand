@@ -12,11 +12,12 @@ const service: LoadedService = {
   title: "Sunday",
   sections: [],
   items: [
-    { id: "header", title: "Worship", slides: [] },
+    { id: "header", title: "Worship", slides: [], sounds: [] },
     {
       id: "song",
       title: "Song",
       slides: ["V1", "C", "C", "V2", "C", "B", "C"].map(slide),
+      sounds: [],
     },
   ],
 };

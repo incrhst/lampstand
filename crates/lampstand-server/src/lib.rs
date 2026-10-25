@@ -1,8 +1,8 @@
 //! The local server: everything the desktop app serves on the church
 //! network, on one port (default 7340).
 //!
-//! PRD: OB-2, CD-2, PS-2 (picker page); Phase 2 adds the phone remote and
-//! congregation view (LV-5).
+//! PRD: OB-2, CD-2, PS-2 (picker page), LV-5 (Lampstand Remote; the
+//! congregation view comes later).
 //!
 //! Routes:
 //!
@@ -14,6 +14,7 @@
 //! | `GET /blobs/<hash>?o=<output>&k=<key>` | images and videos a scene names |
 //! | `GET /frames/<output>/<n>.webp?k=<key>` | deck slides rasterised by the renderer, for the browser source |
 //! | `WS /sync` | peer sync (device-key handshake, see `lampstand-sync`) |
+//! | `GET /remote`, `POST /remote/pair`, `WS /remote/ws` | Lampstand Remote, paired by PIN (see [`remote`]) |
 //! | `GET /google/picker` | the Google Drive picker page, localhost only |
 //!
 //! `k` is a per-output random key shown in the app with the URL to paste
@@ -26,7 +27,9 @@
 //! page (T40) answers 404 until then.
 
 mod obs;
+pub mod remote;
 pub use obs::SceneHub;
+pub use remote::RemoteHub;
 
 use std::io;
 use std::net::SocketAddr;
@@ -66,6 +69,11 @@ pub trait Backend: Send + Sync + 'static {
     fn sync(&self) -> Option<Arc<SyncNode>> {
         None
     }
+    /// Lampstand Remote's pairing and sessions; `None` answers 404 on
+    /// every `/remote` route.
+    fn remotes(&self) -> Option<Arc<RemoteHub>> {
+        None
+    }
 }
 
 /// The running server. Dropping it stops listening; connections already
@@ -84,6 +92,7 @@ impl Server {
         let app = Router::new()
             .route("/sync", get(sync))
             .merge(obs::router(backend.clone()))
+            .merge(remote::router(backend.clone()))
             .fallback(|| async { StatusCode::NOT_FOUND })
             .with_state(backend);
         let (stop, stopped) = oneshot::channel::<()>();
