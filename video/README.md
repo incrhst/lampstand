@@ -20,8 +20,10 @@ npm run hero:sheet    # one still per scene, out/hero-tour-sheet.png
 npm run studio        # live preview and scrubbing (composition "Tour")
 ```
 
-To publish, copy `out/hero-tour.mp4` to `site/media/lampstand-tour.mp4` (and update the size in
-`site/index.html` if it changed). `out/` is not committed.
+The render is a high-quality master (H.264 CRF 18, about 80 MB). The site's copy
+(`site/media/lampstand-tour.mp4`, about 6 MB) is a smaller re-encode of it, for example
+`ffmpeg -i out/hero-tour.mp4 -c:v libx264 -crf 28 -preset slow -movflags +faststart -c:a aac -b:a 128k site/media/lampstand-tour.mp4`.
+Update the size in `site/index.html` if it changes. `out/` is not committed.
 
 ## Design system
 
