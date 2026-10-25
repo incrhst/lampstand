@@ -554,14 +554,14 @@ These tickets are described above. Each gets a 1.0.0 issue.
 
 | ID | Title | Why it is in 1.0.0 |
 | --- | --- | --- |
-| T65, T76, T77, T78, T79, T80, T81 | Sync, file and download safety | A Sunday must not lose a document, fill a disk or trust a bad file. |
-| T36 | Readiness check and pre-service caching | One green or red answer before the service (CD-10). It also checks recording (T122). |
-| T38 | CCLI usage log and report | Churches have to report what they show (RP-1), more so now that songs come in by paste. |
-| T55 | Migration wizard | Moving from another tool in under an hour (goal 4). |
-| T37 | Service packages | A laptop that can't join the team still gets the service (CD-8). |
-| T95 | Windows signing and Flathub | Most projection laptops run Windows; SmartScreen warnings stop at 1.0.0. |
-| T60 | Accessibility pass | WCAG 2.2 AA (NFR), checked on the finished screens. |
-| T61 | Performance on a 2019 laptop | The NFR budget, measured with OBS and recording running beside it. |
+| T65, T76, T77, T78, T79, T80, T81 | Sync, file and download safety ([#217](https://github.com/incrhst/lampstand/issues/217), [#218](https://github.com/incrhst/lampstand/issues/218), [#219](https://github.com/incrhst/lampstand/issues/219), [#220](https://github.com/incrhst/lampstand/issues/220), [#221](https://github.com/incrhst/lampstand/issues/221), [#222](https://github.com/incrhst/lampstand/issues/222), [#223](https://github.com/incrhst/lampstand/issues/223)) | A Sunday must not lose a document, fill a disk or trust a bad file. |
+| T36 | Readiness check and pre-service caching ([#224](https://github.com/incrhst/lampstand/issues/224)) | One green or red answer before the service (CD-10). It also checks recording (T122). |
+| T38 | CCLI usage log and report ([#225](https://github.com/incrhst/lampstand/issues/225)) | Churches have to report what they show (RP-1), more so now that songs come in by paste. |
+| T55 | Migration wizard ([#226](https://github.com/incrhst/lampstand/issues/226)) | Moving from another tool in under an hour (goal 4). |
+| T37 | Service packages ([#227](https://github.com/incrhst/lampstand/issues/227)) | A laptop that can't join the team still gets the service (CD-8). |
+| T95 | Windows signing and Flathub ([#228](https://github.com/incrhst/lampstand/issues/228)) | Most projection laptops run Windows; SmartScreen warnings stop at 1.0.0. |
+| T60 | Accessibility pass ([#229](https://github.com/incrhst/lampstand/issues/229)) | WCAG 2.2 AA (NFR), checked on the finished screens. |
+| T61 | Performance on a 2019 laptop ([#230](https://github.com/incrhst/lampstand/issues/230)) | The NFR budget, measured with OBS and recording running beside it. |
 
 ### After 1.0.0 (1.x)
 
@@ -573,14 +573,14 @@ Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload 
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T117 | The recorder: inputs, a WAV that survives a crash, the level | **O** | — | RC-1 | `media/src/record.rs`, `media/src/lib.rs`, `media/Cargo.toml` | Not started |
-| T118 | Trim and export: MP3, WAV, evened-out level, tags | S | T117 | RC-4 | `media/src/export.rs`, `media/Cargo.toml`, `Cargo.toml`, `deny.toml` | Not started |
-| T119 | "Record this" on an item, and when recording starts and stops | **O** | — | RC-2 | `core/src/service.rs`, `live/src/`, `api/src/lib.rs`, ARCHITECTURE.md | Not started |
-| T120 | Recording cues to the Stream holder (protocol 10) | **O** | T119 | RC-1, RC-2 | `sync/src/net/record.rs`, `sync/src/net/wire.rs`, `sync/src/roles.rs`, `sync/src/wording.rs`, `app/src-tauri/src/record_cues.rs` | Not started |
-| T121 | The recording deck in the app, and OBS video | S | T117, T120 | RC-1, RC-3 | `app/src-tauri/src/recorder.rs`, `app/src-tauri/src/handler/record.rs`, `app/src-tauri/src/obs_control.rs`, `app/src-tauri/Info.plist`, `app/src-tauri/tauri.conf.json` | Not started |
-| T122 | Setup › Recording, Present's Record button and pill, Plan's "Record this" | S | T121 | RC-1 to RC-3 | `app/src/routes/setup/`, `app/src/routes/operate/`, `app/src/routes/plan/`, `app/src/lib/recording.ts` | Not started |
-| T123 | Recordings: waveform, trim, export, Move to Trash | S | T118, T121 | RC-4 | `app/src/routes/plan/recordings/`, `app/src-tauri/src/handler/record.rs` | Not started |
-| T124 | Documentation for recording | S | T122, T123 | — | `docs/roles.md`, `docs/ARCHITECTURE.md`, `docs/RELEASING.md`, `site/docs/` | Not started |
+| T117 | The recorder: inputs, a WAV that survives a crash, the level | **O** | — | RC-1 | `media/src/record.rs`, `media/src/lib.rs`, `media/Cargo.toml` | Not started ([#209](https://github.com/incrhst/lampstand/issues/209)) |
+| T118 | Trim and export: MP3, WAV, evened-out level, tags | S | T117 | RC-4 | `media/src/export.rs`, `media/Cargo.toml`, `Cargo.toml`, `deny.toml` | Not started ([#210](https://github.com/incrhst/lampstand/issues/210)) |
+| T119 | "Record this" on an item, and when recording starts and stops | **O** | — | RC-2 | `core/src/service.rs`, `live/src/`, `api/src/lib.rs`, ARCHITECTURE.md | Not started ([#211](https://github.com/incrhst/lampstand/issues/211)) |
+| T120 | Recording cues to the Stream holder (protocol 10) | **O** | T119 | RC-1, RC-2 | `sync/src/net/record.rs`, `sync/src/net/wire.rs`, `sync/src/roles.rs`, `sync/src/wording.rs`, `app/src-tauri/src/record_cues.rs` | Not started ([#212](https://github.com/incrhst/lampstand/issues/212)) |
+| T121 | The recording deck in the app, and OBS video | S | T117, T120 | RC-1, RC-3 | `app/src-tauri/src/recorder.rs`, `app/src-tauri/src/handler/record.rs`, `app/src-tauri/src/obs_control.rs`, `app/src-tauri/Info.plist`, `app/src-tauri/tauri.conf.json` | Not started ([#213](https://github.com/incrhst/lampstand/issues/213)) |
+| T122 | Setup › Recording, Present's Record button and pill, Plan's "Record this" | S | T121 | RC-1 to RC-3 | `app/src/routes/setup/`, `app/src/routes/operate/`, `app/src/routes/plan/`, `app/src/lib/recording.ts` | Not started ([#214](https://github.com/incrhst/lampstand/issues/214)) |
+| T123 | Recordings: waveform, trim, export, Move to Trash | S | T118, T121 | RC-4 | `app/src/routes/plan/recordings/`, `app/src-tauri/src/handler/record.rs` | Not started ([#215](https://github.com/incrhst/lampstand/issues/215)) |
+| T124 | Documentation for recording | S | T122, T123 | — | `docs/roles.md`, `docs/ARCHITECTURE.md`, `docs/RELEASING.md`, `site/docs/` | Not started ([#216](https://github.com/incrhst/lampstand/issues/216)) |
 
 **T117. The recorder (Opus).** Add `lampstand_media::record`. `input_devices()` lists cpal inputs by name with their channel counts, and `default_input()` gives the system's. `Recorder::start(device, channels, path)` opens the input on a thread of its own, as `Player` does for outputs (a cpal stream must stay on the thread that made it; the callback never waits or allocates), and writes 24-bit WAV at the input's own rate: one channel (which one is chosen) or a stereo pair. A writer thread takes the samples through a lock-free ring buffer, writes them, and rewrites the header's lengths every five seconds and on stop, so a file cut short plays up to the last few seconds. `repair(path)` fixes the header of a file whose lengths are stale and says how long it is. The recorder reports a peak level 10 times a second, how long it has run, and whether the input is opening, open, missing or failed (the same states as `OutputState`), with a watchdog like `Player`'s for a stalled input. It refuses to start with less than 2 GB free and reports when less than 10 minutes of space is left. Done when tests cover a recording written from a fake input (a sine wave in, the same samples out), a file cut short and repaired, the header rewritten during a long recording, a full disk (simulated), an input that stops calling back, and the 3-hour limit; and when `play_check` gains `--record` for the real-hardware check.
 
@@ -599,6 +599,8 @@ Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload 
 **T124. Documentation for recording.** In `roles.md`: Stream also records the sermon, the changed sentence about room sound (decision 0012, "What this changes"), and the hand-over prompt while recording. In ARCHITECTURE.md: a "Recording the sermon" section, the protocol 10 frames, and what syncs (nothing about recordings beyond `RecordNow`). In RELEASING.md: a real-hardware recording check (a USB interface on a Mac and on Windows, recording while OBS and Zoom read the same input, a power-cut recording repaired, an export played on a phone). On the website: a Recording page for volunteers, in the house style. Done when every **proposed** detail in decision 0012 is either approved or changed in the decision.
 
 ### Release checks for 1.0.0 (not code)
+
+Tracked in [#231](https://github.com/incrhst/lampstand/issues/231).
 
 - The real-hardware recording check in RELEASING.md (T124), on a Mac and a Windows computer, with the interface a church would use.
 - A full mock service on the 2019-class laptop (T61), with three outputs, OBS streaming and the sermon recording.
