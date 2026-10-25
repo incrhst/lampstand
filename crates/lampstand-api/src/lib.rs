@@ -32,8 +32,76 @@ pub enum Request {
     Team(TeamRequest),
     Obs(ObsRequest),
     Settings(SettingsRequest),
+    Sound(SoundRequest),
     Update(UpdateRequest),
     About(AboutRequest),
+}
+
+/// Playing the sound in a service (decision 0010, the Audio role). Any
+/// device may ask; the device that holds Audio plays, and a device that may
+/// not control the sound is told so in words.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SoundRequest {
+    /// Plays the music-only item `item`, or the backing track of the song
+    /// `item` when `backing` is set, from the start.
+    Play {
+        item: ItemId,
+        backing: bool,
+    },
+    Pause,
+    Resume,
+    /// Fades out over a few seconds, then stops.
+    Stop,
+    /// Silence at once. Always works, whoever holds what.
+    Panic,
+    /// The sound outputs on this computer: `Response::SoundOutputs`.
+    Outputs,
+    /// What is playing, for a screen that has just opened: `Response::Sound`.
+    Status,
+}
+
+/// What the screens show of the sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundView {
+    /// This device plays the sound (it holds Audio, or it is alone).
+    pub here: bool,
+    /// Who plays it, when it is another device; empty when nobody does.
+    pub holder: String,
+    /// Another device holds Audio but is not connected now.
+    pub away: bool,
+    /// Nobody holds Audio, so a sound would play nowhere.
+    pub nobody: bool,
+    /// The sound output is open and working (only said where it plays).
+    pub output_ok: bool,
+    pub playing: Option<SoundPlaying>,
+    /// Why the last sound did not play, in words, if it did not.
+    pub problem: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundPlaying {
+    pub item: String,
+    pub name: String,
+    pub paused: bool,
+    /// A fade out is running.
+    pub ending: bool,
+    /// Where it was, in milliseconds, when this was said.
+    pub position_ms: u32,
+    pub length_ms: u32,
+}
+
+/// The sound outputs on this computer, for Setup > Sound.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundOutputs {
+    pub devices: Vec<String>,
+    /// The output used when none is chosen.
+    pub default: Option<String>,
+    /// The output chosen on this device, if one is.
+    pub chosen: Option<String>,
 }
 
 /// Telling the project about a problem or an idea, or asking for help. Each
@@ -189,6 +257,11 @@ pub struct DeviceSettings {
     /// controls on for every device that has it anyway.
     #[serde(default)]
     pub use_sound: bool,
+    /// Setup › Sound › Output: the sound output this device plays through
+    /// when it holds Audio, by name. Unset, or no longer on this computer,
+    /// means the computer's own default.
+    #[serde(default)]
+    pub sound_output: Option<String>,
     /// The Bible version scripture is read from when a reference does not
     /// name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
     /// longer on this device, means the first version by name.
@@ -1232,6 +1305,8 @@ pub enum Response {
     /// A file added to the blob store by `AddSoundFile`.
     SoundFile(SoundFile),
     SoundStatus(Vec<SoundFileStatus>),
+    Sound(SoundView),
+    SoundOutputs(SoundOutputs),
     ServiceList(ServiceList),
     Outputs(Vec<OutputConfig>),
     /// The monitors connected now, as a `Display` target would match them.
@@ -1472,4 +1547,6 @@ pub enum Event {
     /// OBS's connection, streaming, recording, scenes or mutes changed.
     /// Boxed: the view is much bigger than the other events.
     Obs(Box<ObsView>),
+    /// What is playing, or who plays it, changed.
+    Sound(Box<SoundView>),
 }

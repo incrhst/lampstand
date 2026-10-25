@@ -3,6 +3,7 @@ import type { Cursor } from "./Cursor";
 import type { LoadedService } from "./LoadedService";
 import type { ObsView } from "./ObsView";
 import type { Overlay } from "./Overlay";
+import type { SoundView } from "./SoundView";
 import type { SyncSummary } from "./SyncSummary";
 
 /**
@@ -12,4 +13,4 @@ export type Event = { "type": "Live", "data": { live: Cursor | null, preview: Cu
 /**
  * Black or logo, which persist across slides.
  */
-overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { sync: SyncSummary, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView };
+overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { sync: SyncSummary, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView } | { "type": "Sound", "data": SoundView };

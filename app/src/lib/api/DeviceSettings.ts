@@ -19,6 +19,12 @@ clicker_mode: boolean,
  */
 use_sound: boolean, 
 /**
+ * Setup › Sound › Output: the sound output this device plays through
+ * when it holds Audio, by name. Unset, or no longer on this computer,
+ * means the computer's own default.
+ */
+sound_output: string | null, 
+/**
  * The Bible version scripture is read from when a reference does not
  * name one ("James 3:11" rather than "James 3:11 ESV"). Unset, or no
  * longer on this device, means the first version by name.

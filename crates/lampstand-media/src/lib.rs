@@ -24,6 +24,7 @@
 
 mod player;
 mod sound;
+pub use deckcraft_media::Pcm;
 pub use player::{default_output, load as load_sound, output_devices, Player, Playing, Voice};
 pub use sound::Sound;
 
