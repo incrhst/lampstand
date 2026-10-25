@@ -456,6 +456,14 @@ pub enum LibraryRequest {
     AddSoundFile {
         path: String,
     },
+    /// A pasted link to a sound file: a Google Drive, OneDrive or Dropbox
+    /// share link, or an `https://` link to a file. It is downloaded
+    /// (250 MB at most), checked and added as `AddSoundFile` does, so the
+    /// service plays it offline. YouTube, Spotify, Apple Music and
+    /// SoundCloud links are refused. Answers `Response::SoundFile`.
+    AddSoundFromLink {
+        url: String,
+    },
     /// A small picture of an image or video in the blob store, `width`
     /// pixels wide, for the library and the service order. For a video it
     /// is the first frame that is not blank (a fade-in from black is

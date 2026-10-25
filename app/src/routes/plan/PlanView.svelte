@@ -33,12 +33,14 @@
   import {
     audioExtensions,
     isAudio,
+    linkOffers,
     isComing,
     isMissing,
     newSound,
     offerSound,
     soundItem,
     soundSubtitle,
+    streamingRefusal,
     soundTotalLabel,
     words as soundWords,
   } from "../../lib/sound";
@@ -541,6 +543,31 @@
       const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
       await addItem({ Sound: { sound: newSound(file) } });
       live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** The "From a link" field under the header, while it is open. */
+  let soundLink: string | null = $state(null);
+
+  /** Fetches a sound from a pasted link and adds it as a music-only item, waiting for Play. */
+  async function addSoundLink() {
+    const url = soundLink?.trim();
+    if (!selected || !url) return;
+    if (linkOffers(url).streaming) {
+      live.status = streamingRefusal;
+      return;
+    }
+    busy = true;
+    try {
+      const file = await request({ area: "Library", request: { AddSoundFromLink: { url } } }, "SoundFile");
+      if (await addItem(soundItem(file))) {
+        soundLink = null;
+        live.status = `Added ${file.name}`;
+      }
     } catch (e) {
       report(e);
     } finally {
@@ -1139,9 +1166,32 @@
           {#if offerSound(selected, live.settings?.use_sound)}
             <Button icon="sound" onclick={pickSound} disabled={busy}>{soundWords.addSound}</Button>
           {/if}
+          <Button
+            icon="sound"
+            onclick={() => (soundLink = soundLink === null ? "" : null)}
+            pressed={soundLink !== null}
+            title="Add a track from a Google Drive, Dropbox or OneDrive link"
+            disabled={busy}
+          >
+            From a link
+          </Button>
           <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
+
+      {#if soundLink !== null}
+        <form class="sound-link" onsubmit={(e) => (e.preventDefault(), addSoundLink())}>
+          <input
+            type="text"
+            aria-label="Link to a sound file"
+            placeholder="Paste a Google Drive, Dropbox or OneDrive link to a sound file"
+            bind:value={soundLink}
+            onkeydown={(e) => e.key === "Escape" && (soundLink = null)}
+          />
+          <Button variant="primary" size="small" onclick={addSoundLink} disabled={busy || !soundLink.trim()}>Add</Button>
+          <Button variant="ghost" size="small" icon="x" label="Cancel" onclick={() => (soundLink = null)} />
+        </form>
+      {/if}
 
       <div class="order-body" bind:this={orderBody}>
         {#if items.length === 0}
@@ -1617,6 +1667,17 @@
     margin-top: 0.4rem;
   }
   .reschedule input {
+    font-size: 0.85rem;
+  }
+  .sound-link {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 1rem;
+  }
+  .sound-link input {
+    flex: 1;
+    min-width: 0;
     font-size: 0.85rem;
   }
   .actions {
