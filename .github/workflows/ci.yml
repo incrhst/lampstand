@@ -48,10 +48,14 @@ jobs:
           echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
           echo "heavy jobs needed: $heavy"
 
+  # The matrix job always runs so the required checks 'check (macos-latest)' and
+  # 'check (windows-latest)' always report. A job skipped with a job-level `if`
+  # reports under the unexpanded name 'check (${{ matrix.os }})', which leaves
+  # the required checks missing and blocks a docs-only change. Its steps are
+  # skipped instead.
   check:
     name: check (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.heavy == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -59,16 +63,20 @@ jobs:
         os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.heavy == 'true'
 
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.changes.outputs.heavy == 'true'
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.heavy == 'true'
 
       # The app crate embeds the built web UI (app/dist), so it is built
       # before anything compiles the workspace.
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.heavy == 'true'
         with:
           node-version: 22
           cache: npm
@@ -77,6 +85,7 @@ jobs:
             crates/lampstand-server/web/package-lock.json
 
       - name: Web UI (install, type-check, test, build)
+        if: needs.changes.outputs.heavy == 'true'
         working-directory: app
         run: |
           npm ci
@@ -86,15 +95,19 @@ jobs:
 
       # The website's Download button chooses an installer from a release.
       - name: Website (download button)
+        if: needs.changes.outputs.heavy == 'true'
         run: node --test site/download.test.js
 
       - name: Format
+        if: needs.changes.outputs.heavy == 'true'
         run: cargo fmt --all --check
 
       - name: Clippy
+        if: needs.changes.outputs.heavy == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
+        if: needs.changes.outputs.heavy == 'true'
         run: cargo test --workspace
 
   # Linux is not supported for now (no Linux installers are built; see
