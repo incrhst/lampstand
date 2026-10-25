@@ -1321,7 +1321,11 @@ async fn set_up_waits_while_obs_is_on_air_and_for_a_connection() {
 async fn a_remote_obs_that_is_closed_is_diagnosed_in_plain_words() {
     let lan = own_lan_address().expect("this computer needs a network address for this test");
     // This computer answers but nothing listens on OBS's port.
-    let (_reserved, port) = unused_port("0.0.0.0");
+    // A bound socket that never listens isn't refused on every system when
+    // it is reached by this computer's own address, so free the port.
+    let free = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+    let port = free.local_addr().unwrap().port();
+    drop(free);
     let h = harness_on(&lan, port, None).await;
     let view = h
         .wait_for(|v| matches!(v.connection, ObsConnection::Disconnected { .. }))
