@@ -11,6 +11,7 @@
 //! on air so a crash comes back on the same slide.
 
 pub mod audio;
+pub mod awake;
 pub mod config;
 pub mod decks;
 pub mod display_names;
