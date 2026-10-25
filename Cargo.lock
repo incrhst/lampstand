@@ -3301,6 +3301,7 @@ dependencies = [
  "objc2 0.5.3",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
+ "qrcode",
  "serde",
  "serde_json",
  "tauri",
@@ -3445,7 +3446,9 @@ name = "lampstand-server"
 version = "0.8.1"
 dependencies = [
  "axum",
+ "blake3",
  "futures-util",
+ "getrandom 0.3.4",
  "image",
  "lampstand-core",
  "lampstand-layout",
@@ -5118,6 +5121,12 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quick-error"

@@ -10,9 +10,9 @@ const loaded: LoadedService = {
   title: "Sunday",
   sections: [],
   items: [
-    { id: "a", title: "Amazing Grace", slides: [slide("V1"), slide("V2")] },
-    { id: "h", title: "Welcome", slides: [] },
-    { id: "b", title: "Be Thou My Vision", slides: [slide("V1")] },
+    { id: "a", title: "Amazing Grace", slides: [slide("V1"), slide("V2")], sounds: [] },
+    { id: "h", title: "Welcome", slides: [], sounds: [] },
+    { id: "b", title: "Be Thou My Vision", slides: [slide("V1")], sounds: [] },
   ],
 };
 
@@ -37,7 +37,7 @@ test("after the last slide there is no next", () => {
 test("the next click builds the live slide before moving on", () => {
   const deck: LoadedService = {
     ...loaded,
-    items: [{ id: "d", title: "Sermon", slides: [slide("Slide 1", 2), slide("Slide 2")] }, ...loaded.items],
+    items: [{ id: "d", title: "Sermon", slides: [slide("Slide 1", 2), slide("Slide 2")], sounds: [] }, ...loaded.items],
   };
   const at = (step: number) => nextClick(deck, { item: "d", slide: 0, step });
   assert.deepEqual(at(0), { cursor: { item: "d", slide: 0, step: 1 }, slide: deck.items[0].slides[0], title: "Sermon", build: true });
