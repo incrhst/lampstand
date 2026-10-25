@@ -871,12 +871,16 @@ async fn pair_up(main: &Device, other: &Device) {
             address: Some(main.address()),
         })
         .await;
+    // The main machine must also have heard the other's four role records:
+    // until then it refuses a claim as settling ("Nobody is presenting.").
     until(Duration::from_secs(5), "the roles to settle", || {
         let held = |d: &Device| d.sync.node().roles_status().audio.record.holder;
         held(other) == Some(main.sync.node().device())
             && learned_the_roles(main, other)
             && main.sync.node().status().connected() == 1
             && other.sync.node().status().connected() == 1
+            && main.sync.node().settled()
+            && other.sync.node().settled()
     })
     .await;
 }
