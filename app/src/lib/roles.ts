@@ -85,6 +85,16 @@ export function replacedNotice(role: RoleName, by: string): string {
   return `${who} took over running ${job(role)} while this device was offline. This device no longer runs ${job(role)}.`;
 }
 
+/**
+ * Said once on a device that took a role over when the holder, which had not
+ * been offline as long as this device thought, turned the takeover down and
+ * kept it (#183).
+ */
+export function refusedNotice(role: RoleName, by: string): string {
+  const who = by || `The device that runs ${job(role)}`;
+  return `${who} had not been offline long enough, so it kept running ${job(role)}. This device no longer runs ${job(role)}. You can ask ${by || "it"} for it.`;
+}
+
 // ---- The asker's button ---------------------------------------------------
 
 /** Why the button is greyed out, in the spec's words where it has them. */
@@ -134,6 +144,13 @@ export function roleChoice(r: RoleView | null | undefined): RoleChoice {
         ok: TAKE,
       };
     case "Wait":
+      // The holder turned this device's takeover down a short while ago.
+      if (r.cooldown_secs)
+        return {
+          kind: "wait",
+          label: TAKE,
+          hint: `${who} turned down this device's takeover. You can take over in ${howLong(r.wait_secs ?? r.cooldown_secs)}.`,
+        };
       return {
         kind: "wait",
         label: TAKE,
@@ -176,7 +193,9 @@ const ASK_STATES: string[] = ["waiting", "declined", "busy"];
 
 /** Roles whose prompt or notice should show across the top of the screens. */
 export function wantsAttention(team: TeamStatus | null | undefined): boolean {
-  return rolesOf(team).some((r) => r.request || r.replaced_by || ASK_STATES.includes(roleChoice(r).kind));
+  return rolesOf(team).some(
+    (r) => r.request || r.replaced_by || r.refused_by || ASK_STATES.includes(roleChoice(r).kind),
+  );
 }
 
 /** The panel's heading, from the spec's page title ("Roles: who runs what"). */
@@ -201,8 +220,29 @@ export function operatorTakenBack(team: TeamStatus | null | undefined): boolean 
 
 /** The roles whose "you lost it" notice the generic banner shows. */
 export function noticeRoles(team: TeamStatus | null | undefined): RoleView[] {
-  return rolesOf(team).filter((r) => r.replaced_by && !(r.role === "Operator" && operatorTakenBack(team)));
+  return rolesOf(team).filter(
+    (r) => r.refused_by || (r.replaced_by && !(r.role === "Operator" && operatorTakenBack(team))),
+  );
 }
+
+// ---- A record this device could not check (#184) ---------------------------
+
+/** The roles whose newest record this device could not check, in order. */
+export function uncheckedRoles(team: TeamStatus | null | undefined): RoleName[] {
+  return rolesOf(team)
+    .filter((r) => r.unverified)
+    .map((r) => r.role);
+}
+
+/** Beside the holder in the roster: "Can't check who runs the stream". */
+export function uncheckedLine(roles: RoleName[]): string {
+  return `Can't check who runs ${joinJobs(roles)}`;
+}
+
+/** What it means and what to do, under that line. */
+export const UNCHECKED_HELP =
+  "This device missed too many changes while it was away, so who it shows may be out of date. To fix it, unpair one of the devices below and pair it again.";
+
 
 // ---- The roster: the status bar and Setup > Devices -----------------------
 
@@ -266,7 +306,8 @@ export function othersRun(team: TeamStatus | null | undefined): string[] {
  */
 export function withRoster<P extends { text: string; title: string }>(pill: P, team: TeamStatus | null | undefined): P {
   if (!team || team.paired.length === 0 || rolesOf(team).length === 0) return pill;
-  const parts = [ownRunsLine(team), ...othersRun(team)];
+  const unchecked = uncheckedRoles(team);
+  const parts = [ownRunsLine(team), ...othersRun(team), ...(unchecked.length ? [uncheckedLine(unchecked)] : [])];
   return { ...pill, text: `${parts.join(" · ")} · ${pill.text}`, title: `${pill.title}. ${parts.join(". ")}` };
 }
 
@@ -326,6 +367,33 @@ export function screensBar(holderName: string): string {
 
 export const HAND_BACK = "Hand the service back";
 export const RUNS_SCREENS_NOW = "This device runs the screens now.";
+
+// ---- The role bar: a strip of the role colours a device holds -------------
+
+export type RoleSegment = { role: RoleName; unchecked: boolean };
+
+/**
+ * One device's bar: a segment for each role it holds, always in the order
+ * Projection, Operator, Stream, Audio, a role whose record this device
+ * could not check marked as such, and a label in the roster's words ("Runs
+ * the screens and the service"). No segments for a device that runs nothing.
+ */
+export function roleBar(held: RoleName[], unchecked: RoleName[] = []): { segments: RoleSegment[]; label: string } {
+  const segments = ROLES.filter((r) => held.includes(r)).map((role) => ({ role, unchecked: unchecked.includes(role) }));
+  const doubtful = segments.filter((s) => s.unchecked).map((s) => s.role);
+  const label = runsLine(segments.map((s) => s.role)) + (doubtful.length ? `. ${uncheckedLine(doubtful)}` : "");
+  return { segments, label };
+}
+
+/** This device's bar. */
+export function ownRoleBar(team: TeamStatus | null | undefined) {
+  return roleBar(heldRoles(team), uncheckedRoles(team));
+}
+
+/** A paired device's bar, from the roles this device has heard it holds. */
+export function deviceRoleBar(team: TeamStatus | null | undefined, device: string) {
+  return roleBar(rolesHeldBy(team, device), uncheckedRoles(team));
+}
 
 // ---- The stream desk (#134) -----------------------------------------------
 

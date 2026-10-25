@@ -1,6 +1,6 @@
 # Roles: who runs what
 
-Status: built for 0.8.0, except the parts marked **Planned** (see "Built and planned" below). Decisions: [0010](decisions/0010-roles-and-handoff.md); the map is [issue 114](https://github.com/incrhst/lampstand/issues/114). Builds on the presenter lease ([0008](decisions/0008-presenter-lease.md)) and driving ([0009](decisions/0009-driving-another-device.md)), which became the Projection and Operator roles. The page for volunteers is [the Roles page on the website](../site/docs/roles.html). Ideas set aside for later are in [roles-future.md](roles-future.md).
+Status: built for 0.8.0 (and 0.9.0 for settling a refused takeover, showing a record that could not be checked, and the role bar), except the parts marked **Planned** (see "Built and planned" below). Decisions: [0010](decisions/0010-roles-and-handoff.md); the map is [issue 114](https://github.com/incrhst/lampstand/issues/114). Builds on the presenter lease ([0008](decisions/0008-presenter-lease.md)) and driving ([0009](decisions/0009-driving-another-device.md)), which became the Projection and Operator roles. The page for volunteers is [the Roles page on the website](../site/docs/roles.html). Ideas set aside for later are in [roles-future.md](roles-future.md).
 
 A **role** is a job someone is doing right now. It is not a permission; who may do a job is the Teams work (T18).
 
@@ -15,11 +15,12 @@ Roles are built and tested on macOS and Windows, and also run on Linux CI (the L
 | Stream holder owns OBS, OBS cues, the stream desk view | Built (#132, #133, #134) |
 | Sound in the order of the service, Setup > Sound, playing, the output chooser, the panic stop | Built (#135, #136) |
 | Why a sound cannot play (file not on the Audio device, unreadable or unsupported, output not working, missing or absent), shown on the Operator and Projection screens; a dead output is dropped and retried, and a chosen output that is gone stays silent with no fallback (protocol 7) | Built (#162) |
-| Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown) | Planned (issue #153, closed; design in PR #160's description) |
+| Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown; protocol 8) | Built (#183; design from PR #160's description, issue #153) |
 | "Send sound to the stream" (the OBS browser source plays Lampstand's sound) | Planned (#137); needs the OBS prototype (#125), which has not been run |
 | A warning in the role bar that names the sound item that will not play | Planned (see "Audio warnings") |
 | The tablet and phone remote, the browser stage page, a Stream view in the browser | Planned (decision 0006; not in the app yet) |
-| Showing the volunteer that a role's record could not be checked | Planned (the state exists; nothing shows it) |
+| Showing the volunteer that a role's record could not be checked | Built (#184): the roster and the status bar say so, with what to do |
+| The role bar: a strip in the role colours for the roles a machine holds, in the status bar and beside each device in Setup > Devices | Built (0.9.0) |
 
 ## The four roles
 
@@ -175,10 +176,11 @@ The same rules for every role.
 3. **Take over.** If nobody holds the role, Take works at once with no prompt. If the holder has been offline for the takeover time, another device may take it after confirming ("Mary's laptop has been offline for 5 minutes. Run the stream from here?"). The takeover time is set on each device in Setup > Devices (default two minutes). A claimant also waits a **10 second margin** on top (`TAKEOVER_MARGIN`): with the default it can take over from 2 minutes 10 seconds of silence. Until then the button explains how long is left. A short network drop never counts. A claimant also waits by the longer of its own takeover setting and the one the holder tells it (PR #160).
 4. **What is on air.** Passing **Projection** clears the screens ("Allow and clear the screens"), and passing **Audio** stops what is playing ("Allow and stop the music"). Passing **Operator** leaves the slide up. Passing **Stream** leaves OBS on its current scene.
 5. **A returning holder yields.** A device that comes back after losing a role learns it, drops the role and shows a notice ("Mary's laptop took over running the stream while this device was offline. This device no longer runs the stream."). It cannot win the role back by itself.
-6. **Always allow** is offered only for Operator and Stream. It is not offered for Projection or Audio, because handing either over clears something on air. It is remembered per device, listed in Setup > Devices ("Always allowed", "Stop always allowing {name}").
-7. **Roles are independent.** Handing Projection to another device does not move the Operator seat or Audio. The Operator seat is kept across a Projection hand-over, and the new Projection holder announces its state to the Operator.
-8. **The Projection holder takes the Operator seat back whenever it likes,** without being allowed. The Operator sees "{name} took back running the service. This device no longer runs the service."
-9. **"Hand the service back"** is the Operator's own button (it was "Stop driving" in 0.7.0). It gives the seat to the Projection holder, which takes it. It is silent: no notice on either side. If the Projection holder is not connected, the seat is simply let go and nobody holds Operator.
+6. **A takeover the holder turns down is handed back.** If the holder had not really been away (the link failed in one direction only, or devices dropped at different times), it refuses the claim with a signed refusal (a `Reclaim` step, below). The claimant hands the role back at once, as a returning holder does, and shows "Sanctuary had not been offline long enough, so it kept running the stream. This device no longer runs the stream. You can ask Sanctuary for it." Any device that had taken the claim in comes back too. For **five minutes** after that (`REFUSAL_COOLDOWN`) the claimant cannot take the role over from that holder again, however long it seems gone; the button says "Sanctuary turned down this device's takeover. You can take over in 4 minutes." Asking still works, because the holder decides.
+7. **Always allow** is offered only for Operator and Stream. It is not offered for Projection or Audio, because handing either over clears something on air. It is remembered per device, listed in Setup > Devices ("Always allowed", "Stop always allowing {name}").
+8. **Roles are independent.** Handing Projection to another device does not move the Operator seat or Audio. The Operator seat is kept across a Projection hand-over, and the new Projection holder announces its state to the Operator.
+9. **The Projection holder takes the Operator seat back whenever it likes,** without being allowed. The Operator sees "{name} took back running the service. This device no longer runs the service."
+10. **"Hand the service back"** is the Operator's own button (it was "Stop driving" in 0.7.0). It gives the seat to the Projection holder, which takes it. It is silent: no notice on either side. If the Projection holder is not connected, the seat is simply let go and nobody holds Operator.
 
 Who may hold a role is checked in one place, `Roles::claim` and `Roles::allow` (`check_teams`). Today it always says yes; Teams (T18) will plug in there.
 
@@ -186,15 +188,17 @@ Who may hold a role is checked in one place, `Roles::claim` and `Roles::allow` (
 
 Each role is a record `{ holder, name, epoch }` with the last **eight** signed steps that led to it (a claim, a hand-over or a release, each signed by the device that did it). A device takes in a newer record only if its steps join the state it has and were signed by devices it knows, so a stranger cannot invent a hand-over. A record that cannot be joined (a device missed more than eight steps) is kept aside as **unverified** until a record that joins arrives, or until the device is paired again (unpair, pair). A device that lost its role file is taught again by the devices it is paired with.
 
-**What the volunteer sees: nothing yet.** The unverified state is reported in the sync status for each role but no screen shows it. A device in that state keeps what it had; the cure is to unpair and pair again. Showing it is **Planned**.
+**What the volunteer sees (#184).** A device in that state keeps what it had, and says so where it shows who runs what. In Setup > Devices > Who runs what, under the holder: "Can't check who runs the stream. This device missed too many changes while it was away, so who it shows may be out of date. To fix it, unpair one of the devices below and pair it again." The status bar adds "Can't check who runs the stream" to the roster, and that role's segment of the role bar is hatched.
 
-**Known gap (issue #153):** if the link failed in one direction only, or devices dropped at different times, a claim the holder refuses can leave the claimant believing it holds the role while the holder does too, until a later record moves one of them. The margin and PR #160 narrow it; the issue was closed, and the fix is planned but not built (the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once). Not built.
+**A refused takeover (#183, protocol 8).** A step may also be a **reclaim**: the holder's signed refusal of a claim made against it. It is signed by the holder the claim was made against, sits directly on that claim, and gives the role back to that holder, two epochs past where it was. It beats the claim by the ordinary order, so every device that took the claim in, and the claimant, comes back to the holder; no record goes backwards. Only the holder the claim was made against can make one, only once per claim, and only on a claim sent by the claimant itself on the holder's present state. The cooldown is kept in memory (a restart ends it). This closes the gap issue #153 left (one-way link failure, devices that dropped at different times): the claimant learns as soon as the holder's record reaches it, which in the one-way case is when its connection is replaced (a silent session ends after 30 seconds) and the records are sent again.
+
+**The role bar.** A thin strip of equal segments, one per role a machine holds, always Projection, Operator, Stream, Audio, in the colours above (`--role-*` in `app/src/lib/kit/theme.css`, lightened from the docs' colours to stand out on the app's dark panels). It is in the status bar for this machine and in Setup > Devices for this machine and each paired one, from what this machine has heard. A machine that runs nothing shows an empty grey strip. Its label is the roster's words ("Runs the screens and the service").
 
 ### Defaults, restarts, moving from 0.7.0
 
 - **Pairing.** The device that shows the pairing code takes the roles nobody holds: Projection, Operator and Audio, each only if the rules allow. **A first device with no screens gets none of the three** (Audio goes only with Projection). Stream is left unheld, so Projection keeps the OBS duty until someone takes Stream.
 - **Restarts.** Roles are kept in `roles.json` beside `paired.json`, device-local, and when each paired device was last heard is kept in `contact.json`. A restart, crash or sleep leaves a holder that others see as offline; the takeover time applies.
-- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. Sync protocol 7 (5 had the roles; 6 adds the takeover setting a device tells the others; 7 adds the frame in which the Audio holder says why a sound did not play); devices on an older version are refused with the usual message saying which side should update.
+- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. Sync protocol 8 (5 had the roles; 6 adds the takeover setting a device tells the others; 7 adds the frame in which the Audio holder says why a sound did not play; 8, in 0.9.0, adds the reclaim step); devices on an older version are refused with the usual message saying which side should update.
 - **Roster.** The status bar shows what this device runs ("Runs the screens and the service") and who runs the rest ("Mary's laptop runs the stream"); a device with no role says "Planning". "Presenting" and "Driving" are gone. Setup > Devices has the "Who runs what" panel, with each role, who has it, a Take button, the always-allowed devices and the takeover time.
 
 ## Where OBS lives
@@ -216,7 +220,8 @@ These were proposed in the first design and are now decided, or were decided by 
 - Roles are independent on a Projection hand-over.
 - A claimant waits the takeover time plus 10 seconds.
 - One ask at a time; always-allow only for Operator and Stream.
-- Role records are signed, eight steps, with an "unverified" state.
+- Role records are signed, eight steps, with an "unverified" state, shown in the roster (#184).
+- A takeover the holder refuses is answered with a signed reclaim; the claimant hands back and waits five minutes before it can take over from that holder again (#183).
 - Stream warnings: none. Audio warning: "Nobody runs the sound." (wording question open).
 - Setup > Sound "Use sound in services" off by default.
 - Set up OBS runs on the machine that serves the pictures, only for a remote OBS.

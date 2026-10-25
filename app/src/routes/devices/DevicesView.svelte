@@ -10,6 +10,8 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import RoleTake from "../../lib/kit/RoleTake.svelte";
+  import RoleBar from "../../lib/kit/RoleBar.svelte";
+  import RoleHolder from "../../lib/kit/RoleHolder.svelte";
   import {
     ALWAYS_ALLOWED,
     PANEL_TITLE,
@@ -17,9 +19,11 @@
     TAKEOVER_HELP,
     TAKEOVER_LABEL,
     deviceRunsLine,
-    holderLine,
+    heldRoles,
     ownRunsLine,
     roleOf,
+    rolesHeldBy,
+    uncheckedRoles,
     runs,
     stopAlways,
     takeoverOption,
@@ -99,7 +103,7 @@
     {#if status}
       <p><strong>{status.name}</strong> <small class="muted">key {status.fingerprint}</small></p>
       {#if status.paired.length > 0}
-        <p class="muted">{ownRunsLine(status)}</p>
+        <p class="muted"><RoleBar held={heldRoles(status)} unchecked={uncheckedRoles(status)} /> {ownRunsLine(status)}</p>
       {/if}
       {#if status.addresses.length}
         <p class="muted">Address: {status.addresses.join(", ")}</p>
@@ -184,7 +188,7 @@
             <li>
               <span>
                 <strong>{runs(name)}</strong>
-                <span class="muted">{holderLine(r)}</span>
+                <RoleHolder team={status} role={name} />
                 {#each r.always as d (d.device)}
                   <small class="muted">{ALWAYS_ALLOWED}: {d.name}</small>
                   <Button size="small" variant="ghost" onclick={() => team({ RoleAlways: { role: name, device: d.device, always: false } })}>{stopAlways(d.name)}</Button>
@@ -231,6 +235,7 @@
           <span>
             <span class="dot" class:on={p.connected} aria-hidden="true"></span>
             <strong>{p.name}</strong>
+            <RoleBar held={rolesHeldBy(status, p.device)} unchecked={uncheckedRoles(status)} />
             <small class="role" class:presenting={p.presenting}>{deviceRunsLine(status, p.device)}</small>
             <small class="muted">{p.connected ? "connected" : "not connected"}{p.problem ? ` (${p.problem})` : ""}{p.address ? ` · ${p.address}` : ""} · key {p.fingerprint}</small>
           </span>

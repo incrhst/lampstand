@@ -16,6 +16,12 @@ import {
   shortcutsOff,
   takeoverOption,
   withRoster,
+  refusedNotice,
+  roleBar,
+  ownRoleBar,
+  deviceRoleBar,
+  uncheckedLine,
+  uncheckedRoles,
   allowLabel,
   job,
   noticeRoles,
@@ -44,6 +50,9 @@ const view = (role: RoleName, over: Partial<RoleView> = {}): RoleView => ({
   always: [],
   holder_waits_secs: null,
   offers_always: role === "Operator" || role === "Stream",
+  refused_by: null,
+  cooldown_secs: null,
+  unverified: false,
   ...over,
 });
 const team = (roles: RoleView[], over: Partial<TeamStatus> = {}): TeamStatus =>
@@ -79,6 +88,62 @@ test("the notice for a lost role names the role", () => {
     "Mary's laptop took over running the stream while this device was offline. This device no longer runs the stream.",
   );
   assert.ok(replacedNotice("Audio", "Sam").includes("the sound"));
+});
+
+test("a takeover the holder turned down is said once, and the button waits out the cooldown", () => {
+  assert.equal(
+    refusedNotice("Stream", "Sanctuary"),
+    "Sanctuary had not been offline long enough, so it kept running the stream. This device no longer runs the stream. You can ask Sanctuary for it.",
+  );
+  const refused = view("Stream", { refused_by: "Sanctuary", holder_name: "Sanctuary", cooldown_secs: 300 });
+  const t = team([refused]);
+  assert.ok(wantsAttention(t));
+  assert.deepEqual(noticeRoles(t).map((r) => r.role), ["Stream"]);
+  // Connected: it can ask as usual.
+  assert.equal(roleChoice(refused).kind, "ask");
+  // The holder seems gone again, inside the cooldown.
+  const waiting = view("Stream", {
+    holder_name: "Sanctuary",
+    standing: "Wait",
+    offline_secs: 200,
+    wait_secs: 100,
+    cooldown_secs: 100,
+  });
+  assert.deepEqual(roleChoice(waiting), {
+    kind: "wait",
+    label: "Take",
+    hint: "Sanctuary turned down this device's takeover. You can take over in 2 minutes.",
+  });
+});
+
+test("a record this device could not check is named in the roster", () => {
+  const t = paired([mine("Projection"), view("Stream", { unverified: true }), view("Audio", { unverified: true })]);
+  assert.deepEqual(uncheckedRoles(t), ["Stream", "Audio"]);
+  assert.equal(uncheckedLine(["Stream"]), "Can't check who runs the stream");
+  assert.equal(
+    withRoster(pill, t).text,
+    "Runs the screens · Mary's laptop runs the stream and the sound · Can't check who runs the stream and the sound · Synced with 1 device",
+  );
+  // Nothing is said when every record checks out.
+  assert.ok(!withRoster(pill, paired([mine("Projection"), view("Stream")])).text.includes("Can't check"));
+});
+
+test("the role bar: held roles in order, unchecked marked, the roster's words", () => {
+  assert.deepEqual(roleBar(["Audio", "Projection"]), {
+    segments: [
+      { role: "Projection", unchecked: false },
+      { role: "Audio", unchecked: false },
+    ],
+    label: "Runs the screens and the sound",
+  });
+  assert.deepEqual(roleBar([]), { segments: [], label: "Planning" });
+  assert.equal(roleBar(["Stream"], ["Stream"]).label, "Runs the stream. Can't check who runs the stream");
+  const t = paired([mine("Projection"), view("Stream", { unverified: true }), view("Audio")]);
+  assert.deepEqual(ownRoleBar(t).segments, [{ role: "Projection", unchecked: false }]);
+  assert.deepEqual(deviceRoleBar(t, "aa").segments, [
+    { role: "Stream", unchecked: true },
+    { role: "Audio", unchecked: false },
+  ]);
 });
 
 test("the Take button", () => {

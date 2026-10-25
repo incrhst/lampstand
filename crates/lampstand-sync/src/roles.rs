@@ -27,6 +27,10 @@
 //!   default, and then ten seconds more: [`TAKEOVER_MARGIN`]), or when nobody holds the role.
 //! - A holder that comes back finds a newer record and drops the role, with
 //!   a [`Notice`]. It never resumes by itself.
+//! - A holder that was there all along refuses a claim against it with a
+//!   signed [`Kind::Reclaim`]: a newer record of its own that every device
+//!   takes in, so the claimant hands the role back and waits
+//!   [`REFUSAL_COOLDOWN`] before it may take it over again.
 //! - "Always allow this device" is remembered for Operator and Stream, never
 //!   for Projection or Audio ([`Role::offers_always`]), because handing
 //!   either over clears something on air ([`Role::on_air`]).
@@ -85,6 +89,15 @@ pub const TAKEOVER_MARGIN: Duration = Duration::from_secs(10);
 
 /// How often a session sends something (see `net::session`).
 pub const HEARTBEAT: Duration = Duration::from_secs(5);
+
+/// How long a device whose takeover the holder refused (a
+/// [`Kind::Reclaim`]) waits before it may take the role over from that
+/// holder again, counted from when the refusal arrived. A claimant that was
+/// wrong about the holder's absence (a link that failed one way only) would
+/// otherwise claim again as soon as its own count allowed, and the role would
+/// go back and forth every couple of minutes. Asking stays open: the holder
+/// decides that.
+pub const REFUSAL_COOLDOWN: Duration = Duration::from_secs(5 * 60);
 
 /// One of the four jobs. The order is the order they are listed in.
 #[derive(
@@ -212,6 +225,12 @@ pub enum Kind {
     HandOver,
     /// The holder let go; signed by the holder. Nobody holds the role after.
     Release,
+    /// The holder refused a claim made against it and takes the role back:
+    /// a step on top of the claim, from the claimant to the holder the claim
+    /// named as `prev_holder`, signed by that holder. Valid only directly on
+    /// a claim against the device that signs it (checked where the chain is
+    /// seen, in `Roles::admit`).
+    Reclaim,
 }
 
 /// One signed step in a role's history: from `(prev_holder, prev_epoch)` to
@@ -257,13 +276,23 @@ impl Link {
         out
     }
 
-    /// Who must have signed it: the new holder for a claim, the one who let
-    /// go for the others.
+    /// Who must have signed it: the new holder for a claim or a reclaim,
+    /// the one who let go for the others.
     pub fn signer(&self) -> Option<DeviceKey> {
         match self.kind {
-            Kind::Claim => self.holder,
+            Kind::Claim | Kind::Reclaim => self.holder,
             Kind::HandOver | Kind::Release => self.prev_holder,
         }
+    }
+
+    /// Whether this reclaim takes the role back from `claim`, the step it
+    /// sits on: a claim against the device that signed the reclaim.
+    fn reclaims(&self, claim: &Link) -> bool {
+        self.kind == Kind::Reclaim
+            && claim.kind == Kind::Claim
+            && claim.holder == self.prev_holder
+            && claim.epoch == self.prev_epoch
+            && claim.prev_holder == self.holder
     }
 
     /// Whether it is well formed and signed by the device it names.
@@ -271,6 +300,11 @@ impl Link {
         let shape = match self.kind {
             Kind::Claim | Kind::HandOver => self.holder.is_some(),
             Kind::Release => self.holder.is_none(),
+            Kind::Reclaim => {
+                self.holder.is_some()
+                    && self.prev_holder.is_some()
+                    && self.holder != self.prev_holder
+            }
         } && self.epoch == self.prev_epoch.wrapping_add(1)
             && self.epoch != 0
             && self.epoch <= EPOCH_LIMIT;
@@ -335,16 +369,20 @@ impl Record {
     /// Whether this record replaces `other` when they meet: the higher
     /// epoch, and for claims made at the same moment the higher device key.
     ///
-    /// For two records at the same epoch the one the holder signed away
-    /// (a hand-over or a release) comes before one somebody took (a claim),
-    /// which comes before one with no steps; after that the higher key.
-    /// Every device applies the same order, so they all end on one record.
+    /// For two records at the same epoch a holder's refusal of a claim (a
+    /// reclaim) comes first, then the one the holder signed away (a hand-over
+    /// or a release), then one somebody took (a claim), then one with no
+    /// steps; after that the higher key. A reclaim comes first because it
+    /// says the state it sits on should not have been: a hand-over the
+    /// claimant made from it at the same moment loses. Every device applies
+    /// the same order, so they all end on one record.
     pub fn beats(&self, other: &Record) -> bool {
         (self.epoch, self.rank(), self.holder) > (other.epoch, other.rank(), other.holder)
     }
 
     fn rank(&self) -> u8 {
         match self.chain.first().map(|l| l.kind) {
+            Some(Kind::Reclaim) => 3,
             Some(Kind::HandOver | Kind::Release) => 2,
             Some(Kind::Claim) => 1,
             None => 0,
@@ -421,6 +459,11 @@ pub trait Net {
     fn takeover_of(&self, _device: DeviceKey) -> Option<Duration> {
         None
     }
+    /// Now, in Unix milliseconds by the clock that counts a sleep (the one
+    /// the refusal cooldown is measured by).
+    fn now_ms(&self) -> i64 {
+        0
+    }
 }
 
 /// How this device could take a role right now.
@@ -473,6 +516,9 @@ pub enum Denied {
     NeedsProjection,
     /// Teams (T18) does not let this device hold the role.
     NotPermitted,
+    /// The holder refused this device's takeover a short while ago
+    /// ([`REFUSAL_COOLDOWN`]); `remaining` until it may take over again.
+    Refused { remaining: Duration },
     /// This device has just connected and has not yet been told who holds
     /// the roles, so a role that looks unheld may not be.
     Settling,
@@ -506,6 +552,11 @@ impl std::fmt::Display for Denied {
             Denied::NoScreens => write!(f, "No screens are set up on this device"),
             Denied::NeedsProjection => write!(f, "nobody runs the screens"),
             Denied::NotPermitted => write!(f, "this device may not hold that role"),
+            Denied::Refused { remaining } => write!(
+                f,
+                "the holder refused this device's takeover; you can take over in {}s",
+                remaining.as_secs().max(1)
+            ),
             // What the bar said in 0.7.0 before it had heard who presents.
             Denied::Settling => write!(f, "nobody is presenting"),
         }
@@ -595,6 +646,18 @@ pub struct Asking {
 pub enum Notice {
     /// This device held the role and another device now does.
     Replaced { by: String },
+    /// This device took the role over, and the holder, which had not been
+    /// away as long as this device thought, refused it and kept the role.
+    Refused { by: String },
+}
+
+/// A takeover the holder refused: no new one against it until
+/// [`REFUSAL_COOLDOWN`] has passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Refusal {
+    by: DeviceKey,
+    /// When it arrived ([`Net::now_ms`]).
+    at_ms: i64,
 }
 
 /// What a [`Roles::merge`] changed.
@@ -602,6 +665,9 @@ pub enum Notice {
 pub struct Merged {
     pub changed: bool,
     pub lost_role: bool,
+    /// The record was a claim against this device that it refused: its own
+    /// record is now a reclaim on top of that claim, to send to every device.
+    pub reclaimed: bool,
 }
 
 /// The four records and the asking around them, for one device.
@@ -624,6 +690,9 @@ pub struct Roles {
     /// A newer record arrived whose steps do not join this device's state
     /// (it missed more than [`CHAIN`] of them); it waits for one that does.
     unverified: [bool; 4],
+    /// A takeover by this device the holder refused, per role. Not kept on
+    /// disk: a restart ends the cooldown.
+    refused: [Option<Refusal>; 4],
     signer: Signer,
     /// The device this one has just paired with: the only one whose present
     /// state a device with nothing of its own takes without joining it.
@@ -655,6 +724,7 @@ impl Roles {
             #[cfg(test)]
             seed_any: false,
             unverified: [false; 4],
+            refused: [None; 4],
             me,
             name,
             records,
@@ -745,6 +815,9 @@ impl Roles {
         for role in Role::ALL {
             changed |= self.always[role.index()].remove(&device).is_some();
             changed |= self.receive_cancel(role, device);
+            if self.refused[role.index()].is_some_and(|r| r.by == device) {
+                self.refused[role.index()] = None;
+            }
         }
         changed
     }
@@ -822,16 +895,35 @@ impl Roles {
             Holder::Online => Standing::Ask,
             Holder::Offline(offline) => {
                 let wait = self.claim_wait(role, net);
-                if offline >= wait {
+                let cooling = self.cooldown(role, net);
+                if offline >= wait && cooling.is_none() {
                     Standing::TakeOver { offline }
                 } else {
                     Standing::Wait {
                         offline,
-                        remaining: wait - offline,
+                        remaining: wait
+                            .saturating_sub(offline)
+                            .max(cooling.unwrap_or_default()),
                     }
                 }
             }
         }
+    }
+
+    /// How long until this device may take `role` over again from a holder
+    /// that refused its takeover; `None` when it may (no refusal, the role
+    /// has moved to another holder since, or [`REFUSAL_COOLDOWN`] is over).
+    pub fn cooldown(&self, role: Role, net: &dyn Net) -> Option<Duration> {
+        let refusal = self.refused[role.index()]?;
+        if self.record(role).holder != Some(refusal.by) {
+            return None;
+        }
+        let since = Duration::from_millis(
+            u64::try_from(net.now_ms().saturating_sub(refusal.at_ms)).unwrap_or(0),
+        );
+        REFUSAL_COOLDOWN
+            .checked_sub(since)
+            .filter(|left| !left.is_zero())
     }
 
     /// How long the holder of `role` must have been silent before this
@@ -877,7 +969,11 @@ impl Roles {
             Standing::Holding | Standing::Open | Standing::TakeOver { .. } => {}
             Standing::Ask => return Err(Denied::MustAsk),
             Standing::Wait { offline, remaining } => {
-                return Err(Denied::TooSoon { offline, remaining })
+                return Err(if self.cooldown(role, net).is_some() {
+                    Denied::Refused { remaining }
+                } else {
+                    Denied::TooSoon { offline, remaining }
+                });
             }
         }
         self.check_teams(role, self.me)
@@ -1161,6 +1257,15 @@ impl Roles {
         {
             return Admit::No;
         }
+        // A reclaim sits directly on the claim it refuses and is signed by the
+        // device that claim was made against. One that is the oldest step is
+        // checked against this device's own state when it is taken in, below.
+        if !steps
+            .windows(2)
+            .all(|w| w[0].kind != Kind::Reclaim || w[0].reclaims(&w[1]))
+        {
+            return Admit::No;
+        }
         // Devices whose word counts: this one, the ones it is paired with,
         // and those already in the state it holds.
         let in_state = |d: DeviceKey| {
@@ -1213,16 +1318,46 @@ impl Roles {
             let mut introduced: Vec<DeviceKey> = Vec::new();
             for (i, l) in newer.iter().enumerate().rev() {
                 let signer = l.signer().expect("valid steps have a signer");
-                if !known(signer) && !introduced.contains(&signer) {
+                // A claim its holder took straight back gave nobody anything,
+                // so its claimant need not be known here (the reclaim's signer
+                // must be).
+                let cancelled = l.kind == Kind::Claim && i > 0 && newer[i - 1].reclaims(l);
+                if !cancelled && !known(signer) && !introduced.contains(&signer) {
                     return Admit::No;
                 }
-                if let Some(h) = l.holder {
+                if l.kind == Kind::Reclaim
+                    && i + 1 == steps.len()
+                    && !local.chain.first().is_some_and(|c| l.reclaims(c))
+                {
+                    // The oldest step reclaims this device's present state:
+                    // only if that state is a claim against the signer.
+                    return Admit::No;
+                }
+                if let Some(h) = l.holder.filter(|_| !cancelled) {
                     introduced.push(h);
                 }
                 if l.kind == Kind::Claim && i == 0 && from == signer {
                     // The claimant itself says so: as this device sees it.
                     if !self.claim_ok(role, signer, l.prev_holder, net) {
-                        return Admit::No;
+                        // Made on this device's own present state, against
+                        // it: refused out loud, with a reclaim every device
+                        // takes in, so the claimant and anyone that took the
+                        // claim in hand the role back.
+                        // Only while the claimant is connected here: a frame
+                        // still arriving on a connection that is being
+                        // replaced is judged with nothing known of the
+                        // outage, and is simply not taken, to be sent again
+                        // when the next connection opens.
+                        let against_me = newer.len() == 1
+                            && local.holder == Some(self.me)
+                            && l.prev_holder == Some(self.me)
+                            && l.prev_epoch == local.epoch
+                            && net.holder(signer) == Holder::Online;
+                        return if against_me {
+                            Admit::Refused
+                        } else {
+                            Admit::No
+                        };
                     }
                 }
             }
@@ -1427,11 +1562,18 @@ impl Roles {
                 self.unverified[i] = true;
                 return Merged::default();
             }
+            Admit::Refused => return self.reclaim(role, remote),
         }
         // A stranger's record is not worth a notice.
         let known = remote
             .holder
             .is_some_and(|h| h == self.me || net.holder(h) != Holder::Gone);
+        // The holder refused this device's own takeover.
+        let refused_by = remote
+            .chain
+            .first()
+            .filter(|l| l.kind == Kind::Reclaim && l.prev_holder == Some(self.me))
+            .and(remote.holder);
         let was_holder = self.holds(role);
         self.records[i] = remote.clone();
         self.records[i].chain.truncate(CHAIN);
@@ -1440,7 +1582,18 @@ impl Roles {
         let lost_role = was_holder && !self.holds(role);
         if lost_role {
             let chosen = std::mem::take(&mut self.yielding[i]);
-            if known && !chosen {
+            if let Some(by) = refused_by {
+                // Handed back, and no new takeover from it for a while.
+                self.refused[i] = Some(Refusal {
+                    by,
+                    at_ms: net.now_ms(),
+                });
+                if known {
+                    self.notice[i] = Some(Notice::Refused {
+                        by: remote.name.clone(),
+                    });
+                }
+            } else if known && !chosen {
                 self.notice[i] = Some(Notice::Replaced {
                     by: remote.name.clone(),
                 });
@@ -1456,6 +1609,25 @@ impl Roles {
         Merged {
             changed: true,
             lost_role,
+            reclaimed: false,
+        }
+    }
+
+    /// Refuses `claim`, a claim against this device made on its present
+    /// state: signs a reclaim on top of it, which beats the claim on every
+    /// device it reached, so they all come back to this one.
+    fn reclaim(&mut self, role: Role, claim: &Record) -> Merged {
+        if claim.epoch >= EPOCH_LIMIT {
+            return Merged::default();
+        }
+        let i = role.index();
+        self.records[i] = claim.clone();
+        self.records[i].chain.truncate(CHAIN);
+        self.step(role, Kind::Reclaim, Some(self.me), self.name.clone());
+        Merged {
+            changed: true,
+            lost_role: false,
+            reclaimed: true,
         }
     }
 }
@@ -1464,6 +1636,8 @@ enum Admit {
     Yes,
     No,
     Unverified,
+    /// A claim against this device that it refuses with a reclaim.
+    Refused,
 }
 
 #[cfg(test)]
@@ -1500,6 +1674,8 @@ mod tests {
         away: Option<Duration>,
         /// Devices this one has never paired with.
         strangers: Vec<DeviceKey>,
+        /// The wall clock, in Unix ms.
+        now: i64,
     }
 
     impl Net for Peers<'_> {
@@ -1519,6 +1695,9 @@ mod tests {
         fn paired(&self, d: DeviceKey) -> bool {
             !self.strangers.contains(&d)
         }
+        fn now_ms(&self) -> i64 {
+            self.now
+        }
     }
 
     fn net(has_peers: bool, f: &dyn Fn(DeviceKey) -> Holder) -> Peers<'_> {
@@ -1528,6 +1707,7 @@ mod tests {
             // A connection that has been up for a while: nobody is "away".
             away: None,
             strangers: Vec::new(),
+            now: 0,
         }
     }
 
@@ -1538,6 +1718,7 @@ mod tests {
             holder: f,
             away,
             strangers: Vec::new(),
+            now: 0,
         }
     }
 
@@ -2087,7 +2268,14 @@ mod tests {
             let off = |_: DeviceKey| Holder::Offline(secs(999));
             let claim = c.claim(Role::Stream, &net(true, &off)).unwrap();
             let merged = a.merge(Role::Stream, &claim, key(3), &net_away(&online, away));
-            assert_eq!(merged.changed, believed, "away {away:?}");
+            assert!(merged.changed, "away {away:?}");
+            assert_eq!(
+                a.record(Role::Stream).holder == Some(key(3)),
+                believed,
+                "away {away:?}"
+            );
+            // Refused out loud: the judge's own reclaim on top of the claim.
+            assert_eq!(merged.reclaimed, !believed, "away {away:?}");
         }
     }
 
@@ -2472,6 +2660,320 @@ mod tests {
         (a, b, c)
     }
 
+    /// `a` (the Sanctuary) holds Stream; the Office PC thinks it has been
+    /// gone long enough and claims, but `a` saw the Office PC connected all
+    /// along and refuses. Returns the claim and `a`'s answer to it.
+    fn refused_claim(a: &mut Roles, b: &mut Roles) -> (Record, Record) {
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let claim = b.claim(Role::Stream, &net(true, &off)).unwrap();
+        assert!(b.holds(Role::Stream), "the claimant believes it");
+        let merged = a.merge(
+            Role::Stream,
+            &claim,
+            key(2),
+            &net_away(&online, Some(secs(3))),
+        );
+        assert!(merged.changed && merged.reclaimed && !merged.lost_role);
+        (claim, a.record(Role::Stream).clone())
+    }
+
+    /// The holder's refusal is a step it signs on top of the claim, and the
+    /// claimant (and any device that took the claim in) takes it in like any
+    /// newer record: the role goes back to the holder everywhere.
+    #[test]
+    fn a_refused_claim_is_answered_with_a_signed_reclaim_and_handed_back() {
+        let (mut a, mut b, mut c) = church();
+        let held = a.record(Role::Stream).clone();
+        // The Laptop took the claim in before the Sanctuary refused it.
+        let off = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        let (claim, reclaim) = refused_claim(&mut a, &mut b);
+        assert!(
+            c.merge(Role::Stream, &claim, key(2), &net(true, &off))
+                .changed
+        );
+        assert_eq!(c.record(Role::Stream).holder, Some(key(2)));
+
+        // Signed by the holder, on the claim, two steps past where it was.
+        assert_eq!(reclaim.holder, Some(key(1)));
+        assert_eq!(reclaim.epoch, held.epoch + 2);
+        let step = &reclaim.chain[0];
+        assert_eq!(step.kind, Kind::Reclaim);
+        assert_eq!(step.signer(), Some(key(1)));
+        assert!(step.valid(Role::Stream));
+        assert!(step.reclaims(&reclaim.chain[1]));
+        assert_eq!(reclaim.chain[1], claim.chain[0]);
+        assert!(reclaim.beats(&claim));
+
+        // The claimant hands the role back and is told why.
+        let merged = m(&mut b, Role::Stream, &reclaim);
+        assert!(merged.changed && merged.lost_role);
+        assert!(!b.holds(Role::Stream));
+        assert_eq!(b.record(Role::Stream).holder, Some(key(1)));
+        assert_eq!(
+            b.notice(Role::Stream),
+            Some(&Notice::Refused {
+                by: "Sanctuary".into()
+            })
+        );
+        // The Laptop, relayed by the claimant, comes back too, with nothing to
+        // say: it never held the role.
+        let merged = c.merge(Role::Stream, &reclaim, key(2), &net(true, &online));
+        assert!(merged.changed && !merged.lost_role);
+        assert_eq!(c.record(Role::Stream), &reclaim);
+        assert_eq!(c.notice(Role::Stream), None);
+        // The claim, met again anywhere, changes nothing.
+        for d in [&mut a, &mut b, &mut c] {
+            assert!(
+                !d.merge(Role::Stream, &claim, key(2), &net(true, &off))
+                    .changed
+            );
+            assert_eq!(d.record(Role::Stream).holder, Some(key(1)));
+        }
+        // A device that never saw the claim follows the reclaim from where
+        // it was, through the claim it never had.
+        let mut fresh = device(4, "Back room");
+        fresh.seed_any = false;
+        fresh.records[Role::Stream.index()] = held.clone();
+        assert!(
+            fresh
+                .merge(Role::Stream, &reclaim, key(1), &net(true, &online))
+                .changed
+        );
+        assert_eq!(fresh.record(Role::Stream), &reclaim);
+        // The other roles are untouched.
+        assert!(a.holds(Role::Projection) && a.holds(Role::Audio));
+    }
+
+    /// A refusal only counts from the device the claim was made against,
+    /// signed by it, directly on that claim.
+    #[test]
+    fn a_forged_reclaim_is_refused() {
+        let (mut a, mut b, c) = church();
+        let (claim, reclaim) = refused_claim(&mut a, &mut b);
+        let signed = |by: u8, link: &Link| {
+            let mut l = link.clone();
+            l.sig = kp(by)
+                .sign(&Link::bytes(
+                    Role::Stream,
+                    l.kind,
+                    l.holder,
+                    l.epoch,
+                    l.prev_holder,
+                    l.prev_epoch,
+                ))
+                .to_vec();
+            l
+        };
+        let with = |head: Link, rest: &[Link]| {
+            let mut chain = vec![head.clone()];
+            chain.extend(rest.iter().cloned());
+            Record {
+                holder: head.holder,
+                name: "Forged".into(),
+                epoch: head.epoch,
+                chain,
+            }
+        };
+        let genuine = reclaim.chain[0].clone();
+        // The Laptop, paired with everyone, signs a "refusal" for itself.
+        let mut by_laptop = genuine.clone();
+        by_laptop.holder = Some(key(3));
+        let by_laptop = signed(3, &by_laptop);
+        // The holder's own refusal, with its signature broken.
+        let mut broken = genuine.clone();
+        broken.sig[0] ^= 1;
+        // The holder's signature, copied onto another epoch.
+        let mut moved = genuine.clone();
+        moved.epoch += 1;
+        moved.prev_epoch += 1;
+        // A refusal by the claimant of its own claim.
+        let mut own = genuine.clone();
+        own.holder = Some(key(2));
+        let own = signed(2, &own);
+        // Signed by the holder, but on a hand-over, not a claim against it.
+        let hand_over = {
+            let mut a2 = a.clone();
+            a2.receive_ask(Role::Stream, key(3), "Laptop".into());
+            a2.allow(Role::Stream, key(3), false, &net(true, &online))
+                .unwrap()
+                .record
+        };
+        let mut on_hand_over = genuine.clone();
+        on_hand_over.prev_holder = Some(key(3));
+        on_hand_over.prev_epoch = hand_over.epoch;
+        on_hand_over.epoch = hand_over.epoch + 1;
+        let on_hand_over = signed(1, &on_hand_over);
+        let forgeries = [
+            (
+                "signed by another device",
+                with(by_laptop, &claim.chain),
+                claim.clone(),
+            ),
+            (
+                "a broken signature",
+                with(broken, &claim.chain),
+                claim.clone(),
+            ),
+            ("another epoch", with(moved, &claim.chain), claim.clone()),
+            ("the claimant's own", with(own, &claim.chain), claim.clone()),
+            (
+                "on a hand-over",
+                with(on_hand_over, &hand_over.chain),
+                hand_over.clone(),
+            ),
+        ];
+        // The Laptop sees the Sanctuary gone, so it takes the claim in.
+        let a_gone = |d: DeviceKey| {
+            if d == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        let take = |d: &mut Roles, rec: &Record| {
+            assert!(
+                d.merge(Role::Stream, rec, rec.holder.unwrap(), &net(true, &a_gone))
+                    .changed
+            );
+        };
+        for (what, forged, before) in forgeries {
+            // Sent to a device that holds the claim (or the hand-over) the
+            // forgery sits on, by every device that could send it.
+            for from in [key(1), key(2), key(3)] {
+                let mut d = c.clone();
+                take(&mut d, &before);
+                assert_eq!(d.record(Role::Stream), &before, "{what}");
+                let merged = d.merge(Role::Stream, &forged, from, &net(true, &online));
+                assert!(!merged.changed, "{what}");
+                assert_eq!(d.record(Role::Stream), &before, "{what}");
+                assert!(!d.unverified(Role::Stream), "{what}: not a gap either");
+            }
+        }
+        // A reclaim whose claim is not in the steps is checked against the
+        // claim this device holds: on another state, it is not taken.
+        let mut alone = reclaim.clone();
+        alone.chain.truncate(1);
+        let mut d = c.clone();
+        take(&mut d, &claim);
+        assert!(m(&mut d.clone(), Role::Stream, &alone).changed);
+        let mut d = c.clone();
+        take(&mut d, &hand_over);
+        let mut stray = alone.clone();
+        stray.chain[0].prev_holder = Some(key(3));
+        stray.chain[0] = signed(1, &stray.chain[0]);
+        assert!(!m(&mut d, Role::Stream, &stray).changed);
+    }
+
+    /// The claimant waits out the cooldown before it may take the role over
+    /// from that holder again, however long the holder seems gone; it may
+    /// still ask. The cooldown ends by time, and with a new holder.
+    #[test]
+    fn a_refused_claimant_waits_out_the_cooldown_before_taking_over_again() {
+        let (mut a, mut b, _) = church();
+        let (_, reclaim) = refused_claim(&mut a, &mut b);
+        let at = 1_000_000;
+        let mut on = net_away(&online, None);
+        on.now = at;
+        b.merge(Role::Stream, &reclaim, key(1), &on);
+        assert_eq!(b.cooldown(Role::Stream, &on), Some(REFUSAL_COOLDOWN));
+        // The holder is connected: asking is open.
+        assert_eq!(b.standing(Role::Stream, &on), Standing::Ask);
+        assert!(b.ask(Role::Stream, &on).is_ok());
+        b.cancel_ask(Role::Stream);
+        // The holder seems gone again (a link failing one way): not yet.
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let mut later = net(true, &off);
+        later.now = at + 60_000;
+        assert_eq!(
+            b.standing(Role::Stream, &later),
+            Standing::Wait {
+                offline: secs(999),
+                remaining: REFUSAL_COOLDOWN - secs(60),
+            }
+        );
+        assert_eq!(
+            b.claim(Role::Stream, &later),
+            Err(Denied::Refused {
+                remaining: REFUSAL_COOLDOWN - secs(60)
+            })
+        );
+        // Over: it may, and the claim is an ordinary one.
+        later.now = at + i64::try_from(REFUSAL_COOLDOWN.as_millis()).unwrap();
+        assert_eq!(b.cooldown(Role::Stream, &later), None);
+        assert_eq!(
+            b.standing(Role::Stream, &later),
+            Standing::TakeOver { offline: secs(999) }
+        );
+        assert!(b.claim(Role::Stream, &later).is_ok());
+
+        // A cooldown is for the holder that refused: once the role is
+        // somebody else's, it does not apply.
+        let (mut a, mut b, mut c) = church();
+        let (_, reclaim) = refused_claim(&mut a, &mut b);
+        b.merge(Role::Stream, &reclaim, key(1), &on);
+        let to_laptop = hand(&mut a, Role::Stream, &mut c, 3);
+        m(&mut b, Role::Stream, &to_laptop);
+        assert_eq!(b.cooldown(Role::Stream, &on), None);
+        assert_eq!(
+            b.standing(Role::Stream, &net(true, &off)),
+            Standing::TakeOver { offline: secs(999) }
+        );
+        // And unpairing the holder forgets it.
+        let (mut a, mut b, _) = church();
+        let (_, reclaim) = refused_claim(&mut a, &mut b);
+        b.merge(Role::Stream, &reclaim, key(1), &on);
+        b.forget(key(1));
+        assert_eq!(b.cooldown(Role::Stream, &on), None);
+    }
+
+    /// A claim that arrives while the claimant is not connected here (a frame
+    /// on a connection being replaced) is judged with nothing known of the
+    /// outage: not taken, but not reclaimed either, so it can come again on
+    /// the next connection and be judged then.
+    #[test]
+    fn a_claim_from_a_claimant_not_connected_is_not_reclaimed() {
+        let (mut a, mut b, _) = church();
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let claim = b.claim(Role::Stream, &net(true, &off)).unwrap();
+        let held = a.record(Role::Stream).clone();
+        let gone = |_: DeviceKey| Holder::Offline(secs(0));
+        let merged = a.merge(
+            Role::Stream,
+            &claim,
+            key(2),
+            &net_away(&gone, Some(secs(0))),
+        );
+        assert_eq!(merged, Merged::default());
+        assert_eq!(a.record(Role::Stream), &held);
+        // On the next connection, away long enough: taken.
+        let merged = a.merge(
+            Role::Stream,
+            &claim,
+            key(2),
+            &net_away(&online, Some(secs(500))),
+        );
+        assert!(merged.changed && merged.lost_role && !merged.reclaimed);
+    }
+
+    /// At the same epoch a reclaim comes before a hand-over the claimant
+    /// made from its claim at the same moment.
+    #[test]
+    fn a_reclaim_beats_a_hand_over_made_from_the_refused_claim() {
+        let (mut a, mut b, mut c) = church();
+        let (_, reclaim) = refused_claim(&mut a, &mut b);
+        let passed_on = hand(&mut b, Role::Stream, &mut c, 3);
+        assert_eq!(passed_on.epoch, reclaim.epoch);
+        assert!(reclaim.beats(&passed_on) && !passed_on.beats(&reclaim));
+        assert!(m(&mut c, Role::Stream, &reclaim).changed);
+        assert_eq!(c.record(Role::Stream).holder, Some(key(1)));
+    }
+
     #[test]
     fn a_forged_record_from_a_paired_device_is_ignored() {
         let (mut a, mut b, _) = church();
@@ -2577,15 +3079,15 @@ mod tests {
         assert!(!a.merge(Role::Projection, &take, key(2), &b_net).changed);
         // And a paired device that had only just reconnected has not been
         // away long enough either.
-        assert!(
-            !a.merge(
-                Role::Projection,
-                &take,
-                key(9),
-                &net_away(&online, Some(secs(5)))
-            )
-            .changed
+        // (It is answered with a reclaim, as any claim against the holder
+        // that the holder refuses.)
+        let merged = a.merge(
+            Role::Projection,
+            &take,
+            key(9),
+            &net_away(&online, Some(secs(5))),
         );
+        assert!(merged.reclaimed);
         assert!(a.holds(Role::Projection));
         assert_eq!(a.notice(Role::Projection), None);
     }
@@ -2916,16 +3418,18 @@ mod tests {
         let off = |_: DeviceKey| Holder::Offline(secs(999));
         let claim = c.claim(Role::Audio, &net(true, &off)).unwrap();
         // Connected the whole time: refused. Away for the takeover time: yes.
+        let mut judge = a.clone();
         assert!(
-            !a.merge(
-                Role::Audio,
-                &claim,
-                key(3),
-                &net_away(&online, Some(secs(3)))
-            )
-            .changed
+            judge
+                .merge(
+                    Role::Audio,
+                    &claim,
+                    key(3),
+                    &net_away(&online, Some(secs(3)))
+                )
+                .reclaimed
         );
-        assert!(a.holds(Role::Audio));
+        assert!(judge.holds(Role::Audio));
         let merged = a.merge(
             Role::Audio,
             &claim,
@@ -3212,11 +3716,12 @@ mod tests {
     fn a_claimant_connected_all_along_never_takes_a_role_from_a_connected_holder() {
         // A paired device that has been connected for hours (its connection
         // is not a fresh one, so there is no "away") signs a claim.
-        let (mut a, mut b) = pair();
+        let (a, mut b) = pair();
         let off = |_: DeviceKey| Holder::Offline(secs(999));
         let claim = b.claim(Role::Audio, &net(true, &off)).unwrap();
         for role_net in [net_away(&online, None), net_away(&online, Some(secs(3)))] {
-            assert!(!a.merge(Role::Audio, &claim, key(2), &role_net).changed);
+            let mut a = a.clone();
+            assert!(a.merge(Role::Audio, &claim, key(2), &role_net).reclaimed);
             assert!(a.holds(Role::Audio));
             assert!(a.notice(Role::Audio).is_none());
         }

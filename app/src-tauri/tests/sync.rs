@@ -2147,7 +2147,9 @@ async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_l
 
 /// The same, against a holder that saw the claimant away for less than the
 /// takeover time: it keeps the role. A claimant cannot make its own count
-/// stand in for the holder's.
+/// stand in for the holder's. The holder says so with a signed reclaim, so the
+/// claimant hands the role back, is told, and cannot take it over from that
+/// holder again until the cooldown is over (issue #183).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_holder_that_saw_the_claimant_away_for_less_than_the_takeover_time_keeps_its_role() {
     let main = device("Sanctuary").await;
@@ -2191,38 +2193,66 @@ async fn a_holder_that_saw_the_claimant_away_for_less_than_the_takeover_time_kee
         },
     )
     .await;
-    // The laptop's records were sent when the connection opened, before this
-    // frame, and a session handles its frames in order: once the sanctuary
-    // has this one, it has judged the claim.
-    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 300 }).await;
+    // The sanctuary refuses with a reclaim, and the laptop hands the role
+    // back.
     until_diag(
         &[&main, &laptop],
         Duration::from_secs(30),
-        "the claim to be judged",
-        || {
-            main.sync
-                .node()
-                .advertised_takeover(laptop.sync.node().device())
-                == Some(Duration::from_secs(300))
-        },
+        "the laptop to hand the role back",
+        || !role(&laptop, RoleName::Stream).holds,
     )
     .await;
+    let main_key = key(&main);
     assert!(
         role(&main, RoleName::Stream).holds,
         "{}",
         dump(&[&main, &laptop])
     );
     assert!(role(&main, RoleName::Stream).replaced_by.is_none());
-    // KNOWN GAP, not wanted behaviour: the refused claimant is not told. The
-    // laptop still believes it holds the role, so two devices do. This is
-    // what a claimant that is wrong about the holder's absence gets until a
-    // refused claim makes the claimant yield (the follow-up proposed on
-    // issue #153). The test pins today's behaviour so the change is seen.
+    assert!(role(&main, RoleName::Stream).refused_by.is_none());
+    let back = role(&laptop, RoleName::Stream);
+    assert_eq!(back.holder.as_deref(), Some(main_key.as_str()));
+    assert_eq!(back.refused_by.as_deref(), Some("Sanctuary"));
+    assert!(back.replaced_by.is_none());
+    // Connected again: it can still ask.
+    assert_eq!(back.standing, RoleStanding::Ask);
+    assert!(back.cooldown_secs.is_some());
+
+    // The sanctuary seems gone again (a link failing one way, here a cut):
+    // past the takeover time, but inside the cooldown, not yet.
+    cut_both(&main, &laptop).await;
+    skip_to(&laptop, RoleName::Stream, 200);
+    let waiting = role(&laptop, RoleName::Stream);
+    assert_eq!(waiting.standing, RoleStanding::Wait);
     assert!(
-        role(&laptop, RoleName::Stream).holds,
-        "{}",
-        dump(&[&main, &laptop])
+        waiting.cooldown_secs.is_some_and(|s| s <= 101),
+        "{:?}",
+        waiting.cooldown_secs
     );
+    let refused = send_err(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(
+        refused.contains("Sanctuary turned down this device's takeover"),
+        "{refused}"
+    );
+    // The cooldown is over: an ordinary takeover again.
+    laptop.sync.node().skip_wall_clock(Duration::from_secs(120));
+    let open = role(&laptop, RoleName::Stream);
+    assert_eq!(open.standing, RoleStanding::TakeOver);
+    assert!(open.cooldown_secs.is_none());
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(role(&laptop, RoleName::Stream).holds);
 }
 
 /// Two devices with different takeover settings (the holder's two minutes,

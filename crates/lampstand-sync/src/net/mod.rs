@@ -201,6 +201,9 @@ pub struct RoleStatus {
     pub unverified: bool,
     /// The takeover setting the holder last advertised, when it is known.
     pub holder_takeover: Option<Duration>,
+    /// The holder refused this device's takeover: how long until it may take
+    /// over from it again ([`crate::roles::REFUSAL_COOLDOWN`]).
+    pub cooldown: Option<Duration>,
 }
 
 /// All four roles.
@@ -467,6 +470,8 @@ struct Reach {
     session_age: HashMap<DeviceKey, Duration>,
     fresh_session: Duration,
     takeover: HashMap<DeviceKey, Duration>,
+    /// The wall clock (tests move it), for the refusal cooldown.
+    now_ms: i64,
 }
 
 impl Reach {
@@ -496,6 +501,10 @@ impl Net for Reach {
 
     fn paired(&self, device: DeviceKey) -> bool {
         self.paired.contains(&device)
+    }
+
+    fn now_ms(&self) -> i64 {
+        self.now_ms
     }
 
     fn takeover_of(&self, device: DeviceKey) -> Option<Duration> {
@@ -1117,6 +1126,7 @@ impl SyncNode {
             fresh_session: *lock(&self.fresh_session),
             takeover: peers.takeover.clone(),
             away_before: peers.away_before.clone(),
+            now_ms: self.wall_now(),
             paired,
             connected,
             silent,
@@ -1146,6 +1156,7 @@ impl SyncNode {
                 .record(role)
                 .holder
                 .and_then(|h| reach.takeover.get(&h).copied()),
+            cooldown: r.cooldown(role, net),
         };
         RolesStatus {
             projection: one(Role::Projection),
@@ -1224,8 +1235,10 @@ impl SyncNode {
                     Standing::Ask | Standing::Open | Standing::TakeOver { .. }
                 ),
             always: o.always.clone(),
-            notice: o.notice.as_ref().map(|n| match n {
-                Notice::Replaced { by } => DriveNotice::TakenBack { by: by.clone() },
+            notice: o.notice.as_ref().and_then(|n| match n {
+                Notice::Replaced { by } => Some(DriveNotice::TakenBack { by: by.clone() }),
+                // The roles banner says it; it is not the seat taken back.
+                Notice::Refused { .. } => None,
             }),
         }
     }
@@ -1774,8 +1787,17 @@ impl SyncNode {
             // Taught that nothing is held: the marker on disk goes.
             self.save_roles();
         }
+        if merged.reclaimed {
+            eprintln!(
+                "lampstand: refused {}'s takeover of {role:?}: it had not been away long enough",
+                self.paired_name(from)
+            );
+        }
         if merged.changed {
-            self.role_changed(role, &record);
+            // What this device now holds: the record that came, or for a
+            // refused claim the reclaim made on top of it.
+            let ours = lock(&self.roles).record(role).clone();
+            self.role_changed(role, &ours);
         } else {
             // A newer record that does not join this device's state is
             // shown as such, not taken in. One that this device's own beats
@@ -2784,6 +2806,9 @@ mod tests {
             node.roles_status().stream.record.holder,
             Some(node.device())
         );
+        // Not connected here, so not answered with a reclaim either: the
+        // claim is simply not taken, and can come again.
+        assert_eq!(node.roles_status().stream.record.epoch, claim.epoch - 1);
         node.skip_wall_clock(Duration::from_secs(600));
         let silence = {
             let peers = lock(&node.peers);

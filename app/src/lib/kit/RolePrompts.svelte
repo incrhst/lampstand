@@ -1,7 +1,8 @@
 <!-- What the roles need answered or noticed, across the top of every screen:
      a device asking this one to hand a role over (Allow / Not now, and
      "Always allow this device" for Operator and Stream), this device's own
-     ask and its answer, and a role this device lost while away. One banner
+     ask and its answer, a role this device lost while away, and a takeover
+     the holder turned down (#183). One banner
      per role and per ask, in the spec's words (lib/roles.ts). -->
 <script lang="ts">
   import Banner from "./Banner.svelte";
@@ -13,6 +14,7 @@
     allowBlocked,
     allowLabel,
     noticeRoles,
+    refusedNotice,
     replacedNotice,
     requestPrompt,
     roleChoice,
@@ -72,7 +74,12 @@
     {/each}
 
     {#each notices as r (r.role)}
-      {#if r.replaced_by}
+      {#if r.refused_by}
+        <Banner tone="warn">
+          <span>{refusedNotice(r.role, r.refused_by)}</span>
+          <Button size="small" onclick={() => presenterRequest({ RoleDismiss: { role: r.role } })}>OK</Button>
+        </Banner>
+      {:else if r.replaced_by}
         <Banner tone="warn">
           <span>{replacedNotice(r.role, r.replaced_by)}</span>
           <Button size="small" onclick={() => presenterRequest({ RoleDismiss: { role: r.role } })}>OK</Button>

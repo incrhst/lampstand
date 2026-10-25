@@ -1100,6 +1100,16 @@ pub struct RoleView {
     /// role over (the holder judges a claim by its own setting).
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub holder_waits_secs: Option<u64>,
+    /// This device took the role over and the holder, which had not been
+    /// away long enough, turned it down and kept the role; shown once.
+    pub refused_by: Option<String>,
+    /// After a refused takeover: seconds until this device may take the role
+    /// over from that holder again (asking still works).
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub cooldown_secs: Option<u64>,
+    /// A newer record for this role came that this device could not check
+    /// (it missed too many changes): who runs it here may be out of date.
+    pub unverified: bool,
 }
 
 /// Where sync with the paired devices stands, in one value for the status
