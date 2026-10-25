@@ -39,7 +39,7 @@
   import MoreMenu from "./MoreMenu.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
-  import { cannotGoLive, isStreamDesk, screensLine } from "../../lib/roles";
+  import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
   import { driverOffline, isDriving } from "../../lib/driving";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
@@ -171,6 +171,7 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
       e.preventDefault();
       quickAddOpen = true;
@@ -501,9 +502,14 @@
   </Banner>
 {/snippet}
 
-{#if !live.loaded && streamDesk}
+{#if !live.loaded && live.team === null && live.sync === null}
+  <!-- Who this device is isn't known yet; the picker now would only flash. -->
+  <div class="none" aria-busy="true"></div>
+{:else if !live.loaded && streamDesk}
   <div class="none desk">
-    {#if screensNote}<p class="muted desk-screens">{screensNote}</p>{/if}
+    <!-- The region is always there, so a change in its text is announced once. -->
+    <p class="muted desk-screens" role="status">{screensNote ?? ""}</p>
+    {#if pill}<p class="desk-pill"><StatusPill tone={pill.tone}>{pill.text}</StatusPill></p>{/if}
     {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
     <ObsDrawer docked view={live.obs} onsetup={onobs} />
   </div>
@@ -991,6 +997,10 @@
     gap: 1rem;
     padding: 1.5rem 1.25rem;
     overflow-y: auto;
+  }
+  .desk-pill {
+    margin: 0 auto;
+    width: min(640px, 100%);
   }
   .desk-screens {
     margin: 0 auto;

@@ -26,6 +26,9 @@
   let audio = $derived(view?.audio ?? []);
   let problem = $derived(notice(view));
 
+  const DOCKED_EVERY_MS = 750;
+  let hidden = $state(typeof document !== "undefined" && document.hidden);
+
   // The program picture, while connected.
   let onAir: string | null = $state(null);
   let stale = $state(false);
@@ -34,13 +37,15 @@
       untrack(() => (onAir = null));
       return;
     }
+    if (hidden) return;
     return pollImages(
       () => request({ area: "Obs", request: { Screenshot: { scene: null, width: PROGRAM_WIDTH } } }, "Thumbnail"),
       (image) => {
         onAir = image;
         stale = false;
       },
-      undefined,
+      // As a page it is watched all service: slower, and not at all while hidden.
+      docked ? DOCKED_EVERY_MS : undefined,
       () => (stale = true),
     );
   });
@@ -96,7 +101,7 @@
   });
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
+    if (!docked && e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       onclose?.();
@@ -107,21 +112,25 @@
   // button in here: a scene clicked a moment ago mustn't be picked again
   // (and hold) when the operator presses Space for the next slide.
   function onkeyup(e: KeyboardEvent) {
-    if (e.key === " ") e.preventDefault();
+    if (!docked && e.key === " ") e.preventDefault();
   }
 </script>
+
+<svelte:document onvisibilitychange={() => (hidden = document.hidden)} />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside id="obs-drawer" class="drawer" class:docked aria-label="Control OBS" bind:this={body} {onkeydown} {onkeyup}>
   <div class="head">
-    <h2 class="title">Control OBS</h2>
+    {#if docked}<h1 class="title">Control OBS</h1>{:else}<h2 class="title">Control OBS</h2>{/if}
     {#if !docked}
       <span class="faint small">O or Esc to close</span>
       <Button variant="ghost" size="small" icon="x" label="Close Control OBS" onclick={() => onclose?.()} />
     {/if}
   </div>
 
-  {#if !connected}
+  {#if !connected && docked && problem}
+    <!-- The notice above the panel already says what is wrong and what to do. -->
+  {:else if !connected}
     <div class="offline">
       <p>{problem?.message ?? (view?.connection === "Connecting" ? "Connecting to OBS…" : "OBS isn't connected.")}</p>
       {#if onsetup}<Button size="small" icon="setup" onclick={onsetup}>OBS settings</Button>{/if}

@@ -13,6 +13,7 @@ import {
   streamOfflineLine,
   isStreamDesk,
   screensLine,
+  shortcutsOff,
   takeoverOption,
   withRoster,
   allowLabel,
@@ -274,4 +275,27 @@ test("the stream desk says who runs the screens, in the existing words", () => {
   assert.equal(screensLine(paired(roles)), "Sanctuary runs the screens.");
   assert.equal(screensLine(paired([mine("Projection"), mine("Stream")])), null);
   assert.equal(screensLine(paired([view("Projection", { holder: null, holder_name: "" })])), null);
+});
+
+test("the stream desk says when the device that runs the screens is offline", () => {
+  const off = (over: Partial<RoleView>) => paired([view("Projection", { holder_name: "Sanctuary", ...over }), mine("Stream")]);
+  const line = "Sanctuary runs the screens and is offline. Scene changes wait for it.";
+  assert.equal(screensLine(off({ standing: "Wait", offline_secs: 30, wait_secs: 90 })), line);
+  assert.equal(screensLine(off({ standing: "TakeOver", offline_secs: 200 })), line);
+  assert.equal(screensLine(off({ standing: "Ask" })), "Sanctuary runs the screens.");
+});
+
+test("a stream machine that also runs the screens keeps the whole Present", () => {
+  assert.equal(isStreamDesk(paired([mine("Projection"), view("Operator"), mine("Stream"), view("Audio")])), false);
+  // Nobody runs the service, or its holder is offline: still a stream desk.
+  assert.equal(isStreamDesk(paired([view("Projection"), view("Operator", { holder: null, holder_name: "" }), mine("Stream")])), true);
+  assert.equal(isStreamDesk(paired([view("Projection"), view("Operator", { standing: "Wait", offline_secs: 60 }), mine("Stream")])), true);
+  assert.equal(isStreamDesk(paired([])), false);
+});
+
+test("shortcuts are off on a stream desk without a service, and inside the docked panel", () => {
+  assert.equal(shortcutsOff(true, false, false), true);
+  assert.equal(shortcutsOff(false, false, true), true);
+  assert.equal(shortcutsOff(false, false, false), false);
+  assert.equal(shortcutsOff(true, true, false), false);
 });
