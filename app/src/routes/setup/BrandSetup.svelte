@@ -1,11 +1,14 @@
 <!-- Setup › Church look: the quick start. A church says its name, adds its
      logo, picks two or three colours and a font, and Lampstand makes a
      matching theme and uses it everywhere that doesn't choose its own. The
-     logo is also what the Logo button in Present puts on the screens. -->
+     logo, small and centred on its colour, is also the default idle screen,
+     which the Idle button in Present puts on the screens, and the corner
+     logo bug. -->
 <script lang="ts">
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import { request, type Brand, type BugCorner, type BugSize } from "../../lib/api";
   import { imageExtensions, onePath } from "../../lib/media";
+  import { loadIdlePicture } from "../../lib/idleThumb";
   import { live, refreshSettings, refreshThemes, report } from "../../lib/state.svelte";
   import { STARTER_THEME_ID, bundledFonts, fromHex, readableOn, themeFromBrand, toHex } from "../../lib/themes";
   import Banner from "../../lib/kit/Banner.svelte";
@@ -72,6 +75,21 @@
     };
   });
 
+  // The default idle screen as this brand draws it, redrawn a moment after
+  // the last change.
+  let idlePicture: string | null = $state(null);
+  $effect(() => {
+    const drawn: Brand = JSON.parse(JSON.stringify(brand));
+    let current = true;
+    const timer = setTimeout(() => {
+      loadIdlePicture("Default", 400, drawn).then((r) => current && (idlePicture = r?.picture ?? null));
+    }, 150);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  });
+
   async function pickLogo() {
     try {
       const path = onePath(await pickFiles({ title: "Choose your logo", filters: [{ name: "Pictures", extensions: imageExtensions }] }));
@@ -109,7 +127,7 @@
 <div class="page">
   <h1>Church look</h1>
   <p class="muted intro">
-    Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo on the Logo screen. You can change
+    Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo on the default idle screen. You can change
     anything later in Themes.
   </p>
 
@@ -131,7 +149,7 @@
               <Button variant="ghost" size="small" onclick={() => { brand.logo = null; done = false; }}>Remove</Button>
             {/if}
           </div>
-          <span class="faint small">A PNG with a see-through background looks best. Until then, a ring is shown.</span>
+          <span class="faint small">A PNG with a see-through background looks best. Until then, the idle screen shows the Lampstand lamp.</span>
         </div>
       </Panel>
 
@@ -158,7 +176,7 @@
             <span>Opacity: {brand.bug.opacity}%</span>
             <input type="range" min="10" max="100" step="5" disabled={!brand.logo} bind:value={brand.bug.opacity} oninput={() => (done = false)} aria-label="Opacity" />
           </label>
-          <span class="faint small">Black and the Logo screen cover it. It stays inside the safe area, and the stage display never shows it. Turn it on or off during a service from Present's More menu.</span>
+          <span class="faint small">Blank covers it, and it is not drawn over an idle screen that is the logo. It stays inside the safe area, and the stage display never shows it. Turn it on or off during a service from Present's More menu.</span>
         </div>
       </Panel>
 
@@ -167,12 +185,12 @@
           <label class="field">
             <span>Main colour</span>
             <input type="color" value={toHex(brand.primary)} oninput={(e) => setColor("primary", e.currentTarget.value)} />
-            <span class="faint small">The background of slides and the Logo screen.</span>
+            <span class="faint small">The background of slides and the default idle screen.</span>
           </label>
           <label class="field">
             <span>Second colour</span>
             <input type="color" value={toHex(brand.accent)} oninput={(e) => setColor("accent", e.currentTarget.value)} />
-            <span class="faint small">The ring on the Logo screen until you add a logo.</span>
+            <span class="faint small">Kept with your look for themes you make by hand.</span>
           </label>
           <div class="field">
             <span>Words</span>
@@ -214,7 +232,7 @@
       </div>
       {#if done}
         <Banner tone="ready">
-          <span>Done. “{brand.name.trim()}” is now the default theme{brand.logo ? " and your logo is on the Logo screen" : ""}.</span>
+          <span>Done. “{brand.name.trim()}” is now the default theme{brand.logo ? " and your logo is on the default idle screen" : ""}.</span>
           {#if onthemes}<Button variant="ghost" size="small" onclick={onthemes}>Open Themes</Button>{/if}
         </Banner>
       {/if}
@@ -236,14 +254,10 @@
         <figcaption class="muted">{brand.bug.enabled && brand.logo ? "Logo bug" : "Logo bug (off)"}</figcaption>
       </figure>
       <figure>
-        <div class="logo-screen" style="background:{toHex(brand.primary)}">
-          {#if logoPicture}
-            <img src={logoPicture} alt="" />
-          {:else}
-            <span class="ring" style="border-color:{toHex(brand.accent)}"></span>
-          {/if}
+        <div class="idle-screen">
+          {#if idlePicture}<img src={idlePicture} alt="" />{/if}
         </div>
-        <figcaption class="muted">Logo screen</figcaption>
+        <figcaption class="muted">Default idle screen</figcaption>
       </figure>
     </div>
   </div>
@@ -351,24 +365,17 @@
     font-size: 0.8rem;
     text-align: center;
   }
-  .logo-screen {
+  .idle-screen {
     aspect-ratio: 16 / 9;
-    display: grid;
-    place-items: center;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     overflow: hidden;
-    container-type: inline-size;
+    background: var(--canvas);
   }
-  .logo-screen img {
-    max-width: 60%;
-    max-height: 60%;
-    object-fit: contain;
-  }
-  .ring {
-    width: 30%;
-    aspect-ratio: 1;
-    border: max(3px, 1.5cqw) solid;
-    border-radius: 50%;
+  .idle-screen img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 </style>

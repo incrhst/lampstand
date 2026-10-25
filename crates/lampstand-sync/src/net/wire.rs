@@ -28,8 +28,12 @@ use crate::roles::Role;
 /// the end of the frames. 7: why a sound did not play (`SoundProblem`), added
 /// at the end of the frames. 8 (0.9.0): a role step may be a `Reclaim`, the
 /// holder's signed refusal of a claim against it (`roles::Kind`, added at the
-/// end), which a protocol 7 device cannot read.
-pub(crate) const PROTOCOL: u32 = 8;
+/// end), which a protocol 7 device cannot read. 9: a claim step carries the
+/// ack of the device it was taken from (`roles::Link::ack`), and a reclaim
+/// may sit above what was built on the claim it refuses. 10: the overlay in
+/// the app's JSON (`DriveLive`, the live state a driving device reads) is
+/// `Idle` where 9 had `Logo`, which a protocol 9 device cannot read.
+pub(crate) const PROTOCOL: u32 = 10;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -398,6 +402,7 @@ mod tests {
                     prev_holder: Some(crate::team::DeviceKey([7; 32])),
                     prev_epoch: 2,
                     sig: vec![5; 64],
+                    ack: None,
                 }],
             },
             Frame::Role {
@@ -411,6 +416,21 @@ mod tests {
                     prev_holder: Some(crate::team::DeviceKey([8; 32])),
                     prev_epoch: 4,
                     sig: vec![5; 64],
+                    ack: None,
+                }],
+            },
+            Frame::Role {
+                role: Role::Audio,
+                holder: Some([9; 32]),
+                epoch: 6,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::Claim,
+                    holder: Some(crate::team::DeviceKey([9; 32])),
+                    epoch: 6,
+                    prev_holder: Some(crate::team::DeviceKey([7; 32])),
+                    prev_epoch: 5,
+                    sig: vec![5; 64],
+                    ack: Some(vec![6; 64]),
                 }],
             },
             Frame::Takeover { secs: 120 },
@@ -486,6 +506,7 @@ mod tests {
             prev_holder: Some(crate::team::DeviceKey([7; 32])),
             prev_epoch: 2,
             sig: vec![5; 64],
+            ack: None,
         };
         let frame = |n: usize| Frame::Role {
             role: Role::Stream,

@@ -20,7 +20,7 @@
     lines?: readonly string[];
     /** The smaller line at the foot: attribution, copyright, a verse reference. */
     footer?: string | null;
-    overlay?: "None" | "Black" | "Logo";
+    overlay?: "None" | "Black" | "Idle";
     /** Margins as fractions (0.05 = 5%). */
     safeArea?: SafeArea | null;
     showGuide?: boolean;
@@ -29,16 +29,16 @@
     empty?: string;
     /** A rendered picture of the slide (a `data:` URL), drawn instead of lines. */
     image?: string | null;
-    /** A picture of the screen's idle screen, shown when there is nothing to show. */
+    /** A picture of the screen's idle screen, shown when there is nothing to show and under the Idle overlay. */
     idle?: string | null;
-    /** The church's logo screen, for the Logo overlay. */
+    /** The church's logo, for the logo bug. */
     brand?: { logo: string | null; background: string; accent: string; bug?: LogoBug } | null;
   } = $props();
 
   // The logo bug, drawn where the screens draw it: in the safe area's lower
-  // corner, over the slide, hidden under Black and the Logo screen.
+  // corner, over the slide or the idle screen, hidden under Black.
   const bugHeight = { Small: 0.07, Medium: 0.1, Large: 0.14 } as const;
-  let bug = $derived(brand?.logo && brand.bug?.enabled && overlay === "None" ? { src: brand.logo, ...brand.bug } : null);
+  let bug = $derived(brand?.logo && brand.bug?.enabled && overlay !== "Black" ? { src: brand.logo, ...brand.bug } : null);
   let bugBox = $derived.by(() => {
     if (!bug) return "";
     const s = safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 };
@@ -54,15 +54,10 @@
 </script>
 
 <div class="screen {size}">
-  {#if overlay === "Logo"}
-    <!-- The church's logo on its colour; a ring until it has a logo, as the screens show. -->
-    <div class="cover" style={brand ? `background:${brand.background}` : ""}>
-      {#if brand?.logo}
-        <img class="mark" src={brand.logo} alt="Logo" />
-      {:else}
-        <span class="logo" aria-label="Logo" style={brand ? `border-color:${brand.accent}` : ""}></span>
-      {/if}
-    </div>
+  {#if overlay === "Idle"}
+    <!-- The idle screen put up mid-service; plain until a picture arrives. -->
+    {#if idle}<img class="picture idle" src={idle} alt="Idle screen" />{/if}
+    <span class="idle-tag">Idle screen</span>
   {:else if overlay === "None" && idle && lines.length === 0 && !image}
     <img class="picture idle" src={idle} alt="Idle screen" />
     <span class="idle-tag">Idle screen</span>
@@ -131,24 +126,6 @@
     font-weight: 400;
     font-size: 0.8rem;
     text-shadow: none;
-  }
-  .cover {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .logo {
-    width: 16%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    border: max(2px, 1cqw) solid #fff;
-  }
-  .mark {
-    max-width: 60%;
-    max-height: 60%;
-    object-fit: contain;
   }
   .picture.idle {
     object-fit: cover;

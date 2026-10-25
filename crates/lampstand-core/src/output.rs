@@ -32,8 +32,9 @@ pub struct OutputConfig {
     pub enabled: bool,
 }
 
-/// What a screen shows when nothing is on air and neither Black nor Logo is
-/// on. Black and Logo stay one key away and cover it.
+/// What a screen shows when nothing is on air and Black is not on, and what
+/// the Idle overlay puts on air mid-service. Black stays one key away and
+/// covers it.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdleScreen {

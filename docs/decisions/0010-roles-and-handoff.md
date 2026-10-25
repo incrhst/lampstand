@@ -160,7 +160,14 @@ adjusted during the build: see "Decided during the build" below and the
   a holder that refuses a claim against it answers with a signed `Reclaim` step
   on top of the claim, every device that took the claim in comes back to it,
   the claimant hands the role back with a notice, and it cannot take the role
-  over from that holder for five minutes (asking still works).
+  over from that holder for five minutes (asking still works). PR #205
+  (protocol 9) makes the device a claim was taken from its only judge:
+  it accepts with a signed ack on the claim or refuses with a reclaim,
+  which may now sit on top of whatever was built on the claim, and a
+  device that sees it connected leaves the claim to it. A third device's
+  view no longer decides, so every device ends on one holder, and a
+  paired device cannot take a role from a connected holder by signing
+  steps on top of its claim.
 - **Signed role records.** A record carries up to eight signed steps; a device
   takes a newer record only if its steps join its own state and every signer
   is known; one that cannot be joined is *unverified* and waits. The roster
@@ -185,7 +192,7 @@ when T18 lands.
 
 ## Consequences
 
-- Sync protocol 8 (0.9.0; 7 in 0.8.1) and a role record per role. Devices on an older version are refused with the usual message saying which side should update.
+- Sync protocol 9 (0.9.0; 8 in 0.9.0-preview.1, 7 in 0.8.1) and a role record per role. Devices on an older version are refused with the usual message saying which side should update.
 - The OBS drawer and scene follower move from "the presenting device" to "the
   device holding Stream, or Projection when nobody does".
 - The browser-source URL must carry the Projection machine's LAN address, not

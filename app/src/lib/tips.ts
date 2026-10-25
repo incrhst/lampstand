@@ -113,7 +113,7 @@ export const TIPS: Tip[] = [
     id: "logo-bug",
     area: "Present",
     title: "Put your logo in a corner",
-    body: "Switch on Logo bug in the More menu to show your logo small in the lower corner of every screen and the stream. Black and the Logo screen cover it. Set the corner and size in Setup › Church look.",
+    body: "Switch on Logo bug in the More menu to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Church look.",
     relevant: (f) => onAir(f) && f.hasLogo === true,
     used: never,
   },

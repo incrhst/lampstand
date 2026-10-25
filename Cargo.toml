@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*", "app/src-tauri", "xtask"]
 
 [workspace.package]
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/incrhst/lampstand"
@@ -114,3 +114,8 @@ deckcraft-vp9.opt-level = 3
 deckcraft-av1.opt-level = 3
 deckcraft-isobmff.opt-level = 3
 deckcraft-matroska.opt-level = 3
+# Every role record carries signed steps, checked on every merge: unoptimised
+# signature checks make the sync tests' random models crawl.
+curve25519-dalek.opt-level = 3
+ed25519-dalek.opt-level = 3
+sha2.opt-level = 3
