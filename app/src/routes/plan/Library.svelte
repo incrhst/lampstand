@@ -33,6 +33,7 @@
     type Entry,
     type Filter,
   } from "../../lib/library";
+  import { soundItem } from "../../lib/sound";
   import { deckSourceLabel, mediaKind } from "../../lib/media";
   import { formatPassage, parseReferenceVersioned } from "../../lib/passage";
   import { chooseTranslation } from "../../lib/bibles";
@@ -452,9 +453,9 @@
 
   async function importPaths(paths: string[]) {
     const sorted = sortPaths(paths);
-    if (!sorted.imports.length && !sorted.decks.length && !sorted.media.length) return;
+    if (!sorted.imports.length && !sorted.decks.length && !sorted.media.length && !sorted.sounds.length) return;
     busy = true;
-    const added = { songs: 0, bibles: 0, decks: 0, media: 0 };
+    const added = { songs: 0, bibles: 0, decks: 0, media: 0, sounds: 0 };
     const failed: string[] = [];
     let message = "";
     const knownSongs = allSongs.map((s) => s.song);
@@ -489,6 +490,23 @@
           failed.push(e instanceof Error ? e.message : String(e));
         }
       }
+      // Sound has no shelf in the library: it goes straight into the open
+      // service as a music-only item.
+      for (const path of sorted.sounds) {
+        const name = path.split(/[\\/]/).pop();
+        if (!service) {
+          failed.push(`${name}: open a service to add sound to it`);
+          continue;
+        }
+        live.status = "Copying into the library…";
+        try {
+          const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+          if (await onadd(soundItem(file))) added.sounds++;
+          else failed.push(`${name}: not added to the service`);
+        } catch (e) {
+          failed.push(e instanceof Error ? e.message : String(e));
+        }
+      }
       save("lampstand.library.media", looseMedia);
       if (fresh.length > 0) {
         for (const entry of fresh) recent = remember(recent, entry);
@@ -513,7 +531,7 @@
       const picked = await pickFiles(
         directory
           ? { directory: true, title: "Add a song folder or OpenSong library" }
-          : { multiple: true, title: "Add songs, Bibles, decks or media" },
+          : { multiple: true, title: "Add songs, Bibles, decks, media or sound" },
       );
       if (picked) await importPaths(Array.isArray(picked) ? picked : [picked]);
     } catch (e) {

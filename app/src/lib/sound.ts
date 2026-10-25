@@ -4,11 +4,21 @@
 // The words marked "spec" come from docs/roles.md and decision 0010. The
 // ones marked "proposed" are not in the spec and wait for the owner.
 
-import type { Service, Sound, SoundFileStatus, SoundStart } from "./api";
+import type { ItemKind, Service, Sound, SoundFile, SoundFileStatus, SoundStart } from "./api";
 import { formatLength } from "./loops.ts";
 
 /** What the sound file pickers offer. */
 export const audioExtensions = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"];
+
+/** A sound as a file arrives: it waits for somebody to press play. */
+export function newSound(file: SoundFile): Sound {
+  return { name: file.name, file: file.file, length_ms: file.length_ms, start: "Waits", keep_off_stream: false };
+}
+
+/** The music-only item for a file just added. */
+export function soundItem(file: SoundFile): ItemKind {
+  return { Sound: { sound: newSound(file) } };
+}
 
 function extension(name: string): string {
   const dot = name.lastIndexOf(".");
