@@ -376,21 +376,27 @@ fn covered(steps: &[Link], i: usize) -> Option<usize> {
     None
 }
 
-/// Which states in `steps` (newest first; the state each step leads to) were
-/// reached through a claim whose judge never accepted it: an unacked claim
-/// at or below the step, with nothing its judge signed between them.
+/// Which states in `steps` (newest first; the state each step leads to) came
+/// from a claim handed straight back: an unacked claim against a judge, and
+/// later in the steps the role is the judge's again, with nothing it signed
+/// in between. The claim stood only because the role came back to its
+/// judge; the states from it up to the hand-back are marked. A claim taken
+/// because its judge was gone is not one: forks above it stay usable, and
+/// the judge acks it if it comes back.
 fn doubtful(steps: &[Link]) -> Vec<bool> {
-    (0..steps.len())
-        .map(|k| {
-            steps[k..].iter().enumerate().any(|(n, l)| {
-                l.kind == Kind::Claim
-                    && l.ack.is_none()
-                    && l.prev_holder.is_some_and(|judge| {
-                        !steps[k..k + n].iter().any(|s| s.signer() == Some(judge))
-                    })
-            })
-        })
-        .collect()
+    let mut out = vec![false; steps.len()];
+    for (j, l) in steps.iter().enumerate() {
+        let (Kind::Claim, None, Some(judge)) = (l.kind, &l.ack, l.prev_holder) else {
+            continue;
+        };
+        let back = (0..j).rev().find(|&h| steps[h].holder == Some(judge));
+        if let Some(h) = back {
+            if !steps[h..j].iter().any(|s| s.signer() == Some(judge)) {
+                out[h + 1..=j].fill(true);
+            }
+        }
+    }
+    out
 }
 
 /// Whether two steps are the same step, whatever acks they carry.
@@ -4021,6 +4027,119 @@ mod tests {
         let answer = a.record(Role::Stream).clone();
         c.merge(Role::Stream, &answer, key(1), &all_on);
         assert_eq!(c.record(Role::Stream), &answer);
+    }
+
+    /// The Sanctuary dies and the Office PC takes over; nobody can ack that
+    /// claim. Hand-overs follow until the claim is the oldest step a record
+    /// carries. The Back room, cut off, then takes over from the Office PC
+    /// while it passes the role on and gets it back, so its record no longer
+    /// carries the claim. The Back room still parts from the state above
+    /// the unacked claim, and lets go: one holder.
+    #[test]
+    fn a_takeover_from_a_dead_holder_does_not_stop_later_forks_from_joining() {
+        let (_, mut b, mut c) = church();
+        let mut d = device(4, "Back room");
+        let gone = net(true, &sanctuary_gone);
+        let stream = c.record(Role::Stream).clone();
+        m(&mut d, Role::Stream, &stream);
+        let claim = b.claim(Role::Stream, &gone).unwrap();
+        for x in [&mut c, &mut d] {
+            assert!(x.merge(Role::Stream, &claim, key(2), &gone).changed);
+        }
+        for hop in 0..6 {
+            let rec = if hop % 2 == 0 {
+                hand_seeing(&mut b, Role::Stream, &mut c, 3, &gone)
+            } else {
+                hand_seeing(&mut c, Role::Stream, &mut b, 2, &gone)
+            };
+            assert!(d.merge(Role::Stream, &rec, key(3), &gone).changed);
+        }
+        assert!(b.holds(Role::Stream));
+        assert!(d.record(Role::Stream).chain.contains(&claim.chain[0]));
+        let b_gone = |k: DeviceKey| {
+            if k == key(1) || k == key(2) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        d.claim(Role::Stream, &net(true, &b_gone)).unwrap();
+        hand_seeing(&mut b, Role::Stream, &mut c, 3, &gone);
+        let back = hand_seeing(&mut c, Role::Stream, &mut b, 2, &gone);
+        assert!(!back.chain.contains(&claim.chain[0]));
+        let merged = d.merge(Role::Stream, &back, key(2), &gone);
+        assert!(merged.changed && merged.lost_role, "{merged:?}");
+        assert!(!d.unverified(Role::Stream));
+        assert_eq!(d.record(Role::Stream), &back);
+    }
+
+    /// The holder dies and a device takes over from it; nobody can ever ack
+    /// that claim. The role is handed on six times, so the claim is the
+    /// oldest step a record still carries. Then a device cut off from the
+    /// new holder takes over from it, while the holder hands the role on
+    /// twice more, so the claim from the dead device drops out of that
+    /// record. The device that took over must still join the holder's record
+    /// where the two parted and let go: never two holders.
+    #[test]
+    fn a_fork_above_a_takeover_from_a_dead_holder_still_settles() {
+        let (_a, mut b, mut c) = church();
+        let mut d = device(4, "Back room");
+        for role in Role::ALL {
+            if c.record(role).holder.is_some() {
+                m(&mut d, role, &c.record(role).clone());
+            }
+        }
+        // The Sanctuary (1), which held Stream, is gone; the rest are up.
+        let dead = |k: DeviceKey| {
+            if k == key(1) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        let n = net_away(&dead, None);
+        let claim = b.claim(Role::Stream, &n).unwrap();
+        c.merge(Role::Stream, &claim, key(2), &n);
+        d.merge(Role::Stream, &claim, key(2), &n);
+        assert_eq!(d.record(Role::Stream).holder, Some(key(2)));
+        // `x` (key `xk`) hands to `y` (key `yk`), and `z` is told.
+        let hand = |x: &mut Roles, y: &mut Roles, z: &mut Roles, xk: u8, yk: u8| {
+            y.ask(Role::Stream, &n).unwrap();
+            let name = y.name.clone();
+            x.receive_ask(Role::Stream, key(yk), name);
+            let rec = x.allow(Role::Stream, key(yk), false, &n).unwrap().record;
+            y.cancel_ask(Role::Stream);
+            y.merge(Role::Stream, &rec, key(xk), &n);
+            z.merge(Role::Stream, &rec, key(xk), &n);
+            rec
+        };
+        for _ in 0..3 {
+            hand(&mut b, &mut c, &mut d, 2, 3);
+            hand(&mut c, &mut b, &mut d, 3, 2);
+        }
+        assert!(b.holds(Role::Stream));
+        assert!(d.record(Role::Stream).chain.iter().any(|l| {
+            l.kind == Kind::Claim && l.prev_holder == Some(key(1)) && l.ack.is_none()
+        }));
+        // d, cut off from the Office PC (2), takes over from it ...
+        let cut_off = |k: DeviceKey| {
+            if k == key(1) || k == key(2) {
+                Holder::Offline(secs(999))
+            } else {
+                Holder::Online
+            }
+        };
+        d.claim(Role::Stream, &net_away(&cut_off, None)).unwrap();
+        // ... while the Office PC hands to the Laptop and gets it back.
+        let mut elsewhere = device(5, "Elsewhere");
+        hand(&mut b, &mut c, &mut elsewhere, 2, 3);
+        let last = hand(&mut c, &mut b, &mut elsewhere, 3, 2);
+        assert!(!last.chain.iter().any(|l| l.prev_holder == Some(key(1))));
+        d.merge(Role::Stream, &last, key(2), &n);
+        assert!(b.holds(Role::Stream));
+        assert!(!d.holds(Role::Stream), "two holders");
+        assert!(!d.unverified(Role::Stream));
+        assert_eq!(d.record(Role::Stream), &last);
     }
 
     #[test]
