@@ -734,18 +734,23 @@ impl SyncNode {
             }
         };
         if targets.is_empty() {
-            return Err(NetError::Unreachable(
-                "no device nearby is showing a pairing code; type its address".into(),
-            ));
+            return Err(NetError::Unreachable(format!(
+                "No computer nearby is showing a pairing code. Check that the other computer \
+                 shows its code and is on the same network as this one.{LOCAL_NETWORK_HINT}"
+            )));
         }
-        let mut last = None;
+        // The addresses come most likely first (discovery's `reach_order`),
+        // so the first failure is the one worth reporting.
+        let mut first = None;
         for target in targets {
             match self.dial(&target, Some(&code)).await {
                 Ok((peer, _session)) => return Ok(self.peer_status(peer.device)),
-                Err(e) => last = Some(e),
+                Err(e) => {
+                    first.get_or_insert(e);
+                }
             }
         }
-        Err(last.expect("at least one target"))
+        Err(first.expect("at least one target"))
     }
 
     /// Connects to an already paired device at `address` (for networks
@@ -924,7 +929,7 @@ impl SyncNode {
         let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(url))
             .await
             .map_err(|_| NetError::Timeout)?
-            .map_err(|e| NetError::Unreachable(format!("cannot reach {address}: {e}")))?;
+            .map_err(|e| cannot_reach(address, &e))?;
         let remote = match ws.get_ref() {
             tokio_tungstenite::MaybeTlsStream::Plain(s) => s.peer_addr().ok(),
             _ => None,
@@ -2209,6 +2214,34 @@ pub fn normalize_address(typed: &str) -> String {
     } else {
         format!("{s}:{DEFAULT_PORT}")
     }
+}
+
+/// On a Mac, where Local Network permission blocks other computers without
+/// a word, where to turn it on.
+#[cfg(target_os = "macos")]
+const LOCAL_NETWORK_HINT: &str = " On a Mac, Lampstand needs Local Network access: System \
+    Settings › Privacy & Security › Local Network.";
+#[cfg(not(target_os = "macos"))]
+const LOCAL_NETWORK_HINT: &str = "";
+
+/// A failed connection to `address`, in words that say what to check.
+fn cannot_reach(address: &str, e: &tokio_tungstenite::tungstenite::Error) -> NetError {
+    use std::io::ErrorKind;
+    let io = match e {
+        tokio_tungstenite::tungstenite::Error::Io(io) => Some(io.kind()),
+        _ => None,
+    };
+    NetError::Unreachable(match io {
+        Some(ErrorKind::HostUnreachable | ErrorKind::NetworkUnreachable) => format!(
+            "Cannot reach {address}: there is no route to it. Check that both computers \
+             are on the same network.{LOCAL_NETWORK_HINT}"
+        ),
+        Some(ErrorKind::ConnectionRefused) => format!(
+            "Nothing answered at {address}. Check that Lampstand is open on that computer \
+             and that the address is right."
+        ),
+        _ => format!("Cannot reach {address}: {e}"),
+    })
 }
 
 /// This machine's LAN address with `port`, for people to type on a
