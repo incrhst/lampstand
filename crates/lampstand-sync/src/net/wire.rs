@@ -322,7 +322,12 @@ mod tests {
             15
         );
         assert_eq!(number(Frame::ObsCueAck { run: 0, seq: 0 }), 16);
-        assert_eq!(number(Frame::SoundCue { cmd: SoundCommand::Panic }), 17);
+        assert_eq!(
+            number(Frame::SoundCue {
+                cmd: SoundCommand::Panic
+            }),
+            17
+        );
         assert_eq!(number(Frame::SoundNow { now: None }), 18);
         assert_eq!(number(Frame::Takeover { secs: 120 }), 19);
         // And the bytes of one, whole.
