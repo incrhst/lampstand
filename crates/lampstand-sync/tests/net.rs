@@ -1963,6 +1963,8 @@ async fn a_device_on_the_protocol_before_roles_is_refused_by_a_running_node() {
     // A hello in protocol 4: the first two numbers of every version's hello
     // are the frame kind (0) and the protocol.
     ws.send(Message::Binary(vec![0u8, 4].into())).await.unwrap();
+    // (Protocol 5, the roles before the takeover frame, is refused the same
+    // way: see `versions_say_which_side_should_update`.)
     let mut reason = None;
     while let Some(Ok(message)) = ws.next().await {
         if let Message::Binary(bytes) = message {

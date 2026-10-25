@@ -894,6 +894,10 @@ fn roles_view(r: &RolesStatus) -> Vec<RoleView> {
                 }),
                 always: s.always.iter().map(named).collect(),
                 offers_always: role.offers_always(),
+                holder_waits_secs: s
+                    .holder_takeover
+                    .filter(|t| *t > r.takeover_after)
+                    .map(|t| t.as_secs()),
             }
         })
         .collect()

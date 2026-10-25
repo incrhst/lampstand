@@ -2007,6 +2007,14 @@ mod tests {
         }
     }
 
+    /// The argument for the margin depends on this relation between the
+    /// constants: two devices' counts of the same silence differ by at most a
+    /// heartbeat, and a busy machine's timer runs late by up to another.
+    #[test]
+    fn the_margin_is_at_least_two_heartbeats() {
+        assert!(TAKEOVER_MARGIN >= HEARTBEAT * 2);
+    }
+
     /// A holder with a longer takeover setting than the claimant's: the
     /// claimant waits by the holder's, plus the margin. A shorter one changes
     /// nothing, and an absurd one is capped at the longest setting.

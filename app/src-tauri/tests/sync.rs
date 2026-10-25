@@ -2043,6 +2043,18 @@ async fn set_takeovers(main: &Device, laptop: &Device, seconds: u32) {
     .await;
 }
 
+/// Moves the device's clock so the holder of `role` has been silent for
+/// `target` seconds (to the second): real time since the last frame is
+/// whatever it is on this run, so the step is worked out from the status.
+fn skip_to(d: &Device, role_name: RoleName, target: u64) {
+    let now = role(d, role_name)
+        .offline_secs
+        .expect("the holder is offline");
+    d.sync
+        .node()
+        .skip_wall_clock(Duration::from_secs(target.saturating_sub(now)));
+}
+
 /// Cuts both devices, as a dead network would, and waits until they know.
 async fn cut_both(main: &Device, laptop: &Device) {
     main.sync.cut();
@@ -2086,8 +2098,8 @@ async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_l
     assert_eq!(team(&laptop).presenter.takeover_secs, 120);
     cut_both(&main, &laptop).await;
 
-    // Two minutes in, give or take real time: not yet (the margin is ten seconds).
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(118));
+    // 126 s of silence: past the two minutes, inside the ten seconds of margin.
+    skip_to(&laptop, RoleName::Stream, 126);
     assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
     let soon = send_err(
         &laptop,
@@ -2098,7 +2110,7 @@ async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_l
     .await;
     assert!(soon.contains("went offline only recently"), "{soon}");
     // Past the takeover time and the margin: it may.
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(15));
+    skip_to(&laptop, RoleName::Stream, 135);
     assert_eq!(
         role(&laptop, RoleName::Stream).standing,
         RoleStanding::TakeOver
@@ -2245,12 +2257,11 @@ async fn a_claimant_waits_by_the_holders_takeover_setting_not_only_its_own() {
     cut_both(&main, &laptop).await;
 
     // Past its own 60 s and margin, but not the sanctuary's 120 s.
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(100));
+    skip_to(&laptop, RoleName::Stream, 100);
     assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
-    // (Real time adds to the moved clock, so the steps leave room for it.)
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(15));
+    skip_to(&laptop, RoleName::Stream, 126);
     assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(20));
+    skip_to(&laptop, RoleName::Stream, 135);
     assert_eq!(
         role(&laptop, RoleName::Stream).standing,
         RoleStanding::TakeOver
