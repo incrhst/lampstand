@@ -607,13 +607,14 @@ mod tests {
         assert!(!trusted);
     }
 
-    /// A device on the protocol before roles (version 4, 0.7.0) sends a
+    /// A device on the protocol before roles (version 4, 0.7.0), or on the
+    /// one before the sound problem frame (6, test builds of 0.8.0), sends a
     /// hello this version can read; it is refused with the usual message
     /// and is not paired, whether or not it brings a code.
     #[tokio::test]
     async fn a_device_on_the_protocol_before_roles_is_refused_with_the_usual_message() {
-        assert_eq!(PROTOCOL, 6, "the takeover setting is protocol 6");
-        for with_code in [false, true] {
+        assert_eq!(PROTOCOL, 7, "the sound problem frame is protocol 7");
+        for (old_protocol, with_code) in [(4, false), (4, true), (6, false), (6, true)] {
             let sanctuary = device("Sanctuary");
             let old = DeviceKeypair::generate();
             let code = lock(&sanctuary.trust).start_pairing().code;
@@ -633,7 +634,7 @@ mod tests {
             });
             let (_, public) = ephemeral();
             let hello = Hello {
-                protocol: 4,
+                protocol: old_protocol,
                 device: old.public().0,
                 name: "Old laptop".into(),
                 nonce: crate::repo::random_bytes::<32>(),

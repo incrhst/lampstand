@@ -63,6 +63,11 @@ pub trait SyncLink: Send + Sync {
     /// Tells the other devices what this one, as the Audio holder, is
     /// playing (`None`: nothing).
     fn report_sound(&self, _now: Option<lampstand_sync::net::SoundNow>) {}
+    /// Tells the other devices why a sound did not play here, as the Audio
+    /// holder (`None`: nothing is wrong now).
+    fn report_sound_problem(&self, _problem: Option<lampstand_sync::net::SoundProblem>) {}
+    /// Audio has just come to this device: says again what is wrong.
+    fn resend_sound_problem(&self) {}
     /// Whether this device plays the sound: it holds Audio, or has nobody to
     /// share with.
     fn audio_here(&self) -> bool {
@@ -81,6 +86,9 @@ pub struct AudioRemote {
     pub name: String,
     pub connected: bool,
     pub playing: Option<lampstand_sync::net::SoundNow>,
+    /// Why the last sound did not play there, as it said (only while it is
+    /// connected).
+    pub problem: Option<lampstand_sync::net::SoundProblem>,
 }
 
 /// A first-time agreement waits this long for the other device's copy to

@@ -12,7 +12,7 @@
 
 use lampstand_api::{Event, Response, SoundOutputs, SoundPlaying, SoundRequest, SoundView};
 use lampstand_core::service::{ItemId, ItemKind, Sound, SoundStart};
-use lampstand_sync::net::{SoundCommand, SoundNow, SoundRoute};
+use lampstand_sync::net::{SoundCommand, SoundNow, SoundProblem, SoundReason, SoundRoute};
 
 use super::{err, App, Result};
 use crate::audio::{AudioDeck, STOP_FADE};
@@ -21,6 +21,64 @@ use crate::audio::{AudioDeck, STOP_FADE};
 pub const AUDIO_AWAY: &str = "The device that runs the sound is not connected.";
 pub const AUDIO_NOBODY: &str = "Nobody runs the sound.";
 pub const AUDIO_NOT_ALLOWED: &str = "This device cannot start or control the sound.";
+
+/// The kinds of file the player can open (what the decoder is built with),
+/// for the words below.
+pub const FORMATS: &str = "MP3, WAV, FLAC, M4A and Ogg";
+
+/// The words for a sound that did not play, in one place. `device` is the
+/// name of the device that runs the sound when it is not this one, so the
+/// words name it; `None` is this computer.
+///
+/// A reason about the sound (the file) says which sound first; one about
+/// the output does so only when a sound was playing. No path or error text
+/// from the other device ever gets here: only a reason from a fixed list
+/// and the sound's name.
+pub fn problem_words(problem: &SoundProblem, device: Option<&str>) -> String {
+    let subject = match device {
+        Some(name) => name.to_string(),
+        None => "This computer".to_string(),
+    };
+    let what = problem.name.trim();
+    let reason = match problem.reason {
+        SoundReason::NotOnDevice => match device {
+            Some(name) => format!(
+                "The sound file isn't on {name} yet. Wait for it to arrive, or add the file again."
+            ),
+            None => "The sound file isn't on this computer yet. Add the file again, or wait for it to come from another computer.".to_string(),
+        },
+        SoundReason::Unsupported => {
+            format!("{subject} can't play this kind of file. Lampstand can play {FORMATS}.")
+        }
+        SoundReason::Unreadable => format!(
+            "{subject} couldn't read the sound file. It may be damaged. Try adding it to the service again."
+        ),
+        SoundReason::OutputDown => match device {
+            Some(name) => format!(
+                "The sound output on {name} isn't working. Check it is plugged in and switched on."
+            ),
+            None => "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Setup › Sound.".to_string(),
+        },
+        SoundReason::OutputMissing => match device {
+            Some(name) => format!(
+                "The sound output chosen on {name} isn't connected. Plug it in, or choose another in Setup › Sound."
+            ),
+            None => "The sound output you chose isn't connected. Plug it in, or choose another in Setup › Sound.".to_string(),
+        },
+        SoundReason::NoOutput => {
+            format!("{subject} has no sound output. Plug one in and switch it on.")
+        }
+    };
+    match (what.is_empty(), problem.reason) {
+        (true, _) => reason,
+        (false, SoundReason::NotOnDevice | SoundReason::Unsupported | SoundReason::Unreadable) => {
+            format!("{what} couldn't be played. {reason}")
+        }
+        (false, SoundReason::OutputDown | SoundReason::NoOutput | SoundReason::OutputMissing) => {
+            format!("{what} isn't playing. {reason}")
+        }
+    }
+}
 
 fn playing(now: &SoundNow) -> SoundPlaying {
     SoundPlaying {
@@ -156,10 +214,33 @@ impl App {
             None => (String::new(), false, None),
         };
         let nobody = !here && remote.is_none();
+        // Why a sound did not play: said where it plays, and sent from there
+        // to the devices that show the sound (the Operator, Projection). A
+        // holder that is away says nothing new: it is said to be away.
         let (playing_now, problem) = if here {
-            (self.audio.now().as_ref().map(playing), self.audio.problem())
+            let problem = self.audio.problem().or_else(|| {
+                // The output is known dead but not yet dropped.
+                (!self.audio.output_ok()).then(|| SoundProblem {
+                    reason: SoundReason::OutputDown,
+                    item: String::new(),
+                    name: String::new(),
+                })
+            });
+            (
+                self.audio.now().as_ref().map(playing),
+                problem.map(|p| (problem_words(&p, None), p.item)),
+            )
         } else {
-            (playing_now, None)
+            let problem = remote.as_ref().filter(|r| r.connected).and_then(|r| {
+                r.problem
+                    .as_ref()
+                    .map(|p| (problem_words(p, Some(&r.name)), p.item.clone()))
+            });
+            (playing_now, problem)
+        };
+        let (problem, problem_item) = match problem {
+            Some((words, item)) => (Some(words), Some(item).filter(|i| !i.is_empty())),
+            None => (None, None),
         };
         SoundView {
             here,
@@ -169,6 +250,7 @@ impl App {
             output_ok: !here || self.audio.output_ok(),
             playing: playing_now,
             problem,
+            problem_item,
         }
     }
 
@@ -182,9 +264,23 @@ impl App {
             // Passing Audio stops what is playing.
             self.audio.cut();
         }
+        if here && !self.audio_held {
+            // Audio has just come here: say again what is wrong.
+            if let Some(link) = &link {
+                link.resend_sound_problem();
+            }
+        }
+        self.audio_held = here;
+        if here {
+            // A dead output is dropped, and tried again every few seconds.
+            self.audio.tick(std::time::Instant::now());
+        }
         if let (true, Some(link)) = (here, &link) {
             if let Some(now) = self.audio.changed() {
                 link.report_sound(now);
+            }
+            if let Some(problem) = self.audio.problem_changed() {
+                link.report_sound_problem(problem);
             }
         }
         let view = self.sound_view();

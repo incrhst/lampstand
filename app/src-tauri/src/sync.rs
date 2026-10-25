@@ -297,6 +297,12 @@ impl SyncLink for NodeLink {
     fn report_sound(&self, now: Option<lampstand_sync::net::SoundNow>) {
         self.0.report_sound_now(now);
     }
+    fn report_sound_problem(&self, problem: Option<lampstand_sync::net::SoundProblem>) {
+        self.0.report_sound_problem(problem);
+    }
+    fn resend_sound_problem(&self) {
+        self.0.resend_sound_problem();
+    }
     fn audio_here(&self) -> bool {
         self.0.audio_here()
     }
@@ -312,6 +318,7 @@ impl SyncLink for NodeLink {
             name,
             connected,
             playing: self.0.sound_elsewhere().map(|(_, now, _)| now),
+            problem: self.0.sound_problem_elsewhere().map(|(_, p)| p),
         })
     }
     fn fetch(&self, hashes: Vec<BlobHash>) {

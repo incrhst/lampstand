@@ -75,7 +75,7 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
-pub use audio::{AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED};
+pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
 use sound::SoundSync;
@@ -160,6 +160,8 @@ pub struct App {
     audio: AudioDeck,
     /// The sound state the screen was last told.
     told_sound: Option<SoundView>,
+    /// This device held Audio at the last look (to notice it coming here).
+    audio_held: bool,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -255,6 +257,7 @@ impl App {
             sound_sync: SoundSync::default(),
             audio,
             told_sound: None,
+            audio_held: false,
             sink,
             windows,
             emit,
