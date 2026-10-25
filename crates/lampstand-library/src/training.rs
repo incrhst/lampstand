@@ -226,4 +226,21 @@ mod tests {
         assert!(library.service(id).unwrap().is_some());
         assert!(library.repo().list(DocKind::Service).is_empty());
     }
+
+    #[test]
+    fn a_training_hymn_cannot_be_saved_or_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::open(dir.path(), DeviceKeypair::generate()).unwrap();
+        let set = set();
+        let mut song = set.songs[0].clone();
+        library.install_training(set);
+        song.title = "Edited".into();
+        assert!(library.put_song(&song).is_err());
+        assert!(library.delete_song(song.id).is_err());
+        assert_eq!(
+            library.song(song.id).unwrap().unwrap().title,
+            "Amazing Grace"
+        );
+        assert!(library.repo().list(DocKind::Song).is_empty());
+    }
 }
