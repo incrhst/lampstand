@@ -57,6 +57,7 @@
     onsongs,
     ondecks,
     ontranslations,
+    onhide,
   }: {
     /** The service rows are added to, if one is selected. */
     service: Service | null;
@@ -74,6 +75,8 @@
     onsongs: (hits: SongHit[]) => void;
     ondecks: () => Promise<void>;
     ontranslations: () => Promise<void>;
+    /** Hides the library; Plan shows a strip to bring it back. */
+    onhide?: () => void;
   } = $props();
 
   // Device-local preferences and history. Storage can be missing or full
@@ -656,6 +659,9 @@
           Add files
         </Button>
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
+        {#if onhide}
+          <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
+        {/if}
       </div>
     </div>
 
