@@ -420,6 +420,13 @@ pub enum LibraryRequest {
     DownloadSongDatabase {
         code: String,
     },
+    /// Imports SongSelect files (`.usr`, or the `.txt` lyrics export) that
+    /// landed in the user's Downloads folder at or after `since` (Unix
+    /// seconds), as `ImportFiles` would. Answers `Response::Text` with a
+    /// summary, or an empty text when there was nothing new.
+    ImportSongSelectDownloads {
+        since: u64,
+    },
     /// The decks in the library, by title, as `Response::Decks`.
     ListDecks,
     /// A PPTX picked from disk (PS-1). It is parsed once to check it,
