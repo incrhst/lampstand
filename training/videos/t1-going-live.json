@@ -50,7 +50,7 @@
     {
      "x": 58,
      "y": 84,
-     "label": "NEXT: what Space puts up"
+     "label": "NEXT: the next slide"
     },
     {
      "x": 11.5,
@@ -63,9 +63,9 @@
      "label": "Every slide of the service"
     }
    ],
-   "say": "The gold card marked NEXT is what Space will put up. The notes beside the item on air are for you, never for the room. And the whole service is laid out on the wall, every slide of every item.",
+   "say": "The gold card marked NEXT is the next slide. The notes beside the item on air are for you, never for the room. And the whole service is laid out on the wall, every slide of every item.",
    "narration": "narration/t1-going-live/03.mp3",
-   "durationSec": 16
+   "durationSec": 15.5
   },
   {
    "type": "screenshot",
@@ -107,7 +107,7 @@
     {
      "x": 28,
      "y": 57,
-     "label": "What the next click adds"
+     "label": "What the next click shows"
     },
     {
      "x": 23,
@@ -115,9 +115,9 @@
      "label": "Clicks left on this slide"
     }
    ],
-   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, a panel shows what is on screen beside what the next click adds, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, a panel shows what is on screen beside what the next click shows, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
    "narration": "narration/t1-going-live/05.mp3",
-   "durationSec": 24
+   "durationSec": 24.5
   },
   {
    "type": "bullets",
