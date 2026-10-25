@@ -114,7 +114,7 @@ the four duties *roles* only because the app does.
    (a song's backing track, walk-in music), attached to a song or on its own;
    "play when this goes live" or "wait for me to press play"; play, pause,
    stop with a fade, and a panic stop that always works, on the Audio holder
-   and from the Operator and helpers; and a choice of sound output on the
+   and from the Operator and helpers (helpers planned); and a choice of sound output on the
    Audio holder (Setup › Sound), so the track goes to the mixer's interface
    and not the projector's. The Audio holder gets the files from sync and
    starts them on Projection's cue. Count-in, a click on a separate output for
@@ -156,7 +156,7 @@ adjusted during the build: see "Decided during the build" below and the
   the claimant's absence from a slightly earlier last frame agrees with it.
   PR #160 (open) adds that a claimant also waits by the holder's advertised
   setting when that is longer. A split that remains after this (one-way link
-  failure) is issue #153's "Reclaim" proposal, not built.
+  failure) is planned in PR #160, not built: the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once.
 - **Signed role records.** A record carries up to eight signed steps; a device
   takes a newer record only if its steps join its own state and every signer
   is known; one that cannot be joined is *unverified* and waits. The volunteer
@@ -170,8 +170,8 @@ adjusted during the build: see "Decided during the build" below and the
 - **One-click OBS setup** runs on the machine that serves the pictures, with
   OBS on another computer, and writes that machine's network address into the
   browser source (never `localhost`); it is not run on the Stream holder.
-- **Platforms.** Tested on macOS and Windows. Linux is not supported for now
-  (PR #151).
+- **Platforms.** Tested on macOS and Windows. Not yet checked on Linux; Linux
+  installers are being dropped (see PR #151).
 
 ## Where the Teams check goes
 
@@ -181,8 +181,7 @@ when T18 lands.
 
 ## Consequences
 
-- Sync protocol 5 and a role record per role. A device on version 4 is
-  refused with the usual message saying which side should update.
+- A role record per role. The sync protocol version is raised in this release (protocol 6 once PR #160 lands; main is 5 today); devices on an older version are refused with the usual message saying which side should update.
 - The OBS drawer and scene follower move from "the presenting device" to "the
   device holding Stream, or Projection when nobody does".
 - The browser-source URL must carry the Projection machine's LAN address, not

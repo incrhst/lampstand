@@ -4,7 +4,7 @@ Status: built for 0.8.0, except the parts marked **Planned** (see "Built and pla
 
 A **role** is a job someone is doing right now. It is not a permission; who may do a job is the Teams work (T18).
 
-The roles work is tested on macOS and Windows. Linux is not supported for now (PR #151 drops it from CI and releases); the roles code has no platform-specific part, but nobody checks it there.
+The roles work is tested on macOS and Windows. It is not yet checked on Linux; Linux installers are being dropped (see PR #151).
 
 ## Built and planned
 
@@ -15,7 +15,7 @@ The roles work is tested on macOS and Windows. Linux is not supported for now (P
 | Stream holder owns OBS, OBS cues, the stream desk view | Built (#132, #133, #134) |
 | Sound in the order of the service, Setup > Sound, playing, the output chooser, the panic stop | Built (#135, #136) |
 | Waiting by the holder's takeover setting as well as one's own | Planned: open PR #160 (a new `Takeover` frame) |
-| Settling a claim that the holder refuses (the "Reclaim" step) | Planned: proposal in issue #153 |
+| Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown) | Planned (issue #153, closed; design in PR #160) |
 | "Send sound to the stream" (the OBS browser source plays Lampstand's sound) | Planned (#137); needs the OBS prototype (#125), which has not been run |
 | A warning in the role bar that names the sound item that will not play | Planned (see "Audio warnings") |
 | The tablet and phone remote, the browser stage page, a Stream view in the browser | Planned (decision 0006; not in the app yet) |
@@ -27,7 +27,7 @@ The roles work is tested on macOS and Windows. Linux is not supported for now (P
 | --- | --- | --- | --- |
 | **Projection** | Runs the screens | Projector and stage screens, the live engine, the local server OBS reads | screens set up on that device |
 | **Operator** | Runs the service | Next, previous, jump, take an item live | Projection held |
-| **Stream** | Runs the stream | OBS scene, mutes, preview; OBS and Zoom | nothing |
+| **Stream** | Runs the stream | OBS scene, mutes, preview (Lampstand controls only OBS) | nothing |
 | **Audio** | Runs the sound | The sound Lampstand plays: video sound, music-only items, backing tracks; the sound output | Projection, for new cues |
 
 The people-facing words are "the screens", "the service", "the stream" and "the sound" (`app/src/lib/roles.ts`, `lampstand_sync::wording`). The names Projection, Operator, Stream and Audio are for developers and for this document.
@@ -64,9 +64,16 @@ One computer runs the screens, the service and OBS. It holds all four (automatic
 - **Machine A, at the projector:** Projection, Operator and Audio. It can sit unattended; the service can be run from B.
 - **Machine B, the stream machine:** Stream. Runs OBS, Zoom and the OBS Virtual Camera, and connects to its own OBS.
 
-Pair B with A. A shows the pairing code and B types it; the device that showed the code takes Projection, Operator and Audio (if it has screens), and Stream is left unheld, so A keeps the OBS duty until B takes Stream. B presses Take on "Runs the stream"; A allows (and can say "Always allow this device"). Use a wired network with reserved addresses. B's OBS shows A's pictures through a browser source that reads A's network address.
+Pair B with A. A shows the pairing code and B types it; the device that showed the code takes Projection, Operator and Audio (if it has screens), and Stream is left unheld, so A keeps the OBS duty until B takes Stream. B presses Take on "Runs the stream"; A allows (and can say "Always allow this device"). Use a wired network with fixed addresses (ask whoever looks after your network). B's OBS shows A's pictures through a browser source that reads A's network address.
 
-To set that browser source up in one click, open Setup > OBS **on A**, put B's address in "Computer", save and test the connection, and press "Set up OBS" (it appears when OBS is on another computer). It makes a "Lampstand" collection in B's OBS with the scenes Slides, Worship and Pastor and slides, each showing a browser source named "Lampstand stream" whose address is A's network address, never `localhost`. "Use this address" pins which of A's addresses is used when A has several. This is the built form of the one-click setup: it runs on the machine that serves the pictures, not on the stream holder (the spec first said the stream holder; see "Where OBS lives").
+To set that browser source up in one click:
+
+1. **On B (the stream machine):** in OBS turn on the WebSocket server (Tools > WebSocket Server Settings > Enable WebSocket server, then Apply). In Lampstand on B, go to Setup > OBS > Control OBS, connect to this computer (`localhost`) and press "Save and test". The Stream holder uses its own OBS connection; without it scene cues have no OBS to switch.
+2. **On A:** in Setup > OBS > "Send to OBS", press "Add a picture for OBS" and turn it on. "Set up OBS" stays greyed ("Add a picture for OBS above and turn it on first.") until then.
+3. **Still on A:** under "Control OBS" type B's address in "Computer" and its password, then "Save and test". Otherwise "Set up OBS" says "Lampstand isn't connected to OBS yet. Save and test the connection first."
+4. **On A:** press "Set up OBS" (it appears when OBS is on another computer, and refuses while OBS is streaming or recording). It makes a "Lampstand" collection in B's OBS with the scenes Slides, Worship and Pastor and slides, each showing a browser source named "Lampstand stream" whose address is A's network address, never `localhost`. 5. "Use this address" only matters if A has several network addresses: it pins the one used.
+
+This is the built form of the one-click setup: it runs on the machine that serves the pictures, not on the stream holder (the spec first said the stream holder; see "Where OBS lives").
 
 Variant: B is a second operator laptop (Operator) and OBS stays on A.
 
@@ -109,10 +116,10 @@ A video, a music-only item or a backing track has sound. It plays in the house, 
 - **Backing tracks.** A music-only item sits in the service on its own; a backing track is attached to a song. A song's backing track that "plays on its own" starts when the song goes live. A music-only item has no slides, so the live engine never takes it live: it plays when someone presses Play in the sound panel in Present ("In this service"). A sound set to "Waits for someone to press play" waits for Play whichever it is.
 - **Controls.** Play, Pause, Resume, "Fade out" and the panic stop "Stop the sound now", in the sound panel of Present on any device (a request goes to whichever device holds Audio; Play, Pause, Resume and Stop count only from the devices that run the screens or the service, the panic stop from any paired device; it says "The device that runs the sound is not connected." if it is away). From a phone or tablet helper: **Planned**, since the remote is not built.
 - **If Projection is away**, what is playing keeps playing and can still be stopped, but nothing new starts.
-- **Files** travel by sync to every device that has the service (not only the Audio holder, because Audio can move), for services starting within the next 36 hours or that started less than 36 hours ago. Plan shows "File missing" on an item whose file is not on this device, and whether it is on its way.
+- **Files** travel by sync to every device that has the service (not only the Audio holder, because Audio can move), for any service that starts later, or started less than 36 hours ago; one with no date is not fetched. Plan shows "File missing" on an item whose file is not on this device, and whether it is on its way.
 - Count-in, a click for the band, and key or tempo changes are later features.
 
-**Planned (#137): "Send sound to the stream"** (Setup > OBS, off by default). When it is on, the stream output's OBS browser source would also play that sound, and OBS would capture it, so the stream's sound and picture match and the Stream holder has OBS's own mute and fader for it. It needs a prototype first (ticket #125, "can the OBS browser source play Lampstand's sound through OBS?"), which has not been run. None of this exists in the app: there is no such switch, no "Not sent to the stream" effect (the per-item option "Don't send this sound to the stream" is stored and shown, and changes nothing yet), and Lampstand does not touch OBS's audio settings.
+**Planned (#137): "Send sound to the stream"** (Setup > OBS, off by default). When it is on, the stream output's OBS browser source would also play that sound, and OBS would capture it, so the stream's sound and picture match and the Stream holder has OBS's own mute and fader for it. It needs a prototype first (ticket #125, "can the OBS browser source play Lampstand's sound through OBS?"), which has not been run. None of this exists in the app: there is no such switch, no "Not sent to the stream" effect (the per-item option "Don't send this sound to the stream" and its "Not sent to the stream" tag exist and change nothing yet), and Lampstand does not touch OBS's audio settings.
 
 Until then, the mixer route is the way, and the lip-sync tip applies: delay the mixer source in OBS (Advanced Audio Properties, Sync Offset) until it matches the picture.
 
@@ -139,6 +146,8 @@ Sound is part of the service, so it lives in the service order and syncs like th
 
 The spec wanted: "Nobody runs the sound, so {item} will not play." What is built is shorter and is shown in the sound panel when it applies: **"Nobody runs the sound."** (no device holds Audio), **"The device that runs the sound is not connected."** (the Audio holder is offline), a message when a sound failed to start, and "This computer's sound output is not working. Choose another in Setup > Sound." on the Audio holder. None names the item. The longer wording is **Planned** and is an open question (see the end).
 
+A device that has only just connected, before it has heard who holds what, is refused with "Nobody is presenting." (the 0.7.0 wording, kept in `wording.rs` `Denied::Settling`); whether it should change is a question for the owner.
+
 **Stream warnings: none.** Nothing warns that nobody runs the stream, because with nobody on Stream the Projection holder keeps the OBS duty and nothing is lost. The one stream line is on the device that waits for the stream machine: "{name} runs the stream and is offline. OBS will catch up when it is back."
 
 ### Confidence screens and stage displays
@@ -162,7 +171,7 @@ The same rules for every role.
 
 1. **Ask.** A device presses **Take** for a role. The current holder sees "Mary's laptop wants to run the stream." with **Allow**, **Not now** and, for Operator and Stream only, **Always allow this device**. It works only while the holder is connected. The asker sees "Waiting for {holder} to allow..." and then either holds the role, or "{holder} said not now." with **Ask again**.
 2. **One ask at a time.** A holder answers one ask at a time. A second asker is not queued; it is told "{name} is already asking." with **Ask again**.
-3. **Take over.** If the holder has been offline for the takeover time, or nobody holds the role, another device may take it after confirming ("Mary's laptop has been offline for 5 minutes. Run the stream from here?"). The takeover time is set on each device in Setup > Devices (default two minutes). A claimant also waits a **10 second margin** on top (`TAKEOVER_MARGIN`): with the default it can take over from 2 minutes 10 seconds of silence. Until then the button explains how long is left. A short network drop never counts. Open: PR #160 makes the claimant wait by the longer of its own setting and the one the holder tells it (**Planned**); until it lands each device uses its own setting.
+3. **Take over.** If nobody holds the role, Take works at once with no prompt. If the holder has been offline for the takeover time, another device may take it after confirming ("Mary's laptop has been offline for 5 minutes. Run the stream from here?"). The takeover time is set on each device in Setup > Devices (default two minutes). A claimant also waits a **10 second margin** on top (`TAKEOVER_MARGIN`): with the default it can take over from 2 minutes 10 seconds of silence. Until then the button explains how long is left. A short network drop never counts. Open: PR #160 makes the claimant wait by the longer of its own setting and the one the holder tells it (**Planned**); until it lands each device uses its own setting.
 4. **What is on air.** Passing **Projection** clears the screens ("Allow and clear the screens"), and passing **Audio** stops what is playing ("Allow and stop the music"). Passing **Operator** leaves the slide up. Passing **Stream** leaves OBS on its current scene.
 5. **A returning holder yields.** A device that comes back after losing a role learns it, drops the role and shows a notice ("Mary's laptop took over running the stream while this device was offline. This device no longer runs the stream."). It cannot win the role back by itself.
 6. **Always allow** is offered only for Operator and Stream. It is not offered for Projection or Audio, because handing either over clears something on air. It is remembered per device, listed in Setup > Devices ("Always allowed", "Stop always allowing {name}").
@@ -178,13 +187,13 @@ Each role is a record `{ holder, name, epoch }` with the last **eight** signed s
 
 **What the volunteer sees: nothing yet.** The unverified state is reported in the sync status for each role but no screen shows it. A device in that state keeps what it had; the cure is to unpair and pair again. Showing it is **Planned**.
 
-**Known gap (issue #153):** if the link failed in one direction only, or devices dropped at different times, a claim the holder refuses can leave the claimant believing it holds the role while the holder does too, until a later record moves one of them. The margin and PR #160 narrow it; the "Reclaim" proposal in the issue would settle it. Not built.
+**Known gap (issue #153):** if the link failed in one direction only, or devices dropped at different times, a claim the holder refuses can leave the claimant believing it holds the role while the holder does too, until a later record moves one of them. The margin and PR #160 narrow it; the issue was closed and the fix is planned in PR #160 (the planned fix is a signed refusal: a claimant whose claim the holder refuses hands the role back with an ordinary signed hand-over, and a cooldown stops it claiming again at once). Not built.
 
 ### Defaults, restarts, moving from 0.7.0
 
 - **Pairing.** The device that shows the pairing code takes the roles nobody holds: Projection, Operator and Audio, each only if the rules allow. **A first device with no screens gets none of the three** (Audio goes only with Projection). Stream is left unheld, so Projection keeps the OBS duty until someone takes Stream.
 - **Restarts.** Roles are kept in `roles.json` beside `paired.json`, device-local, and when each paired device was last heard is kept in `contact.json`. A restart, crash or sleep leaves a holder that others see as offline; the takeover time applies.
-- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. Sync protocol 5; a device on 0.7.0 (protocol 4) is refused with the usual message saying which side should update.
+- **Moving from 0.7.0.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files. The lease becomes the Projection record with its epoch and takeover time. **Operator and Audio go to the Projection holder,** at the same epoch. The "always allowed to drive" list becomes Operator's. Stream is unheld. The sync protocol version is raised in this release (protocol 6 once PR #160 lands; main is 5 today); devices on an older version are refused with the usual message saying which side should update.
 - **Roster.** The status bar shows what this device runs ("Runs the screens and the service") and who runs the rest ("Mary's laptop runs the stream"); a device with no role says "Planning". "Presenting" and "Driving" are gone. Setup > Devices has the "Who runs what" panel, with each role, who has it, a Take button, the always-allowed devices and the takeover time.
 
 ## Where OBS lives
@@ -193,7 +202,7 @@ Each role is a record `{ holder, name, epoch }` with the last **eight** signed s
 - When an item goes live, Projection sends its scene as a cue (a scene name or nothing; no address, password or path) to the Stream holder. If the Stream holder is offline the newest cue waits and applies when it returns (a newer cue replaces an older one); Projection never switches OBS itself while Stream is held, so there are no double switches.
 - With nobody holding Stream, Projection keeps the OBS duty, as it did in 0.7.0. A device with nothing paired drives its own OBS.
 - The OBS drawer, scene follower, preview and mutes run on the Stream holder. On a device that does not own OBS, Present shows no OBS strip, and a scene or mute picked by hand says "OBS is run by the device that runs the stream." Setup > OBS works everywhere, so a machine can be set up before it takes Stream.
-- A **stream desk** (a device that runs the stream, not the service or the screens, with other devices paired) shows OBS in Present even with no service open, and keeps the Present keyboard shortcuts off there, so Space and Enter go to the focused OBS button.
+- A **stream desk** (a device that runs the stream, not the service or the screens, with other devices paired) shows OBS in Present even with no service open, and keeps the Present keyboard shortcuts off only on a stream desk with no service open, or inside the docked OBS panel (where Space and Enter belong to the focused OBS button).
 - "Set up OBS" and "Use this address" (Setup > OBS) appear when OBS is on another computer. They only touch the "Lampstand" collection and the scenes and browser source it makes; they refuse to run while OBS is streaming or recording.
 - Lampstand never edits OBS's settings otherwise (it can start OBS minimised). The one planned exception is "Control audio via OBS" on its own browser source (#137, above).
 
@@ -209,6 +218,8 @@ These were proposed in the first design and are now decided, or were decided by 
 - Role records are signed, eight steps, with an "unverified" state.
 - Stream warnings: none. Audio warning: "Nobody runs the sound." (wording question open).
 - Setup > Sound "Use sound in services" off by default.
+- Set up OBS runs on the machine that serves the pictures, only for a remote OBS.
+- Send sound to the stream is off by default (when it is built).
 - The OBS audio exception is planned, not built.
 - **Teams check.** Who may hold a role is decided at `Roles::claim` and `Roles::allow` and nowhere else (T18).
 - **Sound.** Room sound (microphones, the band) stays outside Lampstand and outside the roles. NDI audio is a later ticket.
