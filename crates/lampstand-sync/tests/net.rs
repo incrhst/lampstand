@@ -2547,3 +2547,137 @@ async fn with_nobody_on_stream_projection_keeps_the_duty_and_nothing_is_sent() {
     assert!(scenes(&applied).is_empty());
     assert!(!sanctuary.node.scene_cue_waiting());
 }
+
+// ---- The Audio holder plays: sound cues ------------------------------------------
+
+use lampstand_sync::net::{SoundCommand, SoundNow, SoundRoute};
+
+/// Records the cues a device is told to act on.
+fn hearing_sound(p: &Peer) -> Arc<StdMutex<Vec<SoundCommand>>> {
+    let heard = Arc::new(StdMutex::new(Vec::new()));
+    let h = heard.clone();
+    p.node
+        .set_sound_hook(Arc::new(move |cmd| h.lock().unwrap().push(cmd)));
+    heard
+}
+
+/// The sanctuary holds Projection and Operator; the office takes Audio (the
+/// sound desk).
+async fn audio_at_the_office() -> (Peer, Peer, Arc<StdMutex<Vec<SoundCommand>>>) {
+    let (sanctuary, office) = paired_and_leased().await;
+    let heard = hearing_sound(&office);
+    office.node.ask_role(Role::Audio).unwrap();
+    until(Duration::from_secs(5), "the prompt", || {
+        role_status(&sanctuary, Role::Audio).request.is_some()
+    })
+    .await;
+    sanctuary
+        .node
+        .allow_role(Role::Audio, office.node.device(), false)
+        .unwrap();
+    until(
+        Duration::from_secs(5),
+        "both to know who runs the sound",
+        || {
+            holder_of(&sanctuary, Role::Audio) == Some(office.node.device())
+                && office.node.audio_here()
+        },
+    )
+    .await;
+    (sanctuary, office, heard)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sound_cue_reaches_the_audio_holder_and_what_plays_comes_back() {
+    let (sanctuary, office, heard) = audio_at_the_office().await;
+    assert!(office.node.audio_here() && !sanctuary.node.audio_here());
+    let play = SoundCommand::Play {
+        file: [4; 32],
+        name: "Walk-in music".into(),
+        item: "item-1".into(),
+    };
+    assert_eq!(
+        sanctuary.node.route_sound_cue(play.clone()),
+        SoundRoute::Sent
+    );
+    assert_eq!(
+        sanctuary
+            .node
+            .route_sound_cue(SoundCommand::Stop { fade_ms: 3000 }),
+        SoundRoute::Sent
+    );
+    until(Duration::from_secs(5), "the cues", || {
+        heard.lock().unwrap().len() == 2
+    })
+    .await;
+    assert_eq!(
+        *heard.lock().unwrap(),
+        vec![play, SoundCommand::Stop { fade_ms: 3000 }]
+    );
+    // The sound desk says what is playing, and Projection hears it.
+    let now = SoundNow {
+        item: "item-1".into(),
+        name: "Walk-in music".into(),
+        paused: false,
+        ending: false,
+        position_ms: 0,
+        length_ms: 90_000,
+    };
+    office.node.report_sound_now(Some(now.clone()));
+    until(Duration::from_secs(5), "the state", || {
+        sanctuary.node.sound_elsewhere().is_some()
+    })
+    .await;
+    assert_eq!(sanctuary.node.sound_elsewhere().unwrap().1, now);
+    office.node.report_sound_now(None);
+    until(Duration::from_secs(5), "the state to clear", || {
+        sanctuary.node.sound_elsewhere().is_none()
+    })
+    .await;
+    // The desk may panic too, wherever it is asked from: it has no role of
+    // its own besides Audio, and a panic from it to Projection is ignored
+    // there because Projection does not hold Audio.
+    assert_eq!(
+        office.node.route_sound_cue(SoundCommand::Panic),
+        SoundRoute::Local
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sound_cue_is_not_kept_for_an_audio_holder_that_is_away() {
+    let (mut sanctuary, mut office, heard) = audio_at_the_office().await;
+    office.cut();
+    sanctuary.cut();
+    until(Duration::from_secs(20), "the sound desk to be away", || {
+        sanctuary.node.status().connected() == 0 && office.node.status().connected() == 0
+    })
+    .await;
+    assert_eq!(
+        sanctuary.node.route_sound_cue(SoundCommand::Pause),
+        SoundRoute::Away
+    );
+    assert_eq!(
+        sanctuary.node.route_sound_cue(SoundCommand::Panic),
+        SoundRoute::Away
+    );
+    office.restore().await;
+    sanctuary.restore().await;
+    until(Duration::from_secs(30), "the devices to meet again", || {
+        sanctuary.node.status().connected() == 1 && office.node.status().connected() == 1
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        heard.lock().unwrap().is_empty(),
+        "a cue from before the break is never played after it"
+    );
+    // Back together, cues go again.
+    assert_eq!(
+        sanctuary.node.route_sound_cue(SoundCommand::Pause),
+        SoundRoute::Sent
+    );
+    until(Duration::from_secs(5), "the cue", || {
+        heard.lock().unwrap().as_slice() == [SoundCommand::Pause]
+    })
+    .await;
+}

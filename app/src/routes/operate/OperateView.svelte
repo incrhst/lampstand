@@ -25,6 +25,7 @@
   import TipCard from "../../lib/kit/TipCard.svelte";
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
+  import SoundPanel from "./SoundPanel.svelte";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
@@ -643,6 +644,7 @@
         {#if live.loaded && liveSection}
           <LiveLoop loaded={live.loaded} section={liveSection} />
         {/if}
+        <SoundPanel {items} {service} />
         {#if tip}
           <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
         {/if}
@@ -680,7 +682,7 @@
                     {@const kind = kindOf(item.id)}
                     <ListRow
                       title={item.title}
-                      subtitle={item.slides.length === 0 ? "Nothing to show" : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
+                      subtitle={item.slides.length === 0 ? (kind === "Sound" ? "Music only · play it in the Sound box" : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
                       accent={i === liveIndex}
                       active={item.id === viewed?.id && i !== liveIndex}
                       dim={liveIndex >= 0 && i < liveIndex}

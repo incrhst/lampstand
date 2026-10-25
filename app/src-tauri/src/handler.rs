@@ -36,7 +36,7 @@ use std::sync::Arc;
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
     OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
-    SlideView, SongDatabase, SongHit, SoundSlot,
+    SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -62,8 +62,10 @@ use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
+use crate::audio::{AudioDeck, Parts};
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
 
+mod audio;
 mod church;
 mod sound;
 
@@ -73,8 +75,9 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+pub use audio::{AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED};
 use church::ChurchSync;
-pub use church::SyncLink;
+pub use church::{AudioRemote, SyncLink};
 use sound::SoundSync;
 
 /// Where an output window goes.
@@ -153,6 +156,10 @@ pub struct App {
     church_sync: ChurchSync,
     /// Bookkeeping for sound files that travel by sync.
     sound_sync: SoundSync,
+    /// What plays on this device when it holds Audio.
+    audio: AudioDeck,
+    /// The sound state the screen was last told.
+    told_sound: Option<SoundView>,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
     emit: EventSink,
@@ -234,6 +241,10 @@ impl App {
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
+        let audio = AudioDeck::new(
+            Parts::real(library.clone()),
+            settings.get().sound_output.clone(),
+        );
         let mut app = Self {
             library,
             live: LiveEngine::new(),
@@ -242,6 +253,8 @@ impl App {
             settings,
             church_sync: ChurchSync::default(),
             sound_sync: SoundSync::default(),
+            audio,
+            told_sound: None,
             sink,
             windows,
             emit,
@@ -356,6 +369,7 @@ impl App {
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
+            Request::Sound(r) => self.sound_request(r),
             // The shell answers these from `crate::sync` and
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
@@ -1310,6 +1324,7 @@ impl App {
                 lampstand_live::Event::ItemLive { item } => {
                     cursors_changed = true;
                     self.cue_obs(*item);
+                    self.cue_sound(*item);
                 }
                 // Comes with `ProgramChanged`: `present_with` sends it as
                 // `Animate` to the outputs showing the step before.
@@ -2031,6 +2046,7 @@ impl App {
         self.write_journal(now);
         self.church_tick();
         self.sound_tick(now);
+        self.audio_tick();
     }
 
     // ---- Crash recovery (T57) ----------------------------------------

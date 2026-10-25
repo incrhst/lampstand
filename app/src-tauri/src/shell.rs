@@ -622,6 +622,11 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let (sync, sync_error) = match sync {
         Ok(sync) => {
             crate::stream_cues::accept(sync.node(), obs_control.cues());
+            // Cues for the sound this device plays when it holds Audio.
+            let deck = lock(&app).audio().clone();
+            sync.node().set_sound_hook(deck.hook());
+            let stopping = deck.clone();
+            sync.on_music_stop(Arc::new(move || stopping.cut()));
             let address = sync.public_address();
             lock(&app).set_server_address(address.clone());
             lock(&app).set_sync_link(sync.link());

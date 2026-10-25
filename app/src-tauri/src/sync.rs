@@ -23,7 +23,8 @@ use lampstand_api::{
     AskingView, DeviceView, DriveAskingView, DriveView, DriverView, DrivingView, Event,
     LoadedService, NearbyView, ObsRequest, PairingView, PresentRequestView, PresenterRole,
     PresenterStanding, PresenterView, Request, Response, RoleAskingView, RoleBlocked, RoleName,
-    RoleStanding, RoleView, ServiceRequest, SyncState, SyncSummary, TeamRequest, TeamStatus,
+    RoleStanding, RoleView, ServiceRequest, SoundRequest, SyncState, SyncSummary, TeamRequest,
+    TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -145,6 +146,10 @@ pub fn driveable(request: &Request) -> bool {
             | Request::Obs(
                 ObsRequest::SetScene { .. } | ObsRequest::Resume | ObsRequest::SetMute { .. }
             )
+            // Starting a sound needs the service the Projection device has
+            // open; pause, stop and panic go from here, so they work even
+            // when Projection is away.
+            | Request::Sound(SoundRequest::Play { .. })
     )
 }
 
@@ -282,6 +287,32 @@ impl SyncLink for NodeLink {
     }
     fn screens(&self, set_up: bool) {
         self.0.set_screens(set_up);
+    }
+    fn route_sound(
+        &self,
+        cmd: lampstand_sync::net::SoundCommand,
+    ) -> lampstand_sync::net::SoundRoute {
+        self.0.route_sound_cue(cmd)
+    }
+    fn report_sound(&self, now: Option<lampstand_sync::net::SoundNow>) {
+        self.0.report_sound_now(now);
+    }
+    fn audio_here(&self) -> bool {
+        self.0.audio_here()
+    }
+    fn audio_remote(&self) -> Option<crate::handler::AudioRemote> {
+        let (holder, name) = self.0.audio_elsewhere()?;
+        let connected = self
+            .0
+            .status()
+            .paired
+            .iter()
+            .any(|p| p.device == holder && p.connected);
+        Some(crate::handler::AudioRemote {
+            name,
+            connected,
+            playing: self.0.sound_elsewhere().map(|(_, now, _)| now),
+        })
     }
     fn fetch(&self, hashes: Vec<BlobHash>) {
         let node = self.0.clone();

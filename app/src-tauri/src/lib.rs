@@ -9,6 +9,7 @@
 //! the clicker's global shortcuts. `journal` keeps what is on air so a
 //! crash comes back on the same slide.
 
+pub mod audio;
 pub mod config;
 pub mod decks;
 pub mod display_names;

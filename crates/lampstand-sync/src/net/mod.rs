@@ -44,6 +44,11 @@
 //!   that goes live to the device that holds Stream (`ObsCue`, answered by
 //!   `ObsCueAck`); see [`cue`]. Nobody holding Stream leaves the OBS duty
 //!   with Projection.
+//! - **Sound cues.** The Projection and Operator holders tell the device that
+//!   holds Audio what to play, pause, stop or cut (`SoundCue`; a panic counts
+//!   from any paired device), and the Audio holder tells every device what is
+//!   playing (`SoundNow`); see [`sound_cue`]. Nothing is kept for an Audio
+//!   holder that is away.
 //! - **Blobs** are fetched by hash on request ([`SyncNode::fetch_blob`]),
 //!   in 256 KiB chunks, and verified on arrival ([`BlobStore::put_verified`]).
 //!
@@ -55,6 +60,7 @@ mod handshake;
 mod saved;
 mod secure;
 mod session;
+mod sound_cue;
 mod trust;
 mod wire;
 
@@ -71,6 +77,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use uuid::Uuid;
 
 pub use cue::{CueHook, CueRoute};
+pub use sound_cue::{SoundCommand, SoundHook, SoundNow, SoundRoute};
 pub use trust::{PairedDevice, PairingCode, PAIRING_TTL};
 pub use wire::Link;
 
@@ -437,6 +444,7 @@ pub struct SyncNode {
     drive_hooks: Mutex<Option<Arc<DriveHooks>>>,
     /// The OBS scene cue kept for, or taken from, another device ([`cue`]).
     cue: Mutex<cue::CueState>,
+    sound: Mutex<sound_cue::SoundState>,
     /// When this node was made: how long a never-seen presenter has been
     /// silent.
     started: Instant,
@@ -579,6 +587,7 @@ impl SyncNode {
             fresh_session: Mutex::new(FRESH_SESSION),
             drive_hooks: Mutex::new(None),
             cue: Mutex::new(cue::CueState::new()),
+            sound: Mutex::new(sound_cue::SoundState::default()),
             started: Instant::now(),
             me: me.clone(),
         }))
@@ -1703,6 +1712,7 @@ impl SyncNode {
         }
         // A cue kept for this device while it was away.
         self.flush_scene_cue();
+        self.sound_session_opened(peer);
     }
 
     /// A device sent its record for a role: the newer of the two stands.
@@ -2899,6 +2909,255 @@ mod tests {
         }
         assert!(node.settled());
         assert!(node.claim_role(Role::Stream).is_ok());
+    }
+
+    // ---- Sound cues (the Audio holder plays) --------------------------------
+
+    fn taking_sound(node: &SyncNode) -> Arc<Mutex<Vec<SoundCommand>>> {
+        let taken = Arc::new(Mutex::new(Vec::new()));
+        let t = taken.clone();
+        node.set_sound_hook(Arc::new(move |cmd| lock(&t).push(cmd)));
+        taken
+    }
+
+    fn sound_in(frames: &mut mpsc::UnboundedReceiver<Control>) -> Vec<Frame> {
+        std::iter::from_fn(|| frames.try_recv().ok())
+            .filter_map(|c| match c {
+                Control::Frame(f @ (Frame::SoundCue { .. } | Frame::SoundNow { .. })) => Some(f),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn play() -> SoundCommand {
+        SoundCommand::Play {
+            file: [3; 32],
+            name: "Walk-in music".into(),
+            item: "item-1".into(),
+        }
+    }
+
+    fn now(name: &str) -> SoundNow {
+        SoundNow {
+            item: "item-1".into(),
+            name: name.into(),
+            paused: false,
+            ending: false,
+            position_ms: 2000,
+            length_ms: 60_000,
+        }
+    }
+
+    #[test]
+    fn sound_plays_here_when_alone_or_when_this_device_holds_audio() {
+        let (node, _, _, _dir) = node_with_hooks();
+        assert_eq!(node.route_sound_cue(play()), SoundRoute::Local);
+        paired(&node, 7);
+        heard_roles_from(&node, 7);
+        node.claim_role(Role::Audio).unwrap();
+        assert!(node.audio_here() && node.audio_elsewhere().is_none());
+        assert_eq!(node.route_sound_cue(SoundCommand::Panic), SoundRoute::Local);
+    }
+
+    #[test]
+    fn a_cue_goes_to_the_audio_holder_and_never_waits_for_one_that_is_away() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        node.set_screens(true);
+        node.claim_role(Role::Projection).unwrap();
+        // Nobody holds Audio: the sound plays nowhere.
+        assert_eq!(node.route_sound_cue(play()), SoundRoute::Nobody);
+        let (_, held) = claimed(7, Role::Audio);
+        node.record_received(id(7), Role::Audio, held);
+        assert_eq!(node.audio_elsewhere().map(|a| a.0), Some(id(7)));
+        // The holder is away: told so, nothing sent, nothing kept.
+        assert_eq!(node.route_sound_cue(play()), SoundRoute::Away);
+        let mut frames = connected_to(&node, 7);
+        node.session_opened(id(7));
+        assert!(
+            sound_in(&mut frames).is_empty(),
+            "a late cue is never played"
+        );
+        // Connected: it goes.
+        assert_eq!(node.route_sound_cue(play()), SoundRoute::Sent);
+        assert_eq!(sound_in(&mut frames), vec![Frame::SoundCue { cmd: play() }]);
+        assert_eq!(
+            node.route_sound_cue(SoundCommand::Stop { fade_ms: 2000 }),
+            SoundRoute::Sent
+        );
+    }
+
+    #[test]
+    fn only_projection_or_operator_may_start_but_anyone_paired_may_panic() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        let (_, held) = claimed(7, Role::Audio);
+        node.record_received(id(7), Role::Audio, held);
+        let mut frames = connected_to(&node, 7);
+        // This device holds neither Projection nor Operator.
+        for cmd in [
+            play(),
+            SoundCommand::Pause,
+            SoundCommand::Resume,
+            SoundCommand::Stop { fade_ms: 100 },
+        ] {
+            assert_eq!(node.route_sound_cue(cmd), SoundRoute::NotAllowed);
+        }
+        assert!(sound_in(&mut frames).is_empty());
+        assert_eq!(node.route_sound_cue(SoundCommand::Panic), SoundRoute::Sent);
+        assert_eq!(
+            sound_in(&mut frames),
+            vec![Frame::SoundCue {
+                cmd: SoundCommand::Panic
+            }]
+        );
+        // A name or fade the other side would not believe is not sent.
+        heard_roles_from(&node, 7);
+        node.set_screens(true);
+        node.claim_role(Role::Projection).unwrap();
+        let long = SoundCommand::Play {
+            file: [1; 32],
+            name: "x".repeat(sound_cue::MAX_NAME + 1),
+            item: String::new(),
+        };
+        assert_eq!(node.route_sound_cue(long), SoundRoute::NotAllowed);
+        let slow = SoundCommand::Stop {
+            fade_ms: sound_cue::MAX_FADE_MS + 1,
+        };
+        assert_eq!(node.route_sound_cue(slow), SoundRoute::NotAllowed);
+        assert!(sound_in(&mut frames).is_empty());
+    }
+
+    #[test]
+    fn the_audio_holder_obeys_projection_and_operator_and_a_panic_from_any_paired_device() {
+        let (node, _, _, _dir) = node_with_hooks();
+        let taken = taking_sound(&node);
+        paired(&node, 7);
+        paired(&node, 8);
+        paired(&node, 9);
+        let _frames = connected_to(&node, 7);
+        heard_roles_from(&node, 7);
+        node.claim_role(Role::Audio).unwrap();
+        let (_, projection) = claimed(7, Role::Projection);
+        node.record_received(id(7), Role::Projection, projection);
+        let (_, operator) = claimed(8, Role::Operator);
+        node.record_received(id(8), Role::Operator, operator);
+        // Projection and Operator may start.
+        node.sound_cue_received(id(7), play());
+        node.sound_cue_received(id(8), SoundCommand::Pause);
+        assert_eq!(*lock(&taken), vec![play(), SoundCommand::Pause]);
+        // A paired device with no role may not start or control, but may
+        // panic.
+        node.sound_cue_received(id(9), play());
+        node.sound_cue_received(id(9), SoundCommand::Resume);
+        assert_eq!(lock(&taken).len(), 2);
+        node.sound_cue_received(id(9), SoundCommand::Panic);
+        assert_eq!(lock(&taken).last(), Some(&SoundCommand::Panic));
+        // Strangers and this device's own id count for nothing, even to
+        // panic.
+        for from in [id(99), node.device()] {
+            node.sound_cue_received(from, SoundCommand::Panic);
+            node.sound_cue_received(from, play());
+        }
+        assert_eq!(lock(&taken).len(), 3);
+        // Cues that are not believable are not acted on.
+        node.sound_cue_received(
+            id(7),
+            SoundCommand::Stop {
+                fade_ms: sound_cue::MAX_FADE_MS + 1,
+            },
+        );
+        node.sound_cue_received(
+            id(7),
+            SoundCommand::Play {
+                file: [0; 32],
+                name: String::new(),
+                item: "i".repeat(sound_cue::MAX_ITEM + 1),
+            },
+        );
+        assert_eq!(lock(&taken).len(), 3);
+    }
+
+    #[test]
+    fn a_sound_cue_is_ignored_where_audio_is_not_held() {
+        let (node, _, _, _dir) = node_with_hooks();
+        let taken = taking_sound(&node);
+        paired(&node, 7);
+        let (_, projection) = claimed(7, Role::Projection);
+        node.record_received(id(7), Role::Projection, projection);
+        // Nobody holds Audio.
+        node.sound_cue_received(id(7), play());
+        node.sound_cue_received(id(7), SoundCommand::Panic);
+        // Another device holds it.
+        lock(&node.trust).add(id(9), "Sound desk", None).unwrap();
+        let (_, held) = claimed(9, Role::Audio);
+        node.record_received(id(9), Role::Audio, held);
+        node.sound_cue_received(id(7), play());
+        node.sound_cue_received(id(7), SoundCommand::Panic);
+        assert!(lock(&taken).is_empty());
+    }
+
+    #[test]
+    fn what_is_playing_is_believed_only_from_the_connected_audio_holder() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        paired(&node, 8);
+        let (_, held) = claimed(7, Role::Audio);
+        node.record_received(id(7), Role::Audio, held);
+        let _frames = connected_to(&node, 7);
+        // A device that does not hold Audio is not believed.
+        node.sound_now_received(id(8), Some(now("Forged")));
+        assert!(node.sound_elsewhere().is_none());
+        node.sound_now_received(id(7), Some(now("Walk-in music")));
+        let (who, playing, _) = node.sound_elsewhere().unwrap();
+        assert_eq!(playing, now("Walk-in music"));
+        assert_eq!(who, node.audio_elsewhere().unwrap().1);
+        // It says it stopped.
+        node.sound_now_received(id(7), None);
+        assert!(node.sound_elsewhere().is_none());
+        // A name that is too long is not believed.
+        node.sound_now_received(id(7), Some(now(&"x".repeat(sound_cue::MAX_NAME + 1))));
+        assert!(node.sound_elsewhere().is_none());
+        // It goes with the connection.
+        node.sound_now_received(id(7), Some(now("Walk-in music")));
+        assert!(node.sound_elsewhere().is_some());
+        lock(&node.peers).sessions.remove(&id(7));
+        assert!(node.sound_elsewhere().is_none());
+    }
+
+    #[test]
+    fn the_audio_holder_tells_every_device_what_is_playing_and_each_one_that_connects() {
+        let (node, _, _, _dir) = node_with_hooks();
+        paired(&node, 7);
+        paired(&node, 8);
+        let mut seven = connected_to(&node, 7);
+        heard_roles_from(&node, 7);
+        node.claim_role(Role::Audio).unwrap();
+        node.report_sound_now(Some(now("Walk-in music")));
+        assert_eq!(
+            sound_in(&mut seven),
+            vec![Frame::SoundNow {
+                now: Some(now("Walk-in music"))
+            }]
+        );
+        // The same state again says nothing new.
+        node.report_sound_now(Some(now("Walk-in music")));
+        assert!(sound_in(&mut seven).is_empty());
+        // A device that connects later is told.
+        let mut eight = connected_to(&node, 8);
+        node.session_opened(id(8));
+        assert_eq!(
+            sound_in(&mut eight),
+            vec![Frame::SoundNow {
+                now: Some(now("Walk-in music"))
+            }]
+        );
+        node.report_sound_now(None);
+        assert_eq!(sound_in(&mut seven), vec![Frame::SoundNow { now: None }]);
+        // Not told once this device no longer holds Audio.
+        lock(&node.roles).release(Role::Audio);
+        node.report_sound_now(Some(now("Again")));
+        assert!(sound_in(&mut seven).is_empty());
     }
 
     // ---- Scene cues (the Stream holder owns OBS) ----------------------------

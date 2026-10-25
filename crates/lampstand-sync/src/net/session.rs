@@ -312,6 +312,8 @@ impl State {
                 self.node.scene_cue_received(self.peer, run, seq, scene)
             }
             Frame::ObsCueAck { run, seq } => self.node.scene_cue_ack_received(self.peer, run, seq),
+            Frame::SoundCue { cmd } => self.node.sound_cue_received(self.peer, cmd),
+            Frame::SoundNow { now } => self.node.sound_now_received(self.peer, now),
             Frame::Takeover { secs } => self.node.takeover_received(self.peer, secs),
             Frame::Beat => {}
             // Handshake frames after the handshake: ignore.
