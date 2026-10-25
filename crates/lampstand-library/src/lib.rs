@@ -146,11 +146,20 @@ impl Library {
         all(&self.repo)
     }
 
+    /// Saves a song. A training hymn cannot be saved: the copy in the repo
+    /// would sync to the team while every device kept showing the training
+    /// one.
     pub fn put_song(&self, song: &Song) -> Result<(), SyncError> {
+        if self.training().song(song.id).is_some() {
+            return Err(SyncError::Forbidden(DocKind::Song));
+        }
         self.repo.put(song)
     }
 
     pub fn delete_song(&self, id: SongId) -> Result<(), SyncError> {
+        if self.training().song(id).is_some() {
+            return Err(SyncError::Forbidden(DocKind::Song));
+        }
         self.repo.delete(DocKind::Song, id.uuid())
     }
 
