@@ -51,6 +51,7 @@
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
+  import { WELCOME_TITLE } from "../../lib/getStarted";
 
   let { onopened }: { onopened: () => void } = $props();
 
@@ -58,8 +59,9 @@
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
-  /** The service the New service form copies its items from, or "" for an empty one. */
+  /** The service the New service form copies its items from, `SAMPLE` for the sample service, or "" for an empty one. */
   let copyFrom = $state("");
+  const SAMPLE = "sample";
   /** A date and time as the inputs hold them, in an IANA zone. */
   type When = { date: string; time: string; zone: string };
   /** The coming Sunday at 10:00 in `zone`, as the inputs hold it. */
@@ -189,7 +191,7 @@
   /** Picking a service to start from titles the copy after it. */
   function pickCopy() {
     const source = services.find((s) => s.id === copyFrom);
-    newTitle = source ? `${source.title} (copy)` : "Sunday service";
+    newTitle = copyFrom === SAMPLE ? WELCOME_TITLE : source ? `${source.title} (copy)` : "Sunday service";
   }
 
   /** Offers the New service form with `id` as its starting point. */
@@ -207,9 +209,12 @@
       selected = await request(
         {
           area: "Service",
-          request: copyFrom
-            ? { Duplicate: { service: copyFrom, title, starts_at: at(newWhen), time_zone: newWhen.zone } }
-            : { Create: { title, starts_at: at(newWhen), time_zone: newWhen.zone } },
+          request:
+            copyFrom === SAMPLE
+              ? { CreateSample: { title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+              : copyFrom
+                ? { Duplicate: { service: copyFrom, title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+                : { Create: { title, starts_at: at(newWhen), time_zone: newWhen.zone } },
         },
         "Service",
       );
@@ -939,14 +944,13 @@
           <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
         </div>
         {@render zonePicker(newWhen)}
-        {#if services.length > 0}
-          <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
-            <option value="">Start empty</option>
-            {#each services as s (s.id)}
-              <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
-            {/each}
-          </select>
-        {/if}
+        <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
+          <option value="">Start empty</option>
+          <option value={SAMPLE}>Start from the sample service (songs, a verse and music)</option>
+          {#each services as s (s.id)}
+            <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
+          {/each}
+        </select>
         <Button variant="primary" size="small" onclick={create}>Create</Button>
       </form>
     {/if}

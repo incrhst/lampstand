@@ -588,6 +588,21 @@ impl App {
                 lib.put_service(&copy).map_err(err)?;
                 Response::Service(copy)
             }
+            ServiceRequest::CreateSample {
+                title,
+                starts_at,
+                time_zone,
+            } => {
+                let mut sample = seed::sample_service(lib)?;
+                let title = title.trim();
+                if !title.is_empty() {
+                    sample.title = title.to_string();
+                }
+                sample.starts_at = starts_at;
+                sample.time_zone = time_zone;
+                lib.put_service(&sample).map_err(err)?;
+                Response::Service(sample)
+            }
             ServiceRequest::Reschedule {
                 service,
                 starts_at,
