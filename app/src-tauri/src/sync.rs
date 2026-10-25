@@ -21,17 +21,16 @@ use std::time::{Duration, Instant};
 
 use lampstand_api::{
     AskingView, DeviceView, DriveAskingView, DriveView, DriverView, DrivingView, Event,
-    LoadedService, NearbyView, ObsRequest, PairingView, PresentRequestView, PresenterRole,
-    PresenterStanding, PresenterView, Request, Response, RoleAskingView, RoleBlocked, RoleName,
-    RoleStanding, RoleView, ServiceRequest, SoundRequest, SyncState, SyncSummary, TeamRequest,
-    TeamStatus,
+    LoadedService, NearbyView, PairingView, PresentRequestView, PresenterRole, PresenterStanding,
+    PresenterView, Request, Response, RoleAskingView, RoleBlocked, RoleName, RoleStanding,
+    RoleView, ServiceRequest, SyncState, SyncSummary, TeamRequest, TeamStatus,
 };
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
 use lampstand_core::scene::Scene;
 use lampstand_library::Library;
 use lampstand_render::Renderer;
-use lampstand_server::{Backend, SceneHub, Server};
+use lampstand_server::{Backend, RemoteHub, SceneHub, Server};
 use lampstand_sync::net::{
     local_addresses, DriveAsking as Asking, DriveHooks, DriveNotice, DriveStatus, NodeConfig,
     NodeStatus, PresenterStatus, RolesStatus, SyncNode,
@@ -113,7 +112,10 @@ pub type NodeCell = Arc<OnceLock<Arc<SyncNode>>>;
 /// the driver's screen mirrors: what is on air, the loaded service and OBS.
 pub fn mirroring(emit: EventSink, node: NodeCell) -> EventSink {
     Arc::new(move |event: Event| {
-        if matches!(event, Event::Live { .. } | Event::Loaded(_) | Event::Obs(_)) {
+        if matches!(
+            event,
+            Event::Live { .. } | Event::Loaded(_) | Event::Unloaded | Event::Obs(_)
+        ) {
             // OBS state comes from the device that owns OBS. A Projection
             // holder that does not own it says nothing about OBS, except the
             // one view that says OBS is not relevant here (sent when the duty
@@ -131,26 +133,10 @@ pub fn mirroring(emit: EventSink, node: NodeCell) -> EventSink {
 }
 
 /// Whether a driver may ask the presenting device to carry this request
-/// out: the live commands, opening and closing the service on air, a loop
-/// change on air and OBS scene and mute choices. Everything else (editing a
+/// out: what [`crate::gate`] lets a driver do. Everything else (editing a
 /// service, settings, screens) stays on the device it belongs to.
 pub fn driveable(request: &Request) -> bool {
-    matches!(
-        request,
-        Request::Live(_)
-            | Request::Service(
-                ServiceRequest::Open(_)
-                    | ServiceRequest::Close(_)
-                    | ServiceRequest::SetLiveLoop { .. }
-            )
-            | Request::Obs(
-                ObsRequest::SetScene { .. } | ObsRequest::Resume | ObsRequest::SetMute { .. }
-            )
-            // Starting a sound needs the service the Projection device has
-            // open; pause, stop and panic go from here, so they work even
-            // when Projection is away.
-            | Request::Sound(SoundRequest::Play { .. })
-    )
+    crate::gate::allows(crate::gate::Caller::Driver, request)
 }
 
 /// What the driver last heard of the loaded service, so opening one from
@@ -254,6 +240,7 @@ pub type MusicStop = Arc<dyn Fn() + Send + std::marker::Sync>;
 /// The sync node and the server it listens on.
 pub struct Sync {
     node: Arc<SyncNode>,
+    backend: Arc<AppBackend>,
     server: Server,
     mirrored: Arc<Mirrored>,
     music_stop: Arc<Mutex<Option<MusicStop>>>,
@@ -263,6 +250,8 @@ struct AppBackend {
     node: Arc<SyncNode>,
     blobs: PathBuf,
     obs: Obs,
+    /// The phone remote, once the app has set it up.
+    remotes: OnceLock<Arc<RemoteHub>>,
 }
 
 /// The app's view of the sync node (`SyncLink`): who is connected, and
@@ -350,6 +339,9 @@ impl Backend for AppBackend {
     fn sync(&self) -> Option<Arc<SyncNode>> {
         Some(self.node.clone())
     }
+    fn remotes(&self) -> Option<Arc<RemoteHub>> {
+        self.remotes.get().cloned()
+    }
 }
 
 impl Sync {
@@ -381,6 +373,7 @@ impl Sync {
             node: node.clone(),
             blobs: data_dir.join("library/repo/blobs"),
             obs,
+            remotes: OnceLock::new(),
         });
         let any = SocketAddr::from(([0, 0, 0, 0], config.port));
         let server = match Server::start(any, backend.clone()).await {
@@ -501,6 +494,7 @@ impl Sync {
         });
         Ok(Self {
             node,
+            backend,
             server,
             mirrored,
             music_stop,
@@ -526,6 +520,12 @@ impl Sync {
     /// lost it): stop the music. Replaces any earlier hook.
     pub fn on_music_stop(&self, stop: MusicStop) {
         *self.music_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop);
+    }
+
+    /// Serves the phone remote (`/remote`) from now on. Until this is
+    /// called, and if it never is, those routes answer 404.
+    pub fn serve_remotes(&self, hub: Arc<RemoteHub>) {
+        let _ = self.backend.remotes.set(hub);
     }
 
     /// What the handler needs of the node, for the settings shared with

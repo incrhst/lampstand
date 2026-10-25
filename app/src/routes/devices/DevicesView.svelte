@@ -5,11 +5,12 @@
      a code; the other types it. Teams (T18) replace pairing. -->
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { onEvent, request, type TeamRequest, type TeamStatus } from "../../lib/api";
+  import { onEvent, request, type RemotesView, type TeamRequest, type TeamStatus } from "../../lib/api";
   import { report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import RoleTake from "../../lib/kit/RoleTake.svelte";
+  import ConnectPhone from "../operate/ConnectPhone.svelte";
   import {
     ALWAYS_ALLOWED,
     PANEL_TITLE,
@@ -65,9 +66,21 @@
   let takeoverChoices = $derived(
     [...new Set<number>([...TAKEOVER_CHOICES, presenter?.takeover_secs ?? 120])].sort((a, b) => a - b),
   );
+  // Phones and tablets paired as remotes (T99, T101).
+  let remotes: RemotesView | null = $state(null);
+  let connecting = $state(false);
+  async function remote(req: "Status" | { Revoke: { id: string } }) {
+    try {
+      remotes = await request({ area: "Remote", request: req }, "Remotes");
+    } catch (e) {
+      report(e);
+    }
+  }
   const unlisten = onEvent((e) => {
     if (e.type === "SyncStatus") refresh();
+    if (e.type === "Remotes") remotes = e.data;
   });
+  remote("Status");
   const clock = setInterval(() => {
     now = Date.now();
     if (status?.pairing && status.pairing.expires_ms <= now) refresh();
@@ -216,7 +229,34 @@
       {/each}
     </ul>
   </Panel>
+
+  <Panel title="Phones and tablets">
+    {#snippet actions()}
+      <Button onclick={() => (connecting = true)}>Connect a phone</Button>
+    {/snippet}
+    <p class="muted">Helpers' phones that can run the slides and the sound from their browser. Revoke one to disconnect it at once.</p>
+    <ul class="list">
+      {#each remotes?.sessions ?? [] as r (r.id)}
+        <li>
+          <span>
+            <span class="dot" class:on={r.connected} aria-hidden="true"></span>
+            <strong>{r.name}</strong>
+            <small class="muted">{r.connected ? "connected now" : `last seen ${ago(r.last_seen_ms, now)}`} · paired {new Date(r.paired_ms).toLocaleDateString()}</small>
+          </span>
+          <span class="row">
+            <Button onclick={() => remote({ Revoke: { id: r.id } })}>Revoke</Button>
+          </span>
+        </li>
+      {:else}
+        <li class="muted">No phones yet.</li>
+      {/each}
+    </ul>
+  </Panel>
 </div>
+
+{#if connecting}
+  <ConnectPhone onclose={() => (connecting = false)} />
+{/if}
 
 <style>
   .actions {

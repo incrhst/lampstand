@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T99 to T102)
+- Status: accepted (T99 to T102); amended 2026-10-25 (the remote also runs the sound)
 - Date: 2026-10-20
 
 ## Question
@@ -58,11 +58,45 @@ and leave room to add HTTPS later through a domain Lampstand runs (below).
    session. It also avoids guest client isolation, and keeps congregation
    phones from competing with the remote for airtime.
 
+## Amendment, 2026-10-25: the remote runs the sound too
+
+The owner's design for helpers' phones: "A helper's phone is a remote: big
+Next and Back, what's on screen now and what's next, and the Sound box. Plan
+stays for laptops." The helper who presses Next is often the one who starts
+the walk-in music and fades it out, so a remote that cannot touch the sound
+sends them back to the laptop for half the job.
+
+So item 4 widens, in the one gate (`app/src-tauri/src/gate.rs`) and nowhere
+else. A remote session may now send:
+
+- `Request::Live`, as before, except `EndService`: closing the service stays
+  with the operator at the laptop;
+- `Request::Sound` with `Play`, `Pause`, `Resume`, `Stop` (fade out) and
+  `Panic` ("Stop the sound now"). These go where Present's Sound box sends
+  them: the device that holds the Audio role plays the sound (decision 0010).
+  `Status` and `Outputs` are not among them: a page learns what plays from
+  `Event::Sound`, and the sound outputs are a setting;
+- `ServiceRequest::SlideThumbnail`, a picture of one slide of the service
+  that is loaded for live, so a deck slide shows on the phone as more than its
+  number. It shows only what the screens show or are about to, which anyone in
+  the room can see.
+
+The page also gets `Event::Sound` and `Event::Unloaded` beside `Event::Live`
+and `Event::Loaded`, and each loaded item lists its sounds
+(`LoadedItemView::sounds`), so the Sound box can offer Play without reading
+the service.
+
+Still nothing that edits, reads settings or the library, touches outputs or
+roles, or pairs anything. What someone who captures a session on the Wi-Fi
+can do grows by one thing: start, pause or stop the music, as they could by
+walking up to the laptop. Revoking the phone still ends it at once.
+
 ## Why this is acceptable on plain HTTP
 
 Someone on the same Wi-Fi can capture the PIN or a session cookie. The
-most they can then do is advance, blank or clear slides until an operator
-revokes that tablet. Today the same person could walk up to the laptop.
+most they can then do is advance, blank or clear slides, and start or stop
+the service's sound (the amendment above), until an operator revokes that
+tablet. Today the same person could walk up to the laptop.
 On a separate AV network (item 7), "the same Wi-Fi" means the AV team,
 not everyone in the building. Lampstand can recommend that network but
 can't require it, so the narrow scope has to hold either way.
