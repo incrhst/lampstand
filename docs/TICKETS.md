@@ -509,6 +509,26 @@ T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everyth
 
 **T112. Real responses and the church's plans.** Not code to write alone: needs a Notion integration token for the golden example and, with the church's permission, a copy of two or three of its real plans. Capture the API's real responses for the golden example and replace T105's hand-written fixtures with them. Build the church's plans in the convention (or record exactly where it will not fit and update decision 0007), import the church's OpenSong library, and run T106's matcher over the real plans. Record how many songs matched by CCLI, by title, as likely and not at all, and set the threshold from that. Done when the numbers are in ARCHITECTURE.md and decision 0007's open questions 1 and 5 are answered.
 
+### Sound from a link
+
+A worship leader often keeps the week's backing tracks in a shared Google Drive or Dropbox folder. Pasting a share link should add the track to the service without downloading it to the projection laptop by hand first, the way a deck link already works (`LibraryRequest::AddDeckFromLink`).
+
+Lampstand plays files the church is licensed to play: a track it bought, a multitrack or backing-track service's file, a royalty-free library, its own recording. Streaming pages are not files and their terms forbid taking the audio out of them (YouTube also forbids skipping its ads), so a YouTube, Spotify, Apple Music or SoundCloud link is refused with a reason before anything is fetched. A link on a song for the band to hear the arrangement is a separate idea, not this ticket.
+
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T113 | Add sound from a link | S | — | — | `connectors/src/links.rs`, `api/src/lib.rs`, `app/src-tauri/src/decks.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/plan/` | Not started |
+
+**T113. Add sound from a link.** Add `LibraryRequest::AddSoundFromLink { url }`, answered with `Response::SoundFile` as `AddSoundFile` is, so the planner adds it to the service as a music-only item (`soundItem` in `lib/sound.ts`).
+
+- **Links it takes.** Google Drive file links and OneDrive links, which `links::classify` already knows. Dropbox share links, fetched as their direct download (`dl=1`). A plain `https://` link to a file whose name ends in a sound extension (`audioExtensions`). Refuse YouTube (`youtube.com`, `youtu.be`, `music.youtube.com`), Spotify, Apple Music and SoundCloud links before any request, with "Lampstand plays sound files your church is licensed to use. Streaming links can't be added: download the track from where you bought it, or share the file from Drive or Dropbox." Anything else says which links work.
+- **The download.** Run it in the shell like `AddDeckFromLink` (async, with `ImportProgress` events: "Downloading the track", then "Added …" or the reason). Stream to a temporary file in the downloads folder rather than holding it in memory. Stop at 250 MB with a message saying so. Reuse `links`' status handling: private, not found, an HTML page instead of a file ("the link leads to a web page, not a sound file").
+- **Checking it is sound.** Check with `lampstand_media::sound_length` on the downloaded file, as `add_sound_file` does, before anything goes in the library. Then add it through the same path as `AddSoundFile`, so the name and length come out the same. Take the name from `Content-Disposition`, else the link's last path part, without its extension.
+- **The UI.** In Plan, the Add sound picker and Add media get a "From a link" choice: a paste field, then the track added to the service at the end, waiting for Play. Dropping or pasting a link on the library does the same when a service is open. Follow `addDeckLink` in `PlanView.svelte` and the deck-link paste in `Library.svelte`.
+- **Not in this ticket.** Re-fetching when the shared file changes (T41 does that for decks). Folders. Anything that plays from the network during a service: the file is always copied into the library first, so the service plays offline.
+
+Done when tests (wiremock, as `links` has) cover a Drive, Dropbox, OneDrive and direct link that add a track with its name and length; a private link and a missing one; an HTML page; a file that isn't sound; the size limit; and a YouTube, Spotify and SoundCloud link refused without a request. Done, too, when a track added from a Drive link plays in Present's Sound box.
+
 ## Not code: start now
 
 These sit on the critical path, but no session can do them:
