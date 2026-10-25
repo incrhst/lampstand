@@ -77,6 +77,7 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+use crate::training;
 pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
@@ -248,6 +249,10 @@ pub struct App {
     seen_displays: Vec<DisplayInfo>,
 }
 
+/// Why a training service refuses a change (#190).
+pub const TRAINING_READ_ONLY: &str = "Training services can't be changed. \
+     Practise in Present, then press Reset training to start again.";
+
 /// Why a Planning device refuses live control.
 pub const PLANNING_ONLY: &str =
     "This device is planning. Ask the presenting device to hand over, then take the service live.";
@@ -276,6 +281,9 @@ impl App {
         let key = device_key(data_dir).map_err(err)?;
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
+        if let Err(e) = training::install(&library) {
+            eprintln!("lampstand: the training services could not be added: {e}");
+        }
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
@@ -585,6 +593,7 @@ impl App {
                 decks.sort_by_key(|d| d.title.to_lowercase());
                 Response::Decks(decks)
             }
+            LibraryRequest::ListTrainingDecks => Response::Decks(lib.training_decks()),
             LibraryRequest::AddDeckFile { path } => {
                 Response::Deck(decks::add_deck_file(lib, &path)?)
             }
@@ -623,7 +632,40 @@ impl App {
         })
     }
 
+    /// Refuses a change to a training service (#190). Quick add and taking
+    /// out what it added are allowed while the service is open for live, as
+    /// practice for scripture nobody planned; Reset training undoes them.
+    fn check_training(&self, request: &ServiceRequest) -> Result<()> {
+        let (service, practice) = match request {
+            ServiceRequest::InsertItem { service, .. }
+            | ServiceRequest::RemoveItem { service, .. } => (*service, true),
+            ServiceRequest::Duplicate { service, .. }
+            | ServiceRequest::Reschedule { service, .. }
+            | ServiceRequest::Rename { service, .. }
+            | ServiceRequest::SetTheme { service, .. }
+            | ServiceRequest::Delete(service)
+            | ServiceRequest::SetSound { service, .. }
+            | ServiceRequest::SetMediaLooped { service, .. }
+            | ServiceRequest::MoveItem { service, .. }
+            | ServiceRequest::SetObsScene { service, .. }
+            | ServiceRequest::SetItemArrangement { service, .. }
+            | ServiceRequest::SetItemText { service, .. }
+            | ServiceRequest::SetLoop { service, .. } => (*service, false),
+            _ => return Ok(()),
+        };
+        if !self.library.is_training(service) {
+            return Ok(());
+        }
+        let open = self.presenting && self.loaded.as_ref().map(|l| l.view.service) == Some(service);
+        if practice && open {
+            Ok(())
+        } else {
+            Err(TRAINING_READ_ONLY.into())
+        }
+    }
+
     fn service_request(&mut self, request: ServiceRequest) -> Result<Response> {
+        self.check_training(&request)?;
         let lib = &self.library;
         let get = |id: ServiceId| -> Result<Service> {
             lib.service(id)
@@ -631,11 +673,17 @@ impl App {
                 .ok_or("no such service".into())
         };
         Ok(match request {
-            ServiceRequest::List => Response::Services(summaries(lib.services().map_err(err)?)),
+            ServiceRequest::List => {
+                let mut services = summaries(lib.services().map_err(err)?);
+                services.extend(training_summaries(lib));
+                Response::Services(services)
+            }
             ServiceRequest::ListChecked => {
                 let scan = lib.services_checked().map_err(err)?;
+                let mut services = summaries(scan.services);
+                services.extend(training_summaries(lib));
                 Response::ServiceList(lampstand_api::ServiceList {
-                    services: summaries(scan.services),
+                    services,
                     newer: scan.newer as u32,
                     damaged: scan.damaged,
                 })
@@ -717,6 +765,13 @@ impl App {
                     );
                 }
                 self.library.delete_service(service).map_err(err)?;
+                Response::Ok
+            }
+            ServiceRequest::ResetTraining => {
+                lib.reset_training();
+                if let Some(open) = self.loaded.as_ref().map(|l| l.view.service) {
+                    self.reload_if_open(open)?;
+                }
                 Response::Ok
             }
             ServiceRequest::Close(service) => {
@@ -2505,21 +2560,35 @@ fn fresh_key() -> String {
 }
 
 /// The services as the list shows them, in order.
-fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
-    let mut services: Vec<ServiceSummary> = services
+/// The training services, Training 0 first, listed after the church's own.
+fn training_summaries(library: &Library) -> Vec<ServiceSummary> {
+    library
+        .training_services()
         .into_iter()
         .map(|s| ServiceSummary {
-            id: s.id,
-            title: s.title,
-            starts_at: s.starts_at,
-            time_zone: s.time_zone,
-            items: s
-                .items
-                .values()
-                .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                .count() as u32,
+            training: true,
+            ..summary(s)
         })
-        .collect();
+        .collect()
+}
+
+fn summary(s: Service) -> ServiceSummary {
+    ServiceSummary {
+        id: s.id,
+        title: s.title,
+        starts_at: s.starts_at,
+        time_zone: s.time_zone,
+        items: s
+            .items
+            .values()
+            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+            .count() as u32,
+        training: false,
+    }
+}
+
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services.into_iter().map(summary).collect();
     sort_services(&mut services, now());
     services
 }

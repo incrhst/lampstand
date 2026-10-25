@@ -16,6 +16,7 @@ const songs = [
 ];
 const verses: Record<string, [number, number, string][]> = {
   "John 3:16": [[3, 16, "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life."]],
+  "Romans 8:28": [[8, 28, "And we know that all things work together for good to them that love God, to them who are the called according to his purpose."]],
   "Psalm 23:1": [[23, 1, "The Lord is my shepherd; I shall not want."], [23, 2, "He maketh me to lie down in green pastures: he leadeth me beside the still waters."]],
 };
 const decks = [{ id: "deck-announce", title: "Sunday Announcements.pptx", source: { File: { name: "Sunday Announcements.pptx" } }, current: { blob: "d1", fetched_at: 0, source_version: null }, pending: null },
@@ -31,6 +32,25 @@ const deckSlides: Record<string, any[]> = {
     { label: "Slide 3", lines: ["He lays down his life"], steps: 1, notes: "Slow down." },
   ],
 };
+// The training services' decks (#190), with the slides and notes of training/decks.
+const trainingDecks = [
+  { id: "deck-t1-screen", title: "The Present screen", source: { File: { name: "t1-present-screen.pptx" } }, current: { blob: "t1", fetched_at: 0, source_version: null }, pending: null },
+  { id: "deck-t1-sermon", title: "Practice: a sermon deck", source: { File: { name: "t1-sermon-practice.pptx" } }, current: { blob: "t2", fetched_at: 0, source_version: null }, pending: null },
+  { id: "deck-t2-thursday", title: "Sermon (sent on Thursday)", source: { File: { name: "t2-sermon-thursday.pptx" } }, current: { blob: "t3", fetched_at: 0, source_version: null }, pending: null },
+  { id: "deck-t2-sunday", title: "Sermon (updated Sunday morning)", source: { File: { name: "t2-sermon-sunday.pptx" } }, current: { blob: "t4", fetched_at: 0, source_version: null }, pending: null },
+];
+deckSlides["deck-t1-screen"] = [
+  { label: "Slide 1", lines: ["The Present screen", "Four places to look. One rule."], steps: 0, notes: "Trainer: point at each part of the screen as we go." },
+  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "Left is the order. The middle is live. The right is Next and Notes." },
+];
+deckSlides["deck-t1-sermon"] = [
+  { label: "Slide 1", lines: ["The Lord is my shepherd", "Psalm 23"], steps: 0, notes: "Preacher: Good morning. Our reading today is Psalm 23.\nOperator: each Space press brings in one point." },
+  { label: "Slide 2", lines: ["He leads me", "Green pastures", "Still waters", "Paths of righteousness"], steps: 3, notes: "Preacher: He leads me beside the still waters.\nOperator: three points, three presses." },
+  { label: "Slide 3", lines: ["Yea, though I walk through the valley", "of the shadow of death, I will fear no evil"], steps: 0, notes: "Preacher: read the verse slowly." },
+];
+deckSlides["deck-t2-thursday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "As sent on Thursday"], steps: 0, notes: "SURPRISE 4 (updated deck). Trainer: \"The preacher changed the verse slide this morning. Use the new deck.\"" }];
+deckSlides["deck-t2-sunday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "Updated Sunday morning"], steps: 0, notes: "Preacher: Good morning. This is the corrected deck." }];
+decks.push(...trainingDecks);
 let seq = 0;
 const pos = () => String(1000 + seq++);
 const item = (kind: any, notes = "") => ({ position: pos(), kind, notes, obs_scene: null, loop_seconds: null });
@@ -60,6 +80,35 @@ const tipsService = {
     t6: item({ Song: { song: "it-is-well", arrangement: null } }),
   } as Record<string, any>,
 };
+const john = { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 18 } };
+const psalm = { book: 19, start: { chapter: 23, verse: 1 }, end: { chapter: 23, verse: 3 } };
+const training = [
+  { id: "training-0", title: "Training 0: Orientation", training: true, starts_at: null, time_zone: null, theme: null, items: {
+    a1: item({ Header: { title: "Training 0: Orientation (5 minutes). Press Space to start" } }),
+    a2: item({ Media: { blob: "v0", name: "Welcome to Lampstand.mp4", looped: false } }),
+    a3: item({ Deck: { deck: "deck-t1-screen" } }),
+  } as Record<string, any> },
+  { id: "training-1", title: "Training 1: Run a service", training: true, starts_at: null, time_zone: null, theme: null, items: {
+    b1: item({ Header: { title: "Welcome. Press Space to start" } }),
+    b2: item({ Media: { blob: "v1", name: "Welcome.mp4", looped: false } }, "Press Space when the video ends."),
+    b3: item({ Deck: { deck: "deck-t1-screen" } }, "Point at each part of the real screen as the slides describe it."),
+    b4: item({ Media: { blob: "v2", name: "Going live and moving through slides.mp4", looped: false } }),
+    b5: item({ Header: { title: "Practice. Run these as if it were Sunday" } }),
+    b6: item({ Song: { song: "amazing-grace", arrangement: null } }, "Practice: press Space for each verse. At the last verse, press 1 to jump back to verse 1."),
+    b7: item({ Scripture: { passage: john, translation: "kjv" } }, "Practice: a Bible reading. Space through the verses."),
+    b8: item({ Media: { blob: "v3", name: "Blank, Logo, Clear.mp4", looped: false } }),
+    b9: item({ Deck: { deck: "deck-t1-sermon" } }, "Practice: five slides with builds. Try Blank (full stop) once in the middle."),
+  } as Record<string, any> },
+  { id: "training-2", title: "Training 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
+    c1: item({ Header: { title: "Rehearsal service. The trainer calls the surprises" } }),
+    c2: item({ Text: { title: "Welcome", body: "Welcome!\nWe are glad you are here.", attribution: null } }, "SURPRISE 5 (blank in an emergency) can come at any moment from here on."),
+    c3: item({ Song: { song: "holy-holy-holy", arrangement: null } }, "SURPRISE 2 (order change). Trainer: \"We are singing Amazing Grace first.\""),
+    c4: item({ Song: { song: "amazing-grace", arrangement: null } }, "SURPRISE 1 (repeated verse). Trainer, during the last verse: \"Again! Verse one!\" Operator: press 1."),
+    c5: item({ Scripture: { passage: psalm, translation: "kjv" } }, "SURPRISE 3 (scripture on the fly). Trainer: \"Turn with me to Romans 8:28.\" Operator: press /, type Rom 8:28, then Shift+Enter."),
+    c6: item({ Deck: { deck: "deck-t2-thursday" } }, "SURPRISE 4 (updated deck). The trainee should skip this deck and use the next one."),
+    c7: item({ Deck: { deck: "deck-t2-sunday" } }, "The corrected deck. Space through the builds."),
+  } as Record<string, any> },
+];
 const STARTER = "01920000-0000-7000-8000-6c616d707374";
 const themes: any[] = [{
   id: STARTER, name: "Starter",
@@ -78,7 +127,7 @@ const themeThumb = (t: any, sample: string, w: number, h: number) => {
   const t0 = lines.map((l, i) => `<text x='${x}' y='${y0 + i * size * 1.2}' fill='${hex(t.text.color)}' font-family='${t.text.font_family}, sans-serif' font-size='${size}' font-weight='${t.text.weight}' text-anchor='middle'>${l}</text>`).join("");
   return "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'><rect width='${w}' height='${h}' fill='${bg}'/>${t0}</svg>`);
 };
-const state: any = { services: String((window as any).__scene).startsWith("tips") ? [tipsService] : [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
+const state: any = { services: String((window as any).__scene).startsWith("tips") ? [tipsService] : String((window as any).__scene).startsWith("training") ? [welcome, sunday, ...training] : [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, idle: null, enabled: true });
 (window as any).__mock = state;
 
@@ -87,8 +136,11 @@ const sorted = (s: any) => Object.entries(s.items).sort((a: any, b: any) => a[1]
 function slidesFor(kind: any) {
   if (kind.Header) return [];
   if (kind.Song) { const s = songs.find((x) => x.id === kind.Song.song)!; return s.sections.map((sec) => ({ label: sec.label, lines: sec.lines, steps: 0, notes: "" })); }
+  if (kind.Scripture?.passage.book === 19) return verses["Psalm 23:1"].map(([c, v, t]) => ({ label: `Psalm ${c}:${v}`, lines: [t], steps: 0, notes: "" }));
+  if (kind.Scripture?.passage.book === 45) return [{ label: "Romans 8:28", lines: [verses["Romans 8:28"][0][2]], steps: 0, notes: "" }];
   if (kind.Scripture) return [{ label: "John 3:16", lines: [verses["John 3:16"][0][2]], steps: 0, notes: "" }];
   if (kind.Deck) return deckSlides[kind.Deck.deck] ?? [];
+  if (kind.Media) return [{ label: "Video", lines: [], steps: 0, notes: "" }];
   if (kind.Text) {
     const groups: string[][] = [];
     let cur: string[] = [];
@@ -104,7 +156,11 @@ function slidesFor(kind: any) {
 function titleFor(kind: any) {
   if (kind.Header) return kind.Header.title;
   if (kind.Song) return songs.find((x) => x.id === kind.Song.song)!.title;
+  if (kind.Scripture?.passage.book === 19) return "Psalm 23:1-3";
+  if (kind.Scripture?.passage.book === 45) return "Romans 8:28";
+  if (kind.Scripture?.passage.end?.verse === 18) return "John 3:16-18";
   if (kind.Scripture) return "John 3:16";
+  if (kind.Media) return kind.Media.name.replace(/\.mp4$/, "");
   if (kind.Deck) return decks.find((d) => d.id === kind.Deck.deck)!.title;
   if (kind.Text) return kind.Text.title.trim() || "Text";
   return "Item";
@@ -148,6 +204,8 @@ function move(dir: number, byItem = false) {
 }
 const svgThumb = (label: string) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='95' fill='#f5f1e8' font-family='serif' font-size='20' text-anchor='middle'>${label}</text></svg>`);
 
+const summaries = () => state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length, training: !!s.training }));
+
 function api(req: any): any {
   const { area, request: r } = req;
   const key = typeof r === "string" ? r : Object.keys(r)[0];
@@ -173,16 +231,24 @@ function api(req: any): any {
         case "ThemePreview": return { type: "Thumbnail", data: themeThumb(arg.theme, arg.sample, arg.thumb_width, Math.round(arg.thumb_width * arg.height / arg.width)) };
         case "DeckSlidePicture": return { type: "DeckSlide", data: { thumbnail: svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } };
         case "ListTranslations": return { type: "Translations", data: [{ id: "kjv", name: "King James Version", abbreviation: "KJV", language: "en", licence: "PublicDomain", text: "kjv" }] };
-        case "LookupPassage": { const ref = Object.keys(verses).find((k) => arg.reference.toLowerCase().startsWith(k.toLowerCase().split(":")[0].toLowerCase())) ?? "John 3:16"; return { type: "Passage", data: { passage: { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } }, display: ref, verses: verses[ref] } }; }
+        case "LookupPassage": {
+          const typed = arg.reference.toLowerCase();
+          const ref = typed.startsWith("rom") ? "Romans 8:28" : Object.keys(verses).find((k) => typed.startsWith(k.toLowerCase().split(":")[0].toLowerCase())) ?? "John 3:16";
+          const passage = ref === "Romans 8:28" ? { book: 45, start: { chapter: 8, verse: 28 }, end: { chapter: 8, verse: 28 } } : { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 16 } };
+          return { type: "Passage", data: { passage, display: ref, verses: verses[ref] } };
+        }
         case "ListSongDatabases": return { type: "SongDatabases", data: [{ code: "en", name: "English", source: "Free song database" }] };
-        case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks };
+        case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks.filter((d) => !trainingDecks.includes(d)) };
+        case "ListTrainingDecks": return { type: "Decks", data: trainingDecks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
         case "DeckThumbnail": case "MediaThumbnail": case "IdlePreview": return { type: "Thumbnail", data: svgThumb("Slides") };
       }
       break;
     case "Service":
       switch (key) {
-        case "List": return { type: "Services", data: state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length })) };
+        case "List": return { type: "Services", data: summaries() };
+        case "ListChecked": return { type: "ServiceList", data: { services: summaries(), newer: 0, damaged: [] } };
+        case "ResetTraining": return ok;
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
         case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }
@@ -275,12 +341,23 @@ function api(req: any): any {
       if (key === "Church" || key === "ResolveChurch") return { type: "Church", data: { shared: false, conflict: null, waiting: [] } };
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
-    case "Team": return { type: "Team", data: { name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: state.paired ?? [], nearby: [] } };
+    case "Team": return { type: "Team", data: team() };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
+    case "Sound": return { type: "Sound", data: { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
   }
   return { type: "Error", data: { message: `mock: unhandled ${area}.${key}` } };
 }
+// This device on its own: presenting, holding every role.
+const role = (name: string) => ({ role: name, holds: true, standing: "Holding", holder: "aa", holder_name: "Demo laptop", offline_secs: null, wait_secs: null, blocked: null, request: null, asking: null, replaced_by: null, always: [], offers_always: false, holder_waits_secs: null });
+const team = () => ({
+  name: "Demo laptop", fingerprint: "c339 03eb", addresses: ["192.168.1.20:7340"], pairing: null, paired: state.paired ?? [], nearby: [],
+  presenter: { role: "Presenting", standing: "Presenting", holder: "aa", holder_name: "Demo laptop", epoch: 1, offline_secs: null, wait_secs: null, takeover_secs: 30, requests: [], asking: null, replaced_by: null,
+    drive: { driving: null, active: null, requests: [], asking: null, can_drive: false, always: [], taken_back_by: null } },
+  roles: ["Projection", "Operator", "Stream", "Audio"].map(role),
+  scene_cue_waiting: false,
+  sync: { state: "DeviceOnly", paired: (state.paired ?? []).length, connected: 0, reason: null, last_in_ms: null, last_out_ms: null },
+});
 const obsOff = () => ({ host: "127.0.0.1", port: 4455, has_password: false, connection: { Disconnected: { reason: "not running" } }, problem: null, relevant: true, stream: null, record: null, scenes: [], program_scene: null, held: false, scene_problem: null, audio: [], remote: false, addresses: [], pinned_address: null });
 export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_version: "30.2", websocket_version: "5.5" } }, stream: { active: true, reconnecting: false, timecode: "00:12:41", skipped_frames: 0, total_frames: 45678 }, record: null, scenes: ["Wide", "Speaker", "Lyrics"], program_scene: "Lyrics", audio: [{ name: "Mic", muted: false }] });
 // Pretends a device was paired: the "connect another device" prompt goes away.
