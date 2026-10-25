@@ -174,7 +174,7 @@ fn parse_usr(text: &str) -> Result<Song, String> {
 
 // ---------------------------------------------------------------- .txt
 
-fn parse_txt(text: &str) -> Result<Song, String> {
+pub(super) fn parse_txt(text: &str) -> Result<Song, String> {
     let lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
     let footer_at = lines
         .iter()
@@ -258,7 +258,7 @@ fn is_heading(line: &str) -> bool {
 // ---------------------------------------------------------------- shared
 
 /// Short label for a heading, or `None` when the text is not a known one.
-fn normalise_label(heading: &str) -> Option<String> {
+pub(super) fn normalise_label(heading: &str) -> Option<String> {
     let heading = heading.trim().trim_end_matches(':').trim();
     let split = heading
         .find(|c: char| c.is_ascii_digit())
@@ -299,7 +299,7 @@ fn join_authors(s: &str) -> Option<String> {
     (!names.is_empty()).then(|| names.join(", "))
 }
 
-fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
+pub(super) fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
     }
@@ -312,14 +312,14 @@ fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
 /// is a repeat; with different text it gets a distinct label. Unlabelled
 /// sections are numbered as verses.
 #[derive(Default)]
-struct SectionBuilder {
+pub(super) struct SectionBuilder {
     sections: Vec<Section>,
     sung: Vec<String>,
     verses: usize,
 }
 
 impl SectionBuilder {
-    fn push(&mut self, heading: &str, lines: Vec<String>) {
+    pub(super) fn push(&mut self, heading: &str, lines: Vec<String>) {
         let mut label = match normalise_label(heading) {
             Some(l) => l,
             None if heading.trim().is_empty() => String::new(),
@@ -350,7 +350,17 @@ impl SectionBuilder {
         self.sung.push(candidate);
     }
 
-    fn finish(self, mut song: Song) -> Song {
+    /// The lines of a section already collected under this heading, for a
+    /// heading written again with nothing under it (a repeated chorus).
+    pub(super) fn lines_of(&self, heading: &str) -> Option<Vec<String>> {
+        let label = normalise_label(heading)?;
+        self.sections
+            .iter()
+            .find(|s| s.label == label)
+            .map(|s| s.lines.clone())
+    }
+
+    pub(super) fn finish(self, mut song: Song) -> Song {
         if self.sung.len() != self.sections.len() {
             song.arrangement = self.sung;
         }

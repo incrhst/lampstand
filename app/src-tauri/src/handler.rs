@@ -514,6 +514,27 @@ impl App {
                 lib.put_song(&song).map_err(err)?;
                 Response::Ok
             }
+            LibraryRequest::ParseLyrics { text, title } => {
+                let pasted = lampstand_import::songs::paste::parse(&text, title.as_deref())?;
+                let same_title = if pasted.song.title.trim().is_empty() {
+                    None
+                } else {
+                    lib.songs()
+                        .map_err(err)?
+                        .into_iter()
+                        .find(|s| {
+                            s.title
+                                .trim()
+                                .eq_ignore_ascii_case(pasted.song.title.trim())
+                        })
+                        .map(|s| s.id)
+                };
+                Response::ParsedSong(lampstand_api::ParsedSong {
+                    song: pasted.song,
+                    warnings: pasted.warnings,
+                    same_title,
+                })
+            }
             LibraryRequest::ListThemes => Response::Themes(lib.themes().map_err(err)?),
             LibraryRequest::PutTheme(theme) => {
                 lib.put_theme(&theme).map_err(err)?;
