@@ -305,12 +305,28 @@ impl App {
         let mut own = self.settings.get().clone();
         own.clicker_mode = sent.clicker_mode;
         own.use_sound = sent.use_sound;
+        own.keep_awake = sent.keep_awake;
+        // The startup item first: if the computer refuses, nothing is saved
+        // and the switch comes back off.
+        if sent.start_at_login != own.start_at_login {
+            self.machine
+                .set_start_at_login(sent.start_at_login)
+                .map_err(|e| {
+                    if sent.start_at_login {
+                        format!("Lampstand could not be set to start with this computer: {e}")
+                    } else {
+                        format!("Lampstand could not be taken off this computer's startup: {e}")
+                    }
+                })?;
+            own.start_at_login = sent.start_at_login;
+        }
         own.sound_output = sent.sound_output;
         self.audio.set_output(own.sound_output.clone());
         own.default_translation = sent.default_translation;
         if own != *self.settings.get() {
             self.settings.put(own).map_err(err)?;
         }
+        self.sync_awake();
         // The UI sends back what it read, and a default theme it was not
         // shown (deleted) as unset: keep a document value it never saw.
         self.save_church(|c| {

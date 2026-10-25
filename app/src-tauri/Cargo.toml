@@ -36,9 +36,11 @@ gethostname.workspace = true
 if-addrs = "0.15"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 image.workspace = true
+keepawake.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
+tauri-plugin-autostart.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-global-shortcut.workspace = true
 tauri-plugin-updater.workspace = true

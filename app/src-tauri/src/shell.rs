@@ -52,10 +52,11 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+use crate::awake::Awake;
 use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
-use crate::handler::{App, EventSink, Placement, WindowHost};
+use crate::handler::{App, EventSink, Machine, Placement, WindowHost};
 use crate::import::{import_files, import_song_select_downloads};
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
@@ -513,8 +514,22 @@ async fn remote_request(
 }
 
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // The plugin reads this computer's path to the app when it starts, and a
+    // failure there would stop the whole app. Without it only the startup
+    // switch is lost.
+    match std::env::current_exe().and_then(|path| path.canonicalize()) {
+        // Registers nothing by itself: the startup item is added only when
+        // the operator turns on "Start Lampstand when this computer starts".
+        Ok(_) => {
+            builder = builder.plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ));
+        }
+        Err(e) => eprintln!("lampstand: cannot start with the computer: {e}"),
+    }
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![api])
         .setup(|tauri_app| {
@@ -666,6 +681,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     };
     let streaming = app.streaming();
     let app = Arc::new(Mutex::new(app));
+    lock(&app).set_machine(Box::new(TauriMachine::new(handle.clone())));
     // OBS belongs to the Stream holder (`crate::stream_cues`): its events
     // are shaped for whether this device owns OBS, and the cue each live item
     // makes goes to this device's OBS or the Stream holder's.
@@ -1080,6 +1096,54 @@ fn shortcut_for(key: Key) -> Shortcut {
         Key::ShiftDown => (Some(Modifiers::SHIFT), Code::ArrowDown),
     };
     Shortcut::new(modifiers, code)
+}
+
+/// The computer's own switches (#140): `tauri-plugin-autostart` for the
+/// startup item, `keepawake` for the sleep assertion (IOKit on macOS, the
+/// execution-state API on Windows). Both are only used when the operator
+/// turned them on in Setup.
+struct TauriMachine {
+    handle: AppHandle,
+    awake: Awake,
+}
+
+impl TauriMachine {
+    fn new(handle: AppHandle) -> Self {
+        TauriMachine {
+            handle,
+            awake: Awake::spawn(|| {
+                keepawake::Builder::default()
+                    .display(true)
+                    .idle(true)
+                    .reason("Lampstand is showing the screens")
+                    .app_name("Lampstand")
+                    .app_reverse_domain("org.lampstand.app")
+                    .create()
+                    .inspect_err(|e| eprintln!("lampstand: cannot keep the computer awake: {e}"))
+                    .ok()
+            }),
+        }
+    }
+}
+
+impl Machine for TauriMachine {
+    fn set_start_at_login(&mut self, on: bool) -> Result<(), String> {
+        use tauri_plugin_autostart::{AutoLaunchManager, ManagerExt};
+        if self.handle.try_state::<AutoLaunchManager>().is_none() {
+            return Err("this computer's startup list is not available".into());
+        }
+        let launch = self.handle.autolaunch();
+        if on {
+            launch.enable()
+        } else {
+            launch.disable()
+        }
+        .map_err(|e| e.to_string())
+    }
+
+    fn set_awake(&mut self, on: bool) {
+        self.awake.set(on);
+    }
 }
 
 /// `tauri-plugin-global-shortcut` behind `keys::ShortcutHost`.
