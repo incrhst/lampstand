@@ -498,6 +498,15 @@ pub enum ServiceRequest {
         starts_at: Option<Timestamp>,
         time_zone: Option<String>,
     },
+    /// A new copy of the welcome service a new install starts with (two
+    /// hymns, a verse and a walk-in music), for trying things out on an
+    /// install that never had it or deleted it. Puts the hymns back if they
+    /// were deleted. Answers `Response::Service`.
+    CreateSample {
+        title: String,
+        starts_at: Option<Timestamp>,
+        time_zone: Option<String>,
+    },
     /// Moves a service to another time and zone, or clears its date with
     /// `starts_at: None`. Answers `Response::Service`.
     Reschedule {

@@ -745,13 +745,15 @@ fn a_church_that_does_not_use_sound_sees_nothing_new() {
         .all(|e| e.sound_ms.is_none() && !e.sound));
 }
 
-/// Every common audio container goes through `AddSoundFile`: name from the
-/// file, a length near the real 1.5 s, and the file in the store. (The Ogg is
-/// FLAC in an Ogg container; no Vorbis encoder was at hand.)
+/// Every common audio container goes through `AddSoundFile` and into a
+/// service as a music-only item: name from the file, a length near the real
+/// 1.5 s, the file in the store, and what the store holds plays as the tone
+/// it is. (The Ogg is FLAC in an Ogg container; no Vorbis encoder was at
+/// hand.)
 #[test]
-fn mp3_flac_m4a_and_ogg_files_are_added_with_their_length() {
+fn mp3_wav_m4a_flac_and_ogg_files_are_added_to_a_service_and_play() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sound");
-    for ext in ["mp3", "flac", "m4a", "ogg"] {
+    for ext in ["mp3", "wav", "m4a", "flac", "ogg"] {
         let mut d = device(false);
         let path = dir.join(format!("tone.{ext}"));
         let file = match d.ok(Request::Library(LibraryRequest::AddSoundFile {
@@ -763,7 +765,34 @@ fn mp3_flac_m4a_and_ogg_files_are_added_with_their_length() {
         assert_eq!(file.name, "tone", "{ext}");
         let ms = file.length_ms.unwrap_or_else(|| panic!("{ext}: no length"));
         assert!((1300..=1800).contains(&ms), "{ext}: {ms} ms");
-        assert!(d.app.library().repo().blobs().path(&file.file).is_some());
+
+        let s = d.create();
+        let s = d.insert(
+            &s,
+            ItemKind::Sound {
+                sound: Sound {
+                    name: file.name.clone(),
+                    file: file.file,
+                    length_ms: file.length_ms,
+                    start: SoundStart::Waits,
+                    keep_off_stream: false,
+                },
+            },
+        );
+        let saved = d.service(ServiceRequest::Get(s.id));
+        let (_, item) = item_of(&saved, |i| matches!(i.kind, ItemKind::Sound { .. }));
+        let ItemKind::Sound { sound } = &item.kind else {
+            unreachable!()
+        };
+        assert_eq!(sound.file, file.file, "{ext}");
+
+        let stored = d.app.library().repo().blobs().path(&sound.file).unwrap();
+        let pcm = lampstand_media::load_sound(&stored).unwrap_or_else(|e| panic!("{ext}: {e}"));
+        assert_eq!((pcm.rate, pcm.channels), (22_050, 1), "{ext}");
+        let seconds = pcm.duration();
+        assert!((1.4..=1.7).contains(&seconds), "{ext}: {seconds} s");
+        let loudest = pcm.samples.iter().fold(0f32, |m, s| m.max(s.abs()));
+        assert!(loudest > 0.1, "{ext}: silent ({loudest})");
     }
 }
 
