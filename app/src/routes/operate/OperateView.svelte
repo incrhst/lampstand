@@ -26,6 +26,7 @@
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
   import SoundPanel from "./SoundPanel.svelte";
+  import { musicLine } from "../../lib/audio";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
@@ -365,7 +366,7 @@
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
-  let liveWidth = $derived(presenting || mediaOf(liveItem?.id) ? 1280 : 480);
+  let liveWidth = $derived(presenting || mediaOf(live.shown?.item) ? 1280 : 480);
 
   // Deck slides have no lines to draw, so the core renders a picture of
   // each at a build step, fetched once per loaded service as slides come
@@ -419,8 +420,9 @@
   $effect(() => {
     // Most urgent first: the slide on air and what the next click shows.
     const want: [string, number, number, number][] = [];
-    if (liveItem && live.live && live.liveSlide && hasPicture(liveItem.id, live.liveSlide)) {
-      want.push([liveItem.id, live.live.slide, live.live.step, liveWidth]);
+    // While music is live the screens keep the slide before it (`shown`).
+    if (live.shown && live.shownSlide && hasPicture(live.shown.item, live.shownSlide)) {
+      want.push([live.shown.item, live.shown.slide, live.shown.step, liveWidth]);
     }
     if (presenting && clickNext && isDeckSlide(clickNext.slide)) {
       want.push([clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH]);
@@ -689,7 +691,7 @@
                     {@const kind = kindOf(item.id)}
                     <ListRow
                       title={item.title}
-                      subtitle={item.slides.length === 0 ? (kind === "Sound" ? "Music only · play it in the Sound box" : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
+                      subtitle={item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
                       accent={i === liveIndex}
                       active={item.id === viewed?.id && i !== liveIndex}
                       dim={liveIndex >= 0 && i < liveIndex}
@@ -738,14 +740,14 @@
               <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
               <span class="muted">{output?.name ?? "No screen yet"}</span>
               {#if liveItem && live.live}
-                <span class="muted">· {liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}</span>
+                <span class="muted">· {liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>
             {/if}
           </div>
           <div class="live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
             <SlidePreview
-              lines={live.liveSlide?.lines ?? []}
-              footer={live.liveSlide?.footer ?? null}
-              image={live.live ? thumbFor(liveItem?.id, live.live.slide, live.live.step, liveWidth) : null}
+              lines={live.shownSlide?.lines ?? []}
+              footer={live.shownSlide?.footer ?? null}
+              image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
               overlay={live.overlay}
               safeArea={output?.safe_area}
               {showGuide}

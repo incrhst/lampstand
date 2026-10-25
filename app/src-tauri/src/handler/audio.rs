@@ -6,16 +6,20 @@
 //! holds Audio or is alone, otherwise on the device that does. The words
 //! shown when it cannot be done are in this file.
 //!
-//! A song's backing track that "plays on its own" starts when the song goes
-//! live. A music-only item has no slides, so the live engine never takes it
-//! live: it plays when someone presses play (`SoundRequest::Play`).
+//! Sound that "plays on its own" starts when its item goes live: a song's
+//! backing track with the song, a music-only item when `Next` reaches it
+//! (#181). Sound that waits plays when someone presses play
+//! (`SoundRequest::Play`). Starting sound on its own lets what was playing
+//! fade out for a second first ([`HANDOVER`]): the fade, then the Play, go
+//! by the same route as a press of a button, so they reach the device that
+//! runs the sound wherever it is.
 
 use lampstand_api::{Event, Response, SoundOutputs, SoundPlaying, SoundRequest, SoundView};
 use lampstand_core::service::{ItemId, ItemKind, Sound, SoundStart};
 use lampstand_sync::net::{SoundCommand, SoundNow, SoundProblem, SoundReason, SoundRoute};
 
 use super::{err, App, Result};
-use crate::audio::{AudioDeck, STOP_FADE};
+use crate::audio::{AudioDeck, HANDOVER, STOP_FADE};
 
 /// What a screen is told when a sound cannot go where it should.
 pub const AUDIO_AWAY: &str = "The device that runs the sound is not connected.";
@@ -182,21 +186,38 @@ impl App {
         }
     }
 
-    /// An item went live: a song's backing track that plays on its own
-    /// starts now.
+    /// An item went live: its sound starts now if it plays on its own (a
+    /// music-only item, or a song's backing track). What plays fades out
+    /// first.
     pub(super) fn cue_sound(&mut self, item: ItemId) {
-        let Ok(sound) = self.sound_of(item, true) else {
+        let found = self
+            .sound_of(item, false)
+            .map(|sound| (false, sound))
+            .or_else(|_| self.sound_of(item, true).map(|sound| (true, sound)));
+        let Ok((backing, sound)) = found else {
             return;
         };
         if sound.start != SoundStart::OnItsOwn {
             return;
         }
-        let Ok(cmd) = self.sound_cue_for(item, true) else {
+        let Ok(cmd) = self.sound_cue_for(item, backing) else {
             return;
         };
-        if let Err(message) = self.route_sound(cmd) {
+        let fade = self
+            .sound_view()
+            .playing
+            .is_some_and(|p| !p.paused && !p.ending);
+        let started = if fade {
+            self.route_sound(SoundCommand::Stop {
+                fade_ms: HANDOVER.as_millis() as u32,
+            })
+            .and_then(|()| self.route_sound(cmd))
+        } else {
+            self.route_sound(cmd)
+        };
+        if let Err(message) = started {
             // The screens show it (`SoundView::away` and `nobody`).
-            eprintln!("lampstand: the backing track did not start: {message}");
+            eprintln!("lampstand: {} did not start: {message}", sound.name);
         }
     }
 

@@ -27,6 +27,8 @@ import { syncFailed } from "./sync";
 class LiveState {
   loaded: LoadedService | null = $state(null);
   live: Cursor | null = $state(null);
+  /** The slide the screens show: the live one, or while a music-only item is live (it has no picture), the slide before it. */
+  shown: Cursor | null = $state(null);
   preview: Cursor | null = $state(null);
   overlay: Overlay = $state("None");
   /** Last import message, error or notice, for the status bar. */
@@ -75,6 +77,8 @@ class LiveState {
 
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
+  /** The slide the screens show (`shown`). */
+  shownSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.shown));
 }
 
 function slideAt(loaded: LoadedService | null, cursor: Cursor | null): SlideView | null {
@@ -89,6 +93,8 @@ onEvent((event) => {
   switch (event.type) {
     case "Live":
       live.live = event.data.live;
+      if (!event.data.live) live.shown = null;
+      else if (slideAt(live.loaded, event.data.live)) live.shown = event.data.live;
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;
       live.idle = event.data.idle;
@@ -177,6 +183,7 @@ export async function refreshTeam() {
     if (was === "Presenting" && live.team.presenter.role === "Planning") {
       live.loaded = null;
       live.live = null;
+      live.shown = null;
       live.preview = null;
     }
   } catch (e) {

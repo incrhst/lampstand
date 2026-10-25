@@ -60,6 +60,11 @@
 //! - A running loop or countdown is on air, so `is_idle` is false.
 //! - `SongShown` fires when a song item goes live from another item, once
 //!   per visit, for CCLI reporting.
+//! - A music-only item (`sound_only`) has no slides, but `Next` and
+//!   `NextItem` stop on it, so it goes live (`ItemLive`, at slide 0) and its
+//!   sound can start. What the screens show does not change: the slide
+//!   before it stays up, with its background. `Previous`, `PreviousItem`,
+//!   loops and the stage display's "next" pass over it, as over a header.
 
 use lampstand_core::id::Timestamp;
 use lampstand_core::program::{Content, Overlay, Program};
@@ -73,7 +78,7 @@ use serde::{Deserialize, Serialize};
 pub struct LoadedItem {
     pub id: ItemId,
     pub title: String,
-    /// Empty for headers, which navigation skips.
+    /// Empty for headers, which navigation skips, and for music-only items.
     pub slides: Vec<LoadedSlide>,
     pub background: Option<Background>,
     pub theme: Option<ThemeId>,
@@ -85,6 +90,9 @@ pub struct LoadedItem {
     /// Set when the item is in a section that loops: all of the section's
     /// slides, across its items, advance by themselves in turn and wrap.
     pub loop_group: Option<LoopGroup>,
+    /// A music-only item: no slides, but `Next` stops on it (see the module
+    /// rules).
+    pub sound_only: bool,
 }
 
 /// A looping section of the running order (a header with a loop set, and
@@ -126,8 +134,9 @@ pub enum Command {
     Show(Cursor),
     Next,
     Previous,
-    /// The first slide of the next item that has slides, from wherever the
-    /// live slide is (Shift+Down). With nothing live, the first item.
+    /// The first slide of the next item that has slides (or the next
+    /// music-only item), from wherever the live slide is (Shift+Down). With
+    /// nothing live, the first item.
     NextItem,
     /// The first slide of the previous item that has slides (Shift+Up).
     /// Nothing happens at the start, or with nothing live.
@@ -252,7 +261,7 @@ impl LiveEngine {
                     None => self
                         .preview
                         .and_then(|p| self.resolve(p))
-                        .or_else(|| self.first_slide_from(0)),
+                        .or_else(|| self.first_stop_from(0)),
                 };
                 if let Some(target) = target {
                     self.go_live(target, &mut events);
@@ -267,8 +276,8 @@ impl LiveEngine {
                 let target = match self.live {
                     Some(live) => self
                         .slot_of(live.item)
-                        .and_then(|(_, after)| self.first_slide_from(after)),
-                    None => self.first_slide_from(0),
+                        .and_then(|(_, after)| self.first_stop_from(after)),
+                    None => self.first_stop_from(0),
                 };
                 if let Some(target) = target {
                     self.go_live(target, &mut events);
@@ -496,8 +505,13 @@ impl LiveEngine {
     }
 
     /// Checks a cursor against the slides it points at, clamping the step.
+    /// A music-only item has the one place, slide 0.
     fn resolve(&self, cursor: Cursor) -> Option<Cursor> {
-        let slide = self.item_for(cursor.item)?.slides.get(cursor.slide)?;
+        let item = self.item_for(cursor.item)?;
+        if item.sound_only && item.slides.is_empty() {
+            return (cursor.slide == 0).then_some(Cursor { step: 0, ..cursor });
+        }
+        let slide = item.slides.get(cursor.slide)?;
         Some(Cursor {
             step: cursor.step.min(slide.steps),
             ..cursor
@@ -525,6 +539,20 @@ impl LiveEngine {
             .iter()
             .skip(from)
             .find(|i| !i.slides.is_empty())
+            .map(|i| Cursor {
+                item: i.id,
+                slide: 0,
+                step: 0,
+            })
+    }
+
+    /// Where `Next` lands from `from`: the first slide of the first item at
+    /// or after it that has slides, or a music-only item.
+    fn first_stop_from(&self, from: usize) -> Option<Cursor> {
+        self.items
+            .iter()
+            .skip(from)
+            .find(|i| !i.slides.is_empty() || i.sound_only)
             .map(|i| Cursor {
                 item: i.id,
                 slide: 0,
@@ -565,7 +593,7 @@ impl LiveEngine {
                 ..from
             });
         }
-        self.first_slide_from(self.slot_of(from.item)?.1)
+        self.first_stop_from(self.slot_of(from.item)?.1)
     }
 
     /// The cursor `Previous` would move to from `from`, at the final step
@@ -630,10 +658,13 @@ impl LiveEngine {
             self.orphan_slot = None;
         }
         let Some(item) = &self.live_item else { return };
-        self.program.background = item.background.clone();
-        self.program.theme = item.theme;
         let song = item.song;
-        self.program.content = content;
+        // A music-only item has no picture: the screens keep what they show.
+        if !item.sound_only {
+            self.program.background = item.background.clone();
+            self.program.theme = item.theme;
+            self.program.content = content;
+        }
         self.live = Some(cursor);
         self.program.next = self.next_content(cursor);
 
@@ -715,6 +746,7 @@ mod tests {
             song: None,
             auto_advance_ms: None,
             loop_group: None,
+            sound_only: false,
         }
     }
 
@@ -1527,5 +1559,125 @@ mod tests {
         assert!(!e.is_idle());
         e.tick(at(5000));
         assert!(!e.is_idle(), "a finished countdown is still on air");
+    }
+
+    // Music-only items (#181).
+
+    fn music(title: &str) -> LoadedItem {
+        LoadedItem {
+            sound_only: true,
+            background: None,
+            ..item(title, vec![])
+        }
+    }
+
+    fn live_item(e: &LiveEngine) -> Option<ItemId> {
+        e.live().map(|c| c.item)
+    }
+
+    fn next_line(e: &LiveEngine) -> Option<String> {
+        match &e.program().next {
+            Some(Content::Text { slide }) => Some(slide.lines[0].clone()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn next_stops_on_a_music_only_item_and_the_screens_keep_what_they_show() {
+        let items = vec![
+            item("Welcome", vec![text("w")]),
+            music("Walk-in music"),
+            item("Song", vec![text("s1")]),
+        ];
+        let (walk_in, song) = (items[1].id, items[2].id);
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.apply(Command::Next);
+        let background = e.program().background.clone();
+        let events = e.apply(Command::Next);
+        assert!(events.contains(&Event::ItemLive { item: walk_in }));
+        assert_eq!(live_item(&e), Some(walk_in));
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("w"),
+            "the slide before stays up"
+        );
+        assert_eq!(e.program().background, background);
+        // The stage display's next is the slide after the music.
+        assert_eq!(next_line(&e).as_deref(), Some("s1"));
+        e.apply(Command::Next);
+        assert_eq!(live_item(&e), Some(song));
+        assert_eq!(on_air(&e).as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn a_service_that_starts_with_music_starts_with_the_music() {
+        let items = vec![music("Walk-in music"), item("Welcome", vec![text("w")])];
+        let walk_in = items[0].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        let events = e.apply(Command::Next);
+        assert!(events.contains(&Event::ItemLive { item: walk_in }));
+        assert_eq!(
+            on_air(&e),
+            None,
+            "nothing was on the screens, and nothing is"
+        );
+        assert!(!e.is_idle(), "the service is under way");
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn previous_and_the_stage_display_pass_over_music() {
+        let items = vec![
+            item("Welcome", vec![text("w")]),
+            music("Offering music"),
+            item("Song", vec![text("s1")]),
+        ];
+        let song = items[2].id;
+        let at_song = Cursor {
+            item: song,
+            slide: 0,
+            step: 0,
+        };
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.apply(Command::Next);
+        assert_eq!(next_line(&e).as_deref(), Some("s1"));
+        e.apply(Command::Show(at_song));
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+        e.apply(Command::Show(at_song));
+        e.apply(Command::PreviousItem);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn a_music_only_item_has_one_place_and_no_other() {
+        let items = vec![music("Walk-in music")];
+        let walk_in = items[0].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        assert!(e
+            .apply(Command::Show(Cursor {
+                item: walk_in,
+                slide: 1,
+                step: 0,
+            }))
+            .is_empty());
+        e.apply(Command::Show(Cursor {
+            item: walk_in,
+            slide: 0,
+            step: 3,
+        }));
+        assert_eq!(
+            e.live(),
+            Some(Cursor {
+                item: walk_in,
+                slide: 0,
+                step: 0
+            })
+        );
     }
 }

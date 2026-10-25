@@ -1108,6 +1108,9 @@ impl App {
                 }
                 loaded.loop_group = section;
                 if section.is_some() {
+                    // A looping section passes over its music, as before:
+                    // it is not part of the loop.
+                    loaded.sound_only = false;
                     // A video plays through once, then the loop moves on.
                     for slide in &mut loaded.slides {
                         if let Content::Video {
@@ -1192,6 +1195,7 @@ impl App {
             song: None,
             auto_advance_ms: None,
             loop_group: None,
+            sound_only: false,
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -1200,9 +1204,13 @@ impl App {
         };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
-            // Sound has no picture: the screens stay as they are. Playing
-            // it is the Audio role's job.
-            ItemKind::Sound { sound } => item(sound.name.clone(), Vec::new()),
+            // Sound has no picture: the screens stay as they are. `Next`
+            // stops on it so it can start (#181); playing it is the Audio
+            // role's job.
+            ItemKind::Sound { sound } => LoadedItem {
+                sound_only: true,
+                ..item(sound.name.clone(), Vec::new())
+            },
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
                 Some(s) => {
                     let slides = paginate_song(&s, arrangement.as_deref(), theme)
