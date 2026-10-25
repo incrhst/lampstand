@@ -14,7 +14,9 @@ use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use super::secure::SessionKeys;
-use super::sound_cue::{SoundCommand, SoundNow};
+#[cfg(test)]
+use super::sound_cue::SoundReason;
+use super::sound_cue::{SoundCommand, SoundNow, SoundProblem};
 use crate::roles::Role;
 
 /// Bumped when frames change incompatibly. A peer speaking another version
@@ -23,8 +25,9 @@ use crate::roles::Role;
 /// 3: presenter lease, ask and heartbeat frames. 4: driving. 5: one record
 /// per role (Projection, Operator, Stream, Audio) replaces the lease and
 /// the driver seat. 6: the sender's takeover setting (`Takeover`), added at
-/// the end of the frames.
-pub(crate) const PROTOCOL: u32 = 6;
+/// the end of the frames. 7: why a sound did not play (`SoundProblem`), added
+/// at the end of the frames.
+pub(crate) const PROTOCOL: u32 = 7;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -144,6 +147,14 @@ pub(crate) enum Frame {
     /// it (see `variant_numbers_are_pinned`).
     Takeover {
         secs: u32,
+    },
+    /// From the Audio holder to every connected device: why the last sound
+    /// did not play (`None`: nothing is wrong now). A reason from a fixed
+    /// list and the sound's name, never a path (see [`super::sound_cue`]).
+    ///
+    /// Last in the enum, after `Takeover`, for the same reason.
+    SoundProblem {
+        problem: Option<SoundProblem>,
     },
 }
 
@@ -330,8 +341,10 @@ mod tests {
         );
         assert_eq!(number(Frame::SoundNow { now: None }), 18);
         assert_eq!(number(Frame::Takeover { secs: 120 }), 19);
+        assert_eq!(number(Frame::SoundProblem { problem: None }), 20);
         // And the bytes of one, whole.
         assert_eq!(Frame::Takeover { secs: 120 }.encode(), vec![19, 120]);
+        assert_eq!(Frame::SoundProblem { problem: None }.encode(), vec![20, 0]);
         assert_eq!(Frame::Beat.encode(), vec![12]);
     }
 
@@ -422,6 +435,14 @@ mod tests {
                 }),
             },
             Frame::SoundNow { now: None },
+            Frame::SoundProblem {
+                problem: Some(SoundProblem {
+                    reason: SoundReason::NotOnDevice,
+                    item: "item-1".into(),
+                    name: "Walk-in music".into(),
+                }),
+            },
+            Frame::SoundProblem { problem: None },
         ];
         for frame in frames {
             assert_eq!(Frame::decode(&frame.encode()).unwrap(), frame);

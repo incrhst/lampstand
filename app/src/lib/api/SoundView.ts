@@ -26,6 +26,13 @@ nobody: boolean,
  */
 output_ok: boolean, playing: SoundPlaying | null, 
 /**
- * Why the last sound did not play, in words, if it did not.
+ * Why the last sound did not play, or why the sound output is not
+ * working, in plain words, if so. Said on every device that shows the
+ * sound, not only the one that plays it.
  */
-problem: string | null, };
+problem: string | null, 
+/**
+ * The item `problem` belongs to, so a screen can show it next to that
+ * item ("" or `None` when it is about the sound output as a whole).
+ */
+problem_item: string | null, };

@@ -26,6 +26,15 @@
 //!   every connected device when it changes, and again when a device
 //!   connects. A device believes it only from the device that holds Audio
 //!   and is connected, so it goes when that device goes.
+//! - **Why a sound cannot play.** When a sound does not play on the Audio
+//!   holder (the file is not there yet, cannot be read, or the sound output
+//!   is not working) it says so with a [`SoundProblem`]: a reason from a
+//!   fixed list ([`SoundReason`]), the id of the item and the name of the
+//!   sound. Never a path, never free text: each screen puts the words to
+//!   it, so the Operator and the Projection holder can say it in plain words
+//!   next to the item. It goes to the same devices as [`SoundNow`], is
+//!   believed only from the connected Audio holder, and the holder says
+//!   `None` when it is over. Names and ids that are too long are not believed.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -95,6 +104,42 @@ impl SoundNow {
     }
 }
 
+/// Why a sound did not play, from a fixed list: the receiving screen has the
+/// words, so nothing here can carry a path or any text of the sender's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SoundReason {
+    /// The file is not on the Audio holder yet.
+    NotOnDevice,
+    /// A kind of file that cannot be played.
+    Unsupported,
+    /// The file could not be read, or is damaged.
+    Unreadable,
+    /// The sound output stopped or could not be opened.
+    OutputDown,
+    /// The Audio holder has no sound output at all.
+    NoOutput,
+    /// The output chosen on the Audio holder is not connected. Nothing is
+    /// played on another output instead. (Last, so the numbers above hold.)
+    OutputMissing,
+}
+
+/// A sound the Audio holder could not play, and why. Sent with
+/// `Frame::SoundProblem` (protocol 7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SoundProblem {
+    pub reason: SoundReason,
+    /// The item it belongs to ("" when it is not from an item, or none was
+    /// playing).
+    pub item: String,
+    pub name: String,
+}
+
+impl SoundProblem {
+    fn believable(&self) -> bool {
+        self.name.len() <= MAX_NAME && self.item.len() <= MAX_ITEM
+    }
+}
+
 /// What the app does with a cue made here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SoundRoute {
@@ -124,6 +169,10 @@ pub(super) struct SoundState {
     mine: Option<SoundNow>,
     /// What the Audio holder said, with who said it and when it arrived.
     theirs: Option<(DeviceKey, SoundNow, Instant)>,
+    /// What this device, as the Audio holder, last said went wrong.
+    problem_mine: Option<SoundProblem>,
+    /// What the Audio holder said went wrong, with who said it.
+    pub(super) problem_theirs: Option<(DeviceKey, SoundProblem)>,
 }
 
 impl SyncNode {
@@ -243,12 +292,111 @@ impl SyncNode {
         }
     }
 
-    /// A connection to `peer` opened: tell it what is playing here.
+    /// A connection to `peer` opened: tell it what is playing here, and what
+    /// went wrong.
     pub(super) fn sound_session_opened(&self, peer: DeviceKey) {
-        let mine = lock(&self.sound).mine.clone();
-        if mine.is_some() && lock(&self.roles).holds(Role::Audio) {
+        let (mine, problem) = {
+            let mut s = lock(&self.sound);
+            // What `peer` said before is not believed across a reconnection:
+            // it says again if it is still so.
+            if s.problem_theirs
+                .as_ref()
+                .is_some_and(|(from, _)| *from == peer)
+            {
+                s.problem_theirs = None;
+            }
+            (s.mine.clone(), s.problem_mine.clone())
+        };
+        if !lock(&self.roles).holds(Role::Audio) {
+            return;
+        }
+        if mine.is_some() {
             self.send_to(peer, Frame::SoundNow { now: mine });
         }
+        if problem.is_some() {
+            self.send_to(peer, Frame::SoundProblem { problem });
+        }
+    }
+
+    /// On the Audio holder: this is what went wrong with the sound (`None`:
+    /// nothing now). Tells every connected device, and each device that
+    /// connects later.
+    pub fn report_sound_problem(&self, problem: Option<SoundProblem>) {
+        {
+            let mut s = lock(&self.sound);
+            if s.problem_mine == problem {
+                return;
+            }
+            s.problem_mine = problem.clone();
+        }
+        let has_peers = !lock(&self.trust).devices().is_empty();
+        if !has_peers || !lock(&self.roles).holds(Role::Audio) {
+            return;
+        }
+        let frame = Frame::SoundProblem { problem };
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(super::Control::Frame(frame.clone()));
+        }
+    }
+
+    /// On a device that has just come to hold Audio: says again what is wrong
+    /// to the devices already connected (they dropped what the old holder
+    /// said). Nothing is sent when nothing is wrong.
+    pub fn resend_sound_problem(&self) {
+        let problem = lock(&self.sound).problem_mine.clone();
+        if problem.is_none() || !lock(&self.roles).holds(Role::Audio) {
+            return;
+        }
+        let frame = Frame::SoundProblem { problem };
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(super::Control::Frame(frame.clone()));
+        }
+    }
+
+    /// What the Audio holder, another device, last said went wrong, with its
+    /// name. `None` when this device holds Audio, when nobody does, when the
+    /// holder is not connected, or when nothing is wrong.
+    pub fn sound_problem_elsewhere(&self) -> Option<(String, SoundProblem)> {
+        let elsewhere = self.audio_elsewhere();
+        {
+            // Said by a device that no longer holds Audio: forgotten, so it
+            // cannot come back if that device holds Audio again later.
+            let mut s = lock(&self.sound);
+            let said_by = s.problem_theirs.as_ref().map(|(from, _)| *from);
+            if said_by.is_some() && said_by != elsewhere.as_ref().map(|(h, _)| *h) {
+                s.problem_theirs = None;
+            }
+        }
+        let (holder, name) = elsewhere?;
+        if !self.connected(holder) {
+            return None;
+        }
+        match &lock(&self.sound).problem_theirs {
+            Some((from, problem)) if *from == holder => Some((name, problem.clone())),
+            _ => None,
+        }
+    }
+
+    /// A device said why a sound did not play. Believed only from the device
+    /// that holds Audio.
+    pub(crate) fn sound_problem_received(&self, from: DeviceKey, problem: Option<SoundProblem>) {
+        let holds = self.audio_elsewhere().map(|(h, _)| h) == Some(from);
+        if !holds || !lock(&self.trust).is_paired(from) {
+            return;
+        }
+        if problem.as_ref().is_some_and(|p| !p.believable()) {
+            return;
+        }
+        let next = problem.map(|p| (from, p));
+        {
+            let mut s = lock(&self.sound);
+            if s.problem_theirs == next {
+                // Said again, nothing new: no screen update.
+                return;
+            }
+            s.problem_theirs = next;
+        }
+        self.bump();
     }
 
     /// A device said what it is playing. Believed only from the device that

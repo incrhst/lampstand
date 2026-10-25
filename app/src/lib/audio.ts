@@ -3,9 +3,12 @@
 //
 // The words marked "spec" come from docs/roles.md and decision 0010. The
 // ones marked "proposed" are not in the spec and wait for the owner. The
-// four that say why a sound cannot go anywhere are the core's own words
-// (the same sentences come back as errors), kept here so a screen can show
-// them without a request.
+// ones that say why a sound cannot go anywhere ("away", "nobody") are the
+// core's own words (the same sentences come back as errors), kept here so a
+// screen can show them without a request. Why a sound did not play (the file
+// is not there, cannot be read, the output is down) arrives from the core
+// already in words, in `SoundView.problem`: those sentences live in one
+// place, `problem_words` in app/src-tauri/src/handler/audio.rs.
 
 import type { LoadedItemView, Service, SoundPlaying, SoundView } from "./api";
 import { formatLength } from "./loops.ts";
@@ -36,8 +39,10 @@ export const words = {
   /** The core's words when a sound cannot go anywhere. */
   away: "The device that runs the sound is not connected.",
   nobody: "Nobody runs the sound.",
-  /** proposed: the output does not work. */
-  outputBroken: "This computer's sound output is not working. Choose another in Setup › Sound.",
+  /** proposed: the label on a sound that is playing (was hard-coded in capitals in the panel). */
+  playing: "Playing",
+  /** proposed: said on the item a problem belongs to, before the core's sentence, for a screen reader. */
+  problemOn: (name: string) => `Problem with ${name}`,
   /** proposed: Setup › Sound › Output. */
   outputPanel: "Where the sound comes out",
   outputLabel: "Sound output",
@@ -109,18 +114,32 @@ export function progressFraction(p: SoundPlaying, saidAt: number, now: number): 
 export type Notice = { tone: "warn"; text: string };
 
 /**
- * What to warn about, most important first: a sound that did not play, the
- * sound device being away or nobody's, a broken output. Null when all is
- * well. A device that is not the one that plays says nothing about its own
- * output.
+ * What to warn about, most important first: why a sound did not play (the
+ * core says it in words on every device that shows the sound, including a
+ * sound output that is not working), the sound device being away or
+ * nobody's. Null when all is well. One message at a time, so a one-device
+ * church never sees the same trouble twice.
  */
 export function notice(view: SoundView | null): Notice | null {
   if (!view) return null;
   if (view.problem) return { tone: "warn", text: view.problem };
   if (view.away) return { tone: "warn", text: words.away };
   if (view.nobody) return { tone: "warn", text: words.nobody };
-  if (view.here && !view.output_ok) return { tone: "warn", text: words.outputBroken };
   return null;
+}
+
+/** The problem that belongs to this entry's item, in words, to show next to it. */
+export function entryProblem(view: SoundView | null, entry: SoundEntry): string | null {
+  if (!view?.problem || !view.problem_item) return null;
+  return view.problem_item === entry.item ? view.problem : null;
+}
+
+/**
+ * Whether the notice is already shown next to one of the entries, so the
+ * panel's own message is then only for a screen reader (said once, not twice).
+ */
+export function noticeOnEntry(view: SoundView | null, entries: SoundEntry[]): boolean {
+  return entries.some((e) => entryProblem(view, e) != null);
 }
 
 /** The line under the panel's heading: who plays, or what plays. */

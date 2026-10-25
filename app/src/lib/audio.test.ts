@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LoadedItemView, Service, SoundPlaying, SoundView } from "./api.ts";
 import {
+  entryProblem,
   isPlayingEntry,
+  noticeOnEntry,
   missingOutput,
   notice,
   positionNow,
@@ -45,6 +47,7 @@ const view = (over: Partial<SoundView> = {}): SoundView => ({
   output_ok: true,
   playing: null,
   problem: null,
+  problem_item: null,
   ...over,
 });
 
@@ -105,8 +108,29 @@ test("the notice names what is wrong, most important first", () => {
   });
   assert.equal(notice(view({ here: false, away: true, holder: "Sound desk" }))?.text, words.away);
   assert.equal(notice(view({ here: false, nobody: true }))?.text, words.nobody);
-  assert.equal(notice(view({ output_ok: false }))?.text, words.outputBroken);
-  assert.equal(notice(view({ here: false, holder: "Sound desk", output_ok: false })), null, "another device's output is its own business");
+  // A sound output that is not working arrives as the core's sentence in `problem`,
+  // on this device and on the others alike: the panel has no wording of its own for it.
+  const down = "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Setup › Sound.";
+  assert.equal(notice(view({ problem: down, output_ok: false }))?.text, down);
+  assert.equal(notice(view({ output_ok: false })), null, "the words come from the core, not from the panel");
+  assert.equal(notice(view({ here: false, holder: "Sound desk", output_ok: false })), null);
+});
+
+test("a problem is shown next to its item, and then the panel's own message is only for a screen reader", () => {
+  const entries = soundEntries([item("b"), item("c", "Amazing Grace")], service());
+  const said = "Walk-in music couldn't be played. The sound file isn't on Sound desk yet. It will arrive when Sound desk is connected.";
+  const v = view({ here: false, holder: "Sound desk", problem: said, problem_item: "b" });
+  assert.equal(entryProblem(v, entries[0]!), said);
+  assert.equal(entryProblem(v, entries[1]!), null, "only the item it belongs to");
+  assert.equal(noticeOnEntry(v, entries), true);
+  // A problem about the output as a whole belongs to no item and stays in the panel's message.
+  const whole = view({ problem: "The sound output on this computer isn't working.", problem_item: null });
+  assert.equal(entryProblem(whole, entries[0]!), null);
+  assert.equal(noticeOnEntry(whole, entries), false);
+  // An item the service no longer has (the service changed) leaves the message in the panel.
+  assert.equal(noticeOnEntry(view({ problem: said, problem_item: "gone" }), entries), false);
+  assert.equal(noticeOnEntry(null, entries), false);
+  assert.equal(words.playing, "Playing");
 });
 
 test("the panel says where the sound plays when it is another device", () => {
