@@ -42,6 +42,8 @@
   import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
   import { driverOffline, isDriving } from "../../lib/driving";
   import { slideMark } from "../../lib/presentView";
+  import { useLiveLook } from "../../lib/liveLook.svelte";
+  import { openState, saveOpen } from "../../lib/disclosure";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
   let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
@@ -376,6 +378,13 @@
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
   /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
   let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
+  /** A picture of what the projector shows, for an operator who wants to see it. Off unless turned on here; remembered on this computer. */
+  const LIVE_VIEW_KEY = "lampstand.present.liveView";
+  let liveView = $state(openState(LIVE_VIEW_KEY, false));
+  function toggleLiveView() {
+    liveView = !liveView;
+    saveOpen(LIVE_VIEW_KEY, liveView);
+  }
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
   let liveWidth = $derived(presenting || mediaOf(live.shown?.item) ? 1280 : 480);
@@ -449,6 +458,7 @@
     });
   });
   let output = $derived(mainOutput(live.outputs));
+  const look = useLiveLook(() => output);
   let showGuide = $state(true);
 
   // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
@@ -703,6 +713,7 @@
               {output?.name ?? "No screen yet"}{#if liveItem && live.live}{" "}· {liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{/if}
             </span>
             <span class="spacer"></span>
+            <Button size="small" icon="monitor" pressed={liveView} onclick={toggleLiveView} title={liveView ? "Hide what the projector shows" : "Show what the projector shows"}>Live view</Button>
             <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
             <Button size="small" icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
             <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
@@ -710,6 +721,25 @@
           </div>
           {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
           {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+          <div class="wall-top">
+          {#if liveView && !stepped}
+            <figure class="wall-live">
+              <div class="wall-live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
+                <SlidePreview
+                  lines={live.shownSlide?.lines ?? []}
+                  footer={live.shownSlide?.footer ?? null}
+                  image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
+                  overlay={live.overlay}
+                  safeArea={output?.safe_area}
+                  {showGuide}
+                  idle={live.idle ? look.idle : null}
+                  brand={look.brand}
+                  empty="Nothing on air. Press Space to start."
+                />
+              </div>
+              <figcaption class="muted">What {output?.name ?? "the screen"} shows</figcaption>
+            </figure>
+          {/if}
           {#if stepped && liveItem && live.live && live.liveSlide}
             {@const left = live.liveSlide.steps - live.live.step}
             <section class="wall-steps" aria-label="Builds on this slide">
@@ -741,6 +771,7 @@
             {#if tip}
               <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
             {/if}
+          </div>
           </div>
         </div>
         <div class="wall-body">
@@ -1201,6 +1232,35 @@
   }
   .wall-boxes:empty {
     display: none;
+  }
+  /* The live view sits beside the Sound box, loop and tips when there is room. */
+  .wall-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  .wall-top > .wall-boxes,
+  .wall-top > .wall-steps {
+    flex: 1 1 24rem;
+    min-width: 0;
+  }
+  .wall-live {
+    margin: 0;
+    flex: 0 1 24rem;
+    min-width: 14rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+  }
+  .wall-live-screen {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 0 0 2px var(--line);
+  }
+  .wall-live-screen.on {
+    box-shadow: 0 0 0 2px var(--live);
   }
   .wall-steps {
     display: flex;
