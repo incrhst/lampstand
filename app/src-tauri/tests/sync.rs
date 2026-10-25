@@ -1464,7 +1464,6 @@ async fn cut_takeover_and_return(both_dial: bool) {
     send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
 
     // Cut both ways, as a dead network would.
-    let cut_at = Instant::now();
     main.sync.cut();
     laptop.sync.cut();
     until_diag(
@@ -1495,7 +1494,7 @@ async fn cut_takeover_and_return(both_dial: bool) {
 
     until_diag(
         &[&main, &laptop],
-        Duration::from_secs(15),
+        Duration::from_secs(60),
         "takeover to open",
         || {
             role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver
@@ -1504,14 +1503,6 @@ async fn cut_takeover_and_return(both_dial: bool) {
     )
     .await;
     assert!(role(&laptop, RoleName::Stream).offline_secs.unwrap() >= 2);
-    // Each device counts a silence from the last frame it heard, and frames
-    // come every five seconds, so the laptop's "offline for two seconds" can
-    // begin up to five seconds before the cut while the main machine counts
-    // the laptop's absence from its own last frame. The main machine only
-    // believes a claim made by a device that really was out of reach for the
-    // takeover time, so the claim waits until it was, by either count: two
-    // seconds (the takeover time) after the cut itself.
-    tokio::time::sleep_until((cut_at + Duration::from_secs(3)).into()).await;
     send_ok(
         &laptop,
         TeamRequest::RoleClaim {
@@ -1965,7 +1956,7 @@ async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() 
     // The asker is still "waiting", but the standing now says what to do.
     until_diag(
         &[&main, &laptop],
-        Duration::from_secs(20),
+        Duration::from_secs(60),
         "takeover to open",
         || role(&laptop, RoleName::Stream).standing == RoleStanding::TakeOver,
     )
@@ -2024,4 +2015,146 @@ async fn always_allow_is_refused_for_projection_and_audio() {
         assert!(role(&main, name).always.is_empty(), "{name:?}");
         assert!(!role(&main, name).offers_always);
     }
+}
+
+/// Cuts both devices, as a dead network would, and waits until they know.
+async fn cut_both(main: &Device, laptop: &Device) {
+    main.sync.cut();
+    laptop.sync.cut();
+    until_diag(
+        &[main, laptop],
+        Duration::from_secs(30),
+        "both to notice the cut",
+        || {
+            main.sync.node().status().connected() == 0
+                && laptop.sync.node().status().connected() == 0
+        },
+    )
+    .await;
+}
+
+/// The default takeover time (two minutes), on a clock that is moved
+/// forward instead of waited for: a claim made as early as the rules allow
+/// is believed by a holder that counted a few seconds less of the silence
+/// (frames come every five seconds, so two devices' counts differ), and
+/// the old holder yields. Nothing in this test waits for the heartbeat.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_little_less() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to hear",
+        || role(&laptop, RoleName::Stream).standing == RoleStanding::Ask,
+    )
+    .await;
+    assert_eq!(team(&laptop).presenter.takeover_secs, 120);
+    cut_both(&main, &laptop).await;
+
+    // Two minutes and five seconds in: not yet (the margin is ten seconds).
+    laptop.sync.node().skip_wall_clock(Duration::from_secs(125));
+    assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
+    let soon = send_err(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    assert!(soon.contains("went offline only recently"), "{soon}");
+    // Past the takeover time and the margin: it may.
+    laptop.sync.node().skip_wall_clock(Duration::from_secs(6));
+    assert_eq!(
+        role(&laptop, RoleName::Stream).standing,
+        RoleStanding::TakeOver
+    );
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+
+    // The sanctuary counted four seconds less of it: still the takeover time.
+    main.sync.node().skip_wall_clock(Duration::from_secs(127));
+    main.sync.restore().await.unwrap();
+    laptop.sync.restore().await.unwrap();
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(60),
+        "the old holder to yield",
+        || !role(&main, RoleName::Stream).holds,
+    )
+    .await;
+    assert_eq!(
+        role(&main, RoleName::Stream).replaced_by.as_deref(),
+        Some("Mary's laptop")
+    );
+    assert!(role(&laptop, RoleName::Stream).holds);
+}
+
+/// The same, against a holder that saw the claimant away for less than the
+/// takeover time: it keeps the role. A claimant cannot make its own count
+/// stand in for the holder's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_holder_that_saw_the_claimant_away_for_less_than_the_takeover_time_keeps_its_role() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to hear",
+        || role(&laptop, RoleName::Stream).standing == RoleStanding::Ask,
+    )
+    .await;
+    cut_both(&main, &laptop).await;
+    laptop.sync.node().skip_wall_clock(Duration::from_secs(131));
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+
+    // The sanctuary counted only 100 seconds.
+    main.sync.node().skip_wall_clock(Duration::from_secs(100));
+    main.sync.restore().await.unwrap();
+    laptop.sync.restore().await.unwrap();
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(60),
+        "both to reconnect",
+        || {
+            main.sync.node().status().connected() == 1
+                && laptop.sync.node().status().connected() == 1
+        },
+    )
+    .await;
+    // Time for the records to cross and be judged.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(
+        role(&main, RoleName::Stream).holds,
+        "{}",
+        dump(&[&main, &laptop])
+    );
+    assert!(role(&main, RoleName::Stream).replaced_by.is_none());
 }

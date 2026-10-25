@@ -35,5 +35,5 @@ flaky takeover tests was found and fixed in the app tests: a takeover time
 shorter than the five-second heartbeat lets the claimant count its absence
 from an earlier last frame than the holder counts from, so the holder can
 rightly refuse a claim made too soon after the cut. Those tests now wait
-until the claimant really was out of reach for the takeover time. This test
-sets a two-second takeover too and may be exposed to it.
+until the claimant really was out of reach for the takeover time. The claim timing is no longer a cause: a claimant now waits the takeover
+time plus ten seconds (issue #153).
