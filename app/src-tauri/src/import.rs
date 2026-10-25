@@ -233,6 +233,47 @@ pub fn import_files(library: &Library, paths: &[String], emit: &dyn Fn(Event)) -
 
 pub const PROGRESS_EVERY: usize = 100;
 
+/// `LibraryRequest::ImportSongSelectDownloads`: imports the SongSelect
+/// files in `dir` (not its subfolders) modified at or after `since` (Unix
+/// seconds). `None` when there is nothing new, so a watcher stays quiet.
+///
+/// A `.txt` is only taken if it carries SongSelect's `CCLI Song #` footer:
+/// Downloads is full of other text files.
+pub fn import_song_select_downloads(library: &Library, dir: &Path, since: u64) -> Option<String> {
+    let since = std::time::UNIX_EPOCH + std::time::Duration::from_secs(since);
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t >= since)
+        })
+        .filter(|p| match p.extension().and_then(|e| e.to_str()) {
+            Some(e) if e.eq_ignore_ascii_case("usr") => true,
+            Some(e) if e.eq_ignore_ascii_case("txt") => {
+                p.metadata().is_ok_and(|m| m.len() < 1 << 20)
+                    && std::fs::read(p).is_ok_and(|b| {
+                        String::from_utf8_lossy(&b)
+                            .to_ascii_lowercase()
+                            .contains("ccli song #")
+                    })
+            }
+            _ => false,
+        })
+        .collect();
+    if files.is_empty() {
+        return None;
+    }
+    files.sort();
+    let mut summary = Summary::default();
+    for file in &files {
+        import_path(library, file, &mut summary, &|_, _| {});
+    }
+    Some(summary.message())
+}
+
 /// Imports one file or folder into the library. `progress` hears (songs
 /// stored so far, songs in this file) every [`PROGRESS_EVERY`] songs.
 pub fn import_path(
@@ -257,6 +298,20 @@ pub fn import_path(
         ) {
             Ok(import) => {
                 let of = import.songs.len();
+                // CCLI numbers already in the library, read once and only if
+                // this file has any: a song downloaded again from SongSelect
+                // with a corrected line is the same song, not a new one.
+                let mut known_ccli = import
+                    .songs
+                    .iter()
+                    .any(|s| s.ccli_number.is_some())
+                    .then(|| {
+                        library
+                            .songs()
+                            .map(|all| all.iter().filter_map(|s| s.ccli_number).collect())
+                            .unwrap_or_else(|_| std::collections::HashSet::<u32>::new())
+                    })
+                    .unwrap_or_default();
                 for (i, mut song) in import.songs.into_iter().enumerate() {
                     if i % PROGRESS_EVERY == 0 && i > 0 {
                         progress(i, of);
@@ -264,7 +319,13 @@ pub fn import_path(
                     song.id = content_id(&song);
                     let stored = library.song(song.id).and_then(|existing| match existing {
                         Some(_) => Ok(false),
-                        None => library.put_song(&song).map(|()| true),
+                        None if song.ccli_number.is_some_and(|n| known_ccli.contains(&n)) => {
+                            Ok(false)
+                        }
+                        None => library.put_song(&song).map(|()| {
+                            known_ccli.extend(song.ccli_number);
+                            true
+                        }),
                     });
                     match stored {
                         Ok(true) => summary.songs += 1,
@@ -367,5 +428,49 @@ mod tests {
             detect(Path::new("talk.pptx")),
             Detected::NotYet("presentations")
         );
+    }
+
+    #[test]
+    fn imports_only_new_songselect_files_from_downloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        std::fs::copy(
+            fixture("songselect/lamp-for-the-path.usr"),
+            dir.path().join("a.usr"),
+        )
+        .unwrap();
+        std::fs::copy(
+            fixture("songselect/river-of-peace.txt"),
+            dir.path().join("river.txt"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "shopping list").unwrap();
+        std::fs::write(dir.path().join("pic.png"), "x").unwrap();
+        let message = import_song_select_downloads(&library, dir.path(), 0).unwrap();
+        assert!(message.starts_with("Imported 2 songs"), "{message}");
+        let again = import_song_select_downloads(&library, dir.path(), 0).unwrap();
+        assert!(again.contains("2 already in the library"), "{again}");
+        assert!(import_song_select_downloads(&library, dir.path(), u64::MAX / 2).is_none());
+    }
+
+    #[test]
+    fn a_song_with_a_known_ccli_number_is_not_added_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        let original = std::fs::read_to_string(fixture("songselect/lamp-for-the-path.usr")).unwrap();
+        let first = dir.path().join("first.usr");
+        std::fs::write(&first, &original).unwrap();
+        // The same song with a lyric corrected: a different content ID.
+        let second = dir.path().join("second.usr");
+        std::fs::write(&second, original.replacen("warm and small", "warm and bright", 1)).unwrap();
+        assert_ne!(original, std::fs::read_to_string(&second).unwrap());
+        let mut summary = Summary::default();
+        import_path(&library, &first, &mut summary, &|_, _| {});
+        import_path(&library, &second, &mut summary, &|_, _| {});
+        assert_eq!((summary.songs, summary.existing), (1, 1));
     }
 }

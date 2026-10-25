@@ -41,6 +41,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
+  import SongSelectCard from "./SongSelectCard.svelte";
   import SongEditor from "./SongEditor.svelte";
 
   type Item = NonNullable<Service["items"][string]>;
@@ -128,6 +129,9 @@
 
   let busy = $state(false);
   let downloading = $state(false);
+  /** Watching Downloads for SongSelect files. */
+  let watching = $state(false);
+  let watchTimer: ReturnType<typeof setInterval> | undefined;
   let dropping = $state(false);
   /** What the last import added, shown for a few seconds. */
   let notice = $state("");
@@ -536,6 +540,31 @@
     }
   }
 
+  /** Seconds before "now" a download may have landed and still count: clocks differ a little. */
+  const WATCH_SLACK = 2;
+  const WATCH_EVERY_MS = 3000;
+
+  function toggleWatching() {
+    watching = !watching;
+    clearInterval(watchTimer);
+    if (!watching) return;
+    let since = Math.floor(Date.now() / 1000) - WATCH_SLACK;
+    watchTimer = setInterval(async () => {
+      if (busy) return;
+      const asked = Math.floor(Date.now() / 1000) - WATCH_SLACK;
+      try {
+        const message = await request({ area: "Library", request: { ImportSongSelectDownloads: { since } } }, "Text");
+        since = asked;
+        if (!message) return;
+        live.status = message;
+        announce(summarize(importedCounts(message)));
+      } catch (e) {
+        // Keep watching: one failed look is not worth stopping for.
+        report(e);
+      }
+    }, WATCH_EVERY_MS);
+  }
+
   function overPanel(position: { x: number; y: number }): boolean {
     if (!panel) return false;
     // Tauri gives physical pixels; the page works in CSS pixels.
@@ -584,6 +613,7 @@
       stop?.();
       clearTimeout(addedTimer);
       clearTimeout(noticeTimer);
+      clearInterval(watchTimer);
     };
   });
 </script>
@@ -686,6 +716,7 @@
     {#if showEmpty}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
         {@render dropZone()}
         <p class="muted small center">
           Scripture is built in. Try
@@ -697,12 +728,14 @@
     {#if showSongCard && allSongs.length === 0}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
       </div>
     {:else}
       <div class="rows">
         {#if showSongCard}
           <div class="card-gap">
             <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
           </div>
         {/if}
         {#if showRecent}

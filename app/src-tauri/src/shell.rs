@@ -55,7 +55,7 @@ use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
 use crate::handler::{App, EventSink, Placement, WindowHost};
-use crate::import::import_files;
+use crate::import::{import_files, import_song_select_downloads};
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
@@ -367,6 +367,17 @@ async fn api(
             let paths = vec![path.display().to_string()];
             blocking(Box::new(move || {
                 Response::Text(import_files(&library, &paths, &*emit))
+            }))
+            .await
+        }
+        Request::Library(LibraryRequest::ImportSongSelectDownloads { since }) => {
+            let Ok(dir) = app_handle.path().download_dir() else {
+                return Ok(Response::Text(String::new()));
+            };
+            blocking(Box::new(move || {
+                Response::Text(
+                    import_song_select_downloads(&library, &dir, since).unwrap_or_default(),
+                )
             }))
             .await
         }
