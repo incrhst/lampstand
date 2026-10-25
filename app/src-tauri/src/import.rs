@@ -3,10 +3,13 @@
 //! matching `lampstand-import` importer. Best effort, like the importers:
 //! a file we cannot read is reported, never a failed import.
 
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use lampstand_api::Event;
+use lampstand_core::id::Timestamp;
 use lampstand_core::scripture::TranslationId;
 use lampstand_core::song::{lyrics, Song, SongId};
 use lampstand_import::{import_bible, import_songs, BibleFormat, ImportError, SongFormat};
@@ -233,6 +236,59 @@ pub fn import_files(library: &Library, paths: &[String], emit: &dyn Fn(Event)) -
 
 pub const PROGRESS_EVERY: usize = 100;
 
+/// `LibraryRequest::ImportSongSelectDownloads`: imports the SongSelect
+/// files in `dir` (not its subfolders) modified at or after `since`. `None`
+/// when there is nothing new, so a watcher stays quiet.
+///
+/// `handled` holds the files a previous look imported, with the modified
+/// time they had then: the watcher's windows overlap, and a file it already
+/// took is not reported again as "already in the library". A file saved
+/// over with a new modified time counts as new.
+///
+/// A `.txt` is only taken if it carries SongSelect's `CCLI Song #` footer:
+/// Downloads is full of other text files.
+pub fn import_song_select_downloads(
+    library: &Library,
+    dir: &Path,
+    since: Timestamp,
+    handled: &mut HashMap<PathBuf, SystemTime>,
+) -> Option<String> {
+    let since = UNIX_EPOCH.checked_add(Duration::from_millis(since.0.max(0) as u64))?;
+    // Older than the window: never looked at again, so no longer needed.
+    handled.retain(|_, modified| *modified >= since);
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter_map(|p| {
+            let modified = p.metadata().and_then(|m| m.modified()).ok()?;
+            (modified >= since && handled.get(&p) != Some(&modified)).then_some((p, modified))
+        })
+        .filter(|(p, _)| match p.extension().and_then(|e| e.to_str()) {
+            Some(e) if e.eq_ignore_ascii_case("usr") => true,
+            Some(e) if e.eq_ignore_ascii_case("txt") => {
+                p.metadata().is_ok_and(|m| m.len() < 1 << 20)
+                    && std::fs::read(p).is_ok_and(|b| {
+                        String::from_utf8_lossy(&b)
+                            .to_ascii_lowercase()
+                            .contains("ccli song #")
+                    })
+            }
+            _ => false,
+        })
+        .collect();
+    if files.is_empty() {
+        return None;
+    }
+    files.sort();
+    let mut summary = Summary::default();
+    for (file, modified) in files {
+        import_path(library, &file, &mut summary, &|_, _| {});
+        handled.insert(file, modified);
+    }
+    Some(summary.message())
+}
+
 /// Imports one file or folder into the library. `progress` hears (songs
 /// stored so far, songs in this file) every [`PROGRESS_EVERY`] songs.
 pub fn import_path(
@@ -257,6 +313,18 @@ pub fn import_path(
         ) {
             Ok(import) => {
                 let of = import.songs.len();
+                // CCLI numbers already in the library, read once and only if
+                // this file has any: a song downloaded again from SongSelect
+                // with a corrected line is the same song, not a new one.
+                let mut known_ccli: HashSet<u32> =
+                    if import.songs.iter().any(|s| s.ccli_number.is_some()) {
+                        library
+                            .songs()
+                            .map(|all| all.iter().filter_map(|s| s.ccli_number).collect())
+                            .unwrap_or_default()
+                    } else {
+                        HashSet::new()
+                    };
                 for (i, mut song) in import.songs.into_iter().enumerate() {
                     if i % PROGRESS_EVERY == 0 && i > 0 {
                         progress(i, of);
@@ -264,7 +332,13 @@ pub fn import_path(
                     song.id = content_id(&song);
                     let stored = library.song(song.id).and_then(|existing| match existing {
                         Some(_) => Ok(false),
-                        None => library.put_song(&song).map(|()| true),
+                        None if song.ccli_number.is_some_and(|n| known_ccli.contains(&n)) => {
+                            Ok(false)
+                        }
+                        None => library.put_song(&song).map(|()| {
+                            known_ccli.extend(song.ccli_number);
+                            true
+                        }),
                     });
                     match stored {
                         Ok(true) => summary.songs += 1,
@@ -367,5 +441,66 @@ mod tests {
             detect(Path::new("talk.pptx")),
             Detected::NotYet("presentations")
         );
+    }
+
+    #[test]
+    fn imports_only_new_songselect_files_from_downloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        std::fs::copy(
+            fixture("songselect/lamp-for-the-path.usr"),
+            dir.path().join("a.usr"),
+        )
+        .unwrap();
+        std::fs::copy(
+            fixture("songselect/river-of-peace.txt"),
+            dir.path().join("river.txt"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "shopping list").unwrap();
+        std::fs::write(dir.path().join("pic.png"), "x").unwrap();
+        let mut handled = HashMap::new();
+        let look = |handled: &mut HashMap<_, _>, since| {
+            import_song_select_downloads(&library, dir.path(), Timestamp(since), handled)
+        };
+        let message = look(&mut handled, 0).unwrap();
+        assert!(message.starts_with("Imported 2 songs"), "{message}");
+        // The next look overlaps this one: what it took stays quiet.
+        assert_eq!(look(&mut handled, 0), None);
+        // Another copy of a song is still worth a word.
+        std::fs::copy(
+            fixture("songselect/lamp-for-the-path.usr"),
+            dir.path().join("a (1).usr"),
+        )
+        .unwrap();
+        let again = look(&mut handled, 0).unwrap();
+        assert!(again.contains("1 already in the library"), "{again}");
+        assert_eq!(look(&mut HashMap::new(), i64::MAX), None);
+    }
+
+    #[test]
+    fn a_song_with_a_known_ccli_number_is_not_added_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        let original =
+            std::fs::read_to_string(fixture("songselect/lamp-for-the-path.usr")).unwrap();
+        let first = dir.path().join("first.usr");
+        std::fs::write(&first, &original).unwrap();
+        // The same song with a lyric corrected: a different content ID.
+        let second = dir.path().join("second.usr");
+        std::fs::write(
+            &second,
+            original.replacen("warm and small", "warm and bright", 1),
+        )
+        .unwrap();
+        assert_ne!(original, std::fs::read_to_string(&second).unwrap());
+        let mut summary = Summary::default();
+        import_path(&library, &first, &mut summary, &|_, _| {});
+        import_path(&library, &second, &mut summary, &|_, _| {});
+        assert_eq!((summary.songs, summary.existing), (1, 1));
     }
 }
