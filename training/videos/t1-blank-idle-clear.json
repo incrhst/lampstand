@@ -1,0 +1,96 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training 1",
+   "heading": "Blank, Idle, Clear",
+   "sub": "Calm in one key",
+   "say": "Blank, Idle and Clear. How to keep the screen calm.",
+   "narration": "narration/t1-blank-idle-clear/01.mp3",
+   "durationSec": 6
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/blank.png",
+   "heading": "Blank: the full stop",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 95.6,
+     "y": 22,
+     "label": "Full stop blanks"
+    },
+    {
+     "x": 8.5,
+     "y": 21,
+     "label": "The room sees black"
+    },
+    {
+     "x": 77,
+     "y": 10,
+     "label": "Show · Idle · Blank"
+    }
+   ],
+   "say": "Press the full stop key and the screen goes black at once. Press it again, or choose Show, and the slide comes back where it was.",
+   "narration": "narration/t1-blank-idle-clear/02.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/idle.png",
+   "heading": "Idle: the waiting screen",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 77,
+     "y": 10,
+     "label": "Idle"
+    },
+    {
+     "x": 8.5,
+     "y": 21,
+     "label": "The idle screen is up"
+    },
+    {
+     "x": 34,
+     "y": 23,
+     "label": "Show goes back to the slide"
+    }
+   ],
+   "say": "Idle puts up your idle screen, usually the church's logo, without closing the service. Use it in the gaps between items. Choose Show to bring the slide back, or press Space to carry on.",
+   "narration": "narration/t1-blank-idle-clear/03.mp3",
+   "durationSec": 15
+  },
+  {
+   "type": "bullets",
+   "heading": "Which one?",
+   "tone": "table",
+   "items": [
+    "Blank: black, at once",
+    "Idle: the waiting screen, for gaps",
+    "Clear text: hides the words, keeps the picture",
+    "Show: back to the slide"
+   ],
+   "say": "Blank puts up black. Idle puts up the waiting screen, for gaps between items. Clear text, in the More menu, hides the words but keeps the background. Show brings the slide back.",
+   "narration": "narration/t1-blank-idle-clear/04.mp3",
+   "durationSec": 16
+  },
+  {
+   "type": "quote",
+   "text": "Blank first, think second.",
+   "attribution": "When anything goes wrong",
+   "say": "If anything goes wrong, a wrong slide, a typo, anything at all: blank first, then think. Nobody minds a black screen for a moment.",
+   "narration": "narration/t1-blank-idle-clear/05.mp3",
+   "durationSec": 12.5
+  },
+  {
+   "type": "cta",
+   "heading": "Try each one",
+   "action": "On the sermon deck that comes next",
+   "say": "Try each one on the sermon deck that comes next. Press Space to start it.",
+   "narration": "narration/t1-blank-idle-clear/06.mp3",
+   "durationSec": 8.5
+  }
+ ]
+}

@@ -83,8 +83,8 @@ pub const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../training/media/t1-going-live.mp4"),
     ),
     (
-        "t1-blank-logo-clear.mp4",
-        include_bytes!("../../../training/media/t1-blank-logo-clear.mp4"),
+        "t1-blank-idle-clear.mp4",
+        include_bytes!("../../../training/media/t1-blank-idle-clear.mp4"),
     ),
     (
         "t2-five-surprises.mp4",

@@ -17,19 +17,19 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 47,
-     "y": 43,
+     "x": 42,
+     "y": 83,
      "label": "Press the verse number, or C"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Or click the slide"
+     "x": 26,
+     "y": 83,
+     "label": "Or click the card"
     }
    ],
-   "say": "One. The leader repeats a verse or the chorus. Press that verse's number, or C for the chorus. Or click the slide you want.",
+   "say": "One. The leader repeats a verse or the chorus. Press that verse's number, or C for the chorus. Or click the card you want.",
    "narration": "narration/t2-five-surprises/02.mp3",
-   "durationSec": 13
+   "durationSec": 11.5
   },
   {
    "type": "screenshot",
@@ -38,13 +38,13 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 10,
-     "y": 66,
+     "x": 26,
+     "y": 86,
      "label": "Shift+↓ to the new item"
     },
     {
-     "x": 47,
-     "y": 43,
+     "x": 10,
+     "y": 79,
      "label": "Enter starts it"
     }
    ],
@@ -59,8 +59,8 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 50,
-     "y": 16,
+     "x": 35,
+     "y": 15.6,
      "label": "Press /, type Rom 8:28"
     },
     {
@@ -94,9 +94,14 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 44,
-     "y": 71,
+     "x": 95.6,
+     "y": 22,
      "label": "Full stop. Now."
+    },
+    {
+     "x": 8.5,
+     "y": 21,
+     "label": "The room sees black"
     }
    ],
    "say": "Five. Something goes wrong. Press the full stop. The screen goes black, and you have time to think.",

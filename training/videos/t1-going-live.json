@@ -17,24 +17,29 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 47,
-     "y": 43,
-     "label": "On air now"
+     "x": 42,
+     "y": 83,
+     "label": "LIVE: on air now"
     },
     {
-     "x": 36,
-     "y": 71,
+     "x": 8.5,
+     "y": 21,
+     "label": "The main screen, small"
+    },
+    {
+     "x": 89,
+     "y": 22,
      "label": "Next: Space or →"
     },
     {
-     "x": 26,
-     "y": 71,
+     "x": 80,
+     "y": 22,
      "label": "Previous: ←"
     }
    ],
-   "say": "The slide in the red frame is on air. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "say": "The card marked LIVE, in red, is on air. The small picture at the top left shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
    "narration": "narration/t1-going-live/02.mp3",
-   "durationSec": 13
+   "durationSec": 19
   },
   {
    "type": "screenshot",
@@ -43,24 +48,24 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 87,
-     "y": 29,
-     "label": "What Space shows next"
+     "x": 58,
+     "y": 84,
+     "label": "NEXT: what Space puts up"
     },
     {
-     "x": 87,
-     "y": 49,
+     "x": 11.5,
+     "y": 88,
      "label": "Notes for you"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Every slide of this item"
+     "x": 26,
+     "y": 57,
+     "label": "Every slide of the service"
     }
    ],
-   "say": "On the right, Next shows what Space will put up, and the notes are for you, never for the room. Below, every slide of the item is laid out.",
+   "say": "The gold card marked NEXT is what Space will put up. The notes beside the item on air are for you, never for the room. And the whole service is laid out on the wall, every slide of every item.",
    "narration": "narration/t1-going-live/03.mp3",
-   "durationSec": 12
+   "durationSec": 16
   },
   {
    "type": "screenshot",
@@ -69,45 +74,97 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 10,
-     "y": 66,
+     "x": 26,
+     "y": 86,
      "label": "Shift+↓ chooses"
     },
     {
-     "x": 47,
-     "y": 43,
+     "x": 8.5,
+     "y": 21,
      "label": "Still on air"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Click a slide to show it now"
+     "x": 42,
+     "y": 86,
+     "label": "Click a card to show it now"
     }
    ],
-   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any slide to show it at once.",
+   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any card to show it at once.",
    "narration": "narration/t1-going-live/04.mp3",
-   "durationSec": 15
+   "durationSec": 17.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/deck.png",
+   "heading": "Slides with builds",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 6,
+     "y": 57,
+     "label": "On screen now"
+    },
+    {
+     "x": 28,
+     "y": 57,
+     "label": "What the next click adds"
+    },
+    {
+     "x": 23,
+     "y": 34.5,
+     "label": "Clicks left on this slide"
+    }
+   ],
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, a panel shows what is on screen beside what the next click adds, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "narration": "narration/t1-going-live/05.mp3",
+   "durationSec": 24
   },
   {
    "type": "bullets",
-   "heading": "Songs and decks",
+   "heading": "Song keys",
    "tone": "table",
    "items": [
     "1 to 9 jump to that verse",
     "C jumps to the chorus",
-    "A deck's builds: one Space each"
+    "Or click the card you want"
    ],
-   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. In a slide deck, each press of Space plays the next build, until the slide is complete.",
-   "narration": "narration/t1-going-live/05.mp3",
-   "durationSec": 13
+   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. Or click the card you want.",
+   "narration": "narration/t1-going-live/06.mp3",
+   "durationSec": 10.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/focus.png",
+   "heading": "Focus: only the cards",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 64.5,
+     "y": 3.8,
+     "label": "What is on air"
+    },
+    {
+     "x": 76,
+     "y": 3.8,
+     "label": "Blank, always in reach"
+    },
+    {
+     "x": 94,
+     "y": 3.8,
+     "label": "F or Esc comes back"
+    }
+   ],
+   "say": "Press F for Focus. Everything above the wall hides, so you see only the cards. Blank, and Stop the sound now, stay in the small bar at the top. Press F again, or Escape, to bring everything back.",
+   "narration": "narration/t1-going-live/07.mp3",
+   "durationSec": 21.5
   },
   {
    "type": "cta",
    "heading": "Your turn",
    "action": "Press Space, then run the practice items",
    "say": "Your turn. Press Space, and run the practice items as if it were Sunday.",
-   "narration": "narration/t1-going-live/06.mp3",
-   "durationSec": 8
+   "narration": "narration/t1-going-live/08.mp3",
+   "durationSec": 6
   }
  ]
 }

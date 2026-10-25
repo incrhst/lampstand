@@ -61,7 +61,15 @@ const shots = {
   },
   // Training 1, Amazing Grace on air.
   "song": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 3, 1); },
-  // Training 1, the sermon deck with its builds and notes.
+  // The same in focus (F): the cards only.
+  "focus": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
+  // The same with Idle chosen: the idle screen is up, the service stays open.
+  "idle": async (p) => {
+    await openTraining(p, "Training 1: Run a service");
+    await go(p, 3, 1);
+    await p.getByRole("radio", { name: "Idle" }).or(p.getByRole("button", { name: "Idle", exact: true })).first().click();
+  },
+  // Training 1, the sermon deck one click into slide 2's builds: the builds panel shows.
   "deck": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 8, 2); },
   // The same, blanked with the full stop.
   "blank": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 8, 2); await p.keyboard.press("."); },
