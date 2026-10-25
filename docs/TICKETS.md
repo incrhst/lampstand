@@ -185,6 +185,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T19 | Relay binary and Docker image | S | T17, T18 | CD-3 | `relay/` | Not started |
 | T32 | Fidelity corpus harness (SSIM, private corpus job) | S | T24, T29 | NFR fidelity | `slides/tests/corpus.rs`, CI | Not started |
 | T36 | Readiness check and pre-service caching | S | T35, T23 | CD-10, PS-6 | `library/src/readiness.rs` | Not started |
+| T68 | ChordPro file importer ([#245](https://github.com/incrhst/lampstand/issues/245)) | A song from a link reads ChordPro charts with it (T125). |
 | T37 | Service packages | S | T35 | CD-8 | `library/src/package.rs` | Not started |
 | T38 | CCLI usage log and report | S | T35 | RP-1 | `library/src/usage.rs` | Not started |
 | T40 | Google sign-in, picker, Drive download and export | S | T39, T42 | PS-2 | `connectors/src/google.rs` | Not started |
@@ -542,11 +543,11 @@ These sit on the critical path, but no session can do them:
 
 ## 1.0.0
 
-1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a church-ready cut of Phase 1, plus recording the sermon. It is not every P0 in the PRD: the parts that need a server or an outside approval move to 1.x (below).
+1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a church-ready cut of Phase 1, plus recording the sermon and adding a song from a link. It is not every P0 in the PRD: the parts that need a server or an outside approval move to 1.x (below).
 
 **How it ships.** The GitHub milestone "1.0.0" holds everything 1.0.0 needs. We get there through 0.9.x releases: each new 0.9.x takes a few tickets out of the 1.0.0 milestone into its own milestone, and ships them. 1.0.0 is tagged when the 1.0.0 milestone is empty and the release checks below pass. "Send sound to the stream" (#125, #137, milestone 0.10.0) is part of 1.0.0 too.
 
-**The order.** Safety first, because every later release carries it. Then what a church needs on its first Sunday: readiness, CCLI reporting, the migration wizard and service packages. Recording comes alongside: T117 and T119 can start at once. Windows signing, accessibility and performance come last, because they check the finished screens.
+**The order.** Safety first, because every later release carries it. Then what a church needs on its first Sunday: readiness, CCLI reporting, the migration wizard and service packages. Recording comes alongside: T117 and T119 can start at once. A song from a link (T125) follows Paste lyrics (T114) and the ChordPro importer (T68). Windows signing, accessibility and performance come last, because they check the finished screens.
 
 ### In 1.0.0, already ticketed
 
@@ -565,7 +566,7 @@ These tickets are described above. Each gets a 1.0.0 issue.
 
 ### After 1.0.0 (1.x)
 
-Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload links (T19, T44, T64), Google Slides and linked deck updates (T40, T41, the rest of T53), the fidelity report and the deck corpus (the rest of T31, T32), Teams permissions (the rest of T18, T54), and the P1 and P2 tickets (T63, T66 to T74, T82, T83, T85, T92, T94, T96). Plans from Notion (T103 to T112), Paste lyrics and the library MCP server (T114 to T116) keep their own order and may ship in any 0.9.x.
+Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload links (T19, T44, T64), Google Slides and linked deck updates (T40, T41, the rest of T53), the fidelity report and the deck corpus (the rest of T31, T32), Teams permissions (the rest of T18, T54), and the P1 and P2 tickets (T63, T66, T67, T69 to T74, T82, T83, T85, T92, T94, T96). Plans from Notion (T103 to T112), Paste lyrics and the library MCP server (T114 to T116) keep their own order and may ship in any 0.9.x; T125 needs T114 first.
 
 ### Recording the sermon
 
@@ -597,6 +598,25 @@ Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload 
 **T123. Recordings.** In Plan, on the device that records, a Recordings list, newest first: name, date, length, and whether it has been exported. Other devices say "Recordings are on {name}". Opening one shows the waveform (T118 `peaks`), play from a point, trim handles for the start and end (kept as points; "Reset" clears them), and Export (MP3 or WAV, with "Even out the level" ticked), with progress, then "Show in folder". An OBS video file beside the recording shows its name and "Show in folder" if it is on this computer. Move to Trash uses the system's Trash, never a permanent delete, and asks first. Done when component tests cover the list, trimming and an export's progress, and the keyboard reaches every control (T60's standard).
 
 **T124. Documentation for recording.** In `roles.md`: Stream also records the sermon, the changed sentence about room sound (decision 0012, "What this changes"), and the hand-over prompt while recording. In ARCHITECTURE.md: a "Recording the sermon" section, the protocol 10 frames, and what syncs (nothing about recordings beyond `RecordNow`). In RELEASING.md: a real-hardware recording check (a USB interface on a Mac and on Windows, recording while OBS and Zoom read the same input, a power-cut recording repaired, an export played on a phone). On the website: a Recording page for volunteers, in the house style. Done when every **proposed** detail in decision 0012 is either approved or changed in the decision.
+
+### A song from a link
+
+[Decision 0013](decisions/0013-song-from-a-link.md): paste a link to the church's own shared document or song file, or to a public-domain hymn, and Lampstand reads it as a song for the person to check. Lyric sites and SongSelect links are refused before any request, with the way that works. Read the decision first.
+
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T125 | Add a song from a link | S | T114, T68 | SL-6, RP-1 | `connectors/src/links.rs`, `core/src/song.rs`, `api/src/lib.rs`, `app/src-tauri/src/handler.rs`, `app/src/routes/plan/PasteSong.svelte` | Not started ([#244](https://github.com/incrhst/lampstand/issues/244)) |
+
+**T125. Add a song from a link.** Add `links::classify_song`, beside `classify_sound`, and `LibraryRequest::SongFromLink { url }`, answered with `Response::ParsedSong` as `ParseLyrics` is (T114), so the person checks the song in the Paste lyrics dialog before saving it with `PutSong`.
+
+- **Links it takes** (decision 0013, point 1). A Google Doc, read through its plain-text export (`/export?format=txt`). Google Drive, Dropbox (`dl=1`) and OneDrive files, which `links` already handles for decks and sound. A plain `https://` link whose name ends in `.txt`, `.cho`, `.chopro`, `.chordpro`, `.xml` (OpenLyrics) or an OpenSong file. Public-domain hymn pages from the list in `links` (**proposed**: hymnary.org text pages, only if its terms allow it; check them and quote the clause in the PR, or leave the list empty).
+- **Links it refuses before any request.** Lyric sites (Genius, AZLyrics, Musixmatch, Lyrics.com, LyricFind, SongLyrics, Lyrics Translate and others, kept in one list) with "Lampstand can't take words from lyric sites: their terms don't allow it. Copy the words from your church's own chart, or from SongSelect, and use Paste lyrics." SongSelect (`songselect.ccli.com`) with "Open the song in SongSelect, then copy the words into Paste lyrics, or download the file and add it with Import songs." Any other web page says which links work. Follow the YouTube refusals in `classify_sound`.
+- **The download.** In the shell, as `AddSoundFromLink` (T113): async with `ImportProgress`, a 2 MB limit, and `links`' handling of a private, missing or HTML response ("the link leads to a web page, not a song file"). Read the file by its kind: text through `songs::paste`, ChordPro through T68, OpenLyrics and OpenSong through their importers. A file with more than one song takes the first and says how many it left.
+- **Where it came from.** Add `Song::source: Option<SongSource>` (`Link { url }`, `Paste`, `Assistant`), written only when set, as a contract change recorded in ARCHITECTURE.md. T115 needs the same field; whichever lands first adds it.
+- **CCLI** (decision 0013, point 5). If no CCLI number came with the song, the dialog asks for one, with "Public domain" as the other answer (it sets the copyright line to "Public domain"), and it can be left empty. The library shows "No CCLI number" on a song with neither. The note "Only add words your church has the right to use." stays until T38 is built.
+- **The UI.** In Plan, the Paste lyrics dialog gets "From a link": a paste field, then the same check. Pasting or dropping a song link on the library does the same. All new words are proposed until the owner approves them.
+
+Done when tests (wiremock, as `links` has) cover a Google Doc, a Dropbox ChordPro chart, a direct OpenLyrics file and a plain text file that each come back as a checked song; a private link, a missing one and an HTML page; the size limit; a lyric site, SongSelect and an unknown web page refused without a request; a song with no CCLI number; and `source` read back from a saved song. Done, too, when a song added from a shared Google Doc goes live in Present.
 
 ### Release checks for 1.0.0 (not code)
 

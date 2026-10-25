@@ -123,6 +123,7 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 | SL-3 | Full-text search across titles and lyrics, with typo tolerance. | P0 |
 | SL-4 | Import from SongSelect (CCLI), OpenLyrics, OpenSong, OpenLP, EasyWorship, ProPresenter and FreeShow libraries. | P0 |
 | SL-5 | Several languages per song, shown side by side or alternating. | P1 |
+| SL-6 | Add a song from a link to the church's own shared document or song file, or to a public-domain hymn. Refuse lyric sites and SongSelect links with the way that works, and ask for the CCLI number. See [decision 0013](decisions/0013-song-from-a-link.md). | P0 |
 
 ### Scripture
 
