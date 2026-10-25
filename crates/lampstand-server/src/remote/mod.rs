@@ -1,4 +1,4 @@
-//! The phone remote (T99, T100; decision 0006): a helper's phone or tablet
+//! Lampstand Remote (T99, T100; decision 0006): a helper's phone or tablet
 //! drives the live service from its browser, with nothing to install.
 //!
 //! | Route | What |
@@ -192,7 +192,7 @@ async fn pair(
     };
     match hub.pair(from.ip(), &body.pin, &body.name) {
         Ok((token, name)) => {
-            eprintln!("lampstand: a phone paired as {name:?} from {}", from.ip());
+            eprintln!("lampstand: a remote paired as {name:?} from {}", from.ip());
             let mut response = json_response(StatusCode::OK, json!({ "name": name }));
             let cookie = format!(
                 "{COOKIE}={token}; Path=/remote; HttpOnly; SameSite=Strict; Max-Age={COOKIE_AGE}"
@@ -203,7 +203,7 @@ async fn pair(
             response
         }
         Err(e) => {
-            eprintln!("lampstand: a phone at {} did not pair: {e:?}", from.ip());
+            eprintln!("lampstand: a remote at {} did not pair: {e:?}", from.ip());
             let status = match e {
                 PairError::TooMany => StatusCode::TOO_MANY_REQUESTS,
                 PairError::NoPin => StatusCode::GONE,
@@ -329,7 +329,7 @@ async fn serve(socket: WebSocket, hub: Arc<RemoteHub>, id: String, name: String)
             },
             changed = revocations.changed() => {
                 if changed.is_err() || !hub.alive(&id) {
-                    eprintln!("lampstand: a revoked phone was disconnected");
+                    eprintln!("lampstand: a revoked remote was disconnected");
                     let _ = tx
                         .send(Message::Close(Some(CloseFrame {
                             code: REVOKED,

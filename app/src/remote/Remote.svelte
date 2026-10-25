@@ -1,4 +1,4 @@
-<!-- The phone remote (T100): a helper's phone held upright, from the top:
+<!-- Lampstand Remote (T100), phones and tablets: a helper's phone held upright, from the top:
      what is on screen now, what is next, big Back and Next for a thumb, a
      quieter row of Black, Logo and Clear, then the Sound box. Nothing to plan
      or edit: Plan stays on the laptop. When the link drops, everything the

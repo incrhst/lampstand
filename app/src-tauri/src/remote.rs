@@ -1,4 +1,4 @@
-//! The phone remote on the app's side (T99, T101; decision 0006): what the
+//! Lampstand Remote (phones and tablets) on the app's side (T99, T101; decision 0006): what the
 //! remote pages are told, how their requests reach the app, and the
 //! `Remote` requests behind the Connect dialog and the devices screen.
 //!
@@ -48,7 +48,7 @@ pub fn bridge(hub: &RemoteHub, event: &Event) {
     };
     match serde_json::to_string(event) {
         Ok(json) => hub.publish(kind, &json),
-        Err(e) => eprintln!("lampstand: cannot tell the phone remotes: {e}"),
+        Err(e) => eprintln!("lampstand: cannot tell the remotes: {e}"),
     }
 }
 
@@ -70,15 +70,13 @@ where
     let mut request = match serde_json::from_value::<Request>(request) {
         Ok(request) => request,
         Err(e) => {
-            eprintln!("lampstand: a phone remote sent an unreadable request: {e}");
-            return error(
-                "This phone's page is out of date or damaged. Reload the page and try again.",
-            );
+            eprintln!("lampstand: a remote sent an unreadable request: {e}");
+            return error("This page is out of date or damaged. Reload the page and try again.");
         }
     };
     if !gate::allows(Caller::Remote, &request) {
-        eprintln!("lampstand: refused a phone remote's request: {request:?}");
-        return error("A phone remote can only run the slides and the sound.");
+        eprintln!("lampstand: refused a remote's request: {request:?}");
+        return error("A remote can only run the slides and the sound.");
     }
     if let Request::Service(ServiceRequest::SlideThumbnail { width, .. }) = &mut request {
         *width = (*width).clamp(16, MAX_THUMB);
@@ -98,10 +96,10 @@ pub fn handle(hub: &RemoteHub, request: RemoteRequest, port: u16) -> Response {
         RemoteRequest::Revoke { id } => {
             if !hub.revoke(&id) {
                 return Response::Error {
-                    message: "That phone is not paired any more.".into(),
+                    message: "That remote is not paired any more.".into(),
                 };
             }
-            eprintln!("lampstand: a phone remote was revoked");
+            eprintln!("lampstand: a remote was revoked");
         }
     }
     Response::Remotes(view(hub, port))
@@ -270,7 +268,7 @@ mod tests {
             },
             7340,
         ) else {
-            panic!("revoking a phone that is not paired is an error")
+            panic!("revoking a remote that is not paired is an error")
         };
     }
 }

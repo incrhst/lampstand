@@ -1,4 +1,4 @@
-//! The phone remote through the gate (T99): a paired phone's socket on the
+//! Lampstand Remote through the gate (T99): a paired phone's socket on the
 //! real local server, with the app's `remote::answer` in front of a
 //! stand-in for the app. What the gate refuses is answered with an error and
 //! never reaches the app; what it lets through is carried out. Also times a

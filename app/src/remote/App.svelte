@@ -1,5 +1,6 @@
-<!-- The phone remote's page: the PIN form until this phone is paired, then
-     the remote. A phone revoked on the laptop comes back to the PIN form. -->
+<!-- Lampstand Remote's page: the PIN form until this phone or tablet is
+     paired, then the remote. One revoked on the laptop comes back to the PIN
+     form. -->
 <script lang="ts">
   import { onMount } from "svelte";
   import { link } from "./link.svelte";

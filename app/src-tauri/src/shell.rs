@@ -105,7 +105,7 @@ struct Shared {
     thumbnail_fonts: Arc<Mutex<Option<Fonts>>>,
     /// Where updating Lampstand itself stands: what the last check found.
     update: Arc<tokio::sync::Mutex<UpdaterState>>,
-    /// The phone remote: `None` when the local server did not start or
+    /// Lampstand Remote: `None` when the local server did not start or
     /// `remotes.json` could not be read.
     remotes: Option<Arc<RemoteHub>>,
 }
@@ -205,7 +205,7 @@ async fn api(
                 crate::remote::handle(hub, request, sync.local_addr().port())
             }
             _ => Response::Error {
-                message: "The phone remote is off: the local server did not start.".into(),
+                message: "Remotes are off: the local server did not start.".into(),
             },
         }),
         // Parsing a deck, copying a video and downloading a link all run
@@ -430,7 +430,7 @@ async fn slide_thumbnail(
     })
 }
 
-/// Carries out a request from a phone remote that passed the gate
+/// Carries out a request from a remote that passed the gate
 /// (`crate::remote::answer`), as Present's own screen would: sent on to the
 /// presenting device when this one drives it, and otherwise to the app.
 async fn remote_request(
@@ -568,11 +568,11 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         tx: tx.clone(),
     };
     let emitter = handle.clone();
-    // The phone remote's pages see what Present sees (`crate::remote`).
+    // Remote pages see what Present sees (`crate::remote`).
     let remotes = match crate::remote::open_hub(data_dir) {
         Ok(hub) => Some(Arc::new(hub)),
         Err(e) => {
-            eprintln!("lampstand: the phone remote is off: {e}");
+            eprintln!("lampstand: remotes are off: {e}");
             None
         }
     };
@@ -750,7 +750,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     })
 }
 
-/// Opens the phone remote: its requests pass the gate and are carried out
+/// Opens Lampstand Remote: its requests pass the gate and are carried out
 /// by [`remote_request`], the screens hear when a phone pairs, connects or
 /// is revoked, and the remote pages start with what the sound is doing.
 fn serve_remotes(

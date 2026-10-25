@@ -1,4 +1,4 @@
-// T100: the phone remote, at phone size. `cargo run --example remote_fixture`
+// T100: Lampstand Remote, at phone size. `cargo run --example remote_fixture`
 // serves the real page and routes with a stand-in for the app. Each test
 // pairs with a fresh PIN, then presses the page's buttons and checks that
 // what is on screen follows, including a change made on the laptop.
@@ -145,6 +145,6 @@ test("the Sound box plays, pauses and stops", async ({ page }) => {
 test("a revoked phone is sent back to the PIN form", async ({ page }) => {
   await connect(page);
   await say("revoke", "REVOKED");
-  await expect(page.getByText("This phone was disconnected on the laptop.")).toBeVisible();
+  await expect(page.getByText("This remote was disconnected on the laptop.")).toBeVisible();
   await expect(page.getByPlaceholder("000 000")).toBeVisible();
 });

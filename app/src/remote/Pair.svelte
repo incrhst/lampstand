@@ -1,5 +1,6 @@
 <!-- The remote's first screen: the PIN shown on the laptop, and a name for
-     this phone so the laptop can list it (and revoke it) under Devices. -->
+     this phone or tablet so the laptop can list it (and revoke it) under
+     Setup › Devices › Remotes. -->
 <script lang="ts">
   import Logo from "../lib/kit/Logo.svelte";
   import { guessName, pinDigits, words } from "../lib/remote.ts";
@@ -33,7 +34,7 @@
       problem = body.error ?? "The laptop refused the PIN.";
       pin = "";
     } catch {
-      problem = "The laptop did not answer. Check this phone is on the same Wi-Fi as the laptop.";
+      problem = "The laptop did not answer. Check this phone or tablet is on the same Wi-Fi as the laptop.";
     } finally {
       busy = false;
     }

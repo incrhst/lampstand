@@ -1,4 +1,4 @@
-// The phone remote's page (T100), served by the laptop at `GET /remote`.
+// Lampstand Remote's page (T100), served by the laptop at `GET /remote`.
 // Built on its own by `npm run build:remote` into the server crate, so cargo
 // needs no Node.
 

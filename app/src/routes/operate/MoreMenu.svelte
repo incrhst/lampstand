@@ -1,5 +1,5 @@
 <!-- Present's quiet corner: the controls that are not used every minute of a
-     service (safe area, clicker mode, clearing, connecting a phone) and the keys, so
+     service (safe area, clicker mode, clearing, connecting a remote) and the keys, so
      the bar keeps only what is run live. Escape or a click outside closes it. -->
 <script lang="ts">
   import Button from "../../lib/kit/Button.svelte";
@@ -68,7 +68,7 @@
 <svelte:window onclick={onwindowclick} onkeydown={onwindowkey} />
 
 <span class="more" bind:this={root}>
-  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, logo bug, clearing, a phone remote and the keys">More</Button>
+  <Button size="small" pressed={open} onclick={() => (open = !open)} title="Safe area, clicker, logo bug, clearing, remotes and the keys">More</Button>
   {#if open}
     <div class="menu" role="menu" aria-label="More controls">
       {@render item("safeArea", "Safe area guide", guide ? "On" : "Off", then(onguide), guide)}
@@ -77,7 +77,7 @@
       {#if onidle}{@render item("image", "Change idle screen", "What shows when nothing is on air", then(onidle))}{/if}
       {@render item("x", "Clear text", "Keep the background", then(onclearText))}
       {@render item("x", "Clear all", "Text, background and overlay", then(onclearAll))}
-      {@render item("phone", "Connect a phone", "A helper runs the slides and sound", then(onconnect))}
+      {@render item("phone", "Connect a phone or tablet", "A remote for the slides and sound", then(onconnect))}
       <h3>Keys</h3>
       <dl>
         {#each keys as [k, what]}

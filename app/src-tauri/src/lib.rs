@@ -6,7 +6,7 @@
 //! command, the `api-event` stream and the output windows. `sync` runs the
 //! local server and peer sync, and answers `Team` requests. `obs_control`
 //! drives OBS over its WebSocket and answers `Obs` requests. `remote` runs
-//! the phone remote, and `gate` decides what it and a driving device may
+//! Lampstand Remote, and `gate` decides what it and a driving device may
 //! do. `keys` holds the clicker's global shortcuts. `journal` keeps what is
 //! on air so a crash comes back on the same slide.
 

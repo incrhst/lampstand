@@ -1,4 +1,4 @@
-//! The phone remote's routes (T99): pairing by PIN over HTTP, the session
+//! Lampstand Remote's routes (T99): pairing by PIN over HTTP, the session
 //! cookie, the socket and what it carries, revoking, and a session kept
 //! across a restart. What a request may do is the app's gate, tested in the
 //! app crate (`app/src-tauri/tests/remote.rs`); here the handler only echoes.

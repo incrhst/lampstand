@@ -1,5 +1,5 @@
 //! The one gate between this device's live engine and anything that drives
-//! it from elsewhere (decision 0006, item 4): a phone remote paired by PIN
+//! it from elsewhere (decision 0006, item 4): a remote paired by PIN
 //! (T99) and a paired Lampstand device driving this one (T102, decision
 //! 0009). Every request from either passes [`allows`] before it is carried
 //! out, so what the two may do is decided in one place and cannot drift.

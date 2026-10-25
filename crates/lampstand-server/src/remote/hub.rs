@@ -1,5 +1,5 @@
-//! The app's side of the phone remote: the PIN shown while a phone pairs,
-//! the paired phones (`remotes.json`), the remote pages connected now, and
+//! The app's side of Lampstand Remote (phones and tablets): the PIN shown
+//! while one pairs, the paired remotes (`remotes.json`), the remote pages connected now, and
 //! what they are told.
 //!
 //! A PIN lasts five minutes, five wrong tries void it, and only one runs at
@@ -72,8 +72,8 @@ impl PairError {
     pub fn words(&self) -> String {
         match self {
             PairError::NoPin => {
-                "That PIN has run out. On the laptop, open Present and choose Connect a phone \
-                 for a new one."
+                "That PIN has run out. On the laptop, in Present, choose More, then Connect a \
+                 phone or tablet for a new one."
                     .into()
             }
             PairError::Wrong { left: 0 } => {
@@ -83,7 +83,7 @@ impl PairError {
             }
             PairError::Wrong { left: 1 } => "That PIN is not right. One more try.".into(),
             PairError::Wrong { left } => format!("That PIN is not right. {left} more tries."),
-            PairError::TooMany => "Too many tries from this phone. Wait a minute.".into(),
+            PairError::TooMany => "Too many tries from here. Wait a minute.".into(),
         }
     }
 }
@@ -118,7 +118,7 @@ struct Inner {
     connected: HashMap<String, usize>,
 }
 
-/// The phone remote's pairing, sessions and feed. The app makes one, gives
+/// Lampstand Remote's pairing, sessions and feed. The app makes one, gives
 /// it to the server through `Backend::remotes`, sets its handler, and
 /// [`publishes`](RemoteHub::publish) what the remote shows.
 pub struct RemoteHub {
@@ -179,7 +179,7 @@ fn clean_name(name: &str) -> String {
         .collect();
     let name = name.trim();
     if name.is_empty() {
-        "Phone".into()
+        "Remote".into()
     } else {
         name.into()
     }
@@ -345,7 +345,7 @@ impl RemoteHub {
             last_seen_ms: Some(now),
         });
         if let Err(e) = self.save(&inner) {
-            eprintln!("lampstand: cannot save the paired phones: {e}");
+            eprintln!("lampstand: cannot save the paired remotes: {e}");
         }
         Ok((token, name))
     }
@@ -394,7 +394,7 @@ impl RemoteHub {
                 return false;
             }
             if let Err(e) = self.save(&inner) {
-                eprintln!("lampstand: cannot save the paired phones: {e}");
+                eprintln!("lampstand: cannot save the paired remotes: {e}");
             }
         }
         self.revoked.send_modify(|n| *n += 1);
@@ -421,7 +421,7 @@ impl RemoteHub {
                 s.last_seen_ms = Some(now_ms());
             }
             if let Err(e) = self.save(&inner) {
-                eprintln!("lampstand: cannot save the paired phones: {e}");
+                eprintln!("lampstand: cannot save the paired remotes: {e}");
             }
         }
         self.changed();
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn names_are_cleaned() {
-        assert_eq!(clean_name("  "), "Phone");
+        assert_eq!(clean_name("  "), "Remote");
         assert_eq!(clean_name("a\u{7}b"), "ab");
         assert_eq!(clean_name(&"x".repeat(100)).len(), NAME_CHARS);
     }

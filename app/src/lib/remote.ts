@@ -1,25 +1,27 @@
-// The phone remote (T100, decision 0006): what its page shows, worked out
-// from the events the laptop sends. No Tauri here: the page runs in a
-// phone's browser and talks to the laptop over the remote socket.
+// Lampstand Remote (T100, decision 0006), for phones and tablets: what its
+// page shows, worked out from the events the laptop sends. No Tauri here:
+// the page runs in a phone's or tablet's browser and talks to the laptop
+// over the remote socket. Its name is `REMOTE_NAME` (product.ts).
 
 import type { Cursor, LoadedItemView, LoadedService, Overlay, SlideView, SoundStart } from "./api";
 import { nextClick } from "./cursor.ts";
+import { REMOTE_NAME } from "./product.ts";
 import { lengthLabel } from "./sound.ts";
 
 export const words = {
-  title: "Lampstand remote",
+  title: REMOTE_NAME,
   pairLead: "Type the PIN shown on the laptop.",
   pinLabel: "PIN",
-  nameLabel: "Name this phone",
+  nameLabel: "Name this phone or tablet",
   pair: "Connect",
   pairing: "Connecting…",
-  pairScope: "This phone will be able to change the slides and the sound. Nothing else.",
-  revoked: "This phone was disconnected on the laptop. Ask for a new PIN to connect again.",
+  pairScope: "It will be able to change the slides and the sound. Nothing else.",
+  revoked: "This remote was disconnected on the laptop. Ask for a new PIN to connect again.",
   online: "Connected",
   connecting: "Connecting…",
   offline: "Not connected. Trying again…",
   offlineLong:
-    "Lost the laptop. Nothing here is up to date until it is back. Check this phone is on the same Wi-Fi as the laptop.",
+    "Lost the laptop. Nothing here is up to date until it is back. Check it is on the same Wi-Fi as the laptop.",
   nothingLoaded: "No service is open on the laptop.",
   nothingOnScreen: "Nothing on screen yet. Next shows the first slide.",
   onScreen: "On screen",
@@ -43,7 +45,7 @@ export function backoff(attempt: number, random: number = Math.random()): number
   return Math.round(base * (1 + 0.2 * random));
 }
 
-/** A name to start the "Name this phone" field with, from the browser's user agent. */
+/** A name to start the "Name this phone or tablet" field with, from the browser's user agent. */
 export function guessName(userAgent: string): string {
   if (/iPad/.test(userAgent)) return "iPad";
   if (/iPhone/.test(userAgent)) return "iPhone";

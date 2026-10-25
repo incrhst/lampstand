@@ -1,4 +1,4 @@
-//! Serves the phone remote with a stand-in for the app, so the Playwright
+//! Serves Lampstand Remote with a stand-in for the app, so the Playwright
 //! test (`web/tests/remote.spec.ts`) can pair a page, press its buttons and
 //! see the page follow.
 //!
@@ -186,7 +186,7 @@ fn handle(engine: &Mutex<Engine>, hub: &RemoteHub, request: Value) -> Value {
         ("Service", None) if what.get("SlideThumbnail").is_some() => {
             return error("no picture for this slide");
         }
-        _ => return error("A phone remote can only run the slides and the sound."),
+        _ => return error("A remote can only run the slides and the sound."),
     }
     if area == "Live" {
         hub.publish("Live", &e.live_event().to_string());

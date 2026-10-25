@@ -250,7 +250,7 @@ struct AppBackend {
     node: Arc<SyncNode>,
     blobs: PathBuf,
     obs: Obs,
-    /// The phone remote, once the app has set it up.
+    /// Lampstand Remote, once the app has set it up.
     remotes: OnceLock<Arc<RemoteHub>>,
 }
 
@@ -522,7 +522,7 @@ impl Sync {
         *self.music_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop);
     }
 
-    /// Serves the phone remote (`/remote`) from now on. Until this is
+    /// Serves Lampstand Remote (`/remote`) from now on. Until this is
     /// called, and if it never is, those routes answer 404.
     pub fn serve_remotes(&self, hub: Arc<RemoteHub>) {
         let _ = self.backend.remotes.set(hub);

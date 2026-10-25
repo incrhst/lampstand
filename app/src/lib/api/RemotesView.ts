@@ -4,7 +4,7 @@ import type { RemotePinView } from "./RemotePinView";
 import type { RemoteSessionView } from "./RemoteSessionView";
 
 /**
- * The phone remote as the Connect dialog and the devices screen show it.
+ * Lampstand Remote as the Connect dialog and the devices screen show it.
  * Also pushed as `Event::Remotes` whenever it changes.
  */
 export type RemotesView = { 

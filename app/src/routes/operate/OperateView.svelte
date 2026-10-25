@@ -38,7 +38,7 @@
   import { steppedDown, windowToDemote } from "../../lib/primary";
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
-  import ConnectPhone from "./ConnectPhone.svelte";
+  import ConnectRemote from "./ConnectRemote.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
   import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
@@ -629,7 +629,7 @@
          too; outputs stay in the status bar. -->
     <div class="grid" class:presenting>
       {#if connectOpen}
-        <ConnectPhone onclose={() => (connectOpen = false)} />
+        <ConnectRemote onclose={() => (connectOpen = false)} />
       {/if}
       {#if quickAddOpen && live.loaded}
         <QuickAdd

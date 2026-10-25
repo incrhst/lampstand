@@ -1,10 +1,11 @@
-<!-- Connect a phone or tablet (T101, decision 0006): a QR code for this
-     laptop's remote page, at the address and port the server really has, and
-     a fresh PIN in large type with how long it lasts. When a phone pairs the
+<!-- Connect a phone or tablet to Lampstand Remote (T101, decision 0006):
+     a QR code for this laptop's remote page, at the address and port the server really has, and
+     a fresh PIN in large type with how long it lasts. When one pairs the
      dialog names it and closes. "Not loading?" covers the usual causes. -->
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { onEvent, request, send, type RemotesView } from "../../lib/api";
+  import { REMOTE_NAME } from "../../lib/product";
   import { report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -14,9 +15,9 @@
   let view = $state<RemotesView | null>(null);
   let chosen = $state(0);
   let now = $state(Date.now());
-  /** The phone that just paired, by name. */
+  /** The phone or tablet that just paired, by name. */
   let paired = $state<string | null>(null);
-  /** Phones paired before the dialog opened, so a new one can be told apart. */
+  /** Remotes paired before the dialog opened, so a new one can be told apart. */
   let known = new Set<string>();
 
   let pin = $derived(view?.pairing ?? null);
@@ -80,9 +81,11 @@
 <div class="backdrop" onclick={close}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="connect-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
     <div class="head">
-      <h2 id="connect-title"><Icon name="phone" size={16} />Connect a phone or tablet</h2>
+      <h2 id="connect-title"><Icon name="phone" size={16} />{REMOTE_NAME}</h2>
       <Button size="small" variant="ghost" icon="x" label="Close" onclick={close} />
     </div>
+
+    <p class="muted lead">Connect a phone or tablet. A helper can then run the slides and the sound from it, and nothing else.</p>
 
     {#if paired}
       <p class="done" role="status"><Icon name="checkCircle" size={18} />{paired} is connected. It can run the slides and the sound.</p>
@@ -95,7 +98,7 @@
           <!-- The core made this SVG from the address; nothing typed is in it. -->
           <div class="qr" aria-hidden="true">{@html address.qr_svg}</div>
           <div class="steps">
-            <p>1. On the phone, open the camera and point it at the code, or go to</p>
+            <p>1. On the phone or tablet, open the camera and point it at the code, or go to</p>
             <p class="url">{address.url}</p>
             <p>2. Type this PIN:</p>
             <p class="pin" aria-label="PIN {pin.pin.split('').join(' ')}">{spaced(pin.pin)}</p>
@@ -104,7 +107,7 @@
         </div>
         {#if view.addresses.length > 1}
           <div class="others">
-            <span class="muted small">This laptop is on more than one network. The phone must be on the same one:</span>
+            <span class="muted small">This laptop is on more than one network. The phone or tablet must be on the same one:</span>
             <div class="chips">
               {#each view.addresses as a, i (a.url)}
                 <button type="button" class="chip" aria-pressed={i === chosen} onclick={() => (chosen = i)}>{a.url.replace(/^http:\/\//, "").replace(/\/remote$/, "")}</button>
@@ -113,19 +116,19 @@
           </div>
         {/if}
       {:else}
-        <p class="warn">This laptop is not on a network. Connect it to the Wi-Fi the phones use, then try again.</p>
+        <p class="warn">This laptop is not on a network. Connect it to the Wi-Fi the remotes use, then try again.</p>
         <p class="pin small-pin">{spaced(pin.pin)}</p>
       {/if}
 
       <details>
-        <summary>Not loading on the phone?</summary>
+        <summary>Not loading on the phone or tablet?</summary>
         <ul>
-          <li><strong>Same network.</strong> The phone must be on the same Wi-Fi as this laptop, not on mobile data or the guest Wi-Fi.</li>
-          <li><strong>Guest Wi-Fi.</strong> Many guest networks keep devices apart, so the phone cannot reach the laptop at all.</li>
+          <li><strong>Same network.</strong> It must be on the same Wi-Fi as this laptop, not on mobile data or the guest Wi-Fi.</li>
+          <li><strong>Guest Wi-Fi.</strong> Many guest networks keep devices apart, so a phone or tablet cannot reach the laptop at all.</li>
           <li><strong>Firewall.</strong> If this laptop asked whether to allow Lampstand on the network, allow it (private networks are enough).</li>
-          <li><strong>Best:</strong> give the AV team its own Wi-Fi or VLAN for this laptop and its phones, apart from the church's general and guest Wi-Fi.</li>
+          <li><strong>Best:</strong> give the AV team its own Wi-Fi or VLAN for this laptop and its remotes, apart from the church's general and guest Wi-Fi.</li>
         </ul>
-        <p class="muted small">The page is plain <code>http://</code>, so the phone's own sleep setting may still dim it. Set it to stay on longer if it does.</p>
+        <p class="muted small">The page is plain <code>http://</code>, so the device's own sleep setting may still dim it. Set it to stay on longer if it does.</p>
       </details>
     {:else}
       <p class="muted">Starting…</p>
@@ -245,6 +248,10 @@
     padding-left: 1.1rem;
     display: grid;
     gap: 0.4rem;
+  }
+  .lead {
+    font-size: 0.9rem;
+    margin-top: -0.5rem;
   }
   .done {
     display: flex;

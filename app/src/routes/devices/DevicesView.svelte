@@ -10,7 +10,7 @@
   import Button from "../../lib/kit/Button.svelte";
   import Panel from "../../lib/kit/Panel.svelte";
   import RoleTake from "../../lib/kit/RoleTake.svelte";
-  import ConnectPhone from "../operate/ConnectPhone.svelte";
+  import ConnectRemote from "../operate/ConnectRemote.svelte";
   import {
     ALWAYS_ALLOWED,
     PANEL_TITLE,
@@ -66,7 +66,7 @@
   let takeoverChoices = $derived(
     [...new Set<number>([...TAKEOVER_CHOICES, presenter?.takeover_secs ?? 120])].sort((a, b) => a - b),
   );
-  // Phones and tablets paired as remotes (T99, T101).
+  // Phones and tablets paired as Lampstand Remote (T99, T101).
   let remotes: RemotesView | null = $state(null);
   let connecting = $state(false);
   async function remote(req: "Status" | { Revoke: { id: string } }) {
@@ -230,11 +230,11 @@
     </ul>
   </Panel>
 
-  <Panel title="Phones and tablets">
+  <Panel title="Remotes">
     {#snippet actions()}
-      <Button onclick={() => (connecting = true)}>Connect a phone</Button>
+      <Button onclick={() => (connecting = true)}>Connect a phone or tablet</Button>
     {/snippet}
-    <p class="muted">Helpers' phones that can run the slides and the sound from their browser. Revoke one to disconnect it at once.</p>
+    <p class="muted">Phones and tablets that run the slides and the sound from their browser. Revoke one to disconnect it at once.</p>
     <ul class="list">
       {#each remotes?.sessions ?? [] as r (r.id)}
         <li>
@@ -248,14 +248,14 @@
           </span>
         </li>
       {:else}
-        <li class="muted">No phones yet.</li>
+        <li class="muted">No remotes yet.</li>
       {/each}
     </ul>
   </Panel>
 </div>
 
 {#if connecting}
-  <ConnectPhone onclose={() => (connecting = false)} />
+  <ConnectRemote onclose={() => (connecting = false)} />
 {/if}
 
 <style>

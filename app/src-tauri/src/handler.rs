@@ -398,8 +398,8 @@ impl App {
             Request::Update(_) => Err("updates are not available here".into()),
             // The shell opens the browser.
             Request::About(_) => Err("the browser is opened by the app shell".into()),
-            // The shell runs the phone remote: it owns the local server.
-            Request::Remote(_) => Err("the phone remote is not running".into()),
+            // The shell runs Lampstand Remote: it owns the local server.
+            Request::Remote(_) => Err("remotes are not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }

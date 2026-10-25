@@ -1,13 +1,21 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { fileURLToPath } from "node:url";
+import { REMOTE_NAME } from "./src/lib/product.ts";
 
-// The phone remote's page (T100): a second entry, built into the server
+// Lampstand Remote's page (T100): a second entry, built into the server
 // crate and checked in there (as `web/obs/dist` is), so cargo needs no Node.
 // Fixed file names, because the server embeds them by name; small assets
 // (the keep-awake video) are inlined so there is nothing else to serve.
 export default defineConfig({
-  plugins: [svelte({ configFile: fileURLToPath(new URL("svelte.config.js", import.meta.url)) })],
+  plugins: [
+    svelte({ configFile: fileURLToPath(new URL("svelte.config.js", import.meta.url)) }),
+    // The page's title and home-screen name come from the one constant.
+    {
+      name: "remote-name",
+      transformIndexHtml: { order: "pre", handler: (html) => html.replaceAll("%REMOTE_NAME%", REMOTE_NAME) },
+    },
+  ],
   root: "src/remote",
   base: "/remote/assets/",
   clearScreen: false,

@@ -56,7 +56,7 @@ pub enum RemoteRequest {
     },
 }
 
-/// The phone remote as the Connect dialog and the devices screen show it.
+/// Lampstand Remote as the Connect dialog and the devices screen show it.
 /// Also pushed as `Event::Remotes` whenever it changes.
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

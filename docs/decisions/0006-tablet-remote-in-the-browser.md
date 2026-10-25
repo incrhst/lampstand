@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T99 to T102); amended 2026-10-25 (the remote also runs the sound)
+- Status: accepted (T99 to T102); amended 2026-10-25 (Lampstand Remote also runs the sound)
 - Date: 2026-10-20
 
 ## Question
@@ -58,7 +58,11 @@ and leave room to add HTTPS later through a domain Lampstand runs (below).
    session. It also avoids guest client isolation, and keeps congregation
    phones from competing with the remote for airtime.
 
-## Amendment, 2026-10-25: the remote runs the sound too
+## Amendment, 2026-10-25: Lampstand Remote (phones and tablets) runs the sound too
+
+T99 to T101 built the remote this decision describes under the name
+Lampstand Remote, for phones and tablets alike; in the desktop app it is
+just "Remote". The owner's design puts a phone first.
 
 The owner's design for helpers' phones: "A helper's phone is a remote: big
 Next and Back, what's on screen now and what's next, and the Sound box. Plan
