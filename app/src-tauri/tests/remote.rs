@@ -76,6 +76,7 @@ async fn fixture() -> Fixture {
                                     slide: 1,
                                     step: 0,
                                 }),
+                                shown: None,
                                 preview: None,
                                 idle: false,
                                 overlay: Overlay::None,

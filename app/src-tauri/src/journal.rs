@@ -45,6 +45,10 @@ pub struct LiveRecord {
     /// The service open in the live engine.
     pub service: Option<ServiceId>,
     pub live: Option<Cursor>,
+    /// The slide on the screens, when a music-only item is live (it has no
+    /// picture). Missing from a journal written before 0.9.0.
+    #[serde(default)]
+    pub shown: Option<Cursor>,
     pub preview: Option<Cursor>,
     pub overlay: Overlay,
     /// False when the operator cleared the text (`ClearText`, `ClearAll`).
@@ -212,6 +216,7 @@ mod tests {
                 slide: 2,
                 step: 0,
             }),
+            shown: None,
             preview: Some(Cursor {
                 item,
                 slide: 3,

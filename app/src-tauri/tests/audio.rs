@@ -435,6 +435,180 @@ fn a_backing_track_that_waits_does_not_start_until_play_is_pressed() {
     assert_eq!(playing(&v).name, "Amazing Grace (track)");
 }
 
+/// A service of a song with lyrics, a music-only item and another song,
+/// opened: the service and the ids of the three.
+fn song_music_song(d: &mut Device, start: SoundStart) -> (Service, [ItemId; 3]) {
+    let mut song = Song::new("Amazing Grace");
+    song.sections.push(Section {
+        label: "V1".into(),
+        lines: vec!["Amazing grace, how sweet the sound".into()],
+    });
+    d.app.library().put_song(&song).unwrap();
+    let mut s = d.service(ServiceRequest::Create {
+        title: "Sunday".into(),
+        starts_at: None,
+        time_zone: None,
+    });
+    for kind in [
+        ItemKind::Song {
+            song: song.id,
+            arrangement: None,
+        },
+        ItemKind::Sound {
+            sound: sound("Offering music", WALK, start),
+        },
+        ItemKind::Song {
+            song: song.id,
+            arrangement: None,
+        },
+    ] {
+        s = d.service(ServiceRequest::InsertItem {
+            service: s.id,
+            index: usize::MAX,
+            kind,
+        });
+    }
+    d.ok(Request::Service(ServiceRequest::Open(s.id)));
+    let ids: Vec<ItemId> = s.ordered().into_iter().map(|(id, _)| id).collect();
+    (s, [ids[0], ids[1], ids[2]])
+}
+
+/// Presses Next: the item live after it, as the screen is told.
+fn live_item(d: &mut Device) -> Option<ItemId> {
+    d.ok(Request::Live(Command::Next));
+    d.events
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            Event::Live { live, .. } => Some(live.map(|c| c.item)),
+            _ => None,
+        })?
+}
+
+#[test]
+fn next_onto_music_that_plays_on_its_own_starts_it() {
+    let mut d = device();
+    let (_, [song, music, after]) = song_music_song(&mut d, SoundStart::OnItsOwn);
+    assert_eq!(live_item(&mut d), Some(song));
+    assert!(d.calls().is_empty());
+    assert_eq!(live_item(&mut d), Some(music));
+    assert_eq!(d.calls(), ["play@0"]);
+    let v = d.sound_request(SoundRequest::Status);
+    assert_eq!(playing(&v).name, "Offering music");
+    // The music plays on under the next item.
+    assert_eq!(live_item(&mut d), Some(after));
+    assert_eq!(d.calls(), ["play@0"]);
+}
+
+#[test]
+fn music_already_playing_or_paused_is_left_alone_when_the_service_reaches_it() {
+    for pause in [false, true] {
+        let mut d = device();
+        let (_, [_, music, _]) = song_music_song(&mut d, SoundStart::OnItsOwn);
+        // Played from Up next before the service got there.
+        d.sound_request(SoundRequest::Play {
+            item: music,
+            backing: false,
+        });
+        if pause {
+            d.sound_request(SoundRequest::Pause);
+        }
+        let before = d.calls();
+        live_item(&mut d);
+        assert_eq!(live_item(&mut d), Some(music));
+        assert_eq!(d.calls(), before, "no fade and no new start");
+        let v = d.sound_request(SoundRequest::Status);
+        assert_eq!(playing(&v).name, "Offering music");
+        assert_eq!(playing(&v).paused, pause);
+    }
+}
+
+#[test]
+fn next_onto_music_that_waits_does_not_start_it() {
+    let mut d = device();
+    let (_, [_, music, _]) = song_music_song(&mut d, SoundStart::Waits);
+    live_item(&mut d);
+    assert_eq!(live_item(&mut d), Some(music));
+    assert!(d.calls().is_empty(), "it waits for Play");
+    let v = d.sound_request(SoundRequest::Play {
+        item: music,
+        backing: false,
+    });
+    assert_eq!(playing(&v).name, "Offering music");
+}
+
+#[test]
+fn music_that_starts_on_its_own_lets_what_plays_fade_out_first() {
+    let mut d = device();
+    let (s, [song, music, _]) = song_music_song(&mut d, SoundStart::OnItsOwn);
+    d.service(ServiceRequest::SetSound {
+        service: s.id,
+        item: song,
+        slot: SoundSlot::Backing,
+        sound: Some(sound("Amazing Grace (track)", WALK, SoundStart::Waits)),
+    });
+    live_item(&mut d);
+    d.sound_request(SoundRequest::Play {
+        item: song,
+        backing: true,
+    });
+    assert_eq!(d.calls(), ["play@0"]);
+    assert_eq!(live_item(&mut d), Some(music));
+    assert_eq!(
+        d.calls(),
+        ["play@0", "stop 1"],
+        "the track fades; the music waits for it"
+    );
+    // The fade ends: the music starts.
+    d.log.lock().unwrap().playing = None;
+    let v = d.sound_request(SoundRequest::Status);
+    assert_eq!(d.calls(), ["play@0", "stop 1", "play@0"]);
+    assert_eq!(playing(&v).name, "Offering music");
+}
+
+#[test]
+fn next_onto_music_sends_the_start_to_the_audio_holder_on_another_device() {
+    let mut d = device();
+    let link = Link::new(SoundRoute::Sent, false);
+    let desk = |playing: Option<SoundNow>| AudioRemote {
+        name: "Sound desk".into(),
+        connected: true,
+        playing,
+        problem: None,
+    };
+    *link.remote.lock().unwrap() = Some(desk(None));
+    d.app.set_sync_link(link.clone());
+    let (_, [_, music, _]) = song_music_song(&mut d, SoundStart::OnItsOwn);
+    let play = SoundCommand::Play {
+        file: *BlobHash::of(WALK).as_bytes(),
+        name: "Offering music".into(),
+        item: music.to_string(),
+    };
+    live_item(&mut d);
+    assert_eq!(live_item(&mut d), Some(music));
+    assert_eq!(*link.sent.lock().unwrap(), std::slice::from_ref(&play));
+    assert!(d.calls().is_empty(), "it plays on the desk, not here");
+
+    // With something playing on the desk, the fade goes first.
+    *link.remote.lock().unwrap() = Some(desk(Some(SoundNow {
+        item: "item-9".into(),
+        name: "Walk-in music".into(),
+        paused: false,
+        ending: false,
+        position_ms: 4000,
+        length_ms: 90_000,
+    })));
+    link.sent.lock().unwrap().clear();
+    d.ok(Request::Live(Command::Previous));
+    d.ok(Request::Live(Command::Next));
+    assert_eq!(
+        *link.sent.lock().unwrap(),
+        [SoundCommand::Stop { fade_ms: 1000 }, play]
+    );
+}
+
 #[test]
 fn a_cue_goes_to_the_audio_holder_when_it_is_another_device() {
     let mut d = device();

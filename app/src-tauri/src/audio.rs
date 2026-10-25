@@ -25,6 +25,11 @@
 //!   ([`AudioDeck::tick`]), so a plugged-back-in interface works again
 //!   without restarting the app. Pause, fade out and the panic stop clear
 //!   the screen even when the output is dead.
+//! - **A new sound replaces the old one at once,** except while the old one
+//!   is fading out: then the new one waits for the fade to end, for up to
+//!   [`HANDOVER`]. That is how the service moving on to sound that plays on
+//!   its own lets what played before fade out (#181): the app sends a short
+//!   fade, then the Play.
 //! - **Passing Audio stops the sound.** The app calls [`AudioDeck::cut`] when
 //!   this device stops holding Audio.
 //!
@@ -41,6 +46,10 @@ use lampstand_sync::net::{SoundCommand, SoundHook, SoundNow, SoundProblem, Sound
 
 /// How a stop fades out unless told otherwise, in seconds.
 pub const STOP_FADE: f64 = 3.0;
+
+/// How long a new sound waits at most for a sound that is fading out to
+/// finish (and the fade the app asks for before it, in `handler/audio.rs`).
+pub const HANDOVER: Duration = Duration::from_secs(1);
 
 /// How long after each failure in a row the deck tries the output again:
 /// 5, 10, 30, then every 60 seconds. A Play, a new output or a success starts
@@ -147,6 +156,15 @@ struct Meta {
     name: String,
 }
 
+/// A sound read and ready, waiting for the one before it to fade out.
+struct Queued {
+    pcm: Arc<Pcm>,
+    meta: Meta,
+    generation: u64,
+    /// When it starts even if the fade has not finished.
+    by: Instant,
+}
+
 /// The output is down: why, what it was doing, and when to try it again.
 struct Down {
     reason: SoundReason,
@@ -166,6 +184,11 @@ struct Inner {
     generation: u64,
     /// What was asked to play, from the cue until it ends.
     current: Option<Meta>,
+    /// Set by a Play that came while a sound faded out: until when the new
+    /// sound waits for the fade.
+    fading_until: Option<Instant>,
+    /// The new sound, read, while it waits for the fade.
+    queued: Option<Queued>,
     /// The sound most recently asked for, until it ends or is stopped: what
     /// a failure is about when it fails before it started.
     asked: Option<Meta>,
@@ -235,6 +258,33 @@ impl Inner {
         }
     }
 
+    /// Starts a sound that is read and ready, cutting what is left of any
+    /// fade.
+    fn start(&mut self, pcm: Arc<Pcm>, meta: Meta) {
+        self.fading_until = None;
+        // The next Play is a chance to find the output working again,
+        // and starts the back-off over.
+        if let Some(d) = self.down.as_mut() {
+            d.tries = 0;
+        }
+        self.reap(Instant::now());
+        self.ensure_out();
+        if let Some(out) = self.out.as_mut() {
+            out.play(pcm, 0.0);
+        }
+        self.current = Some(meta);
+    }
+
+    /// Whether a sound is fading out now and a new one should wait for it.
+    fn fading(&mut self, now: Instant) -> bool {
+        self.fading_until.is_some_and(|until| now < until)
+            && self
+                .out
+                .as_mut()
+                .and_then(|out| out.playing())
+                .is_some_and(|p| p.ending)
+    }
+
     /// Opens the output if there is none. A new output after a failure is on
     /// trial until it shows it works.
     fn ensure_out(&mut self) {
@@ -266,6 +316,8 @@ impl AudioDeck {
             out: None,
             generation: 0,
             current: None,
+            fading_until: None,
+            queued: None,
             asked: None,
             problem: None,
             down: None,
@@ -327,6 +379,7 @@ impl AudioDeck {
         s.generation += 1;
         s.out = None;
         s.current = None;
+        s.queued = None;
         s.asked = None;
         s.down = None;
         s.probing = false;
@@ -341,6 +394,16 @@ impl AudioDeck {
     pub fn tick(&self, now: Instant) {
         let mut s = lock(&self.0);
         s.reap(now);
+        // A new sound waiting for a fade starts when the fade is over.
+        if let Some(q) = s.queued.take() {
+            if q.generation != s.generation {
+                // Stopped or cut while it waited.
+            } else if s.fading(now) && now < q.by {
+                s.queued = Some(q);
+            } else {
+                s.start(q.pcm, q.meta);
+            }
+        }
         let due = s.down.as_ref().is_some_and(|d| now >= d.next_try);
         if s.out.is_none() && due {
             s.ensure_out();
@@ -351,11 +414,24 @@ impl AudioDeck {
         let (path, decode, spawn, generation) = {
             let mut s = lock(&self.0);
             s.generation += 1;
-            // What plays gives way at once to what replaces it.
-            if let Some(out) = s.out.as_mut() {
-                out.panic();
+            s.queued = None;
+            let now = Instant::now();
+            let ending = s
+                .out
+                .as_mut()
+                .and_then(|out| out.playing())
+                .is_some_and(|p| p.ending && !p.paused);
+            if ending {
+                // A sound that is fading out finishes its fade first.
+                s.fading_until = Some(now + HANDOVER);
+            } else {
+                // What plays gives way at once to what replaces it.
+                s.fading_until = None;
+                if let Some(out) = s.out.as_mut() {
+                    out.panic();
+                }
             }
-            s.reap(Instant::now());
+            s.reap(now);
             s.current = None;
             s.asked = Some(Meta {
                 item: item.clone(),
@@ -398,17 +474,19 @@ impl AudioDeck {
                     return;
                 }
             };
-            // The next Play is a chance to find the output working again,
-            // and starts the back-off over.
-            if let Some(d) = s.down.as_mut() {
-                d.tries = 0;
+            let meta = Meta { item, name };
+            let now = Instant::now();
+            if s.fading(now) {
+                let by = s.fading_until.unwrap_or(now);
+                s.queued = Some(Queued {
+                    pcm,
+                    meta,
+                    generation,
+                    by,
+                });
+                return;
             }
-            s.reap(Instant::now());
-            s.ensure_out();
-            if let Some(out) = s.out.as_mut() {
-                out.play(pcm, 0.0);
-            }
-            s.current = Some(Meta { item, name });
+            s.start(pcm, meta);
         }));
     }
 
@@ -805,6 +883,52 @@ mod tests {
         r.deck.command(play("B"));
         assert_eq!(calls(&r), ["play@0", "panic", "play@0"]);
         assert_eq!(r.deck.now().unwrap().name, "B");
+    }
+
+    #[test]
+    fn a_new_sound_waits_for_one_that_is_fading_out() {
+        let r = rig(false, None);
+        r.deck.command(play("A"));
+        r.deck.command(SoundCommand::Stop { fade_ms: 1000 });
+        r.deck.command(play("B"));
+        assert_eq!(calls(&r), ["play@0", "stop 1"], "A fades; B waits");
+        r.deck.tick(Instant::now());
+        assert_eq!(calls(&r).len(), 2, "still fading");
+        // The fade ends: B starts at the next tick.
+        r.log.lock().unwrap().playing = None;
+        r.deck.tick(Instant::now());
+        assert_eq!(calls(&r), ["play@0", "stop 1", "play@0"]);
+        assert_eq!(r.deck.now().unwrap().name, "B");
+    }
+
+    #[test]
+    fn a_fade_that_does_not_finish_in_time_is_cut_for_the_new_sound() {
+        let r = rig(false, None);
+        r.deck.command(play("A"));
+        r.deck.command(SoundCommand::Stop { fade_ms: 3000 });
+        r.deck.command(play("B"));
+        r.deck.tick(Instant::now() + HANDOVER);
+        assert_eq!(calls(&r), ["play@0", "stop 3", "play@0"]);
+        assert_eq!(r.deck.now().unwrap().name, "B");
+    }
+
+    #[test]
+    fn a_stop_or_a_panic_while_a_sound_waits_for_a_fade_drops_it() {
+        for cmd in [SoundCommand::Stop { fade_ms: 3000 }, SoundCommand::Panic] {
+            let r = rig(false, None);
+            r.deck.command(play("A"));
+            r.deck.command(SoundCommand::Stop { fade_ms: 1000 });
+            r.deck.command(play("B"));
+            r.deck.command(cmd);
+            r.log.lock().unwrap().playing = None;
+            r.deck.tick(Instant::now() + HANDOVER);
+            assert_eq!(
+                calls(&r).iter().filter(|c| c.starts_with("play")).count(),
+                1,
+                "B never starts"
+            );
+            assert!(r.deck.now().is_none());
+        }
     }
 
     #[test]
