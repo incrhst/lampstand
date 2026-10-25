@@ -34,6 +34,7 @@ base64.workspace = true
 chrono.workspace = true
 gethostname.workspace = true
 if-addrs = "0.15"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 image.workspace = true
 keepawake.workspace = true
 serde.workspace = true

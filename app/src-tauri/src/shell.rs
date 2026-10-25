@@ -32,8 +32,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
 use lampstand_api::{
-    Event, LibraryRequest, Request, Response, ServiceRequest, UpdateRequest, UpdateState,
-    UpdateStatus,
+    Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
+    UpdateState, UpdateStatus,
 };
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
@@ -42,6 +42,7 @@ use lampstand_layout::Fonts;
 use lampstand_library::Library;
 use lampstand_render::output::DisplayInfo;
 use lampstand_render::{Background, BlobSource, OutputEvent, OutputOptions, Outputs, Renderer};
+use lampstand_server::RemoteHub;
 use lampstand_sync::DocChanged;
 use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
@@ -107,6 +108,9 @@ struct Shared {
     song_select_handled: Arc<Mutex<HashMap<PathBuf, SystemTime>>>,
     /// Where updating Lampstand itself stands: what the last check found.
     update: Arc<tokio::sync::Mutex<UpdaterState>>,
+    /// Lampstand Remote: `None` when the local server did not start or
+    /// `remotes.json` could not be read.
+    remotes: Option<Arc<RemoteHub>>,
 }
 
 /// What the last check for a new release found, and the release to install.
@@ -190,29 +194,23 @@ async fn api(
             slide,
             step,
             width,
-        }) => {
-            let Some(renderer) = state.thumbnails.clone() else {
-                return Ok(Response::Error {
-                    message: "thumbnails are off: no GPU for them".into(),
-                });
-            };
-            let app = state.app.clone();
-            blocking(Box::new(move || {
-                let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
-                    return Response::Error {
-                        message: "no picture for this slide".into(),
-                    };
-                };
-                let (w, h) = decks::thumbnail_size(&scene, width);
-                renderer
-                    .render_offscreen(&scene, w, h)
-                    .map_err(|e| format!("{e:?}"))
-                    .and_then(|image| decks::png_data_url(&image))
-                    .map(Response::Thumbnail)
-                    .unwrap_or_else(|message| Response::Error { message })
-            }))
-            .await
-        }
+        }) => Ok(slide_thumbnail(
+            state.app.clone(),
+            state.thumbnails.clone(),
+            item,
+            slide,
+            step,
+            width,
+        )
+        .await),
+        Request::Remote(request) => Ok(match (&state.remotes, &state.sync) {
+            (Some(hub), Some(sync)) => {
+                crate::remote::handle(hub, request, sync.local_addr().port())
+            }
+            _ => Response::Error {
+                message: "Remotes are off: the local server did not start.".into(),
+            },
+        }),
         // Parsing a deck, copying a video and downloading a link all run
         // off the `App` lock, like imports.
         Request::Library(LibraryRequest::AddDeckFile { path }) => {
@@ -415,6 +413,67 @@ async fn api(
     }
 }
 
+/// A picture of one slide of the open service, drawn off the `App` lock.
+async fn slide_thumbnail(
+    app: Arc<Mutex<App>>,
+    renderer: Option<Arc<Renderer>>,
+    item: lampstand_core::service::ItemId,
+    slide: usize,
+    step: usize,
+    width: u32,
+) -> Response {
+    let Some(renderer) = renderer else {
+        return Response::Error {
+            message: "thumbnails are off: no GPU for them".into(),
+        };
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
+            return Response::Error {
+                message: "no picture for this slide".into(),
+            };
+        };
+        let (w, h) = decks::thumbnail_size(&scene, width);
+        renderer
+            .render_offscreen(&scene, w, h)
+            .map_err(|e| format!("{e:?}"))
+            .and_then(|image| decks::png_data_url(&image))
+            .map(Response::Thumbnail)
+            .unwrap_or_else(|message| Response::Error { message })
+    })
+    .await
+    .unwrap_or_else(|e| Response::Error {
+        message: e.to_string(),
+    })
+}
+
+/// Carries out a request from a remote that passed the gate
+/// (`crate::remote::answer`), as Present's own screen would: sent on to the
+/// presenting device when this one drives it, and otherwise to the app.
+async fn remote_request(
+    app: Arc<Mutex<App>>,
+    sync: Arc<Sync>,
+    thumbnails: Option<Arc<Renderer>>,
+    request: Request,
+) -> Response {
+    if let Some(response) = sync.forward(&request).await {
+        return response;
+    }
+    match request {
+        Request::Service(ServiceRequest::SlideThumbnail {
+            item,
+            slide,
+            step,
+            width,
+        }) => slide_thumbnail(app, thumbnails, item, slide, step, width).await,
+        request => tauri::async_runtime::spawn_blocking(move || lock(&app).handle(request))
+            .await
+            .unwrap_or_else(|e| Response::Error {
+                message: e.to_string(),
+            }),
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -532,10 +591,22 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         tx: tx.clone(),
     };
     let emitter = handle.clone();
+    // Remote pages see what Present sees (`crate::remote`).
+    let remotes = match crate::remote::open_hub(data_dir) {
+        Ok(hub) => Some(Arc::new(hub)),
+        Err(e) => {
+            eprintln!("lampstand: remotes are off: {e}");
+            None
+        }
+    };
+    let bridged = remotes.clone();
     // Events also go to a device driving this one, once there is one.
     let node_cell = NodeCell::default();
     let emit = mirroring(
         Arc::new(move |event: Event| {
+            if let Some(hub) = &bridged {
+                crate::remote::bridge(hub, &event);
+            }
             let _ = emitter.emit("api-event", event);
         }),
         node_cell.clone(),
@@ -658,6 +729,9 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             lock(&app).set_server_address(address.clone());
             lock(&app).set_sync_link(sync.link());
             let sync = Arc::new(sync);
+            if let Some(hub) = &remotes {
+                serve_remotes(hub, &sync, &app, thumbnails.clone(), emit.clone());
+            }
             let port = sync.local_addr().port();
             address_watch = Some(AddressWatch::new(address, move || public_address_on(port)));
             (Some(sync), None)
@@ -667,6 +741,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             (None, Some(e))
         }
     };
+    let remotes = sync.as_ref().and(remotes);
     let wake_tx = tx.clone();
     std::thread::Builder::new()
         .name("lampstand-changes".into())
@@ -699,7 +774,46 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             state: UpdateState::NotChecked,
             pending: None,
         })),
+        remotes,
     })
+}
+
+/// Opens Lampstand Remote: its requests pass the gate and are carried out
+/// by [`remote_request`], the screens hear when a phone pairs, connects or
+/// is revoked, and the remote pages start with what the sound is doing.
+fn serve_remotes(
+    hub: &Arc<RemoteHub>,
+    sync: &Arc<Sync>,
+    app: &Arc<Mutex<App>>,
+    thumbnails: Option<Arc<Renderer>>,
+    emit: crate::handler::EventSink,
+) {
+    let (handler_app, handler_sync) = (app.clone(), sync.clone());
+    hub.set_handler(Arc::new(move |request| {
+        let (app, sync, thumbnails) = (
+            handler_app.clone(),
+            handler_sync.clone(),
+            thumbnails.clone(),
+        );
+        Box::pin(async move {
+            crate::remote::answer(request, |request| {
+                remote_request(app, sync, thumbnails, request)
+            })
+            .await
+        })
+    }));
+    let (watched, port) = (Arc::downgrade(hub), sync.local_addr().port());
+    hub.on_change(Arc::new(move || {
+        if let Some(hub) = watched.upgrade() {
+            emit(Event::Remotes(Box::new(crate::remote::view(&hub, port))));
+        }
+    }));
+    // Sound events come only with a change; a page that opens before any
+    // still learns who plays the sound.
+    if let Response::Sound(view) = lock(app).handle(Request::Sound(SoundRequest::Status)) {
+        crate::remote::bridge(hub, &Event::Sound(Box::new(view)));
+    }
+    sync.serve_remotes(hub.clone());
 }
 
 /// Looks for a newer release, or installs the one found. An install is

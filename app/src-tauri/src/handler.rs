@@ -34,9 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
-    BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
-    OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
-    SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
+    BrowserSourceStatus, Event, ItemEstimate, ItemSoundView, LibraryRequest, LoadedItemView,
+    LoadedService, OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary,
+    SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -49,7 +49,9 @@ use lampstand_core::scene::{Animation, Scene, Transition};
 use lampstand_core::scripture::{
     find_translation, parse_reference_versioned, unrecognised_version_message,
 };
-use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::service::{
+    CountdownTarget, ItemId, ItemKind, Service, ServiceId, ServiceItem, Sound,
+};
 use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
@@ -392,11 +394,14 @@ impl App {
         }
         self.presenting = presenting;
         if !presenting {
-            self.loaded = None;
+            let had = self.loaded.take().is_some();
             self.loop_overrides.clear();
             let events = self.live.apply(Command::EndService);
             self.live.load(Vec::new());
             self.after_live(events);
+            if had {
+                (self.emit)(Event::Unloaded);
+            }
         }
         self.place_windows();
         if !presenting {
@@ -447,6 +452,8 @@ impl App {
             Request::Update(_) => Err("updates are not available here".into()),
             // The shell opens the browser.
             Request::About(_) => Err("the browser is opened by the app shell".into()),
+            // The shell runs Lampstand Remote: it owns the local server.
+            Request::Remote(_) => Err("remotes are not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
@@ -1094,6 +1101,7 @@ impl App {
         let events = self.live.apply(Command::EndService);
         self.live.load(Vec::new());
         self.after_live(events);
+        (self.emit)(Event::Unloaded);
     }
 
     fn reload_if_open(&mut self, service: ServiceId) -> Result<()> {
@@ -1192,6 +1200,7 @@ impl App {
                 id: item_id,
                 title: loaded.title.clone(),
                 slides: loaded.slides.iter().map(slide_view).collect(),
+                sounds: item_sounds(item),
             });
             items.push(LoadedItem {
                 theme: service.theme,
@@ -2367,6 +2376,23 @@ fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange 
         }
         _ => DeckChange::Arrive,
     }
+}
+
+/// The sound an item has, for screens that do not read the service.
+fn item_sounds(item: &ServiceItem) -> Vec<ItemSoundView> {
+    let view = |sound: &Sound, backing| ItemSoundView {
+        name: sound.name.clone(),
+        backing,
+        length_ms: sound.length_ms,
+        start: sound.start,
+    };
+    let own = match &item.kind {
+        ItemKind::Sound { sound } => Some(view(sound, false)),
+        _ => None,
+    };
+    own.into_iter()
+        .chain(item.backing.as_ref().map(|b| view(b, true)))
+        .collect()
 }
 
 fn slide_view(slide: &LoadedSlide) -> SlideView {
