@@ -28,6 +28,15 @@
   --warn: #f5a524;
   --warn-soft: rgba(245, 165, 36, 0.12);
 
+  /* The four roles, as the docs, diagrams and videos colour them
+     (video/projects/lampstand/theme.ts: Projection #1f5fbf, Operator
+     #1d7a46, Stream #6a3fc0, Audio #b85a00), lightened just enough to reach
+     3:1 against --panel, --canvas and --raised (the app is dark only). */
+  --role-projection: #4c7fcc;
+  --role-operator: #348758;
+  --role-stream: #8865cd;
+  --role-audio: #bf6a1a;
+
   --radius: 6px;
   --radius-lg: 10px;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);

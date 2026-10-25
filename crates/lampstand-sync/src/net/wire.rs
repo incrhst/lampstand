@@ -26,8 +26,10 @@ use crate::roles::Role;
 /// per role (Projection, Operator, Stream, Audio) replaces the lease and
 /// the driver seat. 6: the sender's takeover setting (`Takeover`), added at
 /// the end of the frames. 7: why a sound did not play (`SoundProblem`), added
-/// at the end of the frames.
-pub(crate) const PROTOCOL: u32 = 7;
+/// at the end of the frames. 8 (0.9.0): a role step may be a `Reclaim`, the
+/// holder's signed refusal of a claim against it (`roles::Kind`, added at the
+/// end), which a protocol 7 device cannot read.
+pub(crate) const PROTOCOL: u32 = 8;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -348,6 +350,18 @@ mod tests {
         assert_eq!(Frame::Beat.encode(), vec![12]);
     }
 
+    /// The kinds of role step are numbered the same way: `Reclaim` (protocol
+    /// 8) went last, after the three a protocol 7 device knows.
+    #[test]
+    fn step_kinds_are_pinned() {
+        use crate::roles::Kind;
+        let number = |k: Kind| postcard::to_allocvec(&k).unwrap()[0];
+        assert_eq!(number(Kind::Claim), 0);
+        assert_eq!(number(Kind::HandOver), 1);
+        assert_eq!(number(Kind::Release), 2);
+        assert_eq!(number(Kind::Reclaim), 3);
+    }
+
     #[test]
     fn frames_round_trip() {
         let frames = [
@@ -383,6 +397,19 @@ mod tests {
                     epoch: 3,
                     prev_holder: Some(crate::team::DeviceKey([7; 32])),
                     prev_epoch: 2,
+                    sig: vec![5; 64],
+                }],
+            },
+            Frame::Role {
+                role: Role::Stream,
+                holder: Some([7; 32]),
+                epoch: 5,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::Reclaim,
+                    holder: Some(crate::team::DeviceKey([7; 32])),
+                    epoch: 5,
+                    prev_holder: Some(crate::team::DeviceKey([8; 32])),
+                    prev_epoch: 4,
                     sig: vec![5; 64],
                 }],
             },

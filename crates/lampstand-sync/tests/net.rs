@@ -1352,7 +1352,7 @@ async fn only_a_presenting_device_decides_and_it_alone() {
 // ---- Roles: the same four ways for every job ---------------------------------
 
 use lampstand_sync::net::{RoleStatus, RolesStatus};
-use lampstand_sync::roles::{Blocked, OnAir, Record, Role};
+use lampstand_sync::roles::{Blocked, Kind, OnAir, Record, Role};
 
 fn roles_of(p: &Peer) -> RolesStatus {
     p.node.status().roles
@@ -1961,26 +1961,31 @@ async fn a_0_7_0_device_with_nobody_paired_holds_all_four_whatever_the_old_lease
 #[tokio::test(flavor = "multi_thread")]
 async fn a_device_on_the_protocol_before_roles_is_refused_by_a_running_node() {
     let (sanctuary, _office) = paired_and_leased().await;
-    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/sync", sanctuary.addr))
-        .await
-        .unwrap();
-    // A hello in protocol 4: the first two numbers of every version's hello
-    // are the frame kind (0) and the protocol.
-    ws.send(Message::Binary(vec![0u8, 4].into())).await.unwrap();
-    // (Protocol 5, the roles before the takeover frame, is refused the same
-    // way: see `versions_say_which_side_should_update`.)
-    let mut reason = None;
-    while let Some(Ok(message)) = ws.next().await {
-        if let Message::Binary(bytes) = message {
-            reason = Some(String::from_utf8_lossy(&bytes).into_owned());
-            break;
+    // Protocol 4 (0.7.0) and 7 (0.8.1, before the reclaim step).
+    for old in [4u8, 7] {
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/sync", sanctuary.addr))
+            .await
+            .unwrap();
+        // A hello in the old protocol: the first two numbers of every
+        // version's hello are the frame kind (0) and the protocol.
+        ws.send(Message::Binary(vec![0u8, old].into()))
+            .await
+            .unwrap();
+        // (Protocols 5 and 6 are refused the same way: see
+        // `versions_say_which_side_should_update`.)
+        let mut reason = None;
+        while let Some(Ok(message)) = ws.next().await {
+            if let Message::Binary(bytes) = message {
+                reason = Some(String::from_utf8_lossy(&bytes).into_owned());
+                break;
+            }
         }
+        let reason = reason.expect("the node answers");
+        assert!(
+            reason.contains("the other device runs an older Lampstand; update it"),
+            "protocol {old}: {reason}"
+        );
     }
-    let reason = reason.expect("the node answers");
-    assert!(
-        reason.contains("the other device runs an older Lampstand; update it"),
-        "{reason}"
-    );
     assert_eq!(sanctuary.node.status().paired.len(), 1);
 }
 
@@ -2340,6 +2345,114 @@ async fn a_claim_on_a_connection_older_than_ten_seconds_is_still_taken_in() {
 /// roles while it slept. The time since the sanctuary last heard from the
 /// office PC is the time of the last frame, not the time the connection
 /// ended, so it yields on waking.
+/// The office PC believes the sanctuary has been gone long enough and takes
+/// the stream over; the back room, which hears the sanctuary only through
+/// the office PC, takes the claim in. The sanctuary was only away for a
+/// moment by its own count, so when it is back it refuses with a signed
+/// reclaim: the office PC hands the role back (and is told why), the back
+/// room follows through the office PC, and nobody is left thinking it holds
+/// the stream but the sanctuary (issue #183).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_takeover_is_handed_back_on_every_device_that_took_it_in() {
+    let (mut sanctuary, office) = paired().await;
+    until(Duration::from_secs(10), "the sanctuary to settle", || {
+        sanctuary.node.settled()
+    })
+    .await;
+    sanctuary.node.claim_role(Role::Stream).unwrap();
+    until(Duration::from_secs(10), "the office PC to hear", || {
+        holder_of(&office, Role::Stream) == Some(sanctuary.node.device())
+            && office
+                .node
+                .advertised_takeover(sanctuary.node.device())
+                .is_some()
+    })
+    .await;
+    // The back room is taught by the sanctuary, then keeps only the office
+    // PC: it hears of the sanctuary through it from then on.
+    let back = peer("Back room").await;
+    for shows in [&sanctuary, &office] {
+        let code = shows.node.start_pairing();
+        back.node
+            .pair(&code.code, Some(&shows.address()))
+            .await
+            .unwrap();
+    }
+    until(
+        Duration::from_secs(10),
+        "the back room to be taught",
+        || {
+            holder_of(&back, Role::Stream) == Some(sanctuary.node.device())
+                && back.node.status().connected() == 2
+        },
+    )
+    .await;
+    back.node.unpair(sanctuary.node.device()).unwrap();
+    sanctuary.node.unpair(back.node.device()).unwrap();
+    until(
+        Duration::from_secs(10),
+        "the back room to leave the sanctuary",
+        || back.node.status().connected() == 1 && sanctuary.node.status().connected() == 1,
+    )
+    .await;
+
+    sanctuary.cut();
+    until(Duration::from_secs(20), "the office PC to lose it", || {
+        office.node.status().connected() == 1
+    })
+    .await;
+    // By the office PC's clock the sanctuary has been silent for minutes.
+    office.node.skip_wall_clock(Duration::from_secs(200));
+    assert!(matches!(
+        role_status(&office, Role::Stream).standing,
+        Standing::TakeOver { .. }
+    ));
+    office.node.claim_role(Role::Stream).unwrap();
+    until(
+        Duration::from_secs(10),
+        "the back room to take the claim in",
+        || holder_of(&back, Role::Stream) == Some(office.node.device()),
+    )
+    .await;
+
+    // The sanctuary is back; it counted only the moment it was cut.
+    sanctuary.restore().await;
+    until(
+        Duration::from_secs(60),
+        "everyone back on the sanctuary",
+        || {
+            holder_of(&office, Role::Stream) == Some(sanctuary.node.device())
+                && holder_of(&back, Role::Stream) == Some(sanctuary.node.device())
+        },
+    )
+    .await;
+    let held = role_status(&sanctuary, Role::Stream);
+    assert!(held.holds);
+    assert_eq!(held.notice, None);
+    let step = &held.record.chain[0];
+    assert_eq!(step.kind, Kind::Reclaim);
+    assert_eq!(step.prev_holder, Some(office.node.device()));
+    // (No name there: the back room is not paired with the sanctuary.)
+    assert_eq!(
+        role_status(&back, Role::Stream).record.chain,
+        held.record.chain
+    );
+    let office_view = role_status(&office, Role::Stream);
+    assert!(!office_view.holds);
+    assert_eq!(office_view.record, held.record);
+    assert_eq!(
+        office_view.notice,
+        Some(Notice::Refused {
+            by: "Sanctuary".into()
+        })
+    );
+    // Connected again, it can ask; a takeover from the sanctuary waits out
+    // the cooldown.
+    assert_eq!(office_view.standing, Standing::Ask);
+    assert!(office_view.cooldown.is_some());
+    assert_eq!(role_status(&back, Role::Stream).notice, None);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_holder_whose_laptop_slept_with_a_live_connection_yields_on_waking() {
     let (mut sanctuary, mut office) = paired_and_leased().await;

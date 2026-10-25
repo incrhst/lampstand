@@ -135,6 +135,11 @@ Nothing in CI can listen. Before a release that changes sound, on a Mac and on a
 
 On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
 
+### Releasing 0.9.0: sync protocol 8
+
+- **Every device must update together again.** 0.9.0 is sync protocol 8 (a role step may be a `Reclaim`, the holder's signed refusal of a takeover; `docs/roles.md`). 0.8.1 is protocol 7 and is refused at the handshake with "the other device runs an older Lampstand; update it" (and the 0.9.0 side is told the same from the other end), so a church updates every paired computer before the next service. Say so first in the release notes.
+- **Going back to 0.8.1 loses settings.** 0.8.1 cannot read a `roles.json` whose history holds a refused takeover. It moves the file aside as `roles.json.bad` and starts from defaults. That resets more than who runs what: this device's takeover time goes back to two minutes, and its "Always allow this device" lists for Operator and Stream are emptied. Paired devices do not teach those back, so set them again by hand. Who runs what is taught again only by other 0.8.1 devices, because a 0.9.0 device (protocol 8) refuses a 0.8.1 one. Downgrade every paired computer together, or not at all.
+
 ### Releasing 0.8.0: roles and sound
 
 0.8.0 was built but never published. It froze about 20 seconds after starting, when it first checked for updates (and whenever Help, About opened): the update status took the `App` lock twice in one statement, so every request after it waited forever (no services listed, nothing could be created or added). 0.8.1 is the first release with roles and sound, and everything below applies to it. A test copy of 0.8.0 cannot update itself (installing is on the page that freezes) and, on protocol 6, cannot sync with 0.8.1, so replace it by hand from the 0.8.1 `.dmg` or installer.

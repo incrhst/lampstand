@@ -927,8 +927,9 @@ fn roles_view(r: &RolesStatus) -> Vec<RoleView> {
                     AskState::Declined => RoleAskingView::Declined,
                     AskState::Busy { by } => RoleAskingView::Busy { by: by.clone() },
                 }),
-                replaced_by: s.notice.as_ref().map(|n| match n {
-                    Notice::Replaced { by } => by.clone(),
+                replaced_by: s.notice.as_ref().and_then(|n| match n {
+                    Notice::Replaced { by } => Some(by.clone()),
+                    Notice::Refused { .. } => None,
                 }),
                 always: s.always.iter().map(named).collect(),
                 offers_always: role.offers_always(),
@@ -936,6 +937,12 @@ fn roles_view(r: &RolesStatus) -> Vec<RoleView> {
                     .holder_takeover
                     .filter(|t| *t > r.takeover_after)
                     .map(|t| t.as_secs()),
+                refused_by: s.notice.as_ref().and_then(|n| match n {
+                    Notice::Refused { by } => Some(by.clone()),
+                    Notice::Replaced { .. } => None,
+                }),
+                cooldown_secs: s.cooldown.map(|c| c.as_secs() + 1),
+                unverified: s.unverified,
             }
         })
         .collect()
@@ -978,8 +985,10 @@ fn presenter_view(p: &PresenterStatus) -> PresenterView {
         asking: p.asking.as_ref().map(|a| AskingView {
             declined: a.state != AskState::Waiting,
         }),
-        replaced_by: p.notice.as_ref().map(|n| match n {
-            Notice::Replaced { by } => by.clone(),
+        replaced_by: p.notice.as_ref().and_then(|n| match n {
+            Notice::Replaced { by } => Some(by.clone()),
+            // Shown by the roles banner (`RoleView::refused_by`).
+            Notice::Refused { .. } => None,
         }),
         drive: Box::new(drive_view(&p.drive)),
     }

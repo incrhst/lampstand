@@ -80,6 +80,12 @@ pub fn denied(role: Role, why: &Denied, holder: &str) -> String {
         Denied::NoScreens => "No screens are set up on this device".to_string(),
         Denied::NeedsProjection => NEEDS_SCREENS.to_string(),
         Denied::NotPermitted => format!("This device may not run {job}."),
+        // The holder refused this device's takeover a short while ago.
+        Denied::Refused { remaining } => format!(
+            "{} turned down this device's takeover. You can take over running {job} in {}.",
+            who(role, holder),
+            how_long((*remaining).max(std::time::Duration::from_secs(1)))
+        ),
         // The device has only just paired and has not heard who holds what:
         // the 0.7.0 wording for "no one holds it yet", kept as it was.
         Denied::Settling => "Nobody is presenting.".to_string(),
@@ -116,6 +122,9 @@ mod tests {
             Denied::NoScreens,
             Denied::NeedsProjection,
             Denied::NotPermitted,
+            Denied::Refused {
+                remaining: Duration::from_secs(240),
+            },
         ];
         // `Denied::Settling` keeps the 0.7.0 wording ("Nobody is presenting.")
         // on purpose, so it is left out of the list above.
@@ -160,6 +169,16 @@ mod tests {
                 "Sam"
             ),
             "Sam went offline only recently. You can take over running the stream in 30 seconds."
+        );
+        assert_eq!(
+            denied(
+                Role::Stream,
+                &Denied::Refused {
+                    remaining: secs(240)
+                },
+                "Sam"
+            ),
+            "Sam turned down this device's takeover. You can take over running the stream in 4 minutes."
         );
     }
 

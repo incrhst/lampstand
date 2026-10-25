@@ -16,7 +16,8 @@
   import { isPicture, isScreen, obsPill } from "./lib/obs";
   import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning } from "./lib/presenting";
-  import { streamOfflineLine, withRoster } from "./lib/roles";
+  import { heldRoles, streamOfflineLine, uncheckedRoles, withRoster } from "./lib/roles";
+  import RoleBar from "./lib/kit/RoleBar.svelte";
   import PresenterNotices from "./lib/kit/PresenterNotices.svelte";
   import { drivenBy, isDriving } from "./lib/driving";
   import { availableVersion, CHECK_EVERY_MS, FIRST_CHECK_MS } from "./lib/updates";
@@ -269,6 +270,9 @@
     {#snippet start()}
       <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
         <Dot tone={syncStatus.tone} />
+        {#if live.team && live.team.paired.length > 0}
+          <RoleBar held={heldRoles(live.team)} unchecked={uncheckedRoles(live.team)} />
+        {/if}
         <span class:warn={syncStatus.tone === "warn"}>{rolePill.text}</span>
       </button>
       <!-- Always in the page, so a screen reader announces the line when it fills in, once. -->

@@ -48,4 +48,19 @@ offers_always: boolean,
  * device's own and so decides how long this device waits to take the
  * role over (the holder judges a claim by its own setting).
  */
-holder_waits_secs: number | null, };
+holder_waits_secs: number | null, 
+/**
+ * This device took the role over and the holder, which had not been
+ * away long enough, turned it down and kept the role; shown once.
+ */
+refused_by: string | null, 
+/**
+ * After a refused takeover: seconds until this device may take the role
+ * over from that holder again (asking still works).
+ */
+cooldown_secs: number | null, 
+/**
+ * A newer record for this role came that this device could not check
+ * (it missed too many changes): who runs it here may be out of date.
+ */
+unverified: boolean, };
