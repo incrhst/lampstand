@@ -103,12 +103,15 @@ class Link {
   private async check() {
     try {
       const r = await fetch("/remote/session", { cache: "no-store" });
+      // Coming back to the page reconnected while this was asked.
+      if (this.ws) return;
       if (r.status === 401) {
         this.state = "unpaired";
         return;
       }
     } catch {
       // No answer at all: the laptop or the Wi-Fi is away.
+      if (this.ws) return;
     }
     this.later();
   }

@@ -322,6 +322,35 @@ async fn revoking_a_session_closes_its_socket_at_once() {
 }
 
 #[tokio::test]
+async fn a_session_revoked_while_its_socket_opens_is_closed_too() {
+    let f = fixture().await;
+    let cookie = f.paired().await;
+    let token = cookie.split_once('=').unwrap().1;
+    let id = f.hub.session(token).unwrap().0;
+    // Revoked the moment the page counts as connected: after the cookie
+    // was checked, before the socket's first message.
+    let hub = Arc::downgrade(&f.hub);
+    f.hub.on_change(Arc::new(move || {
+        if let Some(hub) = hub.upgrade() {
+            hub.revoke(&id);
+        }
+    }));
+    let mut ws = f.ws(Some(&cookie)).await.unwrap();
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Close(Some(frame)))) => return Some(u16::from(frame.code)),
+                Some(Ok(_)) => continue,
+                _ => return None,
+            }
+        }
+    })
+    .await
+    .expect("closed within 2 s");
+    assert_eq!(closed, Some(REVOKED));
+}
+
+#[tokio::test]
 async fn a_session_still_works_after_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().to_path_buf();

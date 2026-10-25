@@ -39,7 +39,7 @@ use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::Backend;
 pub use hub::{
@@ -225,11 +225,14 @@ async fn socket(
     if !same_origin(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    // Watched from before the session is checked, so a revoke while the
+    // socket opens still closes it.
+    let revocations = hub.revocations();
     let Some((id, name)) = token(&headers).and_then(|t| hub.session(&t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     ws.max_message_size(MAX_MESSAGE)
-        .on_upgrade(move |socket| serve(socket, hub, id, name))
+        .on_upgrade(move |socket| serve(socket, hub, revocations, id, name))
 }
 
 /// Counts a page as connected while it lives.
@@ -254,7 +257,13 @@ fn refused(message: &str) -> serde_json::Value {
     json!({ "type": "Error", "data": { "message": message } })
 }
 
-async fn serve(socket: WebSocket, hub: Arc<RemoteHub>, id: String, name: String) {
+async fn serve(
+    socket: WebSocket,
+    hub: Arc<RemoteHub>,
+    mut revocations: watch::Receiver<u64>,
+    id: String,
+    name: String,
+) {
     hub.connection(&id, true);
     let _open = Open {
         hub: hub.clone(),
@@ -280,7 +289,6 @@ async fn serve(socket: WebSocket, hub: Arc<RemoteHub>, id: String, name: String)
     });
     // Subscribed before the last events are sent, so none falls between.
     let mut feed = hub.subscribe();
-    let mut revocations = hub.revocations();
     let mut beat = tokio::time::interval(BEAT);
     let hello = json!({ "hello": { "name": name } }).to_string();
     let mut first = vec![Message::Text(hello.into())];
