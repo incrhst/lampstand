@@ -376,6 +376,23 @@ fn covered(steps: &[Link], i: usize) -> Option<usize> {
     None
 }
 
+/// Which states in `steps` (newest first; the state each step leads to) were
+/// reached through a claim whose judge never accepted it: an unacked claim
+/// at or below the step, with nothing its judge signed between them.
+fn doubtful(steps: &[Link]) -> Vec<bool> {
+    (0..steps.len())
+        .map(|k| {
+            steps[k..].iter().enumerate().any(|(n, l)| {
+                l.kind == Kind::Claim
+                    && l.ack.is_none()
+                    && l.prev_holder.is_some_and(|judge| {
+                        !steps[k..k + n].iter().any(|s| s.signer() == Some(judge))
+                    })
+            })
+        })
+        .collect()
+}
+
 /// Whether two steps are the same step, whatever acks they carry.
 fn same_step(a: &Link, b: &Link) -> bool {
     (
@@ -1416,10 +1433,17 @@ impl Roles {
         // this device were still there. A state this device's own reclaim
         // cancelled was never really held: a record built on it parts from
         // the state before the refused claim, so the claim is judged again.
+        // Nor does one reached through a claim its judge never accepted (a
+        // claim this device took because the judge was gone, or because the
+        // role came back to the judge at once): a record parting from above
+        // that claim is judged from below it, so the claim is judged again.
         let refused = cancelled(&local.chain);
+        let doubtful = doubtful(&local.chain);
         let fork = || {
             local.chain.iter().enumerate().find_map(|(d, l)| {
-                if refused.get(d + 1).copied().unwrap_or(false) {
+                if refused.get(d + 1).copied().unwrap_or(false)
+                    || doubtful.get(d + 1).copied().unwrap_or(false)
+                {
                     return None;
                 }
                 join_at(l.prev_holder, l.prev_epoch, &local.chain[d + 1..])
@@ -1477,12 +1501,9 @@ impl Roles {
                 if let Some(h) = l.holder {
                     introduced.push(h);
                 }
-                match self.verdict(role, &context, i, from, net) {
+                match self.verdict(role, remote.holder, &context, i, from, net) {
                     Verdict::Stands => {}
                     Verdict::Accept => acks.push(i),
-                    // The role comes back to this device whatever it says:
-                    // nothing to refuse, and it lets the claim stand.
-                    Verdict::Refuse if remote.holder == Some(self.me) => acks.push(i),
                     Verdict::Refuse => refuse = true,
                     Verdict::AskJudge(judge) => {
                         refer.get_or_insert(judge);
@@ -1530,6 +1551,7 @@ impl Roles {
     fn verdict(
         &self,
         role: Role,
+        holder: Option<DeviceKey>,
         steps: &[Link],
         i: usize,
         from: DeviceKey,
@@ -1544,6 +1566,12 @@ impl Roles {
         };
         // The judge built on it, so it knew of the claim and let it stand.
         if steps[..i].iter().any(|s| s.signer() == Some(judge)) {
+            return Verdict::Stands;
+        }
+        // The role ends with the judge in this record: nothing was taken
+        // from it. It stands here only, unacked, so a record that parts from
+        // above it is judged again (see `doubtful`).
+        if holder == Some(judge) {
             return Verdict::Stands;
         }
         // The Projection holder takes the Operator seat back when it likes.
@@ -3936,6 +3964,63 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A connected paired device signs a claim against the holder and a
+    /// hand-over straight back to it, so the holder takes it in and keeps the
+    /// role. Then it parts from its own claim the other way: it lets go and
+    /// claims the role nobody holds. The holder never accepted the claim, so
+    /// the record is judged from below it: the holder reclaims, and a device
+    /// that sees the holder connected does not follow the forger.
+    #[test]
+    fn a_claim_handed_straight_back_cannot_be_reused_to_take_the_role() {
+        let step = |rec: &Record, kind: Kind, to: Option<u8>| {
+            let mut l = rec.chain[0].clone();
+            l.kind = kind;
+            l.holder = to.map(key);
+            l.epoch = rec.epoch + 1;
+            l.prev_holder = rec.holder;
+            l.prev_epoch = rec.epoch;
+            l.ack = None;
+            l.sig = kp(2)
+                .sign(&Link::bytes(
+                    Role::Stream,
+                    kind,
+                    l.holder,
+                    l.epoch,
+                    l.prev_holder,
+                    l.prev_epoch,
+                ))
+                .to_vec();
+            let mut chain = vec![l];
+            chain.extend(rec.chain.iter().take(CHAIN - 1).cloned());
+            Record {
+                holder: to.map(key),
+                name: String::new(),
+                epoch: rec.epoch + 1,
+                chain,
+            }
+        };
+        let (mut a, b, mut c) = church();
+        let all_on = net_away(&online, None);
+        let off = |_: DeviceKey| Holder::Offline(secs(999));
+        let claim = b.clone().claim(Role::Stream, &net(true, &off)).unwrap();
+        let back = step(&claim, Kind::HandOver, Some(1));
+        for d in [&mut a, &mut c] {
+            d.merge(Role::Stream, &back, key(2), &all_on);
+            assert_eq!(d.record(Role::Stream).holder, Some(key(1)));
+        }
+        let mine = a.record(Role::Stream).clone();
+        assert!(mine.chain.iter().all(|l| l.ack.is_none()), "nothing acked");
+        let reused = step(&step(&claim, Kind::Release, None), Kind::Claim, Some(2));
+        let merged = a.merge(Role::Stream, &reused, key(2), &all_on);
+        assert!(merged.reclaimed, "{merged:?}");
+        assert!(a.holds(Role::Stream) && a.record(Role::Stream).beats(&reused));
+        c.merge(Role::Stream, &reused, key(2), &all_on);
+        assert_eq!(c.record(Role::Stream).holder, Some(key(1)));
+        let answer = a.record(Role::Stream).clone();
+        c.merge(Role::Stream, &answer, key(1), &all_on);
+        assert_eq!(c.record(Role::Stream), &answer);
     }
 
     #[test]
