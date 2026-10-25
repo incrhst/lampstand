@@ -3263,7 +3263,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-api"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "lampstand-api",
  "lampstand-core",
@@ -3276,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-app"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "automerge",
  "autosurgeon",
@@ -3316,7 +3316,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-connectors"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "automerge",
  "autosurgeon",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-import"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.23.1",
  "encoding_rs",
@@ -3367,7 +3367,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-layout"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cosmic-text",
  "insta",
@@ -3377,7 +3377,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-library"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "automerge",
  "autosurgeon",
@@ -3395,7 +3395,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-live"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "lampstand-core",
  "serde",
@@ -3404,7 +3404,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-media"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cpal",
  "deckcraft-media",
@@ -3412,14 +3412,14 @@ dependencies = [
 
 [[package]]
 name = "lampstand-relay"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "lampstand-sync",
 ]
 
 [[package]]
 name = "lampstand-render"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -3441,7 +3441,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-server"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "axum",
  "futures-util",
@@ -3460,7 +3460,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-slides"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "deckcraft-anim",
  "deckcraft-color",
@@ -3480,7 +3480,7 @@ dependencies = [
 
 [[package]]
 name = "lampstand-sync"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "automerge",
  "autosurgeon",
@@ -8941,7 +8941,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "blake3",
  "lampstand-core",

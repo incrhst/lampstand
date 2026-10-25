@@ -125,6 +125,23 @@ them.
   it, and say why.
 - The bundle settings are under `bundle` in `app/src-tauri/tauri.conf.json`.
 
+### Check playback on each kind of computer
+
+Nothing in CI can listen. Before a release that changes sound, on a Mac and on a Windows computer with the sound output the church would really use:
+
+1. List the outputs: `cargo run -p lampstand-media --example play_check -- --list` (the names are what Setup › Sound shows).
+2. Play a music file through one: `cargo run -p lampstand-media --example play_check -- path/to/music.mp3 "Output name"`. It plays through the same player the app uses, and prints what it does and when. You should hear the music, a gap (pause), the music again (resume), a smooth fade over a second, then a short burst cut off at once (the panic stop), with no clicks, in the output you chose and no other.
+3. In the app, with a service that has a backing track: Plan › add sound, Present › Sound box: Play, Pause, Resume, Fade out and "Stop the sound now"; then choose another output in Setup › Sound while it plays (it stops) and play again.
+
+On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
+
+### Releasing 0.8.0: roles and sound
+
+- **Every device must update together.** 0.8.0 is sync protocol 6 and 0.7.0 is protocol 4. A device on any other version (including a 0.8.0 test build on protocol 5) is refused at the handshake with a message saying which side should update, so a church with several paired computers updates all of them before the next service. The release notes say so first. Installed copies offer the update from Setup, About, and refuse to install while a service is on air or starts within the hour.
+- **Roles move out of the old files.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files alone, so going back to 0.7.0 starts from them as they were.
+- **The Roles page.** `site/docs/roles.html` says roles are new in 0.8.0. The site deploys when this merges to `main`, so merge the release on the day the release is published.
+- **What the notes should say is not there yet:** sending Lampstand's sound to the stream through OBS; a music-only item starting by itself from Next (it plays from its Play button); and the warnings that nobody runs the sound or the stream. The same list is at the end of `docs/roles.md`.
+
 ### Sound in the order of the service, and going back
 
 A service can hold music-only items from 0.8.0. A build older than the fix that shipped with this (any 0.8.0 build before it, on sync protocol 5) cannot list **any** service while one of them holds a music-only item, and the Setup switch "Use sound in services" does not protect it, because the item still syncs from the device that added it. Update such a device before anyone adds sound. Released 0.7.0 is on protocol 4 and never receives these documents.

@@ -327,14 +327,25 @@ fn open_stream(
     open: Arc<AtomicBool>,
 ) -> Option<cpal::Stream> {
     let host = cpal::default_host();
-    let device = name
-        .and_then(|n| {
-            host.output_devices()
-                .ok()?
-                .find(|d| d.name().is_ok_and(|x| x == n))
-        })
-        .or_else(|| host.default_output_device())?;
-    let config = device.default_output_config().ok()?;
+    let chosen = name.and_then(|n| {
+        host.output_devices()
+            .ok()?
+            .find(|d| d.name().is_ok_and(|x| x == n))
+    });
+    if name.is_some() && chosen.is_none() {
+        eprintln!("lampstand-media: no sound output called {name:?}; using the default");
+    }
+    let Some(device) = chosen.or_else(|| host.default_output_device()) else {
+        eprintln!("lampstand-media: this computer has no sound output");
+        return None;
+    };
+    let config = match device.default_output_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("lampstand-media: cannot read the sound output's settings: {e}");
+            return None;
+        }
+    };
     let format = config.sample_format();
     let config: cpal::StreamConfig = config.into();
     let stream = match format {
@@ -346,7 +357,10 @@ fn open_stream(
             return None;
         }
     }?;
-    stream.play().ok()?;
+    if let Err(e) = stream.play() {
+        eprintln!("lampstand-media: cannot start the sound output: {e}");
+        return None;
+    }
     open.store(true, Ordering::SeqCst);
     Some(stream)
 }
