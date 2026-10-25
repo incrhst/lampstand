@@ -17,7 +17,8 @@ Roles are built and tested on macOS and Windows, and also run on Linux CI (the L
 | Why a sound cannot play (file not on the Audio device, unreadable or unsupported, output not working, missing or absent), shown on the Operator and Projection screens; a dead output is dropped and retried, and a chosen output that is gone stays silent with no fallback (protocol 7) | Built (#162) |
 | Settling a claim that the holder refuses (a signed refusal, a hand-back and a cooldown; protocol 8) | Built (#183; design from PR #160's description, issue #153) |
 | "Send sound to the stream" (the OBS browser source plays Lampstand's sound) | Planned (#137); needs the OBS prototype (#125), which has not been run |
-| A warning in the role bar that names the sound item that will not play | Planned (see "Audio warnings") |
+| A music-only item that plays on its own starts when Next reaches it; the Sound box folds, with a queue that follows the service | Built (#181, #191) |
+| A warning in the role bar that names the sound item that will not play | Built (#182, see "Audio warnings") |
 | The tablet and phone remote, the browser stage page, a Stream view in the browser | Planned (decision 0006; not in the app yet) |
 | Showing the volunteer that a role's record could not be checked | Built (#184): the roster and the status bar say so, with what to do |
 | The role bar: a strip in the role colours for the roles a machine holds, in the status bar and beside each device in Setup > Devices | Built (0.9.0) |
@@ -114,7 +115,7 @@ A video, a music-only item or a backing track has sound. It plays in the house, 
 
 **Built (#136):**
 
-- **Backing tracks.** A music-only item sits in the service on its own; a backing track is attached to a song. A song's backing track that "plays on its own" starts when the song goes live. A music-only item has no slides, so the live engine never takes it live: it plays when someone presses Play in the sound panel in Present ("In this service"). A sound set to "Waits for someone to press play" waits for Play whichever it is.
+- **Backing tracks.** A music-only item sits in the service on its own; a backing track is attached to a song. A song's backing track that "plays on its own" starts when the song goes live. A music-only item has no slides, but **Next stops on it** (#181): it goes live, the screens keep the slide before it, and if it "plays on its own" it starts, on the device that runs the sound. If other sound is playing, that sound fades out over a second and the new one starts. A sound set to "Waits for someone to press play" waits for Play whichever it is, from the Sound box in Present. Previous passes over a music-only item, so going back never starts sound; inside a looping section the loop passes over it, as before.
 - **Controls.** Play, Pause, Resume, "Fade out" and the panic stop "Stop the sound now", in the sound panel of Present on any device (a request goes to whichever device holds Audio; Play, Pause, Resume and Stop count only from the devices that run the screens or the service, the panic stop from any paired device; it says "The device that runs the sound is not connected." if it is away). From a phone or tablet helper: **Planned**, since the remote is not built.
 - **If Projection is away**, what is playing keeps playing and can still be stopped, but nothing new starts.
 - **Files** travel by sync to every device that has the service (not only the Audio holder, because Audio can move), for any service that starts later, or started less than 36 hours ago; one with no date is not fetched. Plan shows "File missing" on an item whose file is not on this device, and whether it is on its way.
@@ -139,14 +140,14 @@ The rules planned for #137, for approval when it is built:
 Sound is part of the service, so it lives in the service order and syncs like the rest of the plan, whoever holds Audio. The Audio role only decides which device plays it.
 
 - **Built.** A music-only item or a song's backing track has a name, a file, a length and "plays on its own" or "waits"; the order shows them, and the service heading shows the music-only total ("Sound: 12:30", or "at least" when a file gave no length). Any device can plan sound, with no role. **Setup > Sound > "Use sound in services"** (off by default) decides whether Plan offers the buttons that add sound ("Add sound", "Add a backing track"). Sound already in a service always shows, with the switch on or off. A church that never turns it on sees nothing about sound.
-- **The Operator sees it.** Present lists the service's sound ("In this service"), what plays now with its position, and the controls above, whether Audio is on the same device or not. The roster says who runs the sound.
+- **The Operator sees it.** Present's Sound box shows what plays now with its position, the controls above, and the service's sound as a queue that follows the service (#191): "Up next" (the first sound after the live item), and "Show all (n)" for the whole list, with sound already played greyed under "Played (n)" and still playable. A backing track keeps its own entry. When the service reaches a sound that waits for Play, that entry is highlighted ("Waiting for Play") until it plays. The box folds to one line: what plays, "Fade out" and "Stop the sound now", which is never hidden; a warning and a sound waiting for Play still show. It is open before the service starts and folded once it is under way; each choice is remembered on that computer. The phone remote's Sound box has the same queue (Up next, the waiting sound, "Show all"), always open. The roster says who runs the sound.
 - **Moving Audio never edits the order.** The order is the plan; only the playing changes hands.
-- **Not yet.** The planned end time does not count the music, because there is no planned end time yet (the service heading shows the music's total). "Next" does not start a music-only item; it plays from its Play button.
+- **Not yet.** The planned end time does not count the music, because there is no planned end time yet (the service heading shows the music's total). "Play next" (line up a sound to start when the one playing ends) is not built: Play replaces what is playing.
 - **Older versions.** A Lampstand without sound cannot open a service with a music-only item; it says the service was saved by a newer Lampstand (details in ARCHITECTURE).
 
 ### Audio warnings
 
-The spec wanted: "Nobody runs the sound, so {item} will not play." What is built is shorter and is shown in the sound panel when it applies: **"Nobody runs the sound."** (no device holds Audio), **"The device that runs the sound is not connected."** (the Audio holder is offline), a message when a sound failed to start, and "This computer's sound output is not working. Choose another in Setup > Sound." on the Audio holder. None names the item. The longer wording is **Planned** and is an open question (see the end).
+**The role bar** (the notices across the top of every screen) warns ahead of a sound item when no device holds Audio, naming the next sound the service will reach (the one on air first): **"Nobody runs the sound, so {item} won't play."** (#182; the wording is settled). The Sound box says the rest when it applies: **"Nobody runs the sound."** (no device holds Audio; the core's refusal, the same sentence), **"The device that runs the sound is not connected."** (the Audio holder is offline), a message when a sound failed to start, and "This computer's sound output is not working. Choose another in Setup > Sound." on the Audio holder.
 
 A device that has only just connected, before it has heard who holds what, is refused with "Nobody is presenting." (the 0.7.0 wording, kept in `wording.rs` `Denied::Settling`); whether it should change is a question for the owner.
 
@@ -222,7 +223,9 @@ These were proposed in the first design and are now decided, or were decided by 
 - One ask at a time; always-allow only for Operator and Stream.
 - Role records are signed, eight steps, with an "unverified" state, shown in the roster (#184).
 - A takeover the holder refuses is answered with a signed reclaim; the claimant hands back and waits five minutes before it can take over from that holder again (#183).
-- Stream warnings: none. Audio warning: "Nobody runs the sound." (wording question open).
+- Stream warnings: none. Audio warnings: "Nobody runs the sound, so {item} won't play." in the role bar ahead of the item (settled by the owner, #182), and "Nobody runs the sound." in the Sound box.
+- **A music-only item starts from Next** (#181) when it plays on its own, on the device that runs the sound; other sound playing fades out over a second first. Waiting sound is unchanged.
+- **The Sound box queue** (#191): played sound stays, greyed under "Played (n)" and still playable; a backing track keeps its own entry; "Play next" is a later ticket.
 - Setup > Sound "Use sound in services" off by default.
 - Set up OBS runs on the machine that serves the pictures, only for a remote OBS.
 - Send sound to the stream is off by default (when it is built).

@@ -144,7 +144,10 @@
   async function refreshFacts() {
     try {
       songCount = (await request({ area: "Library", request: { SearchSongs: { query: "", limit: 4 } } }, "Songs")).length;
-      serviceList = (await request({ area: "Service", request: "List" }, "Services")).map((s) => ({ id: s.id, title: s.title, items: s.items }));
+      // Training services (#190) are not the church's own, so they never count as planning one.
+      serviceList = (await request({ area: "Service", request: "List" }, "Services"))
+        .filter((s) => !s.training)
+        .map((s) => ({ id: s.id, title: s.title, items: s.items }));
     } catch {
       // The strip just keeps what it knew.
     }

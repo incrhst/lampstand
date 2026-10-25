@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampstand keys</title>
+<!-- One page to print and keep by the projection computer (#190).
+     `node training/build.mjs sheet` prints it to training/cheat-sheet.pdf.
+     The keys are the Present screen's own (app/src/lib/shortcuts.ts, Help › Keys). -->
+<style>
+  @page { size: A4 portrait; margin: 12mm; }
+  :root { --ink: #1d1a15; --muted: #5c5345; --line: #d8cfbd; --gold: #b8860b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 10pt/1.3 "Noto Sans", "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 186mm; margin: 0 auto; padding: 0; }
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2.5pt solid var(--ink); padding-bottom: 2mm; }
+  h1 { margin: 0; font-size: 20pt; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 10pt; }
+  h2 { margin: 4mm 0 1.5mm; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1.1mm 0; border-bottom: 0.5pt solid var(--line); vertical-align: top; }
+  td:first-child { width: 58mm; white-space: nowrap; padding-right: 3mm; }
+  .cols td:first-child { width: 34mm; }
+  kbd { display: inline-block; min-width: 7mm; padding: 0.4mm 1.6mm; border: 0.8pt solid var(--ink); border-bottom-width: 1.8pt; border-radius: 1.4mm; font-family: inherit; font-size: 9pt; font-weight: 600; line-height: 1.2; text-align: center; }
+  .rule { margin: 4mm 0 0; padding: 3mm 4mm; border: 1.5pt solid var(--ink); border-radius: 2mm; font-size: 13pt; font-weight: 700; text-align: center; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8mm; }
+  ol { margin: 0; padding-left: 5mm; }
+  li { margin: 1mm 0; }
+  footer { margin-top: 4mm; color: var(--muted); font-size: 8.5pt; }
+  @media screen { body { background: #eee; } main { background: #fff; padding: 12mm; margin: 8mm auto; box-shadow: 0 1px 6px rgba(0,0,0,.15); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lampstand: the keys</h1>
+    <p>Keep by the projection computer</p>
+  </header>
+
+  <p class="rule">Nothing reaches the screen until you send it. If anything goes wrong: <kbd>.</kbd> blank first, think second.</p>
+
+  <h2>Present: running the service</h2>
+  <table>
+    <tr><td><kbd>Space</kbd> <kbd>→</kbd></td><td>Next slide (also a deck's next build)</td></tr>
+    <tr><td><kbd>←</kbd></td><td>Previous slide</td></tr>
+    <tr><td><kbd>.</kbd> full stop</td><td>Blank the screen. Press again to bring the slide back</td></tr>
+    <tr><td><kbd>⇧</kbd><kbd>↓</kbd> <kbd>⇧</kbd><kbd>↑</kbd> then <kbd>Enter</kbd></td><td>Choose another item (only you see it), then start it</td></tr>
+    <tr><td><kbd>1</kbd> … <kbd>9</kbd></td><td>Jump to that verse of the song on air</td></tr>
+    <tr><td><kbd>C</kbd> <kbd>B</kbd> <kbd>P</kbd> <kbd>T</kbd> <kbd>I</kbd> <kbd>E</kbd></td><td>Chorus, bridge, pre-chorus, tag, intro, ending</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Quick add a song or a reading (type <em>Rom 8:28</em>). <kbd>⇧</kbd><kbd>Enter</kbd> shows it now</td></tr>
+    <tr><td>Click a slide</td><td>Shows that slide straight away</td></tr>
+  </table>
+
+  <div class="cols">
+    <div>
+      <h2>Buttons, top right</h2>
+      <table>
+        <tr><td>Show</td><td>The slide</td></tr>
+        <tr><td>Logo</td><td>Your church's logo, for gaps</td></tr>
+        <tr><td>Blank</td><td>Black screen</td></tr>
+        <tr><td>More › Clear text</td><td>Hide the words, keep the picture</td></tr>
+        <tr><td>Close service</td><td>When the service is over</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2>Moving around</h2>
+      <table>
+        <tr><td><kbd>Ctrl</kbd><kbd>1</kbd></td><td>Plan</td></tr>
+        <tr><td><kbd>Ctrl</kbd><kbd>2</kbd></td><td>Present</td></tr>
+        <tr><td><kbd>Ctrl</kbd><kbd>\</kbd></td><td>Switch between them</td></tr>
+        <tr><td><kbd>O</kbd></td><td>OBS controls, when connected</td></tr>
+        <tr><td colspan="2">On a Mac use <kbd>⌘</kbd> for <kbd>Ctrl</kbd>. A clicker's buttons are Next, Previous and Blank.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h2>Sunday, step by step</h2>
+      <ol>
+        <li>Screens on. Open Lampstand.</li>
+        <li>Present: open the service for live.</li>
+        <li>Start on Logo or Blank.</li>
+        <li><kbd>Space</kbd> through the service.</li>
+        <li>Close service at the end.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>The five surprises</h2>
+      <ol>
+        <li>Sung again: <kbd>1</kbd>…<kbd>9</kbd> or <kbd>C</kbd></li>
+        <li>Order changes: <kbd>⇧</kbd><kbd>↓</kbd> <kbd>Enter</kbd></li>
+        <li>Unplanned reading: <kbd>/</kbd> then <kbd>⇧</kbd><kbd>Enter</kbd></li>
+        <li>Updated deck: choose the new one, <kbd>Enter</kbd></li>
+        <li>Anything wrong: <kbd>.</kbd></li>
+      </ol>
+    </div>
+  </div>
+
+  <footer>Practise any time: Present lists Training 0, 1 and 2, built into Lampstand and working offline. Help › Keys has this list too.</footer>
+</main>
+</body>
+</html>

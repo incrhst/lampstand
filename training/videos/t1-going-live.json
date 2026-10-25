@@ -1,0 +1,113 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training 1",
+   "heading": "Going live",
+   "sub": "Space, the arrows, and choosing an item",
+   "say": "Going live, and moving through the slides.",
+   "narration": "narration/t1-going-live/01.mp3",
+   "durationSec": 4.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/song.png",
+   "heading": "Space moves on",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 47,
+     "y": 43,
+     "label": "On air now"
+    },
+    {
+     "x": 36,
+     "y": 71,
+     "label": "Next: Space or →"
+    },
+    {
+     "x": 26,
+     "y": 71,
+     "label": "Previous: ←"
+    }
+   ],
+   "say": "The slide in the red frame is on air. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "narration": "narration/t1-going-live/02.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/song.png",
+   "heading": "Look ahead",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 87,
+     "y": 29,
+     "label": "What Space shows next"
+    },
+    {
+     "x": 87,
+     "y": 49,
+     "label": "Notes for you"
+    },
+    {
+     "x": 47,
+     "y": 88,
+     "label": "Every slide of this item"
+    }
+   ],
+   "say": "On the right, Next shows what Space will put up, and the notes are for you, never for the room. Below, every slide of the item is laid out.",
+   "narration": "narration/t1-going-live/03.mp3",
+   "durationSec": 12
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/choose.png",
+   "heading": "Choose another item",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 10,
+     "y": 66,
+     "label": "Shift+↓ chooses"
+    },
+    {
+     "x": 47,
+     "y": 43,
+     "label": "Still on air"
+    },
+    {
+     "x": 47,
+     "y": 88,
+     "label": "Click a slide to show it now"
+    }
+   ],
+   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any slide to show it at once.",
+   "narration": "narration/t1-going-live/04.mp3",
+   "durationSec": 15
+  },
+  {
+   "type": "bullets",
+   "heading": "Songs and decks",
+   "tone": "table",
+   "items": [
+    "1 to 9 jump to that verse",
+    "C jumps to the chorus",
+    "A deck's builds: one Space each"
+   ],
+   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. In a slide deck, each press of Space plays the next build, until the slide is complete.",
+   "narration": "narration/t1-going-live/05.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "cta",
+   "heading": "Your turn",
+   "action": "Press Space, then run the practice items",
+   "say": "Your turn. Press Space, and run the practice items as if it were Sunday.",
+   "narration": "narration/t1-going-live/06.mp3",
+   "durationSec": 8
+  }
+ ]
+}

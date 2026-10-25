@@ -829,13 +829,13 @@ fn a_service_from_a_newer_version_is_left_out_counted_and_holds_updates() {
         })
         .unwrap();
     match d.ok(Request::Service(ServiceRequest::List)) {
-        Response::Services(list) => assert_eq!(list.len(), 1),
+        Response::Services(list) => assert_eq!(list.iter().filter(|s| !s.training).count(), 1),
         other => panic!("{other:?}"),
     }
     // One read gives the list and what could not be shown.
     match d.ok(Request::Service(ServiceRequest::ListChecked)) {
         Response::ServiceList(list) => {
-            assert_eq!(list.services.len(), 1);
+            assert_eq!(list.services.iter().filter(|s| !s.training).count(), 1);
             assert_eq!((list.newer, list.damaged.len()), (1, 0));
         }
         other => panic!("{other:?}"),

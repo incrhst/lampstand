@@ -6,7 +6,12 @@
 //! and no service starting within the hour. This module is that rule; the
 //! shell does the asking and installing.
 
+use std::sync::Mutex;
+
+use lampstand_api::{UpdateState, UpdateStatus};
 use lampstand_core::id::Timestamp;
+
+use crate::handler::App;
 
 /// How long before a service starts that an update is refused.
 pub const QUIET_BEFORE_SERVICE_MS: i64 = 60 * 60 * 1000;
@@ -29,6 +34,36 @@ pub fn blocker(idle: bool, next_service: Option<Timestamp>, now: Timestamp) -> O
         ));
     }
     None
+}
+
+/// What the screen is told about updates. `App` is locked once, for both
+/// answers: a guard lives to the end of its statement, so a second lock in
+/// the same expression waits on this thread forever, and every request
+/// after it waits too (the 0.8.0 freeze).
+pub fn status(app: &Mutex<App>, current: String, state: UpdateState) -> UpdateStatus {
+    let (blocked, caution) = {
+        let app = app.lock().unwrap_or_else(|e| e.into_inner());
+        (app.update_blocker(), app.update_caution())
+    };
+    UpdateStatus {
+        current,
+        state,
+        blocked,
+        caution,
+    }
+}
+
+/// What a check found: the newer release's version and notes, or why the
+/// check failed.
+pub fn checked(found: Result<Option<(String, Option<String>)>, String>) -> UpdateState {
+    match found {
+        Ok(Some((version, notes))) => UpdateState::Available {
+            version,
+            notes: notes.filter(|n| !n.trim().is_empty()),
+        },
+        Ok(None) => UpdateState::UpToDate,
+        Err(message) => UpdateState::Failed { message },
+    }
 }
 
 #[cfg(test)]

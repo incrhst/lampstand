@@ -77,6 +77,7 @@ use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+use crate::training;
 pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
@@ -142,7 +143,13 @@ struct Sent {
 }
 
 /// What the UI was last told about the live state.
-type LiveState = (Option<Cursor>, Option<Cursor>, bool, Overlay);
+type LiveState = (
+    Option<Cursor>,
+    Option<Cursor>,
+    bool,
+    Overlay,
+    Option<Cursor>,
+);
 
 /// The whole seconds a countdown shows now, rounded up as it is drawn.
 fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
@@ -230,6 +237,9 @@ pub struct App {
     /// Set from `open` until the journal is restored, so the windows
     /// being placed and the half-restored state do not overwrite it.
     restoring: bool,
+    /// Set while the journal's state is put back: items going live then do
+    /// not start their sound.
+    quiet_cues: bool,
     /// This device may drive the screens: it is the presenter, or has no
     /// paired devices. Set by the shell as sync reports it; a Planning
     /// device refuses live control and keeps its screens dark.
@@ -238,6 +248,10 @@ pub struct App {
     /// appears after that, even before the shell's first look, is noticed.
     seen_displays: Vec<DisplayInfo>,
 }
+
+/// Why a training service refuses a change (#190).
+pub const TRAINING_READ_ONLY: &str = "Training services can't be changed. \
+     Practise in Present, then press Reset training to start again.";
 
 /// Why a Planning device refuses live control.
 pub const PLANNING_ONLY: &str =
@@ -267,6 +281,9 @@ impl App {
         let key = device_key(data_dir).map_err(err)?;
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
+        if let Err(e) = training::install(&library) {
+            eprintln!("lampstand: the training services could not be added: {e}");
+        }
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
@@ -307,6 +324,7 @@ impl App {
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
+            quiet_cues: false,
             presenting: true,
             seen_displays: Vec::new(),
         };
@@ -575,6 +593,7 @@ impl App {
                 decks.sort_by_key(|d| d.title.to_lowercase());
                 Response::Decks(decks)
             }
+            LibraryRequest::ListTrainingDecks => Response::Decks(lib.training_decks()),
             LibraryRequest::AddDeckFile { path } => {
                 Response::Deck(decks::add_deck_file(lib, &path)?)
             }
@@ -613,7 +632,40 @@ impl App {
         })
     }
 
+    /// Refuses a change to a training service (#190). Quick add and taking
+    /// out what it added are allowed while the service is open for live, as
+    /// practice for scripture nobody planned; Reset training undoes them.
+    fn check_training(&self, request: &ServiceRequest) -> Result<()> {
+        let (service, practice) = match request {
+            ServiceRequest::InsertItem { service, .. }
+            | ServiceRequest::RemoveItem { service, .. } => (*service, true),
+            ServiceRequest::Duplicate { service, .. }
+            | ServiceRequest::Reschedule { service, .. }
+            | ServiceRequest::Rename { service, .. }
+            | ServiceRequest::SetTheme { service, .. }
+            | ServiceRequest::Delete(service)
+            | ServiceRequest::SetSound { service, .. }
+            | ServiceRequest::SetMediaLooped { service, .. }
+            | ServiceRequest::MoveItem { service, .. }
+            | ServiceRequest::SetObsScene { service, .. }
+            | ServiceRequest::SetItemArrangement { service, .. }
+            | ServiceRequest::SetItemText { service, .. }
+            | ServiceRequest::SetLoop { service, .. } => (*service, false),
+            _ => return Ok(()),
+        };
+        if !self.library.is_training(service) {
+            return Ok(());
+        }
+        let open = self.presenting && self.loaded.as_ref().map(|l| l.view.service) == Some(service);
+        if practice && open {
+            Ok(())
+        } else {
+            Err(TRAINING_READ_ONLY.into())
+        }
+    }
+
     fn service_request(&mut self, request: ServiceRequest) -> Result<Response> {
+        self.check_training(&request)?;
         let lib = &self.library;
         let get = |id: ServiceId| -> Result<Service> {
             lib.service(id)
@@ -621,11 +673,17 @@ impl App {
                 .ok_or("no such service".into())
         };
         Ok(match request {
-            ServiceRequest::List => Response::Services(summaries(lib.services().map_err(err)?)),
+            ServiceRequest::List => {
+                let mut services = summaries(lib.services().map_err(err)?);
+                services.extend(training_summaries(lib));
+                Response::Services(services)
+            }
             ServiceRequest::ListChecked => {
                 let scan = lib.services_checked().map_err(err)?;
+                let mut services = summaries(scan.services);
+                services.extend(training_summaries(lib));
                 Response::ServiceList(lampstand_api::ServiceList {
-                    services: summaries(scan.services),
+                    services,
                     newer: scan.newer as u32,
                     damaged: scan.damaged,
                 })
@@ -707,6 +765,13 @@ impl App {
                     );
                 }
                 self.library.delete_service(service).map_err(err)?;
+                Response::Ok
+            }
+            ServiceRequest::ResetTraining => {
+                lib.reset_training();
+                if let Some(open) = self.loaded.as_ref().map(|l| l.view.service) {
+                    self.reload_if_open(open)?;
+                }
                 Response::Ok
             }
             ServiceRequest::Close(service) => {
@@ -1167,6 +1232,9 @@ impl App {
                 }
                 loaded.loop_group = section;
                 if section.is_some() {
+                    // A looping section passes over its music, as before:
+                    // it is not part of the loop.
+                    loaded.sound_only = false;
                     // A video plays through once, then the loop moves on.
                     for slide in &mut loaded.slides {
                         if let Content::Video {
@@ -1251,6 +1319,7 @@ impl App {
             song: None,
             auto_advance_ms: None,
             loop_group: None,
+            sound_only: false,
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -1259,9 +1328,13 @@ impl App {
         };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
-            // Sound has no picture: the screens stay as they are. Playing
-            // it is the Audio role's job.
-            ItemKind::Sound { sound } => item(sound.name.clone(), Vec::new()),
+            // Sound has no picture: the screens stay as they are. `Next`
+            // stops on it so it can start (#181); playing it is the Audio
+            // role's job.
+            ItemKind::Sound { sound } => LoadedItem {
+                sound_only: true,
+                ..item(sound.name.clone(), Vec::new())
+            },
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
                 Some(s) => {
                     let slides = paginate_song(&s, arrangement.as_deref(), theme)
@@ -1420,7 +1493,9 @@ impl App {
                 lampstand_live::Event::ItemLive { item } => {
                     cursors_changed = true;
                     self.cue_obs(*item);
-                    self.cue_sound(*item);
+                    if !self.quiet_cues {
+                        self.cue_sound(*item);
+                    }
                 }
                 // Comes with `ProgramChanged`: `present_with` sends it as
                 // `Animate` to the outputs showing the step before.
@@ -1448,10 +1523,12 @@ impl App {
                 self.live.preview(),
                 self.live.is_idle(),
                 self.live.program().overlay,
+                self.live.shown(),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
                     live: state.0,
+                    shown: state.4,
                     preview: state.1,
                     idle: state.2,
                     overlay: state.3,
@@ -2157,6 +2234,7 @@ impl App {
         LiveRecord {
             service: self.loaded.as_ref().map(|l| l.view.service),
             live: self.live.live(),
+            shown: self.live.shown(),
             preview: self.live.preview(),
             overlay: program.overlay,
             text: program.content.is_some(),
@@ -2189,7 +2267,19 @@ impl App {
             return;
         }
         let mut commands = Vec::new();
-        commands.extend(record.live.map(Command::Show));
+        // While music was live the screens showed the slide before it: that
+        // goes live first, then the music, so the screens come back as they
+        // were. A journal from before `shown` was kept has only the music:
+        // the slide Previous reaches from it stands in.
+        match (record.live, record.shown) {
+            (Some(live), Some(shown)) if shown != live => {
+                commands.extend([Command::Show(shown), Command::Show(live)]);
+            }
+            (Some(live), None) if self.sound_of(live.item, false).is_ok() => {
+                commands.extend([Command::Show(live), Command::Previous, Command::Show(live)]);
+            }
+            (live, _) => commands.extend(live.map(Command::Show)),
+        }
         match record.overlay {
             Overlay::Black => commands.push(Command::ToggleBlack),
             Overlay::Logo => commands.push(Command::ToggleLogo),
@@ -2206,7 +2296,11 @@ impl App {
             .into_iter()
             .flat_map(|c| self.live.apply(c))
             .collect();
+        // Coming back from a crash never starts sound unasked: the Sound box
+        // has it ready to play.
+        self.quiet_cues = true;
         self.after_live(events);
+        self.quiet_cues = false;
         let missing = record
             .outputs
             .iter()
@@ -2236,6 +2330,7 @@ impl App {
         }
         (self.emit)(Event::Live {
             live: self.live.live(),
+            shown: self.live.shown(),
             preview: self.live.preview(),
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
@@ -2465,21 +2560,35 @@ fn fresh_key() -> String {
 }
 
 /// The services as the list shows them, in order.
-fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
-    let mut services: Vec<ServiceSummary> = services
+/// The training services, Training 0 first, listed after the church's own.
+fn training_summaries(library: &Library) -> Vec<ServiceSummary> {
+    library
+        .training_services()
         .into_iter()
         .map(|s| ServiceSummary {
-            id: s.id,
-            title: s.title,
-            starts_at: s.starts_at,
-            time_zone: s.time_zone,
-            items: s
-                .items
-                .values()
-                .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                .count() as u32,
+            training: true,
+            ..summary(s)
         })
-        .collect();
+        .collect()
+}
+
+fn summary(s: Service) -> ServiceSummary {
+    ServiceSummary {
+        id: s.id,
+        title: s.title,
+        starts_at: s.starts_at,
+        time_zone: s.time_zone,
+        items: s
+            .items
+            .values()
+            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+            .count() as u32,
+        training: false,
+    }
+}
+
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services.into_iter().map(summary).collect();
     sort_services(&mut services, now());
     services
 }

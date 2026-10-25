@@ -10,7 +10,7 @@
 // already in words, in `SoundView.problem`: those sentences live in one
 // place, `problem_words` in app/src-tauri/src/handler/audio.rs.
 
-import type { LoadedItemView, Service, SoundPlaying, SoundView } from "./api";
+import type { LoadedItemView, Service, SoundPlaying, SoundStart, SoundView } from "./api";
 import { formatLength } from "./loops.ts";
 import { lengthLabel, startLabel } from "./sound.ts";
 
@@ -39,6 +39,18 @@ export const words = {
   /** The core's words when a sound cannot go anywhere. */
   away: "The device that runs the sound is not connected.",
   nobody: "Nobody runs the sound.",
+  /** spec (#182): said in the role bar ahead of a sound nobody will play. */
+  nobodyFor: (name: string) => `Nobody runs the sound, so ${name} won't play.`,
+  /** proposed (#191): the queue. */
+  upNext: "Up next",
+  showAll: (n: number) => `Show all (${n})`,
+  showLess: "Show less",
+  played: (n: number) => `Played (${n})`,
+  /** proposed: on a sound the service has reached that waits for Play. */
+  waiting: "Waiting for Play",
+  /** proposed: a music-only item's line in Present's service order. */
+  startsFromNext: "Music only · starts when Next reaches it",
+  pressPlay: "Music only · press Play in the Sound box",
   /** proposed: the label on a sound that is playing (was hard-coded in capitals in the panel). */
   playing: "Playing",
   /** proposed: said on the item a problem belongs to, before the core's sentence, for a screen reader. */
@@ -61,6 +73,7 @@ export interface SoundEntry {
   name: string;
   /** "Music only · 3:05 · Waits for someone to press play". */
   detail: string;
+  start: SoundStart;
 }
 
 /** The sound in the service's running order, music-only items and backing tracks, as Present lists them. */
@@ -76,6 +89,7 @@ export function soundEntries(items: LoadedItemView[], service: Service | null): 
         backing: false,
         name: s.name,
         detail: [lengthLabel(s.length_ms), startLabel(s.start)].join(" · "),
+        start: s.start,
       });
     }
     if (it.backing) {
@@ -84,10 +98,90 @@ export function soundEntries(items: LoadedItemView[], service: Service | null): 
         backing: true,
         name: it.backing.name,
         detail: [words.trackOf(item.title), lengthLabel(it.backing.length_ms), startLabel(it.backing.start)].join(" · "),
+        start: it.backing.start,
       });
     }
   }
   return out;
+}
+
+/** What the queue needs of a sound: the panel's entries and the phone remote's alike. */
+export interface Queued {
+  item: string;
+  backing: boolean;
+  start: SoundStart;
+}
+
+/** One sound's place in the queue: a music-only item and its song's backing track each have their own. */
+export const entryKey = (e: { item: string; backing: boolean }) => e.item + (e.backing ? "-track" : "");
+
+/**
+ * The service's sound as a queue that follows the service (#191). `order`
+ * is the service's items in order; `liveItem` is the item on air (null
+ * before the service starts). `heard` holds the keys of sounds that have
+ * played since their item went live.
+ *
+ * - `played`: sound the service has passed, greyed and still playable.
+ * - `rest`: the sound at the live item and after it.
+ * - `upNext`: the first sound after the live item (the first of all before
+ *   the service starts).
+ * - `waiting`: the sound at the live item that waits for someone to press
+ *   Play and has not played: shown and highlighted even in a folded box.
+ */
+export function soundQueue<T extends Queued>(
+  entries: T[],
+  order: string[],
+  liveItem: string | null,
+  heard: ReadonlySet<string> = new Set(),
+): { played: T[]; rest: T[]; upNext: T | null; waiting: T | null } {
+  const at = liveItem == null ? -1 : order.indexOf(liveItem);
+  const place = (e: T) => order.indexOf(e.item);
+  const played = entries.filter((e) => at >= 0 && place(e) < at);
+  const rest = entries.filter((e) => !played.includes(e));
+  const waiting = rest.find((e) => place(e) === at && at >= 0 && e.start === "Waits" && !heard.has(entryKey(e))) ?? null;
+  const upNext = rest.find((e) => place(e) > at) ?? null;
+  return { played, rest, upNext, waiting };
+}
+
+/** What has played since the live item went live, for `soundQueue`'s `heard`. */
+export interface Heard {
+  at: string | null;
+  keys: ReadonlySet<string>;
+}
+
+/** `heard` brought up to date: it starts over when another item goes live, and gains what plays now. The same object when nothing changed. */
+export function hear(heard: Heard, liveItem: string | null, p: SoundPlaying | null, entries: Queued[]): Heard {
+  const base = heard.at === liveItem ? heard : { at: liveItem, keys: new Set<string>() };
+  const now = p ? entries.filter((e) => e.item === p.item).map(entryKey) : [];
+  if (now.every((k) => base.keys.has(k))) return base;
+  return { at: liveItem, keys: new Set([...base.keys, ...now]) };
+}
+
+/**
+ * The role bar's warning when nobody runs the sound (#182): it names the
+ * next sound the service will reach (the one on air first), so it is said
+ * ahead of it. Null when someone runs the sound or there is no sound to come.
+ */
+export function nobodyWarning(view: SoundView | null, queue: { rest: { name: string }[] }): string | null {
+  if (!view?.nobody) return null;
+  const next = queue.rest[0];
+  return next ? words.nobodyFor(next.name) : null;
+}
+
+/** "Sound · Playing · Walk-in music": what the folded box says, with the progress and buttons after it. */
+export function foldedLine(p: SoundPlaying | null): string {
+  if (!p) return words.quiet;
+  return `${p.paused ? words.paused : p.ending ? words.fading : words.playing} · ${p.name}`;
+}
+
+/** "0:42 left". */
+export function leftLabel(p: SoundPlaying, saidAt: number, now: number): string {
+  return `${formatLength(Math.max(0, p.length_ms - positionNow(p, saidAt, now)))} left`;
+}
+
+/** A music-only item's line in Present's service order: how it will start. */
+export function musicLine(item: LoadedItemView): string {
+  return item.sounds?.some((s) => !s.backing && s.start === "OnItsOwn") ? words.startsFromNext : words.pressPlay;
 }
 
 /** Whether Present shows the sound panel: the service has sound, or sound plays anyway. */

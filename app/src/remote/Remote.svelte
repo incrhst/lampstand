@@ -1,23 +1,30 @@
 <!-- Lampstand Remote (T100), phones and tablets: a helper's phone held upright, from the top:
      what is on screen now, what is next, big Back and Next for a thumb, a
-     quieter row of Black, Logo and Clear, then the Sound box. Nothing to plan
+     quieter row of Black, Logo and Clear, then the Sound box (what plays,
+     the sound that waits for Play, Up next, and the whole list on asking,
+     as in Present's Sound box). Nothing to plan
      or edit: Plan stays on the laptop. When the link drops, everything the
      laptop said goes and the page says it is not connected. -->
 <script lang="ts">
   import type { Command, Cursor, Request, SoundRequest } from "../lib/api";
+  import { untrack } from "svelte";
   import {
     words as soundWords,
+    entryKey,
+    hear,
     notice,
     progressFraction,
     progressLabel,
+    soundQueue,
     transport,
     whereLine,
+    type Heard,
   } from "../lib/audio.ts";
   import Dot from "../lib/kit/Dot.svelte";
   import Icon from "../lib/kit/Icon.svelte";
   import SlidePreview from "../lib/kit/SlidePreview.svelte";
   import StatusPill from "../lib/kit/StatusPill.svelte";
-  import { onScreen, pictureKey, remoteSounds, slideLine, upNext, wantsPicture, words } from "../lib/remote.ts";
+  import { onScreen, pictureKey, remoteSounds, slideLine, upNext, wantsPicture, words, type RemoteSound } from "../lib/remote.ts";
   import { link } from "./link.svelte";
   import { keepAwake } from "./wake";
 
@@ -32,6 +39,17 @@
   let warning = $derived(notice(link.sound));
   let where = $derived(whereLine(link.sound));
   let showSound = $derived(online && (sounds.length > 0 || playing != null));
+  let liveItem = $derived(link.live?.live?.item ?? null);
+  let heard: Heard = $state({ at: null, keys: new Set() });
+  $effect(() => {
+    const next = hear(untrack(() => heard), liveItem, playing, sounds);
+    untrack(() => {
+      if (next !== heard) heard = next;
+    });
+  });
+  let queue = $derived(soundQueue(sounds, link.loaded?.items.map((i) => i.id) ?? [], liveItem, heard.keys));
+  /** "Show all": the whole list instead of Up next. */
+  let all = $state(false);
 
   // The position moves on by itself between what the laptop says.
   let now = $state(Date.now());
@@ -196,25 +214,45 @@
           <button type="button" disabled={!can.fadeOut} onclick={() => sound("Stop")}>{soundWords.fadeOut}</button>
         </div>
         <button type="button" class="panic" onclick={() => sound("Panic")}>{soundWords.panic}</button>
+        {#if queue.waiting}
+          <ul class="plain sounds">{@render soundRow(queue.waiting, "waiting")}</ul>
+        {/if}
         {#if sounds.length > 0}
-          <ul class="plain sounds">
-            {#each sounds as s (s.item + (s.backing ? "-track" : ""))}
-              <li class:current={playing?.item === s.item}>
-                <div class="text">
-                  <span class="name">{s.name}</span>
-                  <span class="muted small">{s.detail}</span>
-                </div>
-                <button type="button" aria-label="{soundWords.play} {s.name}" onclick={() => sound({ Play: { item: s.item, backing: s.backing } })}>
-                  <Icon name="play" size={18} />{soundWords.play}
-                </button>
-              </li>
-            {/each}
-          </ul>
+          {#if all}
+            {#if queue.played.length > 0}
+              <h3>{soundWords.played(queue.played.length)}</h3>
+              <ul class="plain sounds">
+                {#each queue.played as s (entryKey(s))}{@render soundRow(s, "played")}{/each}
+              </ul>
+            {/if}
+            {#if queue.rest.some((s) => s !== queue.waiting)}
+              <h3>{soundWords.inService}</h3>
+              <ul class="plain sounds">
+                {#each queue.rest.filter((s) => s !== queue.waiting) as s (entryKey(s))}{@render soundRow(s, "")}{/each}
+              </ul>
+            {/if}
+          {:else if queue.upNext}
+            <h3>{soundWords.upNext}</h3>
+            <ul class="plain sounds">{@render soundRow(queue.upNext, "")}</ul>
+          {/if}
+          <button type="button" class="more" aria-expanded={all} onclick={() => (all = !all)}>{all ? soundWords.showLess : soundWords.showAll(sounds.length)}</button>
         {/if}
       </section>
     {/if}
   </div>
 </main>
+
+{#snippet soundRow(s: RemoteSound, kind: "waiting" | "played" | "")}
+  <li class:current={playing?.item === s.item} class:waiting={kind === "waiting"} class:played={kind === "played"}>
+    <div class="text">
+      <span class="name">{s.name}</span>
+      <span class="muted small">{kind === "waiting" ? `${soundWords.waiting} · ${s.detail}` : s.detail}</span>
+    </div>
+    <button type="button" aria-label="{soundWords.play} {s.name}" onclick={() => sound({ Play: { item: s.item, backing: s.backing } })}>
+      <Icon name="play" size={18} />{soundWords.play}
+    </button>
+  </li>
+{/snippet}
 
 <style>
   .remote {
@@ -469,6 +507,29 @@
   }
   .sounds li.current {
     outline: 1px solid var(--gold);
+  }
+  .sounds li.waiting {
+    background: var(--warn-soft);
+    outline: 1px solid var(--warn);
+  }
+  .sounds li.played .text {
+    opacity: 0.6;
+  }
+  .sound h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 0.2rem 0 0;
+  }
+  .more {
+    justify-self: start;
+    font: inherit;
+    background: none;
+    border: none;
+    min-height: 2.75rem;
+    padding: 0;
+    color: var(--text);
+    text-decoration: underline;
   }
   .sounds .text {
     display: grid;
