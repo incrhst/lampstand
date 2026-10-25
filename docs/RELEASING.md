@@ -137,7 +137,7 @@ On a Linux container with a null sink the same example was recorded and measured
 
 ### Releasing 0.8.0: roles and sound
 
-- **Every device must update together.** 0.8.0 is sync protocol 5 and 0.7.0 is protocol 4. A device on the other version is refused at the handshake with a message saying which side should update, so a church with several paired computers updates all of them before the next service. The release notes say so first. Installed copies offer the update from Setup, About, and refuse to install while a service is on air or starts within the hour.
+- **Every device must update together.** 0.8.0 is sync protocol 6 and 0.7.0 is protocol 4. A device on any other version (including a 0.8.0 test build on protocol 5) is refused at the handshake with a message saying which side should update, so a church with several paired computers updates all of them before the next service. The release notes say so first. Installed copies offer the update from Setup, About, and refuse to install while a service is on air or starts within the hour.
 - **Roles move out of the old files.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files alone, so going back to 0.7.0 starts from them as they were.
 - **The Roles page.** `site/docs/roles.html` says roles are new in 0.8.0. The site deploys when this merges to `main`, so merge the release on the day the release is published.
 - **What the notes should say is not there yet:** sending Lampstand's sound to the stream through OBS; a music-only item starting by itself from Next (it plays from its Play button); and the warnings that nobody runs the sound or the stream. The same list is at the end of `docs/roles.md`.
