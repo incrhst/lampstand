@@ -46,7 +46,7 @@ sound_output: string | null,
 default_translation: string | null, 
 /**
  * The church's name, logo, colours and font (the quick start). The
- * logo is what the Logo overlay shows.
+ * logo is on the default idle screen and is the logo bug.
  */
 brand: Brand | null, 
 /**
