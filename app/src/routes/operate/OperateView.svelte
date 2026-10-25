@@ -43,7 +43,6 @@
   import { driverOffline, isDriving } from "../../lib/driving";
   import { slideMark } from "../../lib/presentView";
   import { useLiveLook } from "../../lib/liveLook.svelte";
-  import { openState, saveOpen } from "../../lib/disclosure";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
   let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
@@ -149,24 +148,25 @@
     return live.live?.item === item && live.live?.slide === slide;
   }
 
-  // Show / Logo / Blank is the overlay the engine reports. Black and Logo
-  // toggle in the engine, so choosing one sends the toggle that gets there.
-  // Choosing Show again re-shows the live slide, which brings text back
-  // after Clear text.
+  // Show / Idle / Blank is the overlay the engine reports. Idle puts the
+  // idle screen up without ending the service; Black and Idle toggle in the
+  // engine, so choosing one sends the toggle that gets there. Choosing Show
+  // again re-shows the live slide, which brings text back after Clear text.
+  // The church's logo is the logo bug (More), not a screen of its own.
   const modes = [
     { id: "None", label: "Show" },
-    { id: "Logo", label: "Logo" },
+    { id: "Idle", label: "Idle" },
     { id: "Black", label: "Blank" },
   ] as const;
 
-  function setOverlay(want: "None" | "Logo" | "Black") {
+  function setOverlay(want: "None" | "Idle" | "Black") {
     const now = live.overlay;
     if (want === now) {
       if (want === "None" && live.live) show(live.live);
       return;
     }
-    if (want === "None") command(now === "Black" ? "ToggleBlack" : "ToggleLogo");
-    else command(want === "Black" ? "ToggleBlack" : "ToggleLogo");
+    if (want === "None") command(now === "Black" ? "ToggleBlack" : "ToggleIdle");
+    else command(want === "Black" ? "ToggleBlack" : "ToggleIdle");
   }
 
   // Space or Right: Next. Left: Previous. Full stop: Black. 1 to 9 jump to
@@ -194,6 +194,17 @@
     if (obsOpen && e.key === "Escape") {
       e.preventDefault();
       setObsOpen(false);
+      return;
+    }
+    // F: focus, the cards only. Esc leaves it.
+    if (live.loaded && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      setFocus(!live.focus);
+      return;
+    }
+    if (live.focus && e.key === "Escape") {
+      e.preventDefault();
+      setFocus(false);
       return;
     }
     const keys: Record<string, Command> = {
@@ -378,13 +389,13 @@
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
   /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
   let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
-  /** A picture of what the projector shows, for an operator who wants to see it. Off unless turned on here; remembered on this computer. */
-  const LIVE_VIEW_KEY = "lampstand.present.liveView";
-  let liveView = $state(openState(LIVE_VIEW_KEY, false));
-  function toggleLiveView() {
-    liveView = !liveView;
-    saveOpen(LIVE_VIEW_KEY, liveView);
+  /** Focus: the cards only. F turns it on and off, Esc leaves it; closing the service leaves it too. */
+  function setFocus(on: boolean) {
+    live.focus = on;
   }
+  $effect(() => {
+    if (!live.loaded) live.focus = false;
+  });
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
   let liveWidth = $derived(presenting || mediaOf(live.shown?.item) ? 1280 : 480);
@@ -514,8 +525,7 @@
     ),
   );
 
-  const stateLabel = { None: "LIVE", Black: "BLANK", Logo: "LOGO" } as const;
-  const outputState = { None: "Showing", Black: "Blank", Logo: "Logo" } as const;
+  const stateLabel = { None: "LIVE", Black: "BLANK", Idle: "IDLE" } as const;
 </script>
 
 <svelte:window {onkeydown} />
@@ -627,6 +637,7 @@
   </div>
 {:else}
   <div class="operate" inert={paused} class:paused>
+    {#if !live.focus}
     <div class="bar">
       <p class="service">
         <strong title={live.loaded.title}>{live.loaded.title}</strong>
@@ -682,9 +693,8 @@
       />
       <Button size="small" variant="ghost" icon="x" onclick={askClose} title="Put the service away; it stays in Plan">Close service</Button>
     </div>
+    {/if}
 
-    <!-- While a deck is on air the presenter view takes the right column
-         too; outputs stay in the status bar. -->
     <div class="grid">
       {#if connectOpen}
         <ConnectRemote onclose={() => (connectOpen = false)} />
@@ -703,17 +713,44 @@
       {/if}
       <!-- The wall: every item's slides at once, in the order of service,
            so any slide is a click away. The LIVE and NEXT marks on the
-           cards say what is on air and what Next shows, so there is no
-           live preview; a strip above keeps the controls and the Sound box. -->
+           cards say what is on air and what Next shows. A strip above keeps
+           a small picture of the main screen (with its safe area), the
+           controls and the Sound box; focus (F) hides it and the bars. -->
       <section class="pane wall-pane" aria-label="The whole service">
+        {#if live.focus}
+          <div class="focus-pill" role="status">
+            <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+            {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
+            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the bars again (F or Esc)">Exit focus</Button>
+          </div>
+        {:else}
         <div class="wall-strip">
           <div class="wall-controls">
-            <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-            <span class="muted wall-where">
-              {output?.name ?? "No screen yet"}{#if liveItem && live.live}{" "}· {liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{/if}
-            </span>
+            <figure class="monitor">
+              <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
+                <SlidePreview
+                  lines={live.shownSlide?.lines ?? []}
+                  footer={live.shownSlide?.footer ?? null}
+                  image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
+                  overlay={live.overlay}
+                  safeArea={output?.safe_area}
+                  {showGuide}
+                  size="small"
+                  idle={live.idle || live.overlay === "Idle" ? look.idle : null}
+                  brand={look.brand}
+                  empty="Nothing on air"
+                />
+              </div>
+              <figcaption class="muted"><Icon name="monitor" size={12} /><span><span class="monitor-name">{output?.name ?? "No screen yet"}</span>{#if output && showGuide} · <span class="monitor-safe">safe area</span>{/if}</span></figcaption>
+            </figure>
+            <div class="wall-now">
+              <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+              <span class="muted wall-where">
+                {#if live.overlay === "Idle"}Idle screen · Next goes back to {/if}{#if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+              </span>
+            </div>
             <span class="spacer"></span>
-            <Button size="small" icon="monitor" pressed={liveView} onclick={toggleLiveView} title={liveView ? "Hide what the projector shows" : "Show what the projector shows"}>Live view</Button>
+            <Button size="small" shortcut="F" onclick={() => setFocus(true)} title="Cards only: hide everything above the wall (F)">Focus</Button>
             <Button size="small" icon="plus" shortcut="/" onclick={() => { quickAddOpen = true; used("quick-add"); }} title="Quick add a song or scripture after what is on air">Quick add</Button>
             <Button size="small" icon="prev" onclick={() => command("Previous")} shortcut="←">Previous</Button>
             <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
@@ -722,25 +759,7 @@
           {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
           {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
           <div class="wall-top">
-          {#if liveView && !stepped}
-            <figure class="wall-live">
-              <div class="wall-live-screen" class:on={live.overlay === "None" && !!live.live} aria-live="polite">
-                <SlidePreview
-                  lines={live.shownSlide?.lines ?? []}
-                  footer={live.shownSlide?.footer ?? null}
-                  image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
-                  overlay={live.overlay}
-                  safeArea={output?.safe_area}
-                  {showGuide}
-                  idle={live.idle ? look.idle : null}
-                  brand={look.brand}
-                  empty="Nothing on air. Press Space to start."
-                />
-              </div>
-              <figcaption class="muted">What {output?.name ?? "the screen"} shows</figcaption>
-            </figure>
-          {/if}
-          {#if stepped && liveItem && live.live && live.liveSlide}
+          {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
             {@const left = live.liveSlide.steps - live.live.step}
             <section class="wall-steps" aria-label="Builds on this slide">
               <p class="wall-steps-head">
@@ -774,6 +793,7 @@
           </div>
           </div>
         </div>
+        {/if}
         <div class="wall-body">
           {#each groups as group (group.section?.header ?? "ungrouped")}
             {@const section = group.section}
@@ -1233,7 +1253,7 @@
   .wall-boxes:empty {
     display: none;
   }
-  /* The live view sits beside the Sound box, loop and tips when there is room. */
+  /* The builds panel sits beside the Sound box, loop and tips when there is room. */
   .wall-top {
     display: flex;
     flex-wrap: wrap;
@@ -1245,22 +1265,69 @@
     flex: 1 1 24rem;
     min-width: 0;
   }
-  .wall-live {
+  /* A small picture of the main screen, always on, with its name and safe area. */
+  .monitor {
     margin: 0;
-    flex: 0 1 24rem;
-    min-width: 14rem;
+    flex: 0 0 auto;
+    width: 12rem;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
-  .wall-live-screen {
-    border-radius: var(--radius-lg);
+  .monitor figcaption {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .monitor-screen {
+    border-radius: var(--radius);
     overflow: hidden;
     box-shadow: 0 0 0 2px var(--line);
   }
-  .wall-live-screen.on {
+  .monitor-screen.on {
     box-shadow: 0 0 0 2px var(--live);
+  }
+  .monitor-name {
+    color: var(--text);
+  }
+  .monitor-safe {
+    color: var(--gold);
+  }
+  .wall-now {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  /* Focus: the cards only, with what is on air and the way out in a pill. */
+  .wall-pane {
+    position: relative;
+  }
+  .focus-pill {
+    position: absolute;
+    top: 0.75rem;
+    right: 1.25rem;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: calc(100% - 2.5rem);
+    padding: 0.3rem 0.3rem 0.3rem 0.75rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--panel);
+    font-size: 0.75rem;
+  }
+  .focus-where {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .wall-steps {
     display: flex;
