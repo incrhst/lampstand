@@ -42,6 +42,7 @@ const view = (role: RoleName, over: Partial<RoleView> = {}): RoleView => ({
   asking: null,
   replaced_by: null,
   always: [],
+  holder_waits_secs: null,
   offers_always: role === "Operator" || role === "Stream",
   ...over,
 });
@@ -94,6 +95,14 @@ test("the Take button", () => {
   });
   const w = roleChoice(view("Audio", { standing: "Wait", offline_secs: 30, wait_secs: 90 }));
   assert.equal(w.kind === "wait" && w.hint, "Mary's laptop went offline 30 seconds ago. You can take over in 2 minutes.");
+});
+
+test("the wait hint says so when the holder's own setting is the longer one", () => {
+  const w = roleChoice(view("Audio", { standing: "Wait", offline_secs: 30, wait_secs: 100, holder_waits_secs: 120 }));
+  assert.equal(
+    w.kind === "wait" && w.hint,
+    "Mary's laptop went offline 30 seconds ago. You can take over in 2 minutes. Mary's laptop is set to wait 2 minutes, which is longer than this device.",
+  );
 });
 
 test("a greyed Take says why", () => {

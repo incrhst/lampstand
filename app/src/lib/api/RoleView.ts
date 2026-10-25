@@ -42,4 +42,10 @@ always: Array<DriverView>,
 /**
  * "Always allow this device" is offered (Operator and Stream only).
  */
-offers_always: boolean, };
+offers_always: boolean, 
+/**
+ * The holder's takeover setting in seconds, when it is longer than this
+ * device's own and so decides how long this device waits to take the
+ * role over (the holder judges a claim by its own setting).
+ */
+holder_waits_secs: number | null, };

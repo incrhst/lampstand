@@ -196,6 +196,8 @@ pub struct RoleStatus {
     /// A newer record was seen whose steps do not join this device's state
     /// (it missed more than eight): it waits for one that does.
     pub unverified: bool,
+    /// The takeover setting the holder last advertised, when it is known.
+    pub holder_takeover: Option<Duration>,
 }
 
 /// All four roles.
@@ -384,6 +386,8 @@ struct Peers {
     /// The network is cut (see [`SyncNode::set_offline`]): no connection may
     /// be registered.
     offline: bool,
+    /// The takeover setting each paired device last advertised.
+    takeover: HashMap<DeviceKey, Duration>,
     /// The last failed attempt to reach each paired device, with whether
     /// it was refused.
     problems: HashMap<DeviceKey, (String, bool)>,
@@ -428,6 +432,8 @@ pub struct SyncNode {
     heard_roles: Mutex<[bool; 4]>,
     /// Contact times are saved one at a time, newest last.
     contacts_save: Mutex<()>,
+    /// Advertised takeover settings are saved one at a time.
+    takeovers_save: Mutex<()>,
     /// Roles are saved one at a time, newest last.
     save_lock: Mutex<()>,
     /// What is on disk may be replaced (see [`saved::Loaded`]).
@@ -454,6 +460,7 @@ struct Reach {
     /// How long each connected device's present connection has been open.
     session_age: HashMap<DeviceKey, Duration>,
     fresh_session: Duration,
+    takeover: HashMap<DeviceKey, Duration>,
 }
 
 impl Reach {
@@ -483,6 +490,19 @@ impl Net for Reach {
 
     fn paired(&self, device: DeviceKey) -> bool {
         self.paired.contains(&device)
+    }
+
+    fn takeover_of(&self, device: DeviceKey) -> Option<Duration> {
+        // A paired device that has not said how long it waits (nothing saved,
+        // or the file was lost) is waited for as long as any setting can be,
+        // until it says: failing closed, so a claimant never claims sooner
+        // than a holder it knows nothing about would allow.
+        self.paired.contains(&device).then(|| {
+            self.takeover
+                .get(&device)
+                .copied()
+                .unwrap_or(crate::roles::MAX_TAKEOVER)
+        })
     }
 
     fn away(&self, device: DeviceKey) -> Option<Duration> {
@@ -542,7 +562,13 @@ impl SyncNode {
             dir: config.dir,
             trust: Mutex::new(trust),
             pairing: tokio::sync::Mutex::new(()),
-            peers: Mutex::new(Peers::default()),
+            peers: Mutex::new(Peers {
+                takeover: saved::load_takeovers(&dir)
+                    .into_iter()
+                    .map(|(d, secs)| (d, Duration::from_secs(u64::from(secs))))
+                    .collect(),
+                ..Peers::default()
+            }),
             activity: Mutex::new(Activity::default()),
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
@@ -555,6 +581,7 @@ impl SyncNode {
             lose_asks: std::sync::atomic::AtomicBool::new(false),
             heard_roles: Mutex::new([false; 4]),
             contacts_save: Mutex::new(()),
+            takeovers_save: Mutex::new(()),
             save_lock: Mutex::new(()),
             persist_roles: loaded.writable,
             fresh_session: Mutex::new(FRESH_SESSION),
@@ -734,7 +761,9 @@ impl SyncNode {
             peers.away_before.remove(&device);
             peers.session_started.remove(&device);
             peers.recent_away.remove(&device);
+            peers.takeover.remove(&device);
         }
+        self.save_takeovers_in_background();
         if lock(&self.contacts).remove(&device).is_some() {
             self.save_contacts_in_background();
         }
@@ -1074,6 +1103,7 @@ impl SyncNode {
         Reach {
             session_age,
             fresh_session: *lock(&self.fresh_session),
+            takeover: peers.takeover.clone(),
             away_before: peers.away_before.clone(),
             paired,
             connected,
@@ -1098,6 +1128,12 @@ impl SyncNode {
             notice: r.notice(role).cloned(),
             always: r.always(role),
             unverified: r.unverified(role),
+            // What it advertised, not the longest-possible stand-in used for a
+            // device that has not (see `Reach::takeover_of`).
+            holder_takeover: r
+                .record(role)
+                .holder
+                .and_then(|h| reach.takeover.get(&h).copied()),
         };
         RolesStatus {
             projection: one(Role::Projection),
@@ -1331,7 +1367,76 @@ impl SyncNode {
     pub fn set_takeover_after(&self, after: Duration) {
         lock(&self.roles).set_takeover_after(after);
         self.save_roles();
+        // The devices that would claim from this one wait by it too.
+        let frame = self.takeover_frame();
+        for s in lock(&self.peers).sessions.values() {
+            let _ = s.control.send(Control::Frame(frame.clone()));
+        }
         self.bump();
+    }
+
+    /// The takeover setting a paired device last advertised (tests).
+    #[doc(hidden)]
+    pub fn advertised_takeover(&self, device: DeviceKey) -> Option<Duration> {
+        lock(&self.peers).takeover.get(&device).copied()
+    }
+
+    /// This device's takeover setting, for the devices it is connected to.
+    pub(crate) fn takeover_frame(&self) -> Frame {
+        let secs = lock(&self.roles).takeover_after().as_secs();
+        Frame::Takeover {
+            secs: u32::try_from(secs).unwrap_or(u32::MAX),
+        }
+    }
+
+    /// A paired device says how long it waits before taking a role from a
+    /// device that has gone. Kept (within the limits of the setting) so this
+    /// device waits at least as long before claiming from it.
+    pub(crate) fn takeover_received(&self, from: DeviceKey, secs: u32) {
+        // A device that was unpaired while its connection was still closing
+        // is not remembered (as in `heard`).
+        if !lock(&self.trust).is_paired(from) {
+            return;
+        }
+        let setting = Duration::from_secs(u64::from(secs))
+            .clamp(crate::roles::MIN_TAKEOVER, crate::roles::MAX_TAKEOVER);
+        let changed = lock(&self.peers).takeover.insert(from, setting) != Some(setting);
+        if changed {
+            self.save_takeovers_in_background();
+            self.bump();
+        }
+    }
+
+    /// Saves the advertised settings (kept so a restart while the holder is
+    /// away still waits by them), off the async runtime when there is one.
+    fn save_takeovers_in_background(&self) {
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                let node = self.arc();
+                runtime.spawn_blocking(move || node.save_takeovers());
+            }
+            Err(_) => self.save_takeovers(),
+        }
+    }
+
+    fn save_takeovers(&self) {
+        // One at a time, and the snapshot is taken under the same lock the
+        // write is made under, so an older one cannot land after a newer one.
+        let _one_at_a_time = lock(&self.takeovers_save);
+        let paired: HashSet<DeviceKey> = lock(&self.trust)
+            .devices()
+            .iter()
+            .map(|d| d.device)
+            .collect();
+        let list: HashMap<DeviceKey, u32> = lock(&self.peers)
+            .takeover
+            .iter()
+            .filter(|(d, _)| paired.contains(d))
+            .map(|(d, t)| (*d, u32::try_from(t.as_secs()).unwrap_or(u32::MAX)))
+            .collect();
+        if let Err(e) = saved::save_takeovers(&self.dir, &list) {
+            eprintln!("lampstand: cannot save the takeover settings: {e}");
+        }
     }
 
     /// A role's record changed here (a claim, a hand-over, a newer record
@@ -2558,6 +2663,47 @@ mod tests {
         assert!(lock(&node.peers).offline);
         node.set_offline(false);
         assert!(!lock(&node.peers).offline);
+    }
+
+    #[test]
+    fn a_claimant_that_restarted_while_the_holder_was_away_still_waits_by_its_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = || DeviceKeypair::from_secret_bytes([42; 32]);
+        let node = node_with_key(dir.path(), key());
+        lock(&node.trust).add(id(7), "Mary's laptop", None).unwrap();
+        // Before it has said anything, a paired device is waited for as long
+        // as any setting can be: fail closed.
+        assert_eq!(
+            node.reach().takeover_of(id(7)),
+            Some(crate::roles::MAX_TAKEOVER)
+        );
+        node.takeover_received(id(7), 300);
+        assert_eq!(
+            node.reach().takeover_of(id(7)),
+            Some(Duration::from_secs(300))
+        );
+        // The device is away and this one restarts: it still knows.
+        drop(node);
+        let node = node_with_key(dir.path(), key());
+        assert_eq!(
+            node.reach().takeover_of(id(7)),
+            Some(Duration::from_secs(300))
+        );
+        // Unpairing trims it, in memory and on disk.
+        node.unpair(id(7)).unwrap();
+        assert_eq!(node.reach().takeover_of(id(7)), None);
+        assert!(saved::load_takeovers(&dir.path().join("sync")).is_empty());
+        drop(node);
+        let node = node_with_key(dir.path(), key());
+        assert!(lock(&node.peers).takeover.is_empty());
+    }
+
+    #[test]
+    fn a_takeover_setting_from_a_device_that_is_not_paired_is_not_kept() {
+        let (node, _, _, dir) = node_with_hooks();
+        node.takeover_received(id(9), 30);
+        assert!(lock(&node.peers).takeover.is_empty());
+        assert!(!dir.path().join("sync/takeover.json").exists());
     }
 
     #[test]

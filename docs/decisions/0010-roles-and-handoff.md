@@ -138,8 +138,8 @@ when T18 lands.
 
 ## Consequences
 
-- Sync protocol 5 and a role record per role. A device on version 4 is
-  refused with the usual message saying which side should update.
+- Sync protocol 6 and a role record per role (a device on version 5 or 4 is
+  refused with the usual message saying which side should update).
 - The OBS drawer and scene follower move from "the presenting device" to "the
   device holding Stream, or Projection when nobody does".
 - The browser-source URL must carry the Projection machine's LAN address, not

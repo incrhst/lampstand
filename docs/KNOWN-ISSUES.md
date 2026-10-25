@@ -35,5 +35,9 @@ flaky takeover tests was found and fixed in the app tests: a takeover time
 shorter than the five-second heartbeat lets the claimant count its absence
 from an earlier last frame than the holder counts from, so the holder can
 rightly refuse a claim made too soon after the cut. Those tests now wait
-until the claimant really was out of reach for the takeover time. The claim timing is no longer a cause: a claimant now waits the takeover
-time plus ten seconds (issue #153).
+until the claimant really was out of reach for the takeover time. A claimant
+now also waits ten seconds longer than the takeover time (issue #153), which
+removes this cause when both devices have the same setting and the link
+failed in both directions; it does not close the other windows (one-way
+frame loss, staggered drops with three or more devices), which are described
+on that issue.

@@ -22,8 +22,9 @@ use crate::roles::Role;
 /// carry an X25519 key and frames after the handshake are encrypted (T75).
 /// 3: presenter lease, ask and heartbeat frames. 4: driving. 5: one record
 /// per role (Projection, Operator, Stream, Audio) replaces the lease and
-/// the driver seat.
-pub(crate) const PROTOCOL: u32 = 5;
+/// the driver seat. 6: the sender's takeover setting (`Takeover`), added at
+/// the end of the frames.
+pub(crate) const PROTOCOL: u32 = 6;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -128,6 +129,21 @@ pub(crate) enum Frame {
     /// (`None`: nothing).
     SoundNow {
         now: Option<SoundNow>,
+    },
+    /// How long the sender waits before it takes a role from a device that
+    /// has gone, in seconds (its takeover setting). Sent when a session opens
+    /// and when the setting changes. The receiver, when it is the one that
+    /// would claim from the sender, waits at least this long too, so a device
+    /// with a shorter setting does not claim before the sender would count the
+    /// other as gone. It can only make a device wait longer than its own
+    /// setting, never shorter, and what is honoured is capped at the longest
+    /// setting there is.
+    ///
+    /// Last in the enum on purpose: postcard numbers the variants in order,
+    /// so a variant added in the middle changes the number of every one after
+    /// it (see `variant_numbers_are_pinned`).
+    Takeover {
+        secs: u32,
     },
 }
 
@@ -286,6 +302,39 @@ impl Link {
 mod tests {
     use super::*;
 
+    /// postcard numbers a frame's variants in the order they are declared, so
+    /// a variant added in the middle changes the number of every one after it
+    /// and breaks every device on the other side. New frames go last; this
+    /// pins the numbers the released frames have.
+    #[test]
+    fn variant_numbers_are_pinned() {
+        let number = |f: Frame| f.encode()[0];
+        assert_eq!(number(Frame::RoleYield { role: Role::Audio }), 11);
+        assert_eq!(number(Frame::Beat), 12);
+        assert_eq!(number(Frame::DriveCommand { payload: vec![] }), 13);
+        assert_eq!(number(Frame::DriveLive { payload: vec![] }), 14);
+        assert_eq!(
+            number(Frame::ObsCue {
+                run: 0,
+                seq: 0,
+                scene: None
+            }),
+            15
+        );
+        assert_eq!(number(Frame::ObsCueAck { run: 0, seq: 0 }), 16);
+        assert_eq!(
+            number(Frame::SoundCue {
+                cmd: SoundCommand::Panic
+            }),
+            17
+        );
+        assert_eq!(number(Frame::SoundNow { now: None }), 18);
+        assert_eq!(number(Frame::Takeover { secs: 120 }), 19);
+        // And the bytes of one, whole.
+        assert_eq!(Frame::Takeover { secs: 120 }.encode(), vec![19, 120]);
+        assert_eq!(Frame::Beat.encode(), vec![12]);
+    }
+
     #[test]
     fn frames_round_trip() {
         let frames = [
@@ -324,6 +373,7 @@ mod tests {
                     sig: vec![5; 64],
                 }],
             },
+            Frame::Takeover { secs: 120 },
             Frame::RoleAsk { role: Role::Audio },
             Frame::RoleCancel { role: Role::Stream },
             Frame::RoleAnswer {

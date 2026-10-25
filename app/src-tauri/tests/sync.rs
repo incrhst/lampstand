@@ -1460,8 +1460,7 @@ async fn cut_takeover_and_return(both_dial: bool) {
     )
     .await;
     // A claim against a device is judged by that device's own takeover time.
-    send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
-    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
+    set_takeovers(&main, &laptop, 2).await;
 
     // Cut both ways, as a dead network would.
     main.sync.cut();
@@ -1922,8 +1921,7 @@ async fn an_unanswered_ask_gives_way_to_takeover_when_the_holder_goes_offline() 
         || role(&laptop, RoleName::Stream).standing == RoleStanding::Ask,
     )
     .await;
-    send_ok(&main, TeamRequest::SetTakeover { seconds: 2 }).await;
-    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 2 }).await;
+    set_takeovers(&main, &laptop, 2).await;
     send_ok(
         &laptop,
         TeamRequest::RoleAsk {
@@ -2017,6 +2015,46 @@ async fn always_allow_is_refused_for_projection_and_audio() {
     }
 }
 
+/// Sets the same takeover time on both devices and waits until each has
+/// heard the other's: a claimant waits by the longer of its own setting and
+/// the holder's, and a setting still in flight when the network is cut has
+/// not reached the other side.
+async fn set_takeovers(main: &Device, laptop: &Device, seconds: u32) {
+    send_ok(main, TeamRequest::SetTakeover { seconds }).await;
+    send_ok(laptop, TeamRequest::SetTakeover { seconds }).await;
+    let want = Some(Duration::from_secs(u64::from(seconds)));
+    until_diag(
+        &[main, laptop],
+        Duration::from_secs(20),
+        "the takeover settings to cross",
+        || {
+            laptop
+                .sync
+                .node()
+                .advertised_takeover(main.sync.node().device())
+                == want
+                && main
+                    .sync
+                    .node()
+                    .advertised_takeover(laptop.sync.node().device())
+                    == want
+        },
+    )
+    .await;
+}
+
+/// Moves the device's clock so the holder of `role` has been silent for
+/// `target` seconds (to the second): real time since the last frame is
+/// whatever it is on this run, so the step is worked out from the status.
+fn skip_to(d: &Device, role_name: RoleName, target: u64) {
+    let now = role(d, role_name)
+        .offline_secs
+        .expect("the holder is offline");
+    d.sync
+        .node()
+        .skip_wall_clock(Duration::from_secs(target.saturating_sub(now)));
+}
+
 /// Cuts both devices, as a dead network would, and waits until they know.
 async fn cut_both(main: &Device, laptop: &Device) {
     main.sync.cut();
@@ -2060,8 +2098,8 @@ async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_l
     assert_eq!(team(&laptop).presenter.takeover_secs, 120);
     cut_both(&main, &laptop).await;
 
-    // Two minutes and five seconds in: not yet (the margin is ten seconds).
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(125));
+    // 126 s of silence: past the two minutes, inside the ten seconds of margin.
+    skip_to(&laptop, RoleName::Stream, 126);
     assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
     let soon = send_err(
         &laptop,
@@ -2072,7 +2110,7 @@ async fn a_takeover_at_the_default_time_is_believed_by_a_holder_that_counted_a_l
     .await;
     assert!(soon.contains("went offline only recently"), "{soon}");
     // Past the takeover time and the margin: it may.
-    laptop.sync.node().skip_wall_clock(Duration::from_secs(6));
+    skip_to(&laptop, RoleName::Stream, 135);
     assert_eq!(
         role(&laptop, RoleName::Stream).standing,
         RoleStanding::TakeOver
@@ -2149,12 +2187,101 @@ async fn a_holder_that_saw_the_claimant_away_for_less_than_the_takeover_time_kee
         },
     )
     .await;
-    // Time for the records to cross and be judged.
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // The laptop's records were sent when the connection opened, before this
+    // frame, and a session handles its frames in order: once the sanctuary
+    // has this one, it has judged the claim.
+    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 300 }).await;
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(30),
+        "the claim to be judged",
+        || {
+            main.sync
+                .node()
+                .advertised_takeover(laptop.sync.node().device())
+                == Some(Duration::from_secs(300))
+        },
+    )
+    .await;
     assert!(
         role(&main, RoleName::Stream).holds,
         "{}",
         dump(&[&main, &laptop])
     );
     assert!(role(&main, RoleName::Stream).replaced_by.is_none());
+    // KNOWN GAP, not wanted behaviour: the refused claimant is not told. The
+    // laptop still believes it holds the role, so two devices do. This is
+    // what a claimant that is wrong about the holder's absence gets until a
+    // refused claim makes the claimant yield (the follow-up proposed on
+    // issue #153). The test pins today's behaviour so the change is seen.
+    assert!(
+        role(&laptop, RoleName::Stream).holds,
+        "{}",
+        dump(&[&main, &laptop])
+    );
+}
+
+/// Two devices with different takeover settings (the holder's two minutes,
+/// the claimant's one): the claimant waits by the holder's, because the
+/// holder judges the claim by its own. It does not claim at 70 s only to be
+/// refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_claimant_waits_by_the_holders_takeover_setting_not_only_its_own() {
+    let main = device("Sanctuary").await;
+    let laptop = device("Mary's laptop").await;
+    pair_up(&main, &laptop).await;
+    send_ok(
+        &main,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    send_ok(&laptop, TeamRequest::SetTakeover { seconds: 60 }).await;
+    assert_eq!(team(&main).presenter.takeover_secs, 120);
+    // The laptop has heard the sanctuary's setting, and the stream claim.
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(20),
+        "the laptop to hear the setting",
+        || {
+            laptop
+                .sync
+                .node()
+                .advertised_takeover(main.sync.node().device())
+                == Some(Duration::from_secs(120))
+                && role(&laptop, RoleName::Stream).standing == RoleStanding::Ask
+        },
+    )
+    .await;
+    cut_both(&main, &laptop).await;
+
+    // Past its own 60 s and margin, but not the sanctuary's 120 s.
+    skip_to(&laptop, RoleName::Stream, 100);
+    assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
+    skip_to(&laptop, RoleName::Stream, 126);
+    assert_eq!(role(&laptop, RoleName::Stream).standing, RoleStanding::Wait);
+    skip_to(&laptop, RoleName::Stream, 135);
+    assert_eq!(
+        role(&laptop, RoleName::Stream).standing,
+        RoleStanding::TakeOver
+    );
+    send_ok(
+        &laptop,
+        TeamRequest::RoleClaim {
+            role: RoleName::Stream,
+        },
+    )
+    .await;
+    main.sync.node().skip_wall_clock(Duration::from_secs(128));
+    main.sync.restore().await.unwrap();
+    laptop.sync.restore().await.unwrap();
+    until_diag(
+        &[&main, &laptop],
+        Duration::from_secs(60),
+        "the old holder to yield",
+        || !role(&main, RoleName::Stream).holds,
+    )
+    .await;
+    assert!(role(&laptop, RoleName::Stream).holds);
 }

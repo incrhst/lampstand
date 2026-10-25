@@ -612,7 +612,7 @@ mod tests {
     /// and is not paired, whether or not it brings a code.
     #[tokio::test]
     async fn a_device_on_the_protocol_before_roles_is_refused_with_the_usual_message() {
-        assert_eq!(PROTOCOL, 5, "roles are protocol 5");
+        assert_eq!(PROTOCOL, 6, "the takeover setting is protocol 6");
         for with_code in [false, true] {
             let sanctuary = device("Sanctuary");
             let old = DeviceKeypair::generate();

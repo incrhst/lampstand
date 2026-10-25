@@ -324,6 +324,28 @@ pub(super) fn save_contacts(
     write_private(dir, CONTACTS, &json)
 }
 
+const TAKEOVERS: &str = "takeover.json";
+
+/// The takeover setting each paired device last advertised, in seconds. A
+/// file that is missing or cannot be read is "nothing known", which makes a
+/// claimant wait the longest setting there is for that device until it
+/// advertises again (see `Reach::takeover_of`).
+pub(super) fn load_takeovers(dir: &Path) -> std::collections::HashMap<DeviceKey, u32> {
+    let list: Vec<(String, u32)> = read(&dir.join(TAKEOVERS)).unwrap_or_default();
+    list.into_iter()
+        .filter_map(|(hex, secs)| Some((DeviceKey::from_hex(&hex)?, secs)))
+        .collect()
+}
+
+pub(super) fn save_takeovers(
+    dir: &Path,
+    takeovers: &std::collections::HashMap<DeviceKey, u32>,
+) -> io::Result<()> {
+    let list: Vec<(String, u32)> = takeovers.iter().map(|(k, s)| (k.to_hex(), *s)).collect();
+    let json = serde_json::to_vec(&list).map_err(io::Error::other)?;
+    write_private(dir, TAKEOVERS, &json)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,6 +464,18 @@ mod tests {
         let loaded = load(dir.path());
         assert!(!loaded.writable && !loaded.migrated);
         assert_eq!(loaded.file, RolesFile::unheld());
+    }
+
+    #[test]
+    fn advertised_takeover_settings_survive_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = std::collections::HashMap::new();
+        t.insert(DeviceKey([7; 32]), 120u32);
+        save_takeovers(dir.path(), &t).unwrap();
+        assert_eq!(load_takeovers(dir.path()), t);
+        assert!(load_takeovers(tempfile::tempdir().unwrap().path()).is_empty());
+        std::fs::write(dir.path().join(TAKEOVERS), b"not json").unwrap();
+        assert!(load_takeovers(dir.path()).is_empty());
     }
 
     #[test]

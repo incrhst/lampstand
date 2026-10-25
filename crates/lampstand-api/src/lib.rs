@@ -1073,6 +1073,11 @@ pub struct RoleView {
     pub always: Vec<DriverView>,
     /// "Always allow this device" is offered (Operator and Stream only).
     pub offers_always: bool,
+    /// The holder's takeover setting in seconds, when it is longer than this
+    /// device's own and so decides how long this device waits to take the
+    /// role over (the holder judges a claim by its own setting).
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub holder_waits_secs: Option<u64>,
 }
 
 /// Where sync with the paired devices stands, in one value for the status
