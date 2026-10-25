@@ -251,14 +251,14 @@ fn parse_txt(text: &str) -> Result<Song, String> {
 }
 
 /// "Verse 1", "Chorus", "Pre-Chorus 2", "Bridge"…, but not a lyric line.
-fn is_heading(line: &str) -> bool {
+pub(crate) fn is_heading(line: &str) -> bool {
     normalise_label(line).is_some()
 }
 
 // ---------------------------------------------------------------- shared
 
 /// Short label for a heading, or `None` when the text is not a known one.
-fn normalise_label(heading: &str) -> Option<String> {
+pub(crate) fn normalise_label(heading: &str) -> Option<String> {
     let heading = heading.trim().trim_end_matches(':').trim();
     let split = heading
         .find(|c: char| c.is_ascii_digit())
@@ -299,7 +299,7 @@ fn join_authors(s: &str) -> Option<String> {
     (!names.is_empty()).then(|| names.join(", "))
 }
 
-fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
+pub(crate) fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
     }
@@ -312,14 +312,14 @@ fn trim_blank(mut lines: Vec<String>) -> Vec<String> {
 /// is a repeat; with different text it gets a distinct label. Unlabelled
 /// sections are numbered as verses.
 #[derive(Default)]
-struct SectionBuilder {
+pub(crate) struct SectionBuilder {
     sections: Vec<Section>,
     sung: Vec<String>,
     verses: usize,
 }
 
 impl SectionBuilder {
-    fn push(&mut self, heading: &str, lines: Vec<String>) {
+    pub(crate) fn push(&mut self, heading: &str, lines: Vec<String>) {
         let mut label = match normalise_label(heading) {
             Some(l) => l,
             None if heading.trim().is_empty() => String::new(),
@@ -350,7 +350,20 @@ impl SectionBuilder {
         self.sung.push(candidate);
     }
 
-    fn finish(self, mut song: Song) -> Song {
+    /// A heading with no words under it ("Chorus" again) sings the section
+    /// it names once more. False when no section has that label yet.
+    pub(crate) fn repeat(&mut self, heading: &str) -> bool {
+        let Some(label) = normalise_label(heading) else {
+            return false;
+        };
+        if !self.sections.iter().any(|s| s.label == label) {
+            return false;
+        }
+        self.sung.push(label);
+        true
+    }
+
+    pub(crate) fn finish(self, mut song: Song) -> Song {
         if self.sung.len() != self.sections.len() {
             song.arrangement = self.sung;
         }

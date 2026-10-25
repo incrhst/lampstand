@@ -335,6 +335,7 @@
   async function add(entry: Entry) {
     if (entry.key === "link") return addLink(entry.subtitle);
     if (entry.key === "link:sound") return addSoundLink(entry.subtitle);
+    if (entry.key === "link:song") return addSongLink(entry.subtitle);
     if (entry.key === "link:streaming") {
       live.status = entry.subtitle;
       return;
@@ -386,14 +387,42 @@
   }
 
   /**
-   * A link dropped or pasted on the library, with a service open. One that
-   * can only be a sound or a deck is added; a Drive or OneDrive link could
-   * be either, so it goes in the search to pick from.
+   * A link to a song's web page: the lyrics on it are added to the library
+   * (or the song already there is found), then to the open service.
+   */
+  async function addSongLink(url: string) {
+    if (busy) return;
+    busy = true;
+    try {
+      const song = await request({ area: "Library", request: { AddSongFromLink: { url } } }, "Song");
+      query = "";
+      const entry = songEntry({ song: song.id, title: song.title, line: null });
+      recent = remember(recent, { ...entry, fresh: true });
+      save("lampstand.library.recent", recent);
+      if (service && entry.item && !(await onadd(entry.item))) live.status = `${song.title} could not be added to the service`;
+      else live.status = `Added ${song.title}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /**
+   * A link dropped or pasted on the library. A song page is added with or
+   * without a service open; the rest need one. One that can only be a
+   * sound or a deck is added; a Drive or OneDrive link could be either, so
+   * it goes in the search to pick from.
    */
   function takeLink(text: string): boolean {
     const url = text.trim();
-    if (!service || !isLink(url)) return false;
+    if (!isLink(url)) return false;
     const offers = linkOffers(url);
+    if (offers.song) {
+      void addSongLink(url);
+      return true;
+    }
+    if (!service) return false;
     if (offers.sound && !offers.deck) void addSoundLink(url);
     else if (offers.streaming) live.status = streamingRefusal;
     else if (offers.deck && !offers.sound) void addLink(url);
@@ -408,7 +437,7 @@
   }
 
   function ondropover(e: DragEvent) {
-    if (service && e.dataTransfer?.types.some((t) => t === "text/uri-list" || t === "text/plain")) e.preventDefault();
+    if (e.dataTransfer?.types.some((t) => t === "text/uri-list" || t === "text/plain")) e.preventDefault();
   }
 
   function ondrop(e: DragEvent) {

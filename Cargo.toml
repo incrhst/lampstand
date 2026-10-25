@@ -39,6 +39,8 @@ ed25519-dalek = "2.2"
 encoding_rs = "0.8"
 flate2 = "1.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# The HTML parser Tauri already builds with, for reading lyrics off song pages.
+dom_query = { version = "0.28", default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 gethostname = "1.1"
 getrandom = "0.3"
