@@ -24,7 +24,8 @@
 //!   ([`Answer::Busy`]).
 //! - It may *take over* without asking ([`Roles::claim`]) only when the
 //!   holder has been offline for [`Roles::takeover_after`] (two minutes by
-//!   default), or when nobody holds the role.
+//!   default) and a few seconds more ([`TAKEOVER_MARGIN`]), or when nobody
+//!   holds the role.
 //! - A holder that comes back finds a newer record and drops the role, with
 //!   a [`Notice`]. It never resumes by itself.
 //! - "Always allow this device" is remembered for Operator and Stream, never
@@ -62,6 +63,16 @@ pub const DEFAULT_TAKEOVER: Duration = Duration::from_secs(120);
 /// The shortest time that can be set: a brief network blip must never hand
 /// a role to another device.
 pub const MIN_TAKEOVER: Duration = Duration::from_secs(1);
+
+/// How much longer than the takeover time a device waits before it takes a
+/// role without asking. Each side counts the other's absence from the last
+/// frame it heard, and those last frames can be a heartbeat apart (see
+/// `net::session`), so a claimant that waited exactly the takeover time
+/// could be refused by a holder that came straight back, leaving both
+/// believing they hold the role (#153). Waiting one heartbeat more keeps the
+/// claimant's wait longer than the holder's view of it. What the holder
+/// checks is still the takeover time itself.
+pub const TAKEOVER_MARGIN: Duration = Duration::from_secs(5);
 
 /// The longest time that can be set.
 pub const MAX_TAKEOVER: Duration = Duration::from_secs(24 * 3600);
@@ -790,16 +801,16 @@ impl Roles {
         if role == Role::Operator && self.holds(Role::Projection) && !self.holds(role) {
             return Standing::Open;
         }
+        // The wait is the takeover time and a margin; see `TAKEOVER_MARGIN`.
+        let needed = self.takeover_after + TAKEOVER_MARGIN;
         match self.holder_of(role, net) {
             Holder::Me => Standing::Holding,
             Holder::Gone => Standing::Open,
             Holder::Online => Standing::Ask,
-            Holder::Offline(offline) if offline >= self.takeover_after => {
-                Standing::TakeOver { offline }
-            }
+            Holder::Offline(offline) if offline >= needed => Standing::TakeOver { offline },
             Holder::Offline(offline) => Standing::Wait {
                 offline,
-                remaining: self.takeover_after - offline,
+                remaining: needed - offline,
             },
         }
     }
@@ -1893,30 +1904,40 @@ mod tests {
     }
 
     #[test]
-    fn takeover_only_after_the_timeout() {
+    fn takeover_only_after_the_timeout_and_the_margin() {
         let (_, mut b) = pair();
         let at = |s: u64| move |_: DeviceKey| Holder::Offline(secs(s));
-        let (f30, f119, f120, f300) = (at(30), at(119), at(120), at(300));
+        // 120 s is the timeout; the margin makes the wait 125 s.
+        let (f30, f124, f125, f300) = (at(30), at(124), at(125), at(300));
+        assert_eq!(TAKEOVER_MARGIN, secs(5));
         for role in [Role::Projection, Role::Audio] {
             assert_eq!(
                 b.standing(role, &net(true, &f30)),
                 Standing::Wait {
                     offline: secs(30),
-                    remaining: secs(90)
+                    remaining: secs(95)
                 }
             );
             assert_eq!(
-                b.claim(role, &net(true, &f119)),
+                b.claim(role, &net(true, &at(120))),
                 Err(Denied::TooSoon {
-                    offline: secs(119),
+                    offline: secs(120),
+                    remaining: secs(5)
+                }),
+                "the timeout alone is not enough"
+            );
+            assert_eq!(
+                b.claim(role, &net(true, &f124)),
+                Err(Denied::TooSoon {
+                    offline: secs(124),
                     remaining: secs(1)
                 })
             );
             assert_eq!(b.ask(role, &net(true, &f30)), Err(Denied::NobodyToAsk));
             assert!(!b.holds(role), "a refused claim changes nothing");
             assert_eq!(
-                b.standing(role, &net(true, &f120)),
-                Standing::TakeOver { offline: secs(120) }
+                b.standing(role, &net(true, &f125)),
+                Standing::TakeOver { offline: secs(125) }
             );
             assert_eq!(b.ask(role, &net(true, &f300)), Err(Denied::NotNeeded));
         }
@@ -1925,17 +1946,35 @@ mod tests {
         assert_eq!(b.mode(&net(true, &online)), Mode::Presenter);
     }
 
+    /// The race in #153: the claimant counts the holder's silence from the
+    /// last frame it heard, the holder counts the claimant's from the last
+    /// frame it heard, and those can be a heartbeat apart. A claimant that
+    /// claims at the first moment it may must never be refused by a holder
+    /// that comes straight back.
     #[test]
-    fn the_timeout_is_configurable() {
-        let (_, mut b) = pair();
-        let off = |s: u64| move |_: DeviceKey| Holder::Offline(secs(s));
-        let (f300, f61) = (off(300), off(61));
-        b.set_takeover_after(secs(600));
-        assert!(b.claim(Role::Audio, &net(true, &f300)).is_err());
-        b.set_takeover_after(secs(60));
-        assert!(b.claim(Role::Audio, &net(true, &f61)).is_ok());
-        b.set_takeover_after(Duration::ZERO);
-        assert_eq!(b.takeover_after(), MIN_TAKEOVER);
+    fn a_claim_at_the_first_moment_is_agreed_by_a_holder_that_comes_straight_back() {
+        let heartbeat = secs(5);
+        for skew in 0..=heartbeat.as_secs() {
+            let (mut a, mut b) = pair();
+            // The claimant has waited as long as the rules make it.
+            let waited = DEFAULT_TAKEOVER + TAKEOVER_MARGIN;
+            let off = move |_: DeviceKey| Holder::Offline(waited);
+            let record = b.claim(Role::Projection, &net(true, &off)).unwrap();
+            // The holder's own count of the claimant's absence is up to a
+            // heartbeat short of the claimant's count of the holder's.
+            let away = waited - secs(skew);
+            let merged = a.merge(
+                Role::Projection,
+                &record,
+                key(2),
+                &net_away(&online, Some(away)),
+            );
+            assert!(
+                merged.changed && merged.lost_role,
+                "a holder that was {skew} s short must still yield"
+            );
+            assert!(!a.holds(Role::Projection));
+        }
     }
 
     #[test]
