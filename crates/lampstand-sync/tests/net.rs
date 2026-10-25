@@ -60,6 +60,10 @@ impl Peer {
 
     /// Listens again on the same port.
     async fn restore(&mut self) {
+        // An aborted task stops later, on a worker: until it has, the old
+        // listener still holds the port and binding it fails (AddrInUse).
+        self.server.abort();
+        let _ = (&mut self.server).await;
         let listener = TcpListener::bind(self.addr).await.unwrap();
         self.server = serve(self.node.clone(), listener);
         self.node.set_offline(false);
@@ -760,10 +764,14 @@ fn presenter_of(p: &Peer) -> PresenterStatus {
 /// Paired and connected, and both know that Sanctuary presents.
 async fn paired_and_leased() -> (Peer, Peer) {
     let (sanctuary, office) = paired().await;
+    // Each side must also have heard the other's four role records: until
+    // then a claim is refused as settling ("Nobody is presenting.").
     until(Duration::from_secs(5), "both know who presents", || {
         office.node.status().roles.audio.record.name == "Sanctuary"
             && sanctuary.node.status().connected() == 1
             && office.node.status().connected() == 1
+            && sanctuary.node.settled()
+            && office.node.settled()
     })
     .await;
     (sanctuary, office)
