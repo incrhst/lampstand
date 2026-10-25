@@ -1787,6 +1787,12 @@ impl SyncNode {
             // Taught that nothing is held: the marker on disk goes.
             self.save_roles();
         }
+        if let Some((judge, record)) = &merged.refer {
+            // A claim the device it was taken from should judge: it is
+            // connected here, so it hears of it, and its answer (an ack or a
+            // reclaim) comes back to everyone like any record.
+            self.send_to(*judge, record_frame(role, record));
+        }
         if merged.reclaimed {
             eprintln!(
                 "lampstand: refused {}'s takeover of {role:?}: it had not been away long enough",

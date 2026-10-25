@@ -1961,8 +1961,9 @@ async fn a_0_7_0_device_with_nobody_paired_holds_all_four_whatever_the_old_lease
 #[tokio::test(flavor = "multi_thread")]
 async fn a_device_on_the_protocol_before_roles_is_refused_by_a_running_node() {
     let (sanctuary, _office) = paired_and_leased().await;
-    // Protocol 4 (0.7.0) and 7 (0.8.1, before the reclaim step).
-    for old in [4u8, 7] {
+    // Protocol 4 (0.7.0), 7 (0.8.1, before the reclaim step) and 8
+    // (0.9.0-preview.1, before the judge's ack).
+    for old in [4u8, 7, 8] {
         let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/sync", sanctuary.addr))
             .await
             .unwrap();

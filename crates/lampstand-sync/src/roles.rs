@@ -27,6 +27,9 @@
 //!   default, and then ten seconds more: [`TAKEOVER_MARGIN`]), or when nobody holds the role.
 //! - A holder that comes back finds a newer record and drops the role, with
 //!   a [`Notice`]. It never resumes by itself.
+//! - A claim is judged by the device it was taken from, which alone knows
+//!   whether it was away. It accepts with a signed ack on the claim; a
+//!   device that has it connected leaves the claim to it.
 //! - A holder that was there all along refuses a claim against it with a
 //!   signed [`Kind::Reclaim`]: a newer record of its own that every device
 //!   takes in, so the claimant hands the role back and waits
@@ -226,10 +229,11 @@ pub enum Kind {
     /// The holder let go; signed by the holder. Nobody holds the role after.
     Release,
     /// The holder refused a claim made against it and takes the role back:
-    /// a step on top of the claim, from the claimant to the holder the claim
-    /// named as `prev_holder`, signed by that holder. Valid only directly on
-    /// a claim against the device that signs it (checked where the chain is
-    /// seen, in `Roles::admit`).
+    /// a step on top of the claim, or of whatever was built on it, to the
+    /// holder the claim named as `prev_holder`, signed by that holder. Valid
+    /// only above a claim against the device that signs it that it never
+    /// acked, with nothing it signed in between (`covered`); it cancels the
+    /// claim and everything up to it.
     Reclaim,
 }
 
@@ -237,6 +241,11 @@ pub enum Kind {
 /// `(holder, epoch)`. The signature covers the role, the kind, both states
 /// and a fixed tag, so a step cannot be replayed onto another role or epoch.
 /// The name is not signed; names come from pairing.
+///
+/// A claim is judged by the device it was taken from, `prev_holder` (see
+/// `Roles::admit`). Its verdict travels with the record, so every device
+/// reads it the same way whatever path the record took: an `ack` on the
+/// claim when it accepts it, a [`Kind::Reclaim`] above it when it refuses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
     pub kind: Kind,
@@ -248,6 +257,12 @@ pub struct Link {
     pub prev_epoch: u64,
     #[serde(with = "hex_bytes")]
     pub sig: Vec<u8>,
+    /// On a claim: the signature of the device it was taken from over the
+    /// same step, saying it accepts it. Not part of the step's own
+    /// signature, so the judge adds it later. Always written (the wire
+    /// format has no optional fields); missing in an older `roles.json`.
+    #[serde(default, with = "opt_hex_bytes")]
+    pub ack: Option<Vec<u8>>,
 }
 
 impl Link {
@@ -276,6 +291,23 @@ impl Link {
         out
     }
 
+    /// What the judge of a claim signs to accept it: the step, under
+    /// another tag, so an ack can never pass for a step.
+    fn ack_bytes(&self, role: Role) -> Vec<u8> {
+        let mut out = b"lampstand-role-ack-v1".to_vec();
+        out.extend_from_slice(
+            &Self::bytes(
+                role,
+                self.kind,
+                self.holder,
+                self.epoch,
+                self.prev_holder,
+                self.prev_epoch,
+            )["lampstand-role-v1".len()..],
+        );
+        out
+    }
+
     /// Who must have signed it: the new holder for a claim or a reclaim,
     /// the one who let go for the others.
     pub fn signer(&self) -> Option<DeviceKey> {
@@ -285,26 +317,14 @@ impl Link {
         }
     }
 
-    /// Whether this reclaim takes the role back from `claim`, the step it
-    /// sits on: a claim against the device that signed the reclaim.
-    fn reclaims(&self, claim: &Link) -> bool {
-        self.kind == Kind::Reclaim
-            && claim.kind == Kind::Claim
-            && claim.holder == self.prev_holder
-            && claim.epoch == self.prev_epoch
-            && claim.prev_holder == self.holder
-    }
-
     /// Whether it is well formed and signed by the device it names.
     fn valid(&self, role: Role) -> bool {
         let shape = match self.kind {
             Kind::Claim | Kind::HandOver => self.holder.is_some(),
             Kind::Release => self.holder.is_none(),
-            Kind::Reclaim => {
-                self.holder.is_some()
-                    && self.prev_holder.is_some()
-                    && self.holder != self.prev_holder
-            }
+            // On whatever was built on the refused claim, which may have
+            // been let go since.
+            Kind::Reclaim => self.holder.is_some() && self.holder != self.prev_holder,
         } && self.epoch == self.prev_epoch.wrapping_add(1)
             && self.epoch != 0
             && self.epoch <= EPOCH_LIMIT;
@@ -312,7 +332,20 @@ impl Link {
         else {
             return false;
         };
+        // An ack is only ever on a claim from somebody, signed by them.
+        let ack = match &self.ack {
+            None => true,
+            Some(ack) => match (
+                self.kind,
+                self.prev_holder,
+                <[u8; 64]>::try_from(ack.as_slice()),
+            ) {
+                (Kind::Claim, Some(judge), Ok(ack)) => judge.verify(&self.ack_bytes(role), &ack),
+                _ => false,
+            },
+        };
         shape
+            && ack
             && signer.verify(
                 &Self::bytes(
                     role,
@@ -325,6 +358,55 @@ impl Link {
                 &sig,
             )
     }
+}
+
+/// For the reclaim at `i` in `steps` (newest first), the claim it refuses:
+/// going down from it, an unacked claim against its signer reached before
+/// any step that signer signed (which would mean it had built on the claim).
+fn covered(steps: &[Link], i: usize) -> Option<usize> {
+    let by = steps[i].holder?;
+    for (j, l) in steps.iter().enumerate().skip(i + 1) {
+        if l.signer() == Some(by) {
+            return None;
+        }
+        if l.kind == Kind::Claim && l.prev_holder == Some(by) && l.ack.is_none() {
+            return Some(j);
+        }
+    }
+    None
+}
+
+/// Whether two steps are the same step, whatever acks they carry.
+fn same_step(a: &Link, b: &Link) -> bool {
+    (
+        a.kind,
+        a.holder,
+        a.epoch,
+        a.prev_holder,
+        a.prev_epoch,
+        &a.sig,
+    ) == (
+        b.kind,
+        b.holder,
+        b.epoch,
+        b.prev_holder,
+        b.prev_epoch,
+        &b.sig,
+    )
+}
+
+/// Which steps a reclaim above them cancels: the refused claim and
+/// everything built on it up to the reclaim. They gave nobody anything.
+fn cancelled(steps: &[Link]) -> Vec<bool> {
+    let mut out = vec![false; steps.len()];
+    for i in 0..steps.len() {
+        if steps[i].kind == Kind::Reclaim {
+            if let Some(j) = covered(steps, i) {
+                out[i + 1..=j].fill(true);
+            }
+        }
+    }
+    out
 }
 
 /// How this device signs a step. Supplied by the node, which holds the
@@ -343,6 +425,31 @@ impl Signer {
 impl std::fmt::Debug for Signer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Signer")
+    }
+}
+
+mod opt_hex_bytes {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
+        match bytes {
+            Some(b) => s.serialize_some(&b.iter().map(|b| format!("{b:02x}")).collect::<String>()),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u8>>, D::Error> {
+        Option::<String>::deserialize(d)?
+            .map(|hex| {
+                if hex.len() % 2 != 0 || !hex.is_ascii() {
+                    return Err(serde::de::Error::custom("not hex"));
+                }
+                (0..hex.len() / 2)
+                    .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16))
+                    .collect::<Result<_, _>>()
+                    .map_err(serde::de::Error::custom)
+            })
+            .transpose()
     }
 }
 
@@ -375,9 +482,15 @@ impl Record {
     /// steps; after that the higher key. A reclaim comes first because it
     /// says the state it sits on should not have been: a hand-over the
     /// claimant made from it at the same moment loses. Every device applies
-    /// the same order, so they all end on one record.
+    /// the same order, so they all end on one record. Last, the one whose
+    /// claims carry more acks, so a judge's ack spreads like a newer record.
     pub fn beats(&self, other: &Record) -> bool {
-        (self.epoch, self.rank(), self.holder) > (other.epoch, other.rank(), other.holder)
+        (self.epoch, self.rank(), self.holder, self.acks())
+            > (other.epoch, other.rank(), other.holder, other.acks())
+    }
+
+    fn acks(&self) -> usize {
+        self.chain.iter().filter(|l| l.ack.is_some()).count()
     }
 
     fn rank(&self) -> u8 {
@@ -661,13 +774,17 @@ struct Refusal {
 }
 
 /// What a [`Roles::merge`] changed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Merged {
     pub changed: bool,
     pub lost_role: bool,
-    /// The record was a claim against this device that it refused: its own
-    /// record is now a reclaim on top of that claim, to send to every device.
+    /// The record held a claim against this device that it refused: its own
+    /// record is now a reclaim on top of it, to send to every device.
     pub reclaimed: bool,
+    /// Not taken in: it holds a claim for this connected device to judge.
+    /// Send it this record (the one that came, with any acks of this
+    /// device's own), and its answer comes back like any record.
+    pub refer: Option<(DeviceKey, Record)>,
 }
 
 /// The four records and the asking around them, for one device.
@@ -1005,6 +1122,7 @@ impl Roles {
             prev_holder,
             prev_epoch,
             sig,
+            ack: None,
         }];
         chain.extend(old.chain.iter().take(CHAIN - 1).cloned());
         self.records[i] = Record {
@@ -1210,9 +1328,8 @@ impl Roles {
     /// for `role`. Its steps must be few enough, signed by devices this
     /// device knows, and join this device's own state. Hand-overs and
     /// releases then prove themselves (the one who held it signed it away).
-    /// Claims in the past are checked for their signature and place in the
-    /// chain only; only a claim at the head, sent by the claimant itself, is
-    /// judged by this device's view of things ([`Roles::claim_ok`]).
+    /// Every claim among the steps it has not seen is judged, wherever it
+    /// sits and whoever sent it ([`Roles::verdict`]).
     fn admit(&self, role: Role, remote: &Record, from: DeviceKey, net: &dyn Net) -> Admit {
         let local = self.record(role);
         let pristine = local.holder.is_none() && local.epoch == 0 && local.chain.is_empty();
@@ -1232,14 +1349,14 @@ impl Roles {
                 // From anyone else it waits to be taught by the device it
                 // pairs with.
                 return if self.seeded_by(role, from) {
-                    Admit::Yes
+                    Admit::Yes { acks: Vec::new() }
                 } else {
                     Admit::Unverified
                 };
             }
             // The device that holds the lease says so itself.
             return if migrated && near && remote.holder == Some(from) {
-                Admit::Yes
+                Admit::Yes { acks: Vec::new() }
             } else {
                 Admit::No
             };
@@ -1255,15 +1372,6 @@ impl Roles {
         if !steps
             .windows(2)
             .all(|w| w[0].prev_holder == w[1].holder && w[0].prev_epoch == w[1].epoch)
-        {
-            return Admit::No;
-        }
-        // A reclaim sits directly on the claim it refuses and is signed by the
-        // device that claim was made against. One that is the oldest step is
-        // checked against this device's own state when it is taken in, below.
-        if !steps
-            .windows(2)
-            .all(|w| w[0].kind != Kind::Reclaim || w[0].reclaims(&w[1]))
         {
             return Admit::No;
         }
@@ -1285,13 +1393,16 @@ impl Roles {
         };
         let oldest = steps.last().expect("not empty");
         let migrated = local.chain.is_empty() && !pristine;
-        // The steps newer than the state `(holder, epoch)`, if they pass
-        // through it or start from it.
-        let join_at = |holder: Option<DeviceKey>, epoch: u64| -> Option<&[Link]> {
+        // How many steps are newer than the state `(holder, epoch)`, if they
+        // pass through it or start from it, and the history they sit on:
+        // the steps themselves, and when they start from that state, what
+        // this device holds below it (`below`), where a reclaim may find the
+        // claim it refuses.
+        let join_at = |holder: Option<DeviceKey>, epoch: u64, below: &[Link]| {
             if let Some(k) = here(holder, epoch) {
-                Some(&steps[..k])
+                Some((k, steps.clone()))
             } else if oldest.prev_holder == holder && oldest.prev_epoch == epoch {
-                Some(&steps[..])
+                Some((steps.len(), steps.iter().chain(below).cloned().collect()))
             } else {
                 None
             }
@@ -1302,36 +1413,33 @@ impl Roles {
         // another claim made with it, and whatever was done on top of
         // either). The record order has already said the other comes
         // first; its steps are checked from where the two parted, as if
-        // this device were still there. A lone step made from the same state
-        // as this device's own last one is left to the rules below, which
-        // judge a claim at the same moment.
+        // this device were still there. A state this device's own reclaim
+        // cancelled was never really held: a record built on it parts from
+        // the state before the refused claim, so the claim is judged again.
+        let refused = cancelled(&local.chain);
         let fork = || {
-            let (depth, n) = local
-                .chain
-                .iter()
-                .enumerate()
-                .find_map(|(d, l)| join_at(l.prev_holder, l.prev_epoch).map(|n| (d, n)))?;
-            (depth > 0 || n.len() > 1).then_some(n)
+            local.chain.iter().enumerate().find_map(|(d, l)| {
+                if refused.get(d + 1).copied().unwrap_or(false) {
+                    return None;
+                }
+                join_at(l.prev_holder, l.prev_epoch, &local.chain[d + 1..])
+            })
         };
-        let newer: Option<&[Link]> = if let Some(n) = join_at(local.holder, local.epoch) {
-            Some(n)
-        } else if let Some(n) = fork() {
-            Some(n)
-        } else if migrated
-            && oldest.prev_epoch >= local.epoch
-            && oldest.prev_epoch - local.epoch <= CHAIN as u64
-        {
-            // The first signed step on a state moved over from 0.7.0, made
-            // on a device that was ahead of this one.
-            Some(&steps[..])
-        } else {
-            None
-        };
-        if newer.is_none() && pristine {
+        let joined = join_at(local.holder, local.epoch, &local.chain)
+            .or_else(fork)
+            .or_else(|| {
+                // The first signed step on a state moved over from 0.7.0,
+                // made on a device that was ahead of this one.
+                (migrated
+                    && oldest.prev_epoch >= local.epoch
+                    && oldest.prev_epoch - local.epoch <= CHAIN as u64)
+                    .then(|| (steps.len(), steps.clone()))
+            });
+        if joined.is_none() && pristine {
             // Nothing of its own to join: the present state, from the device
             // just paired.
             if self.seeded_by(role, from) {
-                return Admit::Yes;
+                return Admit::Yes { acks: Vec::new() };
             }
             // Not from the device that seeds it: not taken, but waiting for
             // one that does, unless it is signed by keys nobody knows.
@@ -1341,77 +1449,54 @@ impl Roles {
                 Admit::No
             };
         }
-        if let Some(newer) = newer {
-            // Oldest first. Whoever signs must be known, or have been handed
-            // the role by a step already checked.
+        if let Some((newer, context)) = joined {
+            let off = cancelled(&context);
             let mut introduced: Vec<DeviceKey> = Vec::new();
-            for (i, l) in newer.iter().enumerate().rev() {
+            let mut acks = Vec::new();
+            let mut refer = None;
+            let mut refuse = false;
+            // Oldest first.
+            for i in (0..newer).rev() {
+                let l = &context[i];
                 let signer = l.signer().expect("valid steps have a signer");
-                // A claim its holder took straight back gave nobody anything,
-                // so its claimant need not be known here (the reclaim's signer
-                // must be).
-                let cancelled = l.kind == Kind::Claim && i > 0 && newer[i - 1].reclaims(l);
-                if !cancelled && !known(signer) && !introduced.contains(&signer) {
+                // A reclaim refuses a claim against its signer, in what it
+                // sits on.
+                if l.kind == Kind::Reclaim && covered(&context, i).is_none() {
                     return Admit::No;
                 }
-                if l.kind == Kind::Reclaim
-                    && i + 1 == steps.len()
-                    && !local.chain.first().is_some_and(|c| l.reclaims(c))
-                {
-                    // The oldest step reclaims this device's present state:
-                    // only if that state is a claim against the signer.
+                // A step a reclaim cancels gave nobody anything: its signer
+                // need not be known here, and there is nothing to judge.
+                if off[i] {
+                    continue;
+                }
+                // Whoever signs must be known, or have been handed the role
+                // by a step already checked.
+                if !known(signer) && !introduced.contains(&signer) {
                     return Admit::No;
                 }
-                if let Some(h) = l.holder.filter(|_| !cancelled) {
+                if let Some(h) = l.holder {
                     introduced.push(h);
                 }
-                if l.kind == Kind::Claim && i == 0 && from == signer {
-                    // The claimant itself says so: as this device sees it.
-                    if !self.claim_ok(role, signer, l.prev_holder, net) {
-                        // Made on this device's own present state, against
-                        // it: refused out loud, with a reclaim every device
-                        // takes in, so the claimant and anyone that took the
-                        // claim in hand the role back.
-                        // Only while the claimant is connected here: a frame
-                        // still arriving on a connection that is being
-                        // replaced is judged with nothing known of the
-                        // outage, and is simply not taken, to be sent again
-                        // when the next connection opens.
-                        let against_me = newer.len() == 1
-                            && local.holder == Some(self.me)
-                            && l.prev_holder == Some(self.me)
-                            && l.prev_epoch == local.epoch
-                            && net.holder(signer) == Holder::Online;
-                        return if against_me {
-                            Admit::Refused
-                        } else {
-                            Admit::No
-                        };
+                match self.verdict(role, &context, i, from, net) {
+                    Verdict::Stands => {}
+                    Verdict::Accept => acks.push(i),
+                    // The role comes back to this device whatever it says:
+                    // nothing to refuse, and it lets the claim stand.
+                    Verdict::Refuse if remote.holder == Some(self.me) => acks.push(i),
+                    Verdict::Refuse => refuse = true,
+                    Verdict::AskJudge(judge) => {
+                        refer.get_or_insert(judge);
                     }
+                    Verdict::NotYet => return Admit::No,
                 }
             }
-            return Admit::Yes;
-        }
-        // The same step from the same state as this device's own, made at the
-        // same moment by someone else: the order of records decides, and it
-        // has already said this one comes first.
-        if let Some(mine) = local.chain.first() {
-            if mine.prev_holder == head.prev_holder
-                && mine.prev_epoch == head.prev_epoch
-                && mine.epoch == head.epoch
-            {
-                let ok = match (head.kind, head.holder) {
-                    (Kind::Claim, Some(claimant)) => {
-                        (from == claimant || known(claimant))
-                            && self.claim_ok(role, claimant, head.prev_holder, net)
-                    }
-                    // Signed by the one who held it; it is in this state.
-                    _ => head.signer().is_some_and(known),
-                };
-                if ok {
-                    return Admit::Yes;
-                }
-            }
+            return if refuse {
+                Admit::Refused
+            } else if let Some(to) = refer {
+                Admit::Refer { to, acks }
+            } else {
+                Admit::Yes { acks }
+            };
         }
         // A claim from the device that made it, whatever it missed (within
         // what could have been missed): judged as a fresh claim here.
@@ -1420,7 +1505,7 @@ impl Roles {
                 && head.epoch <= local.epoch.saturating_add(CHAIN as u64)
                 && self.claim_ok(role, claimant, local.holder, net)
             {
-                return Admit::Yes;
+                return Admit::Yes { acks: Vec::new() };
             }
         }
         // It does not join. If every device that signed is one this device
@@ -1431,6 +1516,68 @@ impl Roles {
             Admit::Unverified
         } else {
             Admit::No
+        }
+    }
+
+    /// What this device makes of step `i` of `steps` (newest first), a step
+    /// it has not seen before. Only a claim needs judging, and its judge is
+    /// the device it was taken from, which alone knows whether it was really
+    /// away. Its verdict is in the steps when it has given one (an ack, or a
+    /// later step it signed); this device gives it when it is the judge; and
+    /// a device that has the judge connected leaves it to the judge. Every
+    /// device reads a verdict the same way, so where the record came from
+    /// does not matter.
+    fn verdict(
+        &self,
+        role: Role,
+        steps: &[Link],
+        i: usize,
+        from: DeviceKey,
+        net: &dyn Net,
+    ) -> Verdict {
+        let l = &steps[i];
+        let (Kind::Claim, None, Some(judge), Some(claimant)) =
+            (l.kind, &l.ack, l.prev_holder, l.holder)
+        else {
+            // Not a claim, an accepted one, or one from nobody.
+            return Verdict::Stands;
+        };
+        // The judge built on it, so it knew of the claim and let it stand.
+        if steps[..i].iter().any(|s| s.signer() == Some(judge)) {
+            return Verdict::Stands;
+        }
+        // The Projection holder takes the Operator seat back when it likes.
+        if role == Role::Operator && self.record(Role::Projection).holder == Some(claimant) {
+            return Verdict::Stands;
+        }
+        if judge == self.me {
+            // Accepted before (a copy made before the ack came this way).
+            let acked = self
+                .record(role)
+                .chain
+                .iter()
+                .any(|mine| mine.ack.is_some() && same_step(mine, l));
+            return if acked || self.claim_ok(role, claimant, Some(judge), net) {
+                Verdict::Accept
+            } else if from == claimant && net.holder(claimant) != Holder::Online {
+                // The claimant's own frame, still arriving on a connection
+                // that is being replaced, is judged with nothing known of
+                // the outage: not taken, to be judged again when the next
+                // connection opens and brings it.
+                Verdict::NotYet
+            } else {
+                Verdict::Refuse
+            };
+        }
+        match net.holder(judge) {
+            Holder::Gone | Holder::Me => Verdict::Stands,
+            // The judge sends it as its own record: it took it in.
+            Holder::Online if from == judge => Verdict::Stands,
+            Holder::Online => Verdict::AskJudge(judge),
+            // Gone long enough that it may be gone for good. If it comes
+            // back it judges the claim then.
+            Holder::Offline(offline) if offline >= self.takeover_after => Verdict::Stands,
+            Holder::Offline(_) => Verdict::NotYet,
         }
     }
 
@@ -1581,39 +1728,55 @@ impl Roles {
         let i = role.index();
         // An epoch that no claim could ever beat would lock the role for
         // good: it is nonsense, not a record.
-        if remote.epoch > EPOCH_LIMIT || !remote.beats(&self.records[i]) {
+        if remote.epoch > EPOCH_LIMIT {
             return Merged::default();
         }
-        match self.admit(role, remote, from, net) {
-            Admit::Yes => {}
+        if !remote.beats(&self.records[i]) {
+            // Acks it has for steps this device has too: two judges' acks
+            // may each reach a device by another way first.
+            return Merged {
+                changed: self.take_acks(role, remote),
+                ..Merged::default()
+            };
+        }
+        let remote = &match self.admit(role, remote, from, net) {
+            Admit::Yes { acks } => self.acked(role, remote, &acks),
             Admit::No => return Merged::default(),
             Admit::Unverified => {
                 self.unverified[i] = true;
                 return Merged::default();
             }
             Admit::Refused => return self.reclaim(role, remote),
-        }
+            Admit::Refer { to, acks } => {
+                return Merged {
+                    refer: Some((to, self.acked(role, remote, &acks))),
+                    ..Merged::default()
+                };
+            }
+        };
         // A stranger's record is not worth a notice.
         let known = remote
             .holder
             .is_some_and(|h| h == self.me || net.holder(h) != Holder::Gone);
         // The holder refused this device's own takeover: the steps hold a
-        // reclaim of a claim made from the state this device claimed from
-        // (its own claim, or another made at the same moment).
+        // reclaim that cancels a claim made from the state this device
+        // claimed from (its own claim, or another made at the same moment).
         let refused_by = self.records[i]
             .chain
             .first()
             .filter(|l| l.kind == Kind::Claim && l.holder == Some(self.me))
             .and_then(|mine| {
-                let own = remote.chain.iter().find(|l| l.reclaims(mine));
-                if let Some(l) = own {
-                    return l.holder;
-                }
-                remote.chain.windows(2).find_map(|w| {
-                    (w[0].reclaims(&w[1])
-                        && w[1].prev_holder == mine.prev_holder
-                        && w[1].prev_epoch == mine.prev_epoch)
-                        .then_some(w[0].holder)
+                let steps = &remote.chain;
+                (0..steps.len()).find_map(|r| {
+                    let j = covered(steps, r).filter(|_| steps[r].kind == Kind::Reclaim)?;
+                    steps[r + 1..=j]
+                        .iter()
+                        .any(|l| {
+                            l.kind == Kind::Claim
+                                && l.prev_holder == mine.prev_holder
+                                && l.prev_epoch == mine.prev_epoch
+                        })
+                        .then_some(steps[r].holder)
                         .flatten()
                 })
             });
@@ -1652,13 +1815,64 @@ impl Roles {
         Merged {
             changed: true,
             lost_role,
-            reclaimed: false,
+            ..Merged::default()
         }
     }
 
-    /// Refuses `claim`, a claim against this device made on its present
-    /// state: signs a reclaim on top of it, which beats the claim on every
-    /// device it reached, so they all come back to this one.
+    /// Copies onto this device's own steps the valid acks `remote` has for
+    /// them. True if it gained any.
+    fn take_acks(&mut self, role: Role, remote: &Record) -> bool {
+        let mut gained = false;
+        let chain = &mut self.records[role.index()].chain;
+        let off = cancelled(chain);
+        for (l, off) in chain.iter_mut().zip(off) {
+            // An ack under a reclaim would undo the reclaim: a judge that
+            // accepted a claim one way and refused it another, the refusal
+            // having come first here.
+            if l.ack.is_some() || off {
+                continue;
+            }
+            if let Some(theirs) = remote
+                .chain
+                .iter()
+                .find(|r| r.ack.is_some() && same_step(r, l) && r.valid(role))
+            {
+                l.ack.clone_from(&theirs.ack);
+                gained = true;
+            }
+        }
+        gained
+    }
+
+    /// `remote` with this device's ack on the claims at `acks`, and the
+    /// acks this device's own record already has for the same steps (a copy
+    /// that came another way may lack them).
+    fn acked(&self, role: Role, remote: &Record, acks: &[usize]) -> Record {
+        let mut record = remote.clone();
+        let off = cancelled(&record.chain);
+        for (l, _) in record
+            .chain
+            .iter_mut()
+            .zip(off)
+            .filter(|(l, off)| l.ack.is_none() && !off)
+        {
+            l.ack = self
+                .record(role)
+                .chain
+                .iter()
+                .find(|mine| mine.ack.is_some() && same_step(mine, l))
+                .and_then(|mine| mine.ack.clone());
+        }
+        for &k in acks {
+            let l = &mut record.chain[k];
+            l.ack = Some((self.signer.0)(&l.ack_bytes(role)).to_vec());
+        }
+        record
+    }
+
+    /// Refuses `claim`, a record holding a claim against this device: signs
+    /// a reclaim on top of it, which beats it on every device it reached, so
+    /// they all come back to this one.
     fn reclaim(&mut self, role: Role, claim: &Record) -> Merged {
         if claim.epoch >= EPOCH_LIMIT {
             return Merged::default();
@@ -1669,18 +1883,42 @@ impl Roles {
         self.step(role, Kind::Reclaim, Some(self.me), self.name.clone());
         Merged {
             changed: true,
-            lost_role: false,
             reclaimed: true,
+            ..Merged::default()
         }
     }
 }
 
 enum Admit {
-    Yes,
+    /// Taken in, with an ack from this device on the claims at these
+    /// places in the steps (claims against it that it accepts).
+    Yes {
+        acks: Vec<usize>,
+    },
     No,
     Unverified,
     /// A claim against this device that it refuses with a reclaim.
     Refused,
+    /// Not taken: a claim in it is for `to`, connected here, to judge. It
+    /// is passed on to it, with this device's acks.
+    Refer {
+        to: DeviceKey,
+        acks: Vec<usize>,
+    },
+}
+
+/// What a device makes of one step it has not seen ([`Roles::verdict`]).
+enum Verdict {
+    /// Nothing to judge, or judged already.
+    Stands,
+    /// A claim against this device that it accepts: it acks it.
+    Accept,
+    /// A claim against this device that it refuses: it reclaims.
+    Refuse,
+    /// A claim for a connected device to judge.
+    AskJudge(DeviceKey),
+    /// Not now: judged again when it comes again.
+    NotYet,
 }
 
 #[cfg(test)]
@@ -1851,13 +2089,35 @@ mod tests {
 
     /// `from` hands `role` to `to`, which takes the record in.
     fn hand(from: &mut Roles, role: Role, to: &mut Roles, to_key: u8) -> Record {
+        let seen = net_away(&online, Some(secs(999)));
+        hand_seeing(from, role, to, to_key, &seen)
+    }
+
+    /// [`hand`], with `to` judging the record by what `seen` says.
+    fn hand_seeing(
+        from: &mut Roles,
+        role: Role,
+        to: &mut Roles,
+        to_key: u8,
+        seen: &dyn Net,
+    ) -> Record {
         from.receive_ask(role, key(to_key), format!("Device {to_key}"));
         let record = from
             .allow(role, key(to_key), false, &net(true, &online))
             .unwrap()
             .record;
-        assert!(m(to, role, &record).changed);
+        let by = from.me;
+        assert!(to.merge(role, &record, by, seen).changed);
         record
+    }
+
+    /// The Sanctuary (`key(1)`) seems gone; everyone else is connected.
+    fn sanctuary_gone(d: DeviceKey) -> Holder {
+        if d == key(1) {
+            Holder::Offline(secs(999))
+        } else {
+            Holder::Online
+        }
     }
 
     #[test]
@@ -2147,8 +2407,9 @@ mod tests {
         assert_eq!(lb.epoch, lc.epoch, "same epoch");
         let mut x = b2.clone();
         let mut y = c.clone();
-        let mx = m(&mut x, Role::Projection, &lc);
-        let my = m(&mut y, Role::Projection, &lb);
+        // Each sees the holder gone too, so neither claim waits for it.
+        let mx = x.merge(Role::Projection, &lc, key(3), &n_gone);
+        let my = y.merge(Role::Projection, &lb, key(2), &n_gone);
         assert!(mx.changed && mx.lost_role);
         assert!(!my.changed);
         assert_eq!(x.record(Role::Projection), y.record(Role::Projection));
@@ -2619,6 +2880,7 @@ mod tests {
                 prev_holder: None,
                 prev_epoch: far - 1,
                 sig,
+                ack: None,
             }],
         };
         let gone = |_: DeviceKey| Holder::Gone;
@@ -2749,7 +3011,7 @@ mod tests {
         assert_eq!(step.kind, Kind::Reclaim);
         assert_eq!(step.signer(), Some(key(1)));
         assert!(step.valid(Role::Stream));
-        assert!(step.reclaims(&reclaim.chain[1]));
+        assert_eq!(covered(&reclaim.chain, 0), Some(1));
         assert_eq!(reclaim.chain[1], claim.chain[0]);
         assert!(reclaim.beats(&claim));
 
@@ -2794,7 +3056,7 @@ mod tests {
     }
 
     /// A refusal only counts from the device the claim was made against,
-    /// signed by it, directly on that claim.
+    /// signed by it, above that claim.
     #[test]
     fn a_forged_reclaim_is_refused() {
         let (mut a, mut b, c) = church();
@@ -3015,7 +3277,9 @@ mod tests {
     fn a_reclaim_beats_a_hand_over_made_from_the_refused_claim() {
         let (mut a, mut b, mut c) = church();
         let (_, reclaim) = refused_claim(&mut a, &mut b);
-        let passed_on = hand(&mut b, Role::Stream, &mut c, 3);
+        // The Laptop sees the Sanctuary gone too, so it takes the hand-over.
+        let gone = net(true, &sanctuary_gone);
+        let passed_on = hand_seeing(&mut b, Role::Stream, &mut c, 3, &gone);
         assert_eq!(passed_on.epoch, reclaim.epoch);
         assert!(reclaim.beats(&passed_on) && !passed_on.beats(&reclaim));
         assert!(m(&mut c, Role::Stream, &reclaim).changed);
@@ -3066,31 +3330,49 @@ mod tests {
     }
 
     /// The refused claimant hands the role on twice before the refusal
-    /// reaches it (a link failing one way). The last of those beats the
-    /// reclaim by its epoch; the holder follows it from the claim it
-    /// refused, so one device holds the role, not two.
+    /// reaches it (a link failing one way), to devices that also believe the
+    /// holder gone. The last of those beats the reclaim by its epoch, but it
+    /// is built on the claim the holder refused: the holder reclaims again on
+    /// top of it, and every device comes back to it. (Otherwise a device
+    /// could take a role from a connected holder by handing it on twice.)
     #[test]
-    fn the_holder_follows_hand_overs_made_from_the_claim_it_refused() {
+    fn the_holder_takes_the_role_back_from_hand_overs_made_from_the_claim_it_refused() {
         let (mut a, mut b, mut c) = church();
         let mut d = device(4, "Back room");
         m(&mut d, Role::Stream, a.record(Role::Stream));
         let (_, reclaim) = refused_claim(&mut a, &mut b);
-        hand(&mut b, Role::Stream, &mut c, 3);
-        let to_d = hand(&mut c, Role::Stream, &mut d, 4);
+        let gone = net(true, &sanctuary_gone);
+        hand_seeing(&mut b, Role::Stream, &mut c, 3, &gone);
+        let to_d = hand_seeing(&mut c, Role::Stream, &mut d, 4, &gone);
         assert!(to_d.beats(&reclaim));
         let merged = a.merge(Role::Stream, &to_d, key(3), &net(true, &online));
-        assert!(merged.changed && merged.lost_role, "{merged:?}");
-        assert!(!a.unverified(Role::Stream));
-        assert_eq!(a.record(Role::Stream), &to_d);
-        assert!(!a.holds(Role::Stream));
-        // The claimant, which never heard of the reclaim, agrees as well.
-        assert!(m(&mut b, Role::Stream, &to_d).changed);
+        assert!(
+            merged.changed && merged.reclaimed && !merged.lost_role,
+            "{merged:?}"
+        );
+        assert!(a.holds(Role::Stream));
+        let answer = a.record(Role::Stream).clone();
+        assert!(answer.beats(&to_d));
+        assert_eq!(covered(&answer.chain, 0), Some(3), "it cancels the claim");
+        for (x, by) in [(&mut b, "claimant"), (&mut c, "relay"), (&mut d, "last")] {
+            assert!(
+                x.merge(Role::Stream, &answer, key(1), &net(true, &online))
+                    .changed,
+                "{by}"
+            );
+            assert_eq!(x.record(Role::Stream), &answer, "{by}");
+        }
+        assert_eq!(
+            d.notice(Role::Stream),
+            Some(&Notice::Replaced {
+                by: "Sanctuary".into()
+            })
+        );
         let holders = [&a, &b, &c, &d]
             .iter()
             .filter(|r| r.holds(Role::Stream))
             .count();
         assert_eq!(holders, 1);
-        assert!(d.holds(Role::Stream));
     }
 
     /// The case reclaims are for, in any order: the holder is never really
@@ -3099,12 +3381,9 @@ mod tests {
     /// role on before the refusal reaches them, and records reach devices in
     /// any order. Once every record has reached every device (all connected
     /// all along), they agree on who holds the role and exactly one device
-    /// does. Small random runs with fixed seeds, so a failure repeats.
-    ///
-    /// (Not covered, and not settled by reclaims: a claim made against a
-    /// device that is no longer the holder, and a claim that a third device
-    /// refuses while another relays it. Both can leave two holders, on main
-    /// before reclaims as now.)
+    /// does. Small random runs with fixed seeds, so a failure repeats. (The
+    /// wider model, with links that drop, is
+    /// `whatever_the_links_do_every_device_ends_agreeing_on_one_holder`.)
     #[test]
     fn after_refused_claims_and_hand_overs_in_any_order_one_device_holds_the_role() {
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
@@ -3276,7 +3555,8 @@ mod tests {
     /// what its own node has seen, with frames that are lost when their
     /// session ends and otherwise arrive in any order. Each device does what
     /// its node does: a record that changes its own goes to every connected
-    /// device, and a record its own beats is answered with its own.
+    /// device, a record its own beats is answered with its own, and one
+    /// with a claim for a connected device to judge is passed on to it.
     struct World {
         ds: Vec<Roles>,
         now: u64,
@@ -3390,6 +3670,10 @@ mod tests {
             }
             let seen = self.seen(to);
             let merged = self.ds[to].merge(Role::Stream, &record, model_key(from), &seen);
+            if let Some((judge, passed)) = merged.refer {
+                let judge = self.who(Some(judge)).unwrap();
+                self.send_record(to, judge, passed);
+            }
             if merged.changed {
                 self.log.push(format!(
                     "{from} -> {to}: {:?}",
@@ -3510,9 +3794,22 @@ mod tests {
                     let steps: Vec<_> = r
                         .chain
                         .iter()
-                        .map(|l| (l.kind, self.who(l.prev_holder), self.who(l.holder), l.epoch))
+                        .map(|l| {
+                            (
+                                l.kind,
+                                self.who(l.prev_holder),
+                                self.who(l.holder),
+                                l.epoch,
+                                l.ack.is_some(),
+                            )
+                        })
                         .collect();
-                    (self.who(r.holder), r.epoch, d.unverified(Role::Stream), steps)
+                    (
+                        self.who(r.holder),
+                        r.epoch,
+                        d.unverified(Role::Stream),
+                        steps,
+                    )
                 })
                 .collect();
             Some(format!("{:?}\n{states:?}", self.log))
@@ -4108,9 +4405,10 @@ mod tests {
     }
 
     #[test]
-    fn a_takeover_inside_a_catch_up_chain_is_taken_though_the_old_holder_is_back() {
+    fn a_takeover_inside_a_catch_up_chain_is_taken_once_the_old_holder_has_accepted_it() {
         // O holds Stream. O is away; P takes it; O returns and yields; P
-        // hands it to Q. T missed all of it, and sees O online now.
+        // hands it to Q. T missed all of it, and sees O online now. Only O
+        // can say whether it was away, and it said so with its ack.
         let mut ring = [device(1, "O"), device(2, "P"), device(3, "Q")];
         let first = ring[0].claim(Role::Stream, &net(true, &online)).unwrap();
         let mut t = device(8, "T");
@@ -4139,11 +4437,28 @@ mod tests {
             .record;
         assert_eq!(to_q.chain.len(), 3);
         assert_eq!(to_q.chain[1].kind, Kind::Claim);
-        // T sees O online: judging the old claim by that would refuse it.
+        // O's ack is in O's record; P made its hand-over before it came.
+        assert!(ring[0].record(Role::Stream).chain[0].ack.is_some());
+        assert!(to_q.chain[1].ack.is_none());
+        // T sees O online and the claim carries no word from O: T leaves it
+        // to O, and passes it on to O.
         let merged = t.merge(Role::Stream, &to_q, key(3), &net(true, &online));
+        assert!(!merged.changed && !t.unverified(Role::Stream));
+        let (judge, passed) = merged.refer.expect("passed on to its judge");
+        assert_eq!(judge, key(1));
+        // O takes the hand-over in, keeping its ack, and so beats the copy
+        // without it; T then takes O's record from anyone.
         assert!(
-            merged.changed,
-            "the old claim is checked for its signature only"
+            ring[0]
+                .merge(Role::Stream, &passed, key(8), &net(true, &online))
+                .changed
+        );
+        let answer = ring[0].record(Role::Stream).clone();
+        assert_eq!(answer.holder, Some(key(3)));
+        assert!(answer.chain[1].ack.is_some() && answer.beats(&to_q));
+        assert!(
+            t.merge(Role::Stream, &answer, key(3), &net(true, &online))
+                .changed
         );
         assert_eq!(t.record(Role::Stream).holder, Some(key(3)));
     }

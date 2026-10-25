@@ -614,7 +614,7 @@ mod tests {
     /// or not it brings a code.
     #[tokio::test]
     async fn a_device_on_the_protocol_before_roles_is_refused_with_the_usual_message() {
-        assert_eq!(PROTOCOL, 8, "the reclaim step is protocol 8");
+        assert_eq!(PROTOCOL, 9, "the judge's ack is protocol 9");
         for (old_protocol, with_code) in [
             (4, false),
             (4, true),
@@ -622,6 +622,8 @@ mod tests {
             (6, true),
             (7, false),
             (7, true),
+            (8, false),
+            (8, true),
         ] {
             let sanctuary = device("Sanctuary");
             let old = DeviceKeypair::generate();
