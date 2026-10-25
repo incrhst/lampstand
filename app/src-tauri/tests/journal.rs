@@ -11,12 +11,14 @@ use std::process::{Command as Process, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use lampstand_api::{Event, LibraryRequest, OutputRequest, Request, Response, ServiceRequest};
+use lampstand_api::{
+    Event, LibraryRequest, OutputRequest, Request, Response, ServiceRequest, SoundRequest,
+};
 use lampstand_app::handler::{App, Placement, WindowHost};
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
-use lampstand_core::service::{ItemKind, Service};
+use lampstand_core::service::{ItemKind, Service, Sound, SoundStart};
 use lampstand_layout::Fonts;
 use lampstand_live::{Command, Cursor};
 use lampstand_render::output::DisplayInfo;
@@ -321,4 +323,121 @@ fn a_journal_older_than_ten_minutes_is_not_restored() {
 
     let h = open(dir.path());
     assert_eq!(h.app.program().content, None);
+}
+
+/// The service of `start_service` with walk-in music that plays on its own
+/// after the song: the music's cursor.
+fn add_music(h: &mut Harness, song: Cursor) -> Cursor {
+    let file = h
+        .app
+        .library()
+        .repo()
+        .blobs()
+        .put(b"not really music")
+        .unwrap();
+    let service = match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
+        Response::Services(list) => list[0].id,
+        other => panic!("{other:?}"),
+    };
+    let s = match ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service,
+        index: 1,
+        kind: ItemKind::Sound {
+            sound: Sound {
+                name: "Walk-in music".into(),
+                file,
+                length_ms: Some(30_000),
+                start: SoundStart::OnItsOwn,
+                keep_off_stream: false,
+            },
+        },
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let (item, _) = s
+        .ordered()
+        .into_iter()
+        .find(|(id, _)| *id != song.item)
+        .unwrap();
+    Cursor {
+        item,
+        slide: 0,
+        step: 0,
+    }
+}
+
+fn last_shown(h: &Harness) -> Option<Cursor> {
+    h.events
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            Event::Live { shown, .. } => Some(*shown),
+            _ => None,
+        })?
+}
+
+/// Neither playing nor tried: a cue would have left a problem (the file is
+/// not sound) or a sound playing.
+fn no_sound_cued(h: &mut Harness) {
+    match ok(h.app.handle(Request::Sound(SoundRequest::Status))) {
+        Response::Sound(v) => assert!(v.playing.is_none() && v.problem.is_none(), "{v:?}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_crash_while_music_is_live_brings_back_the_slide_on_the_screens_and_no_sound() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (_, song) = start_service(&mut h);
+    let music = add_music(&mut h, song);
+    ok(h.app.handle(Request::Live(Command::Show(at(song, 1)))));
+    let lyrics = h.app.program().content.clone();
+    let background = h.app.program().background.clone();
+    ok(h.app.handle(Request::Live(Command::Show(music))));
+    assert_eq!(
+        h.app.program().content,
+        lyrics,
+        "the screens keep the slide"
+    );
+    drop(h);
+
+    let mut h = open(dir.path());
+    assert_eq!(h.app.program().content, lyrics, "the same slide is on air");
+    assert_eq!(h.app.program().background, background);
+    assert_eq!(last_live(&h).0, Some(music), "with the music live");
+    assert_eq!(last_shown(&h), Some(at(song, 1)));
+    no_sound_cued(&mut h);
+}
+
+#[test]
+fn a_journal_from_before_shown_was_kept_brings_back_the_slide_before_the_music() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (_, song) = start_service(&mut h);
+    let music = add_music(&mut h, song);
+    ok(h.app.handle(Request::Live(Command::Show(song))));
+    ok(h.app.handle(Request::Live(Command::NextItem)));
+    assert_eq!(last_live(&h).0, Some(music));
+    drop(h);
+    // An older journal has no `shown`.
+    let path = dir.path().join("journal.json");
+    let mut journal: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(journal.as_object_mut().unwrap().remove("shown").is_some());
+    std::fs::write(&path, serde_json::to_vec(&journal).unwrap()).unwrap();
+
+    let mut h = open(dir.path());
+    assert_eq!(last_live(&h).0, Some(music));
+    // The slide Previous reaches from the music: the song's last.
+    assert!(matches!(
+        h.app.program().content,
+        Some(Content::Lyrics { .. })
+    ));
+    assert_eq!(last_shown(&h).map(|c| c.item), Some(song.item));
+    assert!(last_shown(&h).is_some_and(|c| c.slide > 0));
+    no_sound_cued(&mut h);
 }

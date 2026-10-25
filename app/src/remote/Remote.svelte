@@ -24,19 +24,13 @@
   import Icon from "../lib/kit/Icon.svelte";
   import SlidePreview from "../lib/kit/SlidePreview.svelte";
   import StatusPill from "../lib/kit/StatusPill.svelte";
-  import { onScreen, pictureKey, remoteSounds, slideLine, upNext, wantsPicture, words, type RemoteSound, type Shown } from "../lib/remote.ts";
+  import { onScreen, pictureKey, remoteSounds, slideLine, upNext, wantsPicture, words, type RemoteSound } from "../lib/remote.ts";
   import { link } from "./link.svelte";
   import { keepAwake } from "./wake";
 
   let online = $derived(link.state === "online");
   let loaded = $derived(link.loaded);
-  // While music is live (it has no picture) the screens keep the slide before it.
-  let shown: Shown | null = $state(null);
-  $effect(() => {
-    const now = onScreen(link.loaded, link.live);
-    const on = !!link.live?.live;
-    untrack(() => (shown = on ? (now ?? shown) : null));
-  });
+  let shown = $derived(onScreen(link.loaded, link.live));
   let coming = $derived(upNext(link.loaded, link.live));
   let overlay = $derived(link.live?.overlay ?? "None");
   let sounds = $derived(remoteSounds(link.loaded));

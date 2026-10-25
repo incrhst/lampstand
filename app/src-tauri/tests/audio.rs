@@ -503,6 +503,29 @@ fn next_onto_music_that_plays_on_its_own_starts_it() {
 }
 
 #[test]
+fn music_already_playing_or_paused_is_left_alone_when_the_service_reaches_it() {
+    for pause in [false, true] {
+        let mut d = device();
+        let (_, [_, music, _]) = song_music_song(&mut d, SoundStart::OnItsOwn);
+        // Played from Up next before the service got there.
+        d.sound_request(SoundRequest::Play {
+            item: music,
+            backing: false,
+        });
+        if pause {
+            d.sound_request(SoundRequest::Pause);
+        }
+        let before = d.calls();
+        live_item(&mut d);
+        assert_eq!(live_item(&mut d), Some(music));
+        assert_eq!(d.calls(), before, "no fade and no new start");
+        let v = d.sound_request(SoundRequest::Status);
+        assert_eq!(playing(&v).name, "Offering music");
+        assert_eq!(playing(&v).paused, pause);
+    }
+}
+
+#[test]
 fn next_onto_music_that_waits_does_not_start_it() {
     let mut d = device();
     let (_, [_, music, _]) = song_music_song(&mut d, SoundStart::Waits);

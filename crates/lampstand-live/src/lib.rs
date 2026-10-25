@@ -63,7 +63,7 @@
 //! - A music-only item (`sound_only`) has no slides, but `Next` and
 //!   `NextItem` stop on it, so it goes live (`ItemLive`, at slide 0) and its
 //!   sound can start. What the screens show does not change: the slide
-//!   before it stays up, with its background. `Previous`, `PreviousItem`,
+//!   before it stays up, with its background, and `shown` still names it. `Previous`, `PreviousItem`,
 //!   loops and the stage display's "next" pass over it, as over a header.
 
 use lampstand_core::id::Timestamp;
@@ -173,6 +173,9 @@ pub enum Event {
 pub struct LiveEngine {
     items: Vec<LoadedItem>,
     live: Option<Cursor>,
+    /// The slide whose content is on the screens: `live`, or while a
+    /// music-only item is live, the slide that went live before it.
+    shown: Option<Cursor>,
     live_item: Option<LoadedItem>,
     preview: Option<Cursor>,
     program: Program,
@@ -328,6 +331,7 @@ impl LiveEngine {
             Command::EndService => {
                 let on_air = !self.is_idle();
                 self.live = None;
+                self.shown = None;
                 self.live_item = None;
                 self.orphan_slot = None;
                 self.loop_anchor = None;
@@ -479,6 +483,13 @@ impl LiveEngine {
 
     pub fn preview(&self) -> Option<Cursor> {
         self.preview
+    }
+
+    /// The slide the screens show (see `shown`): the live one, or the one
+    /// before a music-only item that is live. `None` when nothing went live
+    /// before it.
+    pub fn shown(&self) -> Option<Cursor> {
+        self.shown
     }
 
     /// Nothing on air and no service under way: no item has gone live, and
@@ -664,6 +675,7 @@ impl LiveEngine {
             self.program.background = item.background.clone();
             self.program.theme = item.theme;
             self.program.content = content;
+            self.shown = Some(cursor);
         }
         self.live = Some(cursor);
         self.program.next = self.next_content(cursor);
@@ -1589,7 +1601,7 @@ mod tests {
             music("Walk-in music"),
             item("Song", vec![text("s1")]),
         ];
-        let (walk_in, song) = (items[1].id, items[2].id);
+        let (welcome, walk_in, song) = (items[0].id, items[1].id, items[2].id);
         let mut e = LiveEngine::new();
         e.load(items);
         e.apply(Command::Next);
@@ -1603,11 +1615,15 @@ mod tests {
             "the slide before stays up"
         );
         assert_eq!(e.program().background, background);
+        assert_eq!(e.shown().map(|c| c.item), Some(welcome));
         // The stage display's next is the slide after the music.
         assert_eq!(next_line(&e).as_deref(), Some("s1"));
         e.apply(Command::Next);
         assert_eq!(live_item(&e), Some(song));
         assert_eq!(on_air(&e).as_deref(), Some("s1"));
+        assert_eq!(e.shown().map(|c| c.item), Some(song));
+        e.apply(Command::EndService);
+        assert_eq!(e.shown(), None);
     }
 
     #[test]
@@ -1623,6 +1639,7 @@ mod tests {
             None,
             "nothing was on the screens, and nothing is"
         );
+        assert_eq!(e.shown(), None);
         assert!(!e.is_idle(), "the service is under way");
         e.apply(Command::NextItem);
         assert_eq!(on_air(&e).as_deref(), Some("w"));

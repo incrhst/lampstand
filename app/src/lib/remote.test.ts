@@ -46,6 +46,12 @@ test("on screen is the live cursor's slide, and nothing when nothing is live", (
   assert.equal(onScreen(loaded, at("gone", 0)), null);
 });
 
+test("while music is live the screens show the slide the laptop says, the one before it", () => {
+  const music = at("music", 0);
+  assert.equal(onScreen(loaded, { ...music, shown: { item: "song", slide: 1, step: 0 } })?.slide.label, "V2");
+  assert.equal(onScreen(loaded, { ...music, shown: null }), null, "nothing was on the screens");
+});
+
 test("up next follows Next: build steps, then slides, skipping items with none", () => {
   assert.equal(upNext(loaded, null)?.title, "Amazing Grace");
   assert.equal(upNext(loaded, at("song", 0))?.slide.label, "V2");

@@ -144,7 +144,7 @@ impl App {
         })
     }
 
-    fn sound_of(&self, item: ItemId, backing: bool) -> Result<Sound> {
+    pub(super) fn sound_of(&self, item: ItemId, backing: bool) -> Result<Sound> {
         let service = self
             .loaded
             .as_ref()
@@ -197,16 +197,22 @@ impl App {
         let Ok((backing, sound)) = found else {
             return;
         };
+        // It is already playing (Play was pressed before the service got
+        // here), or paused: it is left as it is, not started again.
+        let current = self.sound_view().playing;
+        if current
+            .as_ref()
+            .is_some_and(|p| p.item == item.to_string() && !p.ending)
+        {
+            return;
+        }
         if sound.start != SoundStart::OnItsOwn {
             return;
         }
         let Ok(cmd) = self.sound_cue_for(item, backing) else {
             return;
         };
-        let fade = self
-            .sound_view()
-            .playing
-            .is_some_and(|p| !p.paused && !p.ending);
+        let fade = current.is_some_and(|p| !p.paused && !p.ending);
         let started = if fade {
             self.route_sound(SoundCommand::Stop {
                 fade_ms: HANDOVER.as_millis() as u32,

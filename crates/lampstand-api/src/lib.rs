@@ -1643,6 +1643,10 @@ pub enum Event {
     /// Live and preview cursors changed.
     Live {
         live: Option<Cursor>,
+        /// The slide the screens show: `live`, or while a music-only item is
+        /// live (it has no picture), the slide before it.
+        #[serde(default)]
+        shown: Option<Cursor>,
         preview: Option<Cursor>,
         idle: bool,
         /// Black or logo, which persist across slides.

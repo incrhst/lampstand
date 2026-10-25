@@ -61,13 +61,20 @@ export function pinDigits(typed: string): string {
 }
 
 /** What the laptop says is live, as the remote shows it. */
-export type LiveState = { live: Cursor | null; preview: Cursor | null; idle: boolean; overlay: Overlay };
+export type LiveState = {
+  live: Cursor | null;
+  /** The slide the screens show: `live`, or the slide before a music-only item that is live. */
+  shown?: Cursor | null;
+  preview: Cursor | null;
+  idle: boolean;
+  overlay: Overlay;
+};
 
 export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };
 
-/** The slide on screen now, if any. */
+/** The slide on screen now, if any: while music is live, the slide before it. */
 export function onScreen(loaded: LoadedService | null, live: LiveState | null): Shown | null {
-  const cursor = live?.live;
+  const cursor = live?.shown !== undefined ? live.shown : live?.live;
   if (!loaded || !cursor) return null;
   const item = loaded.items.find((i) => i.id === cursor.item);
   const slide = item?.slides[cursor.slide];

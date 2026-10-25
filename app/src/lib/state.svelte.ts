@@ -93,7 +93,10 @@ onEvent((event) => {
   switch (event.type) {
     case "Live":
       live.live = event.data.live;
-      if (!event.data.live) live.shown = null;
+      // The core says which slide the screens show; a device on an older
+      // build mirroring to this one does not, so it is worked out here.
+      if (event.data.shown !== undefined) live.shown = event.data.shown;
+      else if (!event.data.live) live.shown = null;
       else if (slideAt(live.loaded, event.data.live)) live.shown = event.data.live;
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;

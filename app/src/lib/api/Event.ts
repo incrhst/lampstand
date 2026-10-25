@@ -10,7 +10,12 @@ import type { SyncSummary } from "./SyncSummary";
 /**
  * Pushed to the UI.
  */
-export type Event = { "type": "Live", "data": { live: Cursor | null, preview: Cursor | null, idle: boolean, 
+export type Event = { "type": "Live", "data": { live: Cursor | null, 
+/**
+ * The slide the screens show: `live`, or while a music-only item is
+ * live (it has no picture), the slide before it.
+ */
+shown: Cursor | null, preview: Cursor | null, idle: boolean, 
 /**
  * Black or logo, which persist across slides.
  */
