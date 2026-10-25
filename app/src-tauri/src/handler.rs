@@ -104,6 +104,28 @@ pub trait WindowHost: Send {
     fn close(&mut self, output: OutputId);
 }
 
+/// The two things Lampstand can ask of this computer itself, both only when
+/// the operator switched them on in Setup (`DeviceSettings::start_at_login`
+/// and `keep_awake`). The Tauri implementation lives in `shell`; with none
+/// set, or in tests, nothing on the computer changes.
+pub trait Machine: Send {
+    /// Adds or removes Lampstand from what opens when someone signs in.
+    fn set_start_at_login(&mut self, on: bool) -> Result<()>;
+    /// Stops the computer sleeping, or lets it. Called only when the answer
+    /// changes.
+    fn set_awake(&mut self, on: bool);
+}
+
+/// Leaves the computer alone.
+struct NoMachine;
+
+impl Machine for NoMachine {
+    fn set_start_at_login(&mut self, _: bool) -> Result<()> {
+        Ok(())
+    }
+    fn set_awake(&mut self, _: bool) {}
+}
+
 pub type EventSink = Arc<dyn Fn(Event) + Send + Sync>;
 
 /// What an output was last sent, so an unchanged output is not composed
@@ -166,6 +188,9 @@ pub struct App {
     audio_held: bool,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
+    machine: Box<dyn Machine>,
+    /// The computer was last told to stay awake (`Machine::set_awake`).
+    awake: bool,
     emit: EventSink,
     /// Where each open output window was asked to go. A window is opened
     /// again only when this changes, never because its real size differs.
@@ -262,6 +287,8 @@ impl App {
             audio_held: false,
             sink,
             windows,
+            machine: Box::new(NoMachine),
+            awake: false,
             emit,
             placed: HashMap::new(),
             sizes: HashMap::new(),
@@ -286,6 +313,33 @@ impl App {
         app.place_windows();
         app.restore();
         Ok(app)
+    }
+
+    /// Hands over the computer's own switches (the shell does this once it
+    /// can) and applies what Setup already says: start at login is made so,
+    /// and the computer stays awake if screens are showing. A failure to
+    /// add the startup item is logged and the switch stays as saved.
+    pub fn set_machine(&mut self, machine: Box<dyn Machine>) {
+        self.machine = machine;
+        self.awake = false;
+        if self.settings.get().start_at_login {
+            if let Err(e) = self.machine.set_start_at_login(true) {
+                eprintln!("lampstand: cannot start with this computer: {e}");
+            }
+        }
+        self.sync_awake();
+    }
+
+    /// Keeps the computer awake exactly while the setting is on and a
+    /// screen is showing: an output window is open, or a browser-source
+    /// picture is being served. Called wherever either changes.
+    fn sync_awake(&mut self) {
+        let wanted =
+            self.settings.get().keep_awake && (!self.placed.is_empty() || !self.streams.is_empty());
+        if wanted != self.awake {
+            self.awake = wanted;
+            self.machine.set_awake(wanted);
+        }
     }
 
     /// Shared, so long imports can run without holding the `App` lock.
@@ -537,6 +591,11 @@ impl App {
             }
             LibraryRequest::AddSoundFile { path } => {
                 Response::SoundFile(decks::add_sound_file(lib, &path)?)
+            }
+            LibraryRequest::AddSoundFromLink { .. } => {
+                // A download, like a deck link: the shell fetches it and
+                // then adds it as `AddSoundFile` does.
+                return Err("sound links are downloaded by the app shell".into());
             }
             LibraryRequest::DeckThumbnail { .. } => {
                 // It needs the GPU, so the shell draws it.
@@ -1950,6 +2009,7 @@ impl App {
             }
         }
         self.place_streams();
+        self.sync_awake();
         self.present();
         self.write_journal(now());
     }
@@ -2014,6 +2074,7 @@ impl App {
         self.placed.remove(&id);
         self.sizes.remove(&id);
         self.sent.remove(&id);
+        self.sync_awake();
         if let Some(mut config) = self.outputs.get(id).cloned() {
             config.enabled = false;
             if self.outputs.put(config).is_ok() {

@@ -329,6 +329,18 @@ pub struct DeviceSettings {
     /// controls on for every device that has it anyway.
     #[serde(default)]
     pub use_sound: bool,
+    /// Setup › This computer › "Start Lampstand when this computer starts":
+    /// Lampstand opens when someone signs in to this computer. Off by
+    /// default, and the only startup item Lampstand ever adds. Kept on this
+    /// device: it is about this computer, not the church.
+    #[serde(default)]
+    pub start_at_login: bool,
+    /// Setup › This computer › "Keep this computer awake while it is showing
+    /// the screens": while an output window is open or an OBS picture is
+    /// served, the computer is stopped from sleeping or dimming its screen.
+    /// Off by default. Kept on this device, like `start_at_login`.
+    #[serde(default)]
+    pub keep_awake: bool,
     /// Setup › Sound › Output: the sound output this device plays through
     /// when it holds Audio, by name. Unset, or no longer on this computer,
     /// means the computer's own default.
@@ -522,6 +534,14 @@ pub enum LibraryRequest {
     /// the caller inserts the item.
     AddSoundFile {
         path: String,
+    },
+    /// A pasted link to a sound file: a Google Drive, OneDrive or Dropbox
+    /// share link, or an `https://` link to a file. It is downloaded
+    /// (250 MB at most), checked and added as `AddSoundFile` does, so the
+    /// service plays it offline. YouTube, Spotify, Apple Music and
+    /// SoundCloud links are refused. Answers `Response::SoundFile`.
+    AddSoundFromLink {
+        url: String,
     },
     /// A small picture of an image or video in the blob store, `width`
     /// pixels wide, for the library and the service order. For a video it

@@ -23,18 +23,18 @@ Where tickets in one crate each add a module, each also adds one `mod` line to t
 
 | ID | Title | Model | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- |
-| T01 | Scripture references, display and verse lookup | S | BI-1 | `core/src/scripture.rs` | Done |
-| T02 | Fractional positions and service ordering | S | PL-1 | `core/src/service.rs` | Done |
-| T03 | Section kinds and ChordPro helpers | S | SL-1 | `core/src/song.rs` | Done |
-| T15 | Song search index with typo tolerance | S | SL-3 | `library/src/search.rs` | Done |
-| T20 | Font set: bundled fonts, substitutions, `FontLookup` | S | PS-4, LV-4 | `layout/src/fonts.rs`, `assets/fonts/` | Done |
-| T28 | DeckCraft evaluation spike | S | PS-1 | `docs/decisions/0001-pptx-reader.md` | Done |
-| T33 | Live engine state machine | S | LV-1, LV-2, PS-8 | `live/src/lib.rs` | Done |
-| T39 | Share-link classification and download | S | PS-1, CD-9 | `connectors/src/links.rs` | Done |
-| T58 | CI on Windows, macOS and Linux | S | NFR Platforms | `.github/workflows/` | Done |
-| T16 | Sync repo: documents, storage, blob store | **O** | CD-1 | `sync/src/lib.rs`, `sync/src/repo/`, `core` (feature only) | Done |
-| T45 | API types to TypeScript | S | — | `api/`, `app/src/lib/api/` | Done |
-| T04–T13 | Importers (see below) | S | SL-4, BI-2 | one file each in `import/src/` | Done (T06 skipped) |
+| T01 | Scripture references, display and verse lookup | S | BI-1 | `core/src/scripture.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T02 | Fractional positions and service ordering | S | PL-1 | `core/src/service.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T03 | Section kinds and ChordPro helpers | S | SL-1 | `core/src/song.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T15 | Song search index with typo tolerance | S | SL-3 | `library/src/search.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T20 | Font set: bundled fonts, substitutions, `FontLookup` | S | PS-4, LV-4 | `layout/src/fonts.rs`, `assets/fonts/` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T28 | DeckCraft evaluation spike | S | PS-1 | `docs/decisions/0001-pptx-reader.md` | Done ([#2](https://github.com/incrhst/lampstand/pull/2), [#7](https://github.com/incrhst/lampstand/pull/7), [#11](https://github.com/incrhst/lampstand/pull/11)) |
+| T33 | Live engine state machine | S | LV-1, LV-2, PS-8 | `live/src/lib.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T39 | Share-link classification and download | S | PS-1, CD-9 | `connectors/src/links.rs` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T58 | CI on Windows, macOS and Linux | S | NFR Platforms | `.github/workflows/` | Done ([#8](https://github.com/incrhst/lampstand/pull/8)) |
+| T16 | Sync repo: documents, storage, blob store | **O** | CD-1 | `sync/src/lib.rs`, `sync/src/repo/`, `core` (feature only) | Done ([#8](https://github.com/incrhst/lampstand/pull/8)) |
+| T45 | API types to TypeScript | S | — | `api/`, `app/src/lib/api/` | Done ([#7](https://github.com/incrhst/lampstand/pull/7)) |
+| T04–T13 | Importers (see below) | S | SL-4, BI-2 | one file each in `import/src/` | Done (T06 skipped; [#7](https://github.com/incrhst/lampstand/pull/7)) |
 
 **T01. Scripture references, display and verse lookup.** Implement `parse_reference`, `Display for Passage` and `BibleText::verses`. The book table should hold full names, SBL abbreviations, common short forms ("Jn", "Ps", "Phil", "Phm", "Song of Songs") and roman or ordinal prefixes ("I", "II", "First"). Done when the four `T01` tests pass. Also add round-trip tests: parse, display, parse again gives the same passage.
 
@@ -103,9 +103,9 @@ Each importer is one file in `crates/lampstand-import/src/`, with fixtures in `c
 | T21 | Song and scripture pagination | S | T03, T20 | BI-1, SL-1 | `layout/src/paginate.rs` | Done |
 | T22 | Fit text with shrink-to-minimum | S | T20 | TS-7 | `layout/src/fit.rs` | Done |
 | T24 | wgpu renderer core and offscreen rendering | **O** | T20 | LV-3, NFR | `render/src/` | Done |
-| T29 | PPTX parser: structure, text, shapes, images, notes | **O** | T20, T28 | PS-1, PS-3 | `slides/src/` | Done |
-| T14 | Bundled public-domain Bibles (KJV, WEB) | S | T11, T12 | BI-2 | `xtask/`, `assets/bibles/` | Not started |
-| T34 | Countdown timers and announcement loop | S | T33 | LV-2 | `live/src/lib.rs` (`tick`) | Done |
+| T29 | PPTX parser: structure, text, shapes, images, notes | **O** | T20, T28 | PS-1, PS-3 | `slides/src/` | Done ([#15](https://github.com/incrhst/lampstand/pull/15)) |
+| T14 | Bundled public-domain Bibles (KJV, WEB) | S | T11, T12 | BI-2 | `xtask/`, `assets/bibles/` | Done ([#25](https://github.com/incrhst/lampstand/pull/25); installed on first run) |
+| T34 | Countdown timers and announcement loop | S | T33 | LV-2 | `live/src/lib.rs` (`tick`) | Done ([#12](https://github.com/incrhst/lampstand/pull/12)) |
 
 **T21. Pagination.** Implement `paginate_song` and `paginate_passage` to their doc comments. Done when there are tests for the even-split rule, arrangements with repeats, blank-line breaks, the copyright footer on the first slide only, and passages that break between verses and inside an over-long verse.
 
@@ -145,13 +145,13 @@ Done when 10 synthetic decks in `slides/tests/decks/` produce snapshot scenes, a
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T17 | LAN discovery, WebSocket sync protocol, handshake | **O** | T16 | CD-2 | `sync/src/net/` | Done |
-| T18 | Teams, device keys, signed membership, invites | **O** | T16 | CD-6 | `sync/src/team.rs` | Not started |
+| T18 | Teams, device keys, signed membership, invites | **O** | T16 | CD-6 | `sync/src/team.rs` | Partial: device keys, `Role` with its write rules and the `Invite` type are in `team.rs` (the device key is a file, not in the keychain; pairing by code, T17 and T75, stands in). Signed membership, `effective_role`, invites and filtering changes by role are not built |
 | T23 | Compositor: audience, stage and stream layouts | S | T21, T22 | LV-3, TS-2–4, TS-9, OB-1, PS-7 | `layout/src/compose.rs` | Done |
 | T25 | Output windows, display mapping, transitions, animations | **O** | T24 | LV-3, NFR | `render/src/output/` | Done |
-| T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` | Done |
-| T27 | Video playback (DeckCraft decoders) | S | T24 | LV-4, PS-3 | `media/`, `render/src/output/video.rs` | Done |
-| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | Done |
-| T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` | Not started |
+| T26 | Calibration pattern and safe-area overlay | S | T24 | TS-1, TS-8 | `render/src/calibrate.rs` | Done ([#13](https://github.com/incrhst/lampstand/pull/13)) |
+| T27 | Video playback (DeckCraft decoders) | S | T24 | LV-4, PS-3 | `media/`, `render/src/output/video.rs` | Done ([#29](https://github.com/incrhst/lampstand/pull/29)) |
+| T30 | Animations, builds and transitions from PPTX | S | T29 | PS-3 | `slides/src/anim.rs` | Done ([#22](https://github.com/incrhst/lampstand/pull/22)) |
+| T31 | Fidelity report | S | T29 | PS-4 | `slides/src/report.rs` | Partial ([#15](https://github.com/incrhst/lampstand/pull/15), [#22](https://github.com/incrhst/lampstand/pull/22)): the mapping records missing fonts, approximated and unsupported effects and unsupported content in `ParsedDeck::report`, tested on synthetic decks; no `report.rs`, no test for linked media, and nothing shows the report in the app |
 | T35 | Library facade over the repo | S | T16 | SL-1, BI-2 | `library/src/lib.rs` | Done |
 
 **T17. Network sync (Opus).** WebSocket transport (tokio-tungstenite), mDNS with `mdns-sd`, blob transfer by hash, reconnection with backoff, and the device-key challenge handshake. Done when two processes on one machine find each other and converge, a third joins through a relay-mode server, and a peer that is cut off and reconnected catches up.
@@ -190,7 +190,7 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T40 | Google sign-in, picker, Drive download and export | S | T39, T42 | PS-2 | `connectors/src/google.rs` | Not started |
 | T41 | Linked deck updates: poll, pending, accept | S | T39, T40, T35, T87 | PS-5 | `library/src/decks.rs` | Not started |
 | T42 | Local server skeleton | S | T16 | CD-2 | `server/` | Done (with T17, T43) |
-| T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` | Done |
+| T43 | OBS browser source | S | T42, T23 | OB-1, OB-2 | `server/src/obs/`, `server/web/obs/` | Done ([#14](https://github.com/incrhst/lampstand/pull/14)) |
 | T44 | Guest upload links on the relay | S | T19 | CD-9 | `relay/src/upload.rs` | Not started |
 
 **T19. Relay.** One binary built on axum: the sync endpoint from T17 with role checks from T18, a blob store with a size quota, and TOML configuration. Ship a Dockerfile and builds for arm64 and x86-64. Done when it runs on a Raspberry Pi 4 image in CI (QEMU) and uses under 50 MB of memory idle with 10 teams. Do T64 (Docker image, TLS guidance and relay tests ported from PR #4) in the same session. T75 (encrypted sessions) must land before the relay is used beyond a test network.
@@ -218,21 +218,21 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T46 | Tauri 2 scaffold, API bridge, app state wiring | **O** | T25, T33, T35, T45 | — | `app/` | Done |
-| T47 | Operator view | S | T46 | LV-1, LV-2, TS-8, PS-7 | `app/src/routes/operate/` | Partial (T46 slice) |
-| T48 | Library and song editor | S | T46, T15 | SL-1, SL-3 | `app/src/routes/library/` | Not started |
-| T49 | Service planner, live collaborative | S | T46, T02 | PL-1, PS-8 | `app/src/routes/plan/` | Partial (T46 slice) |
-| T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` | Partial (T46 slice) |
-| T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` | Not started |
-| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` | Partial (planner scripture tab, #19) |
+| T47 | Operator view | S | T46 | LV-1, LV-2, TS-8, PS-7 | `app/src/routes/operate/` | Partial ([#21](https://github.com/incrhst/lampstand/pull/21), [#41](https://github.com/incrhst/lampstand/pull/41), [#42](https://github.com/incrhst/lampstand/pull/42), [#47](https://github.com/incrhst/lampstand/pull/47), [#48](https://github.com/incrhst/lampstand/pull/48), [#49](https://github.com/incrhst/lampstand/pull/49), [#60](https://github.com/incrhst/lampstand/pull/60), [#63](https://github.com/incrhst/lampstand/pull/63), [#89](https://github.com/incrhst/lampstand/pull/89), [#93](https://github.com/incrhst/lampstand/pull/93)): Space and the clicker go live, Black, Logo and Clear, preview and live panes with the safe-area guide (TS-8), speaker notes, item jumps; no flags for text below the minimum size (TS-7), and no Playwright tests of the screen |
+| T48 | Library and song editor | S | T46, T15 | SL-1, SL-3 | `app/src/routes/library/` | Partial ([#31](https://github.com/incrhst/lampstand/pull/31), [#57](https://github.com/incrhst/lampstand/pull/57), [#80](https://github.com/incrhst/lampstand/pull/80), [#81](https://github.com/incrhst/lampstand/pull/81)): the library panel (one search, drag into the order, file drops) and the song editor are in Plan, not a Library screen; no Playwright tests |
+| T49 | Service planner, live collaborative | S | T46, T02 | PL-1, PS-8 | `app/src/routes/plan/` | Partial ([#19](https://github.com/incrhst/lampstand/pull/19), [#20](https://github.com/incrhst/lampstand/pull/20), [#31](https://github.com/incrhst/lampstand/pull/31), [#79](https://github.com/incrhst/lampstand/pull/79), [#85](https://github.com/incrhst/lampstand/pull/85), [#174](https://github.com/incrhst/lampstand/pull/174)): the service order with songs, scripture, decks, media, sound, text slides, headers and loops; no Playwright tests |
+| T50 | Outputs setup and calibration wizard | S | T46, T26 | LV-3, TS-1, TS-2 | `app/src/routes/outputs/` | Partial ([#21](https://github.com/incrhst/lampstand/pull/21), [#44](https://github.com/incrhst/lampstand/pull/44), [#46](https://github.com/incrhst/lampstand/pull/46), [#54](https://github.com/incrhst/lampstand/pull/54), [#55](https://github.com/incrhst/lampstand/pull/55), [#56](https://github.com/incrhst/lampstand/pull/56)): the Screens page with display matching and a safe-area calibration view per screen; no Playwright tests |
+| T51 | Theme editor | S | T46, T23 | LV-4 | `app/src/routes/themes/` | Partial ([#99](https://github.com/incrhst/lampstand/pull/99)): themes, church look, idle screen and brand files in Setup; no Playwright tests |
+| T52 | Scripture panel | S | T46, T01, T21 | BI-1 | `app/src/routes/operate/scripture/` | Partial (planner scripture tab, [#19](https://github.com/incrhst/lampstand/pull/19); a Bible version typed after the reference, [#94](https://github.com/incrhst/lampstand/pull/94); no chapter bounds or suggestions, T71) |
 | T53 | Deck import, fidelity report, updates | S | T46, T31, T41, T87 | PS-1, PS-4, PS-5 | `app/src/routes/decks/` | Partial (add decks from file or link, #20; no fidelity report or updates) |
-| T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` | Not started |
+| T54 | Team, invites with QR, sync status | S | T46, T18 | CD-6 | `app/src/routes/team/` | Partial ([#21](https://github.com/incrhst/lampstand/pull/21), [#107](https://github.com/incrhst/lampstand/pull/107), [#152](https://github.com/incrhst/lampstand/pull/152)): pairing by code, the sync status and the roster in Setup › Devices; no team, invites or QR code (T18) |
 | T55 | Migration wizard | S | T46, T04–T13 | SL-4, BI-2 | `import/src/detect.rs`, `app/src/routes/welcome/` | Not started |
-| T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Done |
-| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Done |
-| T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Partly done: packaging and signing in `release.yml` (docs/RELEASING.md); the updater is not started |
+| T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Done ([#30](https://github.com/incrhst/lampstand/pull/30)) |
+| T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Done ([#27](https://github.com/incrhst/lampstand/pull/27)) |
+| T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Done ([#24](https://github.com/incrhst/lampstand/pull/24), [#61](https://github.com/incrhst/lampstand/pull/61), [#64](https://github.com/incrhst/lampstand/pull/64), [#66](https://github.com/incrhst/lampstand/pull/66), [#72](https://github.com/incrhst/lampstand/pull/72), [#74](https://github.com/incrhst/lampstand/pull/74)): a notarised DMG, AppImage, .deb and an unsigned NSIS installer from `release.yml` (docs/RELEASING.md), and the updater, which installs only at a quiet moment |
 | T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
-| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Not started |
+| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Partial ([#86](https://github.com/incrhst/lampstand/pull/86)): the SignPath application, privacy page and code signing policy are on the site; the Windows installer is not signed and there is no Flathub manifest |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -273,7 +273,7 @@ Code from a closed pull request is still on GitHub. Fetch every pull request hea
 
 | ID | Title | Model | Needs | Source | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` | Done |
+| T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` | Done ([#13](https://github.com/incrhst/lampstand/pull/13)) |
 | T63 | Ultra-wide text column and authored-line fitting | **O** | — | #5 | `layout/src/fit.rs`, `layout/src/compose.rs`, `core/src/theme.rs` | Not started |
 | T64 | Relay Docker image, TLS guidance and relay tests | S | T19 | #4 | `relay/` | Not started |
 | T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` | Not started |
@@ -348,7 +348,7 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done |
+| T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done ([#16](https://github.com/incrhst/lampstand/pull/16)) |
 | T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | Not started |
 | T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
 | T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
@@ -357,10 +357,10 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Not started |
 | T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` | Not started |
 | T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
-| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30) |
-| T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Not started |
+| T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30, [#22](https://github.com/incrhst/lampstand/pull/22)) |
+| T85 | Mark and track the remaining render stubs | S | — | LV-4 | `render/src/frame.rs`, `layout/src/compose.rs` | Partial ([#99](https://github.com/incrhst/lampstand/pull/99), [#105](https://github.com/incrhst/lampstand/pull/105), [#106](https://github.com/incrhst/lampstand/pull/106)): the Logo overlay and logo bug use the church logo from the brand; the ring is still the unmarked placeholder when there is none, and Present does not say so |
 | T86 | Wire the OBS browser source into the app | S | T43, T46 | OB-1, OB-2 | `app/src-tauri/src/`, Outputs view | Done ([#26](https://github.com/incrhst/lampstand/pull/26)) |
-| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | Done |
+| T87 | Deck budget: price media, one ~1 GB peak | **O** | T29 | NFR Reliability, NFR Hardware | `slides/src/pptx/budget.rs`, `slides/tests/memory.rs`, ARCHITECTURE.md | Done ([#17](https://github.com/incrhst/lampstand/pull/17), [#20](https://github.com/incrhst/lampstand/pull/20)) |
 
 **T75. Encrypted sync sessions (Opus).** `sync::net` dials plain `ws://`, and after the handshake no frame is authenticated: anyone on the path can read every song and service, and inject or change frames. Derive a session key bound to the handshake transcript (both device keys, both nonces, the SPAKE2 messages), then encrypt and authenticate every later frame with an AEAD and per-direction counters. Noise (`snow`, XX or IK pattern with the device keys) is a reasonable alternative to building it on the current handshake; record the choice in `docs/decisions/`. Done when a test shows a tampered, replayed or reordered frame closes the session, and a capture shows no plaintext. This blocks T19 and any use beyond a test LAN.
 
@@ -418,12 +418,12 @@ Done when the review's media repro is refused, the counting-allocator test bound
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done |
+| T88 | OBS WebSocket v5 client | S | — | OB-4 | `connectors/src/obs.rs` | Done ([#28](https://github.com/incrhst/lampstand/pull/28)) |
 | T89 | OBS connection, detection and status in Present | S | T88, T46 | OB-5 | `app/src-tauri/src/`, `app/src/routes/` | Done ([#33](https://github.com/incrhst/lampstand/pull/33)) |
-| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | In review ([#35](https://github.com/incrhst/lampstand/pull/35)) |
-| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | In review |
+| T90 | Service items switch the OBS scene | **O** | T88 | OB-4 | `core/src/service.rs`, `live/`, ARCHITECTURE.md | Done ([#35](https://github.com/incrhst/lampstand/pull/35)) |
+| T91 | OBS scene buttons and audio mutes in Present | S | T89 | OB-8 | `app/src/routes/operate/` | Done ([#40](https://github.com/incrhst/lampstand/pull/40)) |
 | T92 | Start and stop streaming and recording from the service order | S | T89 | OB-6 | `core/src/service.rs`, `live/`, `app/src/routes/` | Not started |
-| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view | Not started |
+| T93 | One-click OBS setup | S | T86, T88 | OB-7 | `connectors/src/obs.rs`, Outputs view | Partial ([#141](https://github.com/incrhst/lampstand/pull/141)): "Set up OBS" makes the "Lampstand" collection and starter scenes, and running it again changes only its own sources; rotating the key does not update the URL in OBS (run Set up OBS again) |
 | T94 | Stream destination and virtual camera | S | T89 | OB-9 | `app/src-tauri/src/`, `app/src/routes/` | Not started |
 | T96 | Default OBS scene per kind of item | S | T90 | OB-10 | `app/src-tauri/src/`, `app/src/routes/` | Not started |
 
@@ -484,7 +484,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T109 | Update a service from its plan | **O** | T107, T108 | PL-4 | `library/src/plan_update.rs`, `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T110 | Setup › Connections: Notion | S | T104 | PL-4 | `app/src/routes/setup/`, `app/src-tauri/src/notion.rs` | Not started |
-| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | Not started |
+| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
 T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
@@ -517,7 +517,7 @@ Lampstand plays files the church is licensed to play: a track it bought, a multi
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T113 | Add sound from a link | S | — | — | `connectors/src/links.rs`, `api/src/lib.rs`, `app/src-tauri/src/decks.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/plan/` | Not started |
+| T113 | Add sound from a link | S | — | — | `connectors/src/links.rs`, `api/src/lib.rs`, `app/src-tauri/src/decks.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/plan/` | In review (#194) |
 
 **T113. Add sound from a link.** Add `LibraryRequest::AddSoundFromLink { url }`, answered with `Response::SoundFile` as `AddSoundFile` is, so the planner adds it to the service as a music-only item (`soundItem` in `lib/sound.ts`).
 

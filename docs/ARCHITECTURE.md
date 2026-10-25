@@ -27,7 +27,7 @@ Each layer uses only the layers below it, except the arrows within a layer: `ren
 | `sync` | Automerge documents, blob store, sync protocol, LAN discovery, teams and roles | core |
 | `library` | Typed access to documents, song search, service packages, readiness check, CCLI usage | core, sync |
 | `import` | Song and Bible importers, finding other apps' data | core |
-| `connectors` | Google Drive and Slides, share links | — |
+| `connectors` | Google Drive and Slides, share links (decks, and sound files) | — |
 | `server` | Local HTTP and WebSocket server: OBS browser source, peer sync, picker page | core, render, sync |
 | `api` | Messages between the UI and the core | core, live, sync |
 | `relay` | Self-hostable sync relay binary; guest upload links | sync |
@@ -218,7 +218,7 @@ A church that plans in Notion points Lampstand at its Services database; Lampsta
 
 | Synced | Device only |
 | --- | --- |
-| Songs, services, themes, decks (metadata and current file), translations, church settings (look, logo bug, default theme, default idle screen), team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens, as does each screen's own theme and idle override), window layout, OBS connection, clicker mode, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
+| Songs, services, themes, decks (metadata and current file), translations, church settings (look, logo bug, default theme, default idle screen), team, usage logs | Output configuration, display mapping, safe areas (they belong to this machine's screens, as does each screen's own theme and idle override), window layout, OBS connection, clicker mode, start at login, keep awake, Google tokens (OS keychain), the device key, the paired-devices list (until T18), caches (parsed decks, thumbnails, search index) |
 
 ### Teams and roles: signed membership, honest-member threat model
 
@@ -336,6 +336,13 @@ How T56 built it (`app/src-tauri/src/keys.rs`):
 - `Keys` holds the registration lifecycle: the app thread computes a `KeyState` (clicker mode, service open, an output window focused) after every step and registers or releases only the difference, without the `App` lock (registering waits on the main thread). A key another app holds is logged and tried again on the next state change, not every tick. `ShortcutHost` hides the plugin, so the lifecycle is unit-tested with a fake.
 - Output windows have no webview and Tauri reports no key events for them, so while one has focus the app thread also registers the arrow keys, Space, Page Up, Page Down and full stop, and releases them when it loses focus. The operator window keeps handling its own keys in the web UI.
 - A press goes from the plugin's handler (main thread) to the app thread as a message, and on to the live engine as `Next`, `Previous` or `ToggleBlack`.
+
+### Start at login and keep awake (#140)
+
+Two opt-in device settings, off by default, in Setup › This computer (`DeviceSettings::start_at_login` and `keep_awake`, in `settings.json`; they never sync). `handler::Machine` is what the app asks of the computer, so `handler` stays free of Tauri and is tested with a recording fake; `shell::TauriMachine` is the real one.
+
+- Start at login uses `tauri-plugin-autostart` (a LaunchAgent on macOS, the `Run` registry key on Windows). A change is asked of the computer before it is saved; if the computer refuses, nothing is saved and the screen shows why. On every start with the switch on, the entry is written again, so it follows the app if it was moved or updated.
+- Keep awake uses the `keepawake` crate (an IOKit assertion on macOS, the execution state on Windows), holding off idle sleep and screen sleep. `App::sync_awake` runs wherever the open windows change (`place_windows`, `output_closed`) and when the setting is saved, and tells the computer only when the answer changes. The assertion belongs to the thread that makes it on Windows, so `awake::Awake` keeps one long-lived thread that makes, holds and drops the `keepawake` guard; callers only send it a message. If the app's path cannot be read, the autostart plugin is left out (logged) and the startup switch reports an error, rather than stopping the app. "Showing the screens" means an output window is open or a browser-source output is being served.
 
 ### Updates
 

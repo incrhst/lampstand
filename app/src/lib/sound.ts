@@ -30,6 +30,43 @@ export function isAudio(name: string): boolean {
   return audioExtensions.includes(extension(name));
 }
 
+/** Shown when a streaming link is pasted: refused before anything is fetched. */
+export const streamingRefusal =
+  "Lampstand plays sound files your church is licensed to use. Streaming links can't be added: download the track from where you bought it, or share the file from Drive or Dropbox.";
+
+const streamingHosts = ["youtube.com", "youtu.be", "youtube-nocookie.com", "spotify.com", "spotify.link", "music.apple.com", "itunes.apple.com", "soundcloud.com"];
+
+/** What a pasted link could be added as. */
+export interface LinkOffers {
+  /** A presentation: Google Slides, OneDrive, a Drive file, or any link that is not a sound. */
+  deck: boolean;
+  /** A sound file: Drive, OneDrive, Dropbox, or a link to a file that ends like one. */
+  sound: boolean;
+  /** YouTube, Spotify, Apple Music or SoundCloud: refused. */
+  streaming: boolean;
+}
+
+/** Reads what a pasted link points at from its address alone; the core checks it again. */
+export function linkOffers(link: string): LinkOffers {
+  let url: URL;
+  try {
+    url = new URL(link.trim().includes("://") ? link.trim() : `https://${link.trim()}`);
+  } catch {
+    return { deck: true, sound: false, streaming: false };
+  }
+  const host = url.hostname.toLowerCase();
+  const on = (h: string) => host === h || host.endsWith(`.${h}`);
+  if (streamingHosts.some(on)) return { deck: false, sound: false, streaming: true };
+  const last = url.pathname.split("/").filter(Boolean).pop() ?? "";
+  const soundName = isAudio(last);
+  if (on("dropbox.com")) return { deck: false, sound: true, streaming: false };
+  if (host === "docs.google.com") return { deck: true, sound: false, streaming: false };
+  if (host === "drive.google.com" || on("1drv.ms") || on("onedrive.live.com") || on("sharepoint.com")) {
+    return { deck: true, sound: true, streaming: false };
+  }
+  return soundName ? { deck: false, sound: true, streaming: false } : { deck: true, sound: false, streaming: false };
+}
+
 export const words = {
   /** spec: "music-only item". */
   kind: "Music only",
