@@ -138,7 +138,7 @@ On a Linux container with a null sink the same example was recorded and measured
 ### Releasing 0.9.0: sync protocol 8
 
 - **Every device must update together again.** 0.9.0 is sync protocol 8 (a role step may be a `Reclaim`, the holder's signed refusal of a takeover; `docs/roles.md`). 0.8.1 is protocol 7 and is refused at the handshake with "the other device runs an older Lampstand; update it" (and the 0.9.0 side is told the same from the other end), so a church updates every paired computer before the next service. Say so first in the release notes.
-- **Going back to 0.8.1.** A `roles.json` whose history holds a refused takeover cannot be read by 0.8.1, which then treats the roles as lost and is taught them again by the devices it pairs with (as for a damaged file). Nothing else is lost.
+- **Going back to 0.8.1 loses settings.** 0.8.1 cannot read a `roles.json` whose history holds a refused takeover. It moves the file aside as `roles.json.bad` and starts from defaults. That resets more than who runs what: this device's takeover time goes back to two minutes, and its "Always allow this device" lists for Operator and Stream are emptied. Paired devices do not teach those back, so set them again by hand. Who runs what is taught again only by other 0.8.1 devices, because a 0.9.0 device (protocol 8) refuses a 0.8.1 one. Downgrade every paired computer together, or not at all.
 
 ### Releasing 0.8.0: roles and sound
 
