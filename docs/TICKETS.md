@@ -453,7 +453,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 
 ### Tablet remote
 
-[Decision 0006](decisions/0006-tablet-remote-in-the-browser.md): an operator remote in the tablet's browser, served over plain HTTP by the local server. A tablet opens it by QR code and pairs with a fresh PIN, and a paired tablet can drive the service but nothing else. A second Lampstand machine, paired as a sync peer, can drive the service too (T102), through the same gate.
+[Decision 0006](decisions/0006-tablet-remote-in-the-browser.md): an operator remote in the tablet's browser, served over plain HTTP by the local server. A tablet opens it by QR code and pairs with a fresh PIN, and a paired tablet can drive the service and its sound (the decision's amendment) but nothing else. A second Lampstand machine, paired as a sync peer, can drive the service too (T102), through the same gate. T99 to T101 are built as Lampstand Remote (phones and tablets): the phone-first page, `gate.rs` for both callers, Present › More › Connect a phone or tablet, and Remotes in Setup › Devices (ARCHITECTURE.md, "Local server").
 
 | ID | Title | Model | Needs | PRD | Files |
 | --- | --- | --- | --- | --- | --- |

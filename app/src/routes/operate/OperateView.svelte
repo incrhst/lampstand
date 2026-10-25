@@ -38,6 +38,7 @@
   import { steppedDown, windowToDemote } from "../../lib/primary";
   import { modLabel } from "../../lib/shortcuts";
   import MoreMenu from "./MoreMenu.svelte";
+  import ConnectRemote from "./ConnectRemote.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
   import { cannotGoLive, isStreamDesk, screensLine, shortcutsOff } from "../../lib/roles";
@@ -264,6 +265,8 @@
   // Quick add (/): a song or passage into the service on air, after what is
   // on air, without going back to Plan.
   let quickAddOpen = $state(false);
+  /** The "Connect a phone or tablet" dialog (T101). */
+  let connectOpen = $state(false);
   function quickAdded(id: string | null, showNow: boolean, title: string) {
     quickAddOpen = false;
     live.status = `Added ${title}`;
@@ -616,6 +619,7 @@
         onbug={toggleBug}
         onclearText={() => command("ClearText")}
         onclearAll={() => command("ClearAll")}
+        onconnect={() => (connectOpen = true)}
         {onidle}
       />
       <Button size="small" variant="ghost" icon="x" onclick={askClose} title="Put the service away; it stays in Plan">Close service</Button>
@@ -624,6 +628,9 @@
     <!-- While a deck is on air the presenter view takes the right column
          too; outputs stay in the status bar. -->
     <div class="grid" class:presenting>
+      {#if connectOpen}
+        <ConnectRemote onclose={() => (connectOpen = false)} />
+      {/if}
       {#if quickAddOpen && live.loaded}
         <QuickAdd
           service={live.loaded.service}
