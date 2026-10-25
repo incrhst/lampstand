@@ -741,12 +741,12 @@
                   empty="Nothing on air"
                 />
               </div>
-              <figcaption class="muted"><Icon name="monitor" size={12} /><span><span class="monitor-name">{output?.name ?? "No screen yet"}</span>{#if output && showGuide} · <span class="monitor-safe">safe area</span>{/if}</span></figcaption>
+              <figcaption class="muted"><Icon name="monitor" size={12} /><span><span class="monitor-name">{output?.name ?? "No screen yet"}</span>{#if output && showGuide}{" · "}<span class="monitor-safe">safe area</span>{/if}</span></figcaption>
             </figure>
             <div class="wall-now">
               <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
               <span class="muted wall-where">
-                {#if live.overlay === "Idle"}Idle screen · Next goes back to {/if}{#if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+                {#if live.overlay === "Idle"}{"Idle screen · Next goes back to "}{/if}{#if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
               </span>
             </div>
             <span class="spacer"></span>
