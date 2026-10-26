@@ -13,7 +13,7 @@
    { "id": "builds", "src": "shots/5b-present-deck.png", "title": "Lampstand · Present", "x": 5620, "y": 380, "z": 170, "yaw": -5, "scale": 0.72 },
    { "id": "focus", "src": "shots/5c-focus.png", "title": "Lampstand · Present", "x": 6650, "y": -30, "z": -20, "yaw": -4 },
    { "id": "sound", "src": "shots/5d-sound.png", "title": "Lampstand · Present", "x": 8150, "y": 20, "yaw": -3 },
-   { "id": "soundfold", "src": "shots/5e-sound-folded.png", "title": "Lampstand · Present", "x": 8770, "y": 380, "z": 170, "yaw": -3, "scale": 0.72 },
+   { "id": "soundfold", "src": "shots/5e-sound-folded.png", "title": "Lampstand · Present", "x": 8870, "y": 470, "z": 170, "yaw": -3, "scale": 0.72 },
    { "id": "remote", "src": "shots/9-remote.png", "title": "Lampstand Remote", "x": 9750, "y": 0, "yaw": 4, "w": 390, "h": 844 },
    { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Setup", "x": 13450, "y": 10, "z": -20, "yaw": 6 },
    { "id": "obslive", "src": "shots/8-present-obs.png", "title": "Lampstand · Present", "x": 14100, "y": 400, "z": 170, "yaw": 6, "scale": 0.72 },
@@ -31,7 +31,7 @@
    "delaySec": 0.6
   },
   "backdrop": {
-   "x": -3000, "y": -4600, "w": 23200, "h": 10600, "z": -420,
+   "x": -3000, "y": -4600, "w": 23700, "h": 10600, "z": -420,
    "folds": { "count": 12, "from": 500, "every": 1700 },
    "labels": [
     { "text": "PLAN", "x": 3700, "y": 5300 },
@@ -39,8 +39,8 @@
     { "text": "SOUND", "x": 10350, "y": 5300 },
     { "text": "REMOTE", "x": 11900, "y": 5300 },
     { "text": "THE SCREEN", "x": 13850, "y": 5300 },
-    { "text": "OBS", "x": 16800, "y": 5300 },
-    { "text": "SETUP", "x": 18600, "y": 5300 }
+    { "text": "OBS", "x": 17400, "y": 5300 },
+    { "text": "SETUP", "x": 19100, "y": 5300 }
    ]
   }
  },
@@ -70,15 +70,15 @@
      { "on": "present", "x": -300, "y": 230, "d": 900, "yaw": 6, "pitch": 8, "atSec": 4 }
     ] },
   { "type": "stop", "durationSec": 6.4,
-    "tag": "Builds", "title": "See the next click before you press it.", "sub": "PowerPoint builds play one click at a time. Your notes stay on your screen.",
+    "tag": "Builds", "title": "See the next click before you press it.", "sub": "PowerPoint builds play one click at a time.",
     "stops": [{ "on": "builds", "x": 120, "y": -10, "d": 1260, "yaw": 8, "pitch": 10, "roll": -1 }] },
   { "type": "stop", "durationSec": 5,
     "tag": "Focus", "title": "Press F for just the slides.", "sub": "Blank and Stop the sound stay in reach.", "keys": ["F"],
     "stops": [{ "on": "focus", "y": 10, "d": 1450, "yaw": 6, "pitch": 10, "roll": -0.5 }] },
   { "type": "stop", "durationSec": 7.4,
-    "tag": "Sound", "title": "Next starts the music.", "sub": "What was playing fades out. Then the Sound box folds away.",
+    "tag": "Sound", "title": "Next starts the music.", "sub": "What was playing fades out. The Sound box folds once the service is under way.",
     "stops": [
-     { "on": "sound", "x": -300, "y": -50, "d": 1000, "yaw": 8, "pitch": 10, "roll": 0.5 },
+     { "on": "sound", "x": -250, "y": -200, "d": 1200, "yaw": 8, "pitch": 10, "roll": 0.5 },
      { "on": "soundfold", "x": -300, "y": -60, "d": 900, "yaw": 6, "pitch": 9, "atSec": 3.6 }
     ] },
   { "type": "stop", "durationSec": 6,

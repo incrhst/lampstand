@@ -20,7 +20,7 @@ npm run hero:sheet    # one still per scene, out/hero-tour-sheet.png
 npm run studio        # live preview and scrubbing (composition "Tour")
 ```
 
-The render is a high-quality master (H.264 CRF 18, about 80 MB). The site's copy
+The render is a high-quality master (H.264 CRF 18, about 95 MB). The site's copy
 (`site/media/lampstand-tour.mp4`, about 8 MB) is a 720p re-encode of it:
 `ffmpeg -i out/hero-tour.mp4 -vf scale=1280:720:flags=lanczos -c:v libx264 -crf 28 -preset slow -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 96k site/media/lampstand-tour.mp4`.
 The poster (`site/media/tour-poster.jpg`) is the frame where the camera reaches the wall, before its caption:
@@ -63,7 +63,7 @@ caption is a JSON edit. `npm run hero:validate` checks ids, stop order and that 
 
 ## Sound
 
-The background music is `public/music/lampstand-intro.m4a` (supplied by the project owner; only the first 72 seconds play, faded in and out).
+The background music is `public/music/lampstand-intro.m4a` (supplied by the project owner; only the first 91 seconds play, faded in and out).
 
 The effects (camera whooshes, caption stamps, key clicks, an end bell) are
 synthesised from noise and sine waves by `audio/make-sfx.mjs`, so nothing is
