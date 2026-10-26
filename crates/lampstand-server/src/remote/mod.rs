@@ -25,7 +25,7 @@
 
 mod hub;
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -146,13 +146,49 @@ fn token(headers: &HeaderMap) -> Option<String> {
 /// A request a page on another site made (a form post, a socket opened by
 /// script) carries that site in `Origin`. Only this server's own page may
 /// pair or drive. A request with no `Origin` is not from a browser page.
+///
+/// A site whose name an attacker points at the laptop's address (DNS
+/// rebinding) has a matching `Origin` and `Host`, so the name is checked
+/// too: the page is only ever reached by an address, `localhost` or a
+/// `.local` name, never by a public one.
 fn same_origin(headers: &HeaderMap) -> bool {
+    let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
+    if !host.is_some_and(local_host) {
+        return false;
+    }
     let Some(origin) = headers.get(header::ORIGIN) else {
         return true;
     };
-    let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
     let origin = origin.to_str().ok().and_then(|o| o.strip_prefix("http://"));
     matches!((origin, host), (Some(o), Some(h)) if o.eq_ignore_ascii_case(h))
+}
+
+/// Whether a `Host` header names this machine on the LAN: an IP address,
+/// `localhost` or a `.local` (mDNS) name, with or without a port.
+fn local_host(host: &str) -> bool {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split_once(']').is_some_and(|(ip, port)| {
+            ip.parse::<Ipv6Addr>().is_ok()
+                && (port.is_empty() || port.strip_prefix(':').is_some_and(is_port))
+        });
+    }
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if is_port(port) => name,
+        Some(_) => return false,
+        None => host,
+    };
+    let name = name.strip_suffix('.').unwrap_or(name).to_ascii_lowercase();
+    let label =
+        |l: &str| !l.is_empty() && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    name.parse::<Ipv4Addr>().is_ok()
+        || name == "localhost"
+        || name
+            .strip_suffix(".local")
+            .is_some_and(|rest| rest.split('.').all(label))
+}
+
+fn is_port(port: &str) -> bool {
+    port.parse::<u16>().is_ok()
 }
 
 async fn session(State(backend): State<Arc<dyn Backend>>, headers: HeaderMap) -> Response {
@@ -405,5 +441,52 @@ mod tests {
             (header::ORIGIN, "https://192.168.1.20:7340")
         ])));
         assert!(!same_origin(&headers(&[(header::ORIGIN, "http://x")])));
+    }
+
+    #[test]
+    fn a_page_reached_by_the_laptops_lan_address_passes() {
+        for host in [
+            "192.168.1.20:7340",
+            "10.0.0.5",
+            "localhost:7340",
+            "127.0.0.1:7340",
+            "[fe80::1c2b:3cff:fe4d:5e6f]:7340",
+            "[::1]",
+            "Church-Laptop.local:7340",
+            "church-laptop.local.:7340",
+        ] {
+            let origin = format!("http://{host}");
+            assert!(
+                same_origin(&headers(&[(header::HOST, host), (header::ORIGIN, &origin)])),
+                "{host}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rebound_public_name_is_refused_though_origin_and_host_agree() {
+        // evil.example resolves to 192.168.1.20 once its page has loaded.
+        for host in [
+            "evil.example:7340",
+            "evil.example",
+            "192.168.1.20.nip.io:7340",
+            "localhost.evil.example",
+            "local:7340",
+            ".local",
+            "laptop.local:notaport",
+            "[fe80::1",
+        ] {
+            let origin = format!("http://{host}");
+            assert!(
+                !same_origin(&headers(&[(header::HOST, host), (header::ORIGIN, &origin)])),
+                "{host}"
+            );
+        }
+        // Without an Origin, too: the name alone is enough to refuse.
+        assert!(!same_origin(&headers(&[(
+            header::HOST,
+            "evil.example:7340"
+        )])));
+        assert!(!same_origin(&HeaderMap::new()));
     }
 }
