@@ -3,7 +3,7 @@
  "scenes": [
   {
    "type": "title",
-   "kicker": "Training 1",
+   "kicker": "Training Session 1",
    "heading": "Run a service",
    "sub": "Ten minutes. Then you run one yourself.",
    "say": "In the next ten minutes you will learn to run a service, and then run a short one yourself.",
@@ -44,7 +44,7 @@
      "label": "Open it for live"
     }
    ],
-   "say": "On a Sunday, you start by opening the service for live in Present. This training is already open, so you are ready.",
+   "say": "On a Sunday, you start by opening the service for live in Present. This training service is already open, so you are ready.",
    "narration": "narration/t1-welcome/04.mp3",
    "durationSec": 10.5
   },

@@ -1,8 +1,8 @@
 {
  "id": "01920000-0000-7000-8000-747261696e30",
- "title": "Training 0: Orientation",
+ "title": "Training Session 0: Orientation",
  "items": [
-  {"header": {"title": "Training 0: Orientation (5 minutes). Press Space to start"},
+  {"header": {"title": "Training Session 0: Orientation (5 minutes). Press Space to start"},
    "notes": "Trainer: everyone on the team takes this one. Press Space to start the first video, and Space again when it ends."},
   {"video": {"file": "t0-welcome.mp4", "name": "Welcome to Lampstand.mp4"},
    "notes": "A short video. It plays with sound on the projector screen. When it ends, press Space to move on."},
@@ -10,7 +10,7 @@
    "notes": "The trainer's script for each slide is in the slide's own notes."},
   {"text": {"title": "Try it now", "body": "Try it now:\npress Ctrl+\\ (⌘\\ on a Mac) to go to Plan.\nFind this service under Training.\nPress it again to come back here."},
    "notes": "Let the trainee switch to Plan and back. The service stays open for live while they look."},
-  {"header": {"title": "Done. Next: Training 1, Run a service"},
-   "notes": "Close the service with Close service, top right, or open Training 1 straight away."}
+  {"header": {"title": "Done. Next: Training Session 1, Run a service"},
+   "notes": "Close the service with Close service, top right, or open Training Session 1 straight away."}
  ]
 }

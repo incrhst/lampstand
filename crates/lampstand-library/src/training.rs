@@ -36,7 +36,7 @@ use crate::Library;
 /// Everything the training services use that the library may not have.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrainingSet {
-    /// In the order they are taken: Training 0 first.
+    /// In the order they are taken: Training Session 0 first.
     pub services: Vec<Service>,
     pub decks: Vec<Deck>,
     pub songs: Vec<Song>,
@@ -107,7 +107,7 @@ impl Library {
         training.reset();
     }
 
-    /// The training services as they stand, Training 0 first.
+    /// The training services as they stand, Training Session 0 first.
     pub fn training_services(&self) -> Vec<Service> {
         let training = self.training();
         training
@@ -151,7 +151,7 @@ mod tests {
     fn set() -> TrainingSet {
         let mut song = Song::new("Amazing Grace");
         song.id = SongId::generate();
-        let mut service = Service::new("Training 1: Run a service");
+        let mut service = Service::new("Training Session 1: Run a service");
         service.insert(
             0,
             ItemKind::Song {

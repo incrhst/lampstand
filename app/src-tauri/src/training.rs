@@ -1,4 +1,4 @@
-//! Training services (#190): Training 0 to 2, bundled with the app and
+//! Training services (#190): Training Sessions 0 to 2, bundled with the app and
 //! built from `training/` at every start, so a fresh install has them,
 //! offline, and an update brings the new ones.
 //!
@@ -29,7 +29,7 @@ use lampstand_library::Library;
 use serde::Deserialize;
 use uuid::Uuid;
 
-/// The service definitions, Training 0 first.
+/// The service definitions, Training Session 0 first.
 pub const SERVICES: [&str; 3] = [
     include_str!("../../../training/services/training-0.json"),
     include_str!("../../../training/services/training-1.json"),
@@ -331,9 +331,9 @@ mod tests {
         assert_eq!(
             titles,
             [
-                "Training 0: Orientation",
-                "Training 1: Run a service",
-                "Training 2: Confident operator"
+                "Training Session 0: Orientation",
+                "Training Session 1: Run a service",
+                "Training Session 2: Confident operator"
             ]
         );
     }
