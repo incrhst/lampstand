@@ -3589,6 +3589,7 @@ dependencies = [
  "automerge",
  "autosurgeon",
  "base64 0.23.1",
+ "blake3",
  "chrono",
  "futures-util",
  "gethostname",
@@ -3611,6 +3612,7 @@ dependencies = [
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
  "qrcode",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",
@@ -9397,6 +9399,7 @@ dependencies = [
  "lampstand-import",
  "lampstand-library",
  "reqwest",
+ "serde_json",
  "tempfile",
  "zip 9.0.5",
 ]

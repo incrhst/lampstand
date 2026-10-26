@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "videos": [
+    {
+      "id": "t0-welcome",
+      "file": "t0-welcome.mp4",
+      "size": 1545000,
+      "blake3": "46f98b48857303639bf6e8d8c494d20c78655a30685ad4bf16db5d1834443868"
+    },
+    {
+      "id": "t1-blank-idle-clear",
+      "file": "t1-blank-idle-clear.mp4",
+      "size": 1130581,
+      "blake3": "f90274d61d0b37d007df5d2847b72c0ef713a0198b0717035d500fdacb5ff40d"
+    },
+    {
+      "id": "t1-going-live",
+      "file": "t1-going-live.mp4",
+      "size": 1947286,
+      "blake3": "b5eea132300a0fcaf4255437ae05ecb2f92f06f767ab18be2b8ad83636edfa53"
+    },
+    {
+      "id": "t1-welcome",
+      "file": "t1-welcome.mp4",
+      "size": 702064,
+      "blake3": "90ff4e5a6c9d62f00d3f650c5c7ea0b648934310ea947628f25beb838ccac6f9"
+    },
+    {
+      "id": "t2-five-surprises",
+      "file": "t2-five-surprises.mp4",
+      "size": 1574908,
+      "blake3": "c87658671bd423ed065c6cb9a60126e3c91cd7c4aa81224c366e2edadcc138d6"
+    }
+  ]
+}

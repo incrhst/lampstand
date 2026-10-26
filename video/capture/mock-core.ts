@@ -283,6 +283,8 @@ function api(req: any): any {
         case "List": return { type: "Services", data: summaries() };
         case "ListChecked": return { type: "ServiceList", data: { services: summaries(), newer: 0, damaged: [] } };
         case "ResetTraining": return ok;
+        // The screenshots show a device that has its training videos.
+        case "TrainingVideos": return { type: "TrainingVideos", data: { state: "Ready", message: "" } };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
         case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }

@@ -223,6 +223,33 @@ pub struct UpdateStatus {
     pub caution: Option<String>,
 }
 
+/// Where the training videos stand on this device (#190). They are not in
+/// the installer: they download from the website the first time a training
+/// service is opened, and a changed one arrives the same way.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingVideos {
+    pub state: TrainingVideoState,
+    /// What to tell the volunteer, or empty when every video is here.
+    pub message: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrainingVideoState {
+    /// Every training video is on this device and plays offline.
+    Ready,
+    /// Some are not here yet; nothing has tried to download them since the
+    /// app started.
+    NotDownloaded,
+    /// Downloading: `done` of `total` bytes.
+    Downloading { done: u32, total: u32 },
+    /// The last try could not reach the website (or a file was damaged on
+    /// the way), so some videos are missing. The rest of each training
+    /// service still runs.
+    Offline,
+}
+
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateState {
@@ -636,8 +663,12 @@ pub enum ServiceRequest {
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
     /// Puts every training service back as it was bundled, undoing what
-    /// practice in Present added (#190). Answers `Response::Ok`.
+    /// practice in Present added (#190), and looks for new training videos.
+    /// Answers `Response::Ok`.
     ResetTraining,
+    /// Where the training videos stand, as `Response::TrainingVideos`.
+    /// Changes come as `Event::TrainingVideos`.
+    TrainingVideos,
     /// Sets the sound of an item: the `sound` of a sound item (`Item`, which
     /// needs `Some`) or a song's backing track (`Backing`, where `None`
     /// takes it off). Answers `Response::Service`.
@@ -1462,6 +1493,7 @@ pub enum Response {
     Church(ChurchStatus),
     Update(UpdateStatus),
     Remotes(RemotesView),
+    TrainingVideos(TrainingVideos),
 }
 
 /// The services, and the ones that cannot be shown.
@@ -1710,4 +1742,6 @@ pub enum Event {
     /// A phone paired or was revoked, a remote page connected or left, or
     /// the PIN changed.
     Remotes(Box<RemotesView>),
+    /// The training videos started or finished downloading, or moved on.
+    TrainingVideos(TrainingVideos),
 }
