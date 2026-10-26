@@ -20,4 +20,11 @@ shown: Cursor | null, preview: Cursor | null, idle: boolean,
 /**
  * Black or logo, which persist across slides.
  */
-overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Unloaded" } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { sync: SyncSummary, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView } | { "type": "Sound", "data": SoundView } | { "type": "Remotes", "data": RemotesView } | { "type": "TrainingVideos", "data": TrainingVideos };
+overlay: Overlay, 
+/**
+ * Something is live but the operator cleared its words (Clear
+ * text, Clear all), so nothing of it is on the screens. A speaker's
+ * phone waits until the slides are back (0.9.1). Absent from an
+ * older device's message: false.
+ */
+cleared: boolean, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Unloaded" } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { sync: SyncSummary, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView } | { "type": "Sound", "data": SoundView } | { "type": "Remotes", "data": RemotesView } | { "type": "TrainingVideos", "data": TrainingVideos };

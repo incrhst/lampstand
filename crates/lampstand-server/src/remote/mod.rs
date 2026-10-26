@@ -5,7 +5,7 @@
 //! | --- | --- |
 //! | `GET /remote` | the page (`web/remote/dist`, built from `app/src/remote`) |
 //! | `GET /remote/assets/*` | its script and styles |
-//! | `GET /remote/session` | `{"name"}` for a phone that is paired, else 401 |
+//! | `GET /remote/session` | `{"name", "kind"}` for a phone that is paired, else 401 |
 //! | `POST /remote/pair` | `{"pin", "name"}`: a right PIN sets the session cookie |
 //! | `WS /remote/ws` | the remote socket; needs the session cookie |
 //!
@@ -14,7 +14,7 @@
 //!
 //! - from the page, `{"id": n, "request": <Request>}`, answered with
 //!   `{"id": n, "response": <Response>}`;
-//! - to the page, `{"hello": {"name"}}` once, then `{"event": <Event>}` (the
+//! - to the page, `{"hello": {"name", "kind"}}` once (`kind`: [`RemoteKind`]), then `{"event": <Event>}` (the
 //!   last of each kind at once, then every change), and `{"beat": ms}` every
 //!   few seconds, so a page can tell a quiet link from a dead one.
 //!
@@ -43,7 +43,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::Backend;
 pub use hub::{
-    PairError, RemoteHandler, RemoteHub, RemotePin, RemoteSession, MAX_WRONG, PIN_TTL,
+    PairError, RemoteHandler, RemoteHub, RemoteKind, RemotePin, RemoteSession, MAX_WRONG, PIN_TTL,
     TRIES_PER_ADDRESS, TRY_WINDOW,
 };
 
@@ -195,8 +195,10 @@ async fn session(State(backend): State<Arc<dyn Backend>>, headers: HeaderMap) ->
     let Some(hub) = backend.remotes() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match token(&headers).and_then(|t| hub.session(&t)) {
-        Some((_, name)) => json_response(StatusCode::OK, json!({ "name": name })),
+    match token(&headers).and_then(|t| hub.session_kind(&t)) {
+        Some((_, name, kind)) => {
+            json_response(StatusCode::OK, json!({ "name": name, "kind": kind }))
+        }
         None => json_response(StatusCode::UNAUTHORIZED, json!({})),
     }
 }
@@ -264,11 +266,11 @@ async fn socket(
     // Watched from before the session is checked, so a revoke while the
     // socket opens still closes it.
     let revocations = hub.revocations();
-    let Some((id, name)) = token(&headers).and_then(|t| hub.session(&t)) else {
+    let Some((id, name, kind)) = token(&headers).and_then(|t| hub.session_kind(&t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     ws.max_message_size(MAX_MESSAGE)
-        .on_upgrade(move |socket| serve(socket, hub, revocations, id, name))
+        .on_upgrade(move |socket| serve(socket, hub, revocations, id, name, kind))
 }
 
 /// Counts a page as connected while it lives.
@@ -299,6 +301,7 @@ async fn serve(
     mut revocations: watch::Receiver<u64>,
     id: String,
     name: String,
+    kind: RemoteKind,
 ) {
     hub.connection(&id, true);
     let _open = Open {
@@ -311,10 +314,11 @@ async fn serve(
     let (asks, mut asked) = mpsc::channel::<Incoming>(16);
     let (answers, mut answered) = mpsc::channel::<String>(16);
     let handler = hub.handler();
+    let hello = json!({ "hello": { "name": name, "kind": kind } }).to_string();
     let worker = tokio::spawn(async move {
         while let Some(Incoming { id, request }) = asked.recv().await {
             let response = match &handler {
-                Some(handle) => handle(request).await,
+                Some(handle) => handle(kind.clone(), request).await,
                 None => refused("The remote is not ready yet."),
             };
             let reply = json!({ "id": id, "response": response }).to_string();
@@ -326,7 +330,6 @@ async fn serve(
     // Subscribed before the last events are sent, so none falls between.
     let mut feed = hub.subscribe();
     let mut beat = tokio::time::interval(BEAT);
-    let hello = json!({ "hello": { "name": name } }).to_string();
     let mut first = vec![Message::Text(hello.into())];
     first.extend(
         hub.latest()

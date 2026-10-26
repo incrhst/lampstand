@@ -13,6 +13,10 @@ export type RemotesView = {
  */
 pairing: RemotePinView | null, 
 /**
+ * While a speaker's PIN is shown: the title of the item it is for.
+ */
+pairing_speaker: string | null, 
+/**
  * Where a phone opens the remote, the likeliest first, while pairing:
  * `http://<lan-ip>:<port>/remote` with the port the server got. Empty
  * when not pairing, or when this computer has no network.

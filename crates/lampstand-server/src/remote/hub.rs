@@ -30,10 +30,33 @@ pub const TRY_WINDOW: Duration = Duration::from_secs(60);
 /// The longest name a phone is kept under.
 const NAME_CHARS: usize = 40;
 
-/// Answers one request from a remote page: the request as the page sent it
-/// (JSON), and what to send back. The app's gate decides what is allowed.
-pub type RemoteHandler =
-    Arc<dyn Fn(serde_json::Value) -> BoxFuture<'static, serde_json::Value> + Send + Sync>;
+/// Answers one request from a remote page: what the page's session is
+/// paired for, the request as the page sent it (JSON), and what to send
+/// back. The app's gate decides what is allowed.
+pub type RemoteHandler = Arc<
+    dyn Fn(RemoteKind, serde_json::Value) -> BoxFuture<'static, serde_json::Value> + Send + Sync,
+>;
+
+/// What a phone is paired for (decision 0006, amended for 0.9.1). Chosen in
+/// the Connect dialog before the PIN is shown, and kept with the session.
+/// A session saved before 0.9.1 has none, and is an operator's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "kind")]
+pub enum RemoteKind {
+    /// Runs the service: the wall, Next, Back, Blank, Idle and the sound.
+    #[default]
+    Operator,
+    /// A speaker's phone: Next and Back through one item's slides, only
+    /// while that item is on air. Ends when its service is closed.
+    Speaker {
+        /// The service's ID, as the app writes it.
+        service: String,
+        /// The item's ID.
+        item: String,
+        /// The item's title when it paired, for the devices screen.
+        title: String,
+    },
+}
 
 /// The PIN shown now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +65,8 @@ pub struct RemotePin {
     pub pin: String,
     /// Unix milliseconds.
     pub expires_ms: i64,
+    /// What the phone that types it is paired for.
+    pub kind: RemoteKind,
 }
 
 /// A paired phone, as the devices screen lists it.
@@ -54,6 +79,7 @@ pub struct RemoteSession {
     pub last_seen_ms: Option<i64>,
     /// Remote pages open with this session now.
     pub connected: usize,
+    pub kind: RemoteKind,
 }
 
 /// Why a PIN did not pair.
@@ -103,6 +129,9 @@ struct Saved {
     paired_ms: i64,
     #[serde(default)]
     last_seen_ms: Option<i64>,
+    /// Absent in a file written before 0.9.1: an operator's.
+    #[serde(default)]
+    kind: RemoteKind,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -253,11 +282,18 @@ impl RemoteHub {
         }
     }
 
-    /// A fresh PIN, replacing any shown before.
+    /// A fresh PIN for a phone that runs the service, replacing any shown
+    /// before.
     pub fn start_pairing(&self) -> RemotePin {
+        self.start_pairing_as(RemoteKind::Operator)
+    }
+
+    /// A fresh PIN for a phone paired as `kind`, replacing any shown before.
+    pub fn start_pairing_as(&self, kind: RemoteKind) -> RemotePin {
         let pin = RemotePin {
             pin: fresh_pin(),
             expires_ms: now_ms() + PIN_TTL.as_millis() as i64,
+            kind,
         };
         lock(&self.inner).pin = Some(Pin {
             pin: pin.clone(),
@@ -333,6 +369,7 @@ impl RemoteHub {
             }
             return Err(PairError::Wrong { left });
         }
+        let kind = shown.pin.kind.clone();
         inner.pin = None;
         let token = hex(&random::<32>());
         let name = clean_name(name);
@@ -343,6 +380,7 @@ impl RemoteHub {
             name: name.clone(),
             paired_ms: now,
             last_seen_ms: Some(now),
+            kind,
         });
         if let Err(e) = self.save(&inner) {
             eprintln!("lampstand: cannot save the paired remotes: {e}");
@@ -352,6 +390,12 @@ impl RemoteHub {
 
     /// The session a cookie's token belongs to: its ID and name.
     pub fn session(&self, token: &str) -> Option<(String, String)> {
+        self.session_kind(token).map(|(id, name, _)| (id, name))
+    }
+
+    /// The session a cookie's token belongs to: its ID, name and what it is
+    /// paired for.
+    pub fn session_kind(&self, token: &str) -> Option<(String, String, RemoteKind)> {
         if token.is_empty() {
             return None;
         }
@@ -360,7 +404,7 @@ impl RemoteHub {
             .sessions
             .iter()
             .find(|s| same(s.hash.as_bytes(), wanted.as_bytes()))
-            .map(|s| (s.id.clone(), s.name.clone()))
+            .map(|s| (s.id.clone(), s.name.clone(), s.kind.clone()))
     }
 
     pub(crate) fn alive(&self, id: &str) -> bool {
@@ -379,6 +423,7 @@ impl RemoteHub {
                 paired_ms: s.paired_ms,
                 last_seen_ms: s.last_seen_ms,
                 connected: inner.connected.get(&s.id).copied().unwrap_or(0),
+                kind: s.kind.clone(),
             })
             .collect()
     }
@@ -400,6 +445,43 @@ impl RemoteHub {
         self.revoked.send_modify(|n| *n += 1);
         self.changed();
         true
+    }
+
+    /// Forgets every speaker's phone whose service `ended` says is over
+    /// (closed, ended, or another opened in its place): their pages are
+    /// disconnected at once, as by a revoke. A speaker's PIN shown for such a
+    /// service is voided too, so it cannot pair afterwards. How many phones
+    /// went.
+    pub fn end_speakers(&self, ended: impl Fn(&str) -> bool) -> usize {
+        let mut voided = false;
+        let gone = {
+            let mut inner = lock(&self.inner);
+            if inner.pin.as_ref().is_some_and(
+                |p| matches!(&p.pin.kind, RemoteKind::Speaker { service, .. } if ended(service)),
+            ) {
+                inner.pin = None;
+                voided = true;
+            }
+            let before = inner.sessions.len();
+            inner.sessions.retain(|s| match &s.kind {
+                RemoteKind::Speaker { service, .. } => !ended(service),
+                RemoteKind::Operator => true,
+            });
+            let gone = before - inner.sessions.len();
+            if gone > 0 {
+                if let Err(e) = self.save(&inner) {
+                    eprintln!("lampstand: cannot save the paired remotes: {e}");
+                }
+            }
+            gone
+        };
+        if gone > 0 {
+            self.revoked.send_modify(|n| *n += 1);
+        }
+        if gone > 0 || voided {
+            self.changed();
+        }
+        gone
     }
 
     pub(crate) fn revocations(&self) -> watch::Receiver<u64> {
@@ -598,6 +680,80 @@ mod tests {
         assert_eq!(hub.session(&kept).unwrap().1, "Kept");
         assert!(hub.session(&gone).is_none());
         assert_eq!(hub.sessions().len(), 1);
+    }
+
+    #[test]
+    fn a_file_from_before_speakers_loads_its_phones_as_operators() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remotes.json");
+        let token = "ab".repeat(32);
+        // remotes.json as 0.9.0 wrote it.
+        let old = format!(
+            r#"{{"sessions":[{{"id":"0011223344556677","hash":"{}","name":"Sam's phone","paired_ms":1,"last_seen_ms":2}}]}}"#,
+            hash(&token)
+        );
+        std::fs::write(&path, old).unwrap();
+        let hub = RemoteHub::open(path.clone()).unwrap();
+        let (_, name, kind) = hub.session_kind(&token).unwrap();
+        assert_eq!(name, "Sam's phone");
+        assert_eq!(kind, RemoteKind::Operator);
+        assert!(!dir.path().join("remotes.json.bad").exists());
+        // Saved again, it still reads.
+        hub.connection("0011223344556677", true);
+        let hub = RemoteHub::open(path).unwrap();
+        assert_eq!(hub.sessions()[0].kind, RemoteKind::Operator);
+    }
+
+    #[test]
+    fn a_speaker_pairing_is_kept_and_ends_with_its_service() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remotes.json");
+        let speaker = RemoteKind::Speaker {
+            service: "s1".into(),
+            item: "i1".into(),
+            title: "Sermon".into(),
+        };
+        let hub = RemoteHub::open(path.clone()).unwrap();
+        let pin = hub.start_pairing_as(speaker.clone());
+        let talk = hub.pair(HOME, &pin.pin, "Pastor").unwrap().0;
+        let pin = hub.start_pairing();
+        let run = hub.pair(other(2), &pin.pin, "Desk").unwrap().0;
+        assert_eq!(hub.session_kind(&talk).unwrap().2, speaker);
+        assert_eq!(hub.session_kind(&run).unwrap().2, RemoteKind::Operator);
+        // Kept across a restart.
+        let hub = RemoteHub::open(path).unwrap();
+        assert_eq!(hub.session_kind(&talk).unwrap().2, speaker);
+        let revocations = hub.revocations();
+        assert_eq!(hub.end_speakers(|s| s == "other"), 0);
+        assert!(!revocations.has_changed().unwrap());
+        assert_eq!(hub.end_speakers(|s| s == "s1"), 1);
+        assert!(revocations.has_changed().unwrap(), "its page is closed");
+        assert!(hub.session_kind(&talk).is_none());
+        assert!(
+            hub.session_kind(&run).is_some(),
+            "an operator's phone stays"
+        );
+    }
+
+    #[test]
+    fn a_speakers_pin_dies_with_its_service_and_an_operators_does_not() {
+        let (hub, _dir) = hub();
+        let speaker = RemoteKind::Speaker {
+            service: "s1".into(),
+            item: "i1".into(),
+            title: "Sermon".into(),
+        };
+        let pin = hub.start_pairing_as(speaker);
+        hub.end_speakers(|s| s == "other");
+        assert!(hub.pairing().is_some(), "another service's end leaves it");
+        hub.end_speakers(|s| s == "s1");
+        assert!(hub.pairing().is_none());
+        assert_eq!(hub.pair(HOME, &pin.pin, "x"), Err(PairError::NoPin));
+        assert!(hub.sessions().is_empty());
+        // A PIN for running the service is not a speaker's.
+        let pin = hub.start_pairing();
+        hub.end_speakers(|_| true);
+        assert!(hub.pair(other(2), &pin.pin, "x").is_ok());
     }
 
     #[test]

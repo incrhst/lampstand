@@ -17,7 +17,7 @@ use lampstand_core::output::OutputId;
 use lampstand_core::program::Overlay;
 use lampstand_core::scene::Scene;
 use lampstand_live::Cursor;
-use lampstand_server::{Backend, RemoteHub, Server};
+use lampstand_server::{Backend, RemoteHub, RemoteKind, Server};
 use serde_json::{json, Value};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
@@ -58,14 +58,19 @@ struct Fixture {
 /// A server whose remote requests go through `remote::answer` to a stand-in
 /// app that records them and, for a live command, says the slide moved.
 async fn fixture() -> Fixture {
+    fixture_as(RemoteKind::Operator).await
+}
+
+/// The same, for a phone paired as `kind`.
+async fn fixture_as(kind: RemoteKind) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let hub = Arc::new(lampstand_app::remote::open_hub(dir.path()).unwrap());
     let reached: Arc<Mutex<Vec<Request>>> = Arc::default();
     let (seen, events) = (reached.clone(), Arc::downgrade(&hub));
-    hub.set_handler(Arc::new(move |request| {
+    hub.set_handler(Arc::new(move |kind, request| {
         let (seen, events) = (seen.clone(), events.clone());
         Box::pin(async move {
-            lampstand_app::remote::answer(request, |request| async move {
+            lampstand_app::remote::answer(&kind, request, |_caller, request| async move {
                 if matches!(request, Request::Live(_)) {
                     if let Some(hub) = events.upgrade() {
                         lampstand_app::remote::bridge(
@@ -80,6 +85,7 @@ async fn fixture() -> Fixture {
                                 preview: None,
                                 idle: false,
                                 overlay: Overlay::None,
+                                cleared: false,
                             },
                         );
                     }
@@ -96,7 +102,7 @@ async fn fixture() -> Fixture {
     )
     .await
     .unwrap();
-    let pin = hub.start_pairing();
+    let pin = hub.start_pairing_as(kind);
     let (token, _) = hub
         .pair("127.0.0.1".parse().unwrap(), &pin.pin, "Test phone")
         .unwrap();
@@ -215,4 +221,68 @@ async fn a_command_is_answered_with_live_state_quickly() {
     let median = times[times.len() / 2];
     eprintln!("command to Event::Live over the socket: median {median:?}");
     assert!(median < Duration::from_millis(150), "{median:?}");
+}
+
+/// A speaker's phone (0.9.1) through the gate: only Next, Back, Blank and
+/// pictures of its own slides get through, and closing the service ends it.
+#[tokio::test]
+async fn a_speakers_phone_gets_only_its_own_slides_and_ends_with_the_service() {
+    let (service, own) = (
+        lampstand_core::service::ServiceId::generate(),
+        lampstand_core::service::ItemId::generate(),
+    );
+    let mut f = fixture_as(RemoteKind::Speaker {
+        service: service.to_string(),
+        item: own.to_string(),
+        title: "Sermon".into(),
+    })
+    .await;
+    let other = lampstand_core::service::ItemId::generate();
+    let cursor = json!({ "item": own, "slide": 0, "step": 0 });
+    for refused in [
+        json!({ "area": "Live", "request": { "Show": cursor } }),
+        json!({ "area": "Live", "request": "ToggleIdle" }),
+        json!({ "area": "Live", "request": "ClearText" }),
+        json!({ "area": "Live", "request": "NextItem" }),
+        json!({ "area": "Live", "request": "EndService" }),
+        json!({ "area": "Sound", "request": "Panic" }),
+        json!({ "area": "Sound", "request": { "Play": { "item": own, "backing": false } } }),
+        json!({ "area": "Service", "request": { "SlideThumbnail": { "item": other, "slide": 0, "step": 0, "width": 240 } } }),
+        json!({ "area": "Remote", "request": "Status" }),
+    ] {
+        let response = f.ask(refused.clone()).await;
+        assert_eq!(response["type"], "Error", "{refused} was not refused");
+    }
+    assert!(f.reached.lock().unwrap().is_empty());
+    for allowed in [
+        json!({ "area": "Live", "request": "Next" }),
+        json!({ "area": "Live", "request": "Previous" }),
+        json!({ "area": "Live", "request": "ToggleBlack" }),
+        json!({ "area": "Service", "request": { "SlideThumbnail": { "item": own, "slide": 0, "step": 0, "width": 240 } } }),
+    ] {
+        let response = f.ask(allowed.clone()).await;
+        assert_eq!(response["type"], "Ok", "{allowed}");
+    }
+    assert_eq!(f.reached.lock().unwrap().len(), 4);
+    // Another service opened in its place ends the speaker's phone.
+    lampstand_app::remote::end_speakers(&f.hub, Some(service));
+    assert_eq!(
+        f.hub.sessions().len(),
+        1,
+        "its own service reloaded keeps it"
+    );
+    lampstand_app::remote::bridge(&f.hub, &Event::Unloaded);
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match f.ws.next().await {
+                Some(Ok(Message::Close(Some(frame)))) => return Some(u16::from(frame.code)),
+                Some(Ok(_)) => continue,
+                _ => return None,
+            }
+        }
+    })
+    .await
+    .expect("closed within 2 s");
+    assert_eq!(closed, Some(lampstand_server::remote::REVOKED));
+    assert!(f.hub.sessions().is_empty());
 }

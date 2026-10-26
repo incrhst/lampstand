@@ -272,19 +272,12 @@ impl LiveEngine {
             }
             Command::Show(cursor) => self.take_live(cursor, &mut events),
             Command::Next => {
-                let target = match self.live {
-                    Some(live) => self.step_forward(live),
-                    None => self
-                        .preview
-                        .and_then(|p| self.resolve(p))
-                        .or_else(|| self.first_stop_from(0)),
-                };
-                if let Some(target) = target {
+                if let Some(target) = self.next_target() {
                     self.take_live(target, &mut events);
                 }
             }
             Command::Previous => {
-                if let Some(target) = self.live.and_then(|live| self.step_back(live)) {
+                if let Some(target) = self.previous_target() {
                     self.take_live(target, &mut events);
                 }
             }
@@ -496,6 +489,25 @@ impl LiveEngine {
 
     pub fn preview(&self) -> Option<Cursor> {
         self.preview
+    }
+
+    /// Where `Command::Next` would put the live cursor now, without moving
+    /// it: `None` at the end of the service. A speaker's phone may press
+    /// Next only when this stays in its item (`gate` in the app).
+    pub fn next_target(&self) -> Option<Cursor> {
+        match self.live {
+            Some(live) => self.step_forward(live),
+            None => self
+                .preview
+                .and_then(|p| self.resolve(p))
+                .or_else(|| self.first_stop_from(0)),
+        }
+    }
+
+    /// Where `Command::Previous` would put the live cursor now, without
+    /// moving it: `None` at the start or with nothing live.
+    pub fn previous_target(&self) -> Option<Cursor> {
+        self.live.and_then(|live| self.step_back(live))
     }
 
     /// The slide the screens show (see `shown`): the live one, or the one

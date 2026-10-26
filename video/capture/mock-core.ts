@@ -185,7 +185,7 @@ let liveSince = 0;
 function pushLive() {
   const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
   if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
-  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay } });
+  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay, cleared: false } });
   if (soundOn) emit({ type: "Sound", data: soundView() });
 }
 // Sound (window.__soundOn): Amazing Grace has a backing track that starts on its own when the song

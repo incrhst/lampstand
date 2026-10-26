@@ -1,22 +1,38 @@
 <!-- Connect a phone or tablet to Lampstand Remote (T101, decision 0006):
      a QR code for this laptop's remote page, at the address and port the server really has, and
      a fresh PIN in large type with how long it lasts. When one pairs the
-     dialog names it and closes. "Not loading?" covers the usual causes. -->
+     dialog names it and closes. "Not loading?" covers the usual causes.
+     First, "What is it for?": running the service (the wall), or a
+     speaker's phone for one item's slides (0.9.1); a new PIN is shown for
+     each choice. -->
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { onEvent, request, send, type RemotesView } from "../../lib/api";
+  import { onEvent, request, send, type RemoteRequest, type RemotesView } from "../../lib/api";
   import { REMOTE_NAME } from "../../lib/product";
-  import { report } from "../../lib/state.svelte";
+  import { live, report } from "../../lib/state.svelte";
+  import { defaultSpeakerItem, speakerChoices, speakerWords } from "../../lib/speaker";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 
+  /** What the phone is for: running the service, or a speaker's slides. */
+  let purpose: "run" | "speaker" = $state("run");
+  let items = $derived(speakerChoices(live.loaded));
+  let item: string | null = $state(defaultSpeakerItem(live.loaded, live.live?.item ?? null));
+  function choose(want: "run" | "speaker", which: string | null = item) {
+    purpose = want;
+    item = which;
+    if (paired) return;
+    void start();
+  }
+
   let view = $state<RemotesView | null>(null);
   let chosen = $state(0);
   let now = $state(Date.now());
-  /** The phone or tablet that just paired, by name. */
+  /** The phone or tablet that just paired, by name, and the item it is a speaker for (as the laptop says). */
   let paired = $state<string | null>(null);
+  let pairedSpeaker = $state<string | null>(null);
   /** Remotes paired before the dialog opened, so a new one can be told apart. */
   let known = new Set<string>();
 
@@ -24,13 +40,25 @@
   let address = $derived(view?.addresses[Math.min(chosen, (view?.addresses.length ?? 1) - 1)] ?? null);
   let left = $derived(pin ? Math.max(0, Math.round((pin.expires_ms - now) / 1000)) : 0);
 
+  /** Each start counts, so an answer that arrives after a later one is dropped. */
+  let asked = 0;
   async function start() {
+    const ask: RemoteRequest | null = purpose === "run" ? "StartPairing" : item ? { StartSpeakerPairing: { item } } : null;
+    const n = ++asked;
     try {
-      view = await request({ area: "Remote", request: "StartPairing" }, "Remotes");
+      // No item to pair a speaker for: no PIN.
+      const answer = ask
+        ? await request({ area: "Remote", request: ask }, "Remotes")
+        : view?.pairing
+          ? await request({ area: "Remote", request: "StopPairing" }, "Remotes")
+          : null;
+      if (answer && n === asked) view = answer;
     } catch (e) {
       report(e);
     }
   }
+  /** What the PIN shown now is for, as the laptop says: a speaker's item title, or null for running the service. */
+  let pinSpeaker = $derived(view?.pairing_speaker ?? null);
 
   function close() {
     if (!paired) send({ area: "Remote", request: "StopPairing" }).catch(report);
@@ -44,6 +72,7 @@
     const fresh = e.data.sessions.find((s) => !known.has(s.id));
     if (fresh && !paired) {
       paired = fresh.name;
+      pairedSpeaker = fresh.speaker ?? null;
       closing = setTimeout(onclose, 2500);
     }
   });
@@ -85,10 +114,40 @@
       <Button size="small" variant="ghost" icon="x" label="Close" onclick={close} />
     </div>
 
-    <p class="muted lead">Connect a phone or tablet. A helper can then run the slides and the sound from it, and nothing else.</p>
+    <p class="muted lead">Connect a phone or tablet. It can then do what you choose here, and nothing else.</p>
+
+    {#if !paired}
+      <fieldset class="purpose">
+        <legend>{speakerWords.forTitle}</legend>
+        <label class="card" class:on={purpose === "run"}>
+          <input type="radio" name="purpose" value="run" checked={purpose === "run"} onchange={() => choose("run")} />
+          <span><strong>{speakerWords.runTitle}</strong><span class="muted">{speakerWords.runLead}</span></span>
+        </label>
+        <label class="card" class:on={purpose === "speaker"}>
+          <input type="radio" name="purpose" value="speaker" checked={purpose === "speaker"} onchange={() => choose("speaker")} />
+          <span><strong>{speakerWords.speakerTitle}</strong><span class="muted">{speakerWords.speakerLead}</span></span>
+        </label>
+      </fieldset>
+      {#if purpose === "speaker"}
+        {#if items.length > 0}
+          <label class="whose">
+            <span>{speakerWords.whose}</span>
+            <select value={item} onchange={(e) => choose("speaker", (e.currentTarget as HTMLSelectElement).value)}>
+              {#each items as i (i.id)}<option value={i.id}>{i.title}</option>{/each}
+            </select>
+          </label>
+        {:else}
+          <p class="warn">{speakerWords.noItems}</p>
+        {/if}
+      {/if}
+    {/if}
 
     {#if paired}
-      <p class="done" role="status"><Icon name="checkCircle" size={18} />{paired} is connected. It can run the slides and the sound.</p>
+      <p class="done" role="status">
+        <Icon name="checkCircle" size={18} />{pairedSpeaker ? `${paired} is connected. It shows only “${pairedSpeaker}”.` : `${paired} is connected. It can run the slides and the sound.`}
+      </p>
+    {:else if purpose === "speaker" && items.length === 0}
+      <!-- Nothing to pair a speaker for. -->
     {:else if view && !pin}
       <p class="muted">The PIN ran out.</p>
       <div class="actions"><Button variant="primary" onclick={start}>Show a new PIN</Button></div>
@@ -98,6 +157,7 @@
           <!-- The core made this SVG from the address; nothing typed is in it. -->
           <div class="qr" aria-hidden="true">{@html address.qr_svg}</div>
           <div class="steps">
+            {#if pinSpeaker}<p class="scan"><strong>{speakerWords.scanSpeaker}</strong></p>{/if}
             <p>1. On the phone or tablet, open the camera and point it at the code, or go to</p>
             <p class="url">{address.url}</p>
             <p>2. Type this PIN:</p>
@@ -105,6 +165,7 @@
             <p class="muted small" role="timer">Works for {minutes(left)}. A new PIN is shown each time.</p>
           </div>
         </div>
+        <p class="muted note">{pinSpeaker ? speakerWords.speakerNote(pinSpeaker) : speakerWords.runNote}</p>
         {#if view.addresses.length > 1}
           <div class="others">
             <span class="muted small">This laptop is on more than one network. The phone or tablet must be on the same one:</span>
@@ -266,5 +327,62 @@
   .actions {
     display: flex;
     gap: 0.5rem;
+  }
+  .purpose {
+    border: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+  .purpose legend {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+  .card {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--raised);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .card.on {
+    border-color: var(--gold);
+    background: var(--gold-soft);
+  }
+  .card input {
+    margin-top: 0.15rem;
+    accent-color: var(--gold);
+  }
+  .card > span {
+    display: grid;
+    gap: 0.2rem;
+  }
+  .whose {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .whose select {
+    font: inherit;
+    font-weight: 400;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 0.4rem 0.5rem;
+  }
+  .scan {
+    color: var(--gold);
+  }
+  .note {
+    font-size: 0.85rem;
   }
 </style>

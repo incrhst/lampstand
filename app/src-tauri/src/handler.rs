@@ -150,7 +150,14 @@ type LiveState = (
     bool,
     Overlay,
     Option<Cursor>,
+    bool,
 );
+
+/// Something is live but its words were cleared (Clear text, Clear all):
+/// `Event::Live::cleared`, so a speaker's phone waits too.
+fn cleared(live: &LiveEngine) -> bool {
+    live.live().is_some() && live.program().content.is_none()
+}
 
 /// The whole seconds a countdown shows now, rounded up as it is drawn.
 fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
@@ -200,6 +207,10 @@ pub struct App {
     /// The computer was last told to stay awake (`Machine::set_awake`).
     awake: bool,
     emit: EventSink,
+    /// Told when the service is ended (`Command::EndService`) while it stays
+    /// open, so speakers' phones stop (`crate::remote`). Closing it says
+    /// `Event::Unloaded` instead.
+    service_ended: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Where each open output window was asked to go. A window is opened
     /// again only when this changes, never because its real size differs.
     placed: HashMap<OutputId, Placement>,
@@ -321,6 +332,7 @@ impl App {
             machine: Box::new(NoMachine),
             awake: false,
             emit,
+            service_ended: None,
             placed: HashMap::new(),
             sizes: HashMap::new(),
             streams: HashMap::new(),
@@ -449,6 +461,52 @@ impl App {
         self.server = Some(address);
     }
 
+    /// The service open now (restored after a crash, at start), if any.
+    pub fn open_service(&self) -> Option<ServiceId> {
+        self.loaded.as_ref().map(|l| l.view.service)
+    }
+
+    /// The open service and the title of its item `item`, if it has one
+    /// with slides: what a speaker's phone may be paired for.
+    pub fn speaker_item(&self, item: ItemId) -> Option<(ServiceId, String)> {
+        let view = &self.loaded.as_ref()?.view;
+        view.items
+            .iter()
+            .find(|i| i.id == item && !i.slides.is_empty())
+            .map(|i| (view.service, i.title.clone()))
+    }
+
+    /// What to call when the service is ended but stays open: the shell ends
+    /// the speakers' phones paired for it.
+    pub fn on_service_ended(&mut self, ended: Arc<dyn Fn() + Send + Sync>) {
+        self.service_ended = Some(ended);
+    }
+
+    /// A speaker's Next, Back or Blank (decision 0006, amended for 0.9.1),
+    /// for the item `own`: checked against the live engine and carried out
+    /// in one step by `gate::speaker_apply`, under the one `&mut App`, so
+    /// the operator cannot move the service between the check and the
+    /// change.
+    pub fn speaker_live(&mut self, own: ItemId, command: Command) -> Response {
+        if !self.presenting {
+            return Response::Error {
+                message: PLANNING_ONLY.into(),
+            };
+        }
+        match crate::gate::speaker_apply(own, command, &mut self.live) {
+            Ok(events) => {
+                self.after_live(events);
+                Response::Ok
+            }
+            Err(why) => {
+                eprintln!("lampstand: refused a speaker's {command:?}: {why}");
+                Response::Error {
+                    message: why.into(),
+                }
+            }
+        }
+    }
+
     pub fn handle(&mut self, request: Request) -> Response {
         let result = match request {
             Request::Library(r) => self.library_request(r),
@@ -462,6 +520,11 @@ impl App {
                 }
                 let events = self.live.apply(command);
                 self.after_live(events);
+                if command == Command::EndService {
+                    if let Some(ended) = &self.service_ended {
+                        ended();
+                    }
+                }
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
@@ -1566,6 +1629,7 @@ impl App {
                 self.live.is_idle(),
                 self.live.program().overlay,
                 self.live.shown(),
+                cleared(&self.live),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
@@ -1574,6 +1638,7 @@ impl App {
                     preview: state.1,
                     idle: state.2,
                     overlay: state.3,
+                    cleared: state.5,
                 });
             }
             self.told_ui = Some(state);
@@ -2438,6 +2503,7 @@ impl App {
             preview: self.live.preview(),
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
+            cleared: cleared(&self.live),
         });
     }
 

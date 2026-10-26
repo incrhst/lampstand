@@ -280,6 +280,50 @@ fn overlay_and_cleared_text_come_back() {
     assert_eq!(last_live(&h).0, Some(at(cursor, 1)));
 }
 
+/// What the shell does at start (`serve_remotes`): speakers' phones are
+/// kept only for the service the journal restored.
+fn start_remotes(dir: &Path, h: &Harness) -> lampstand_server::RemoteHub {
+    let hub = lampstand_app::remote::open_hub(dir).unwrap();
+    lampstand_app::remote::end_speakers(&hub, h.app.open_service());
+    hub
+}
+
+#[test]
+fn a_speakers_phone_survives_a_crash_restore_but_not_a_quit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (_, cursor) = start_service(&mut h);
+    let service = h.app.open_service().unwrap();
+    ok(h.app.handle(Request::Live(Command::Show(cursor))));
+    let token = {
+        let hub = start_remotes(dir.path(), &h);
+        let pin = hub.start_pairing_as(lampstand_server::RemoteKind::Speaker {
+            service: service.to_string(),
+            item: cursor.item.to_string(),
+            title: "Amazing Grace".into(),
+        });
+        hub.pair("192.168.1.30".parse().unwrap(), &pin.pin, "Pastor")
+            .unwrap()
+            .0
+    };
+    // A crash mid-service: the journal brings the service back, and the
+    // speaker carries on.
+    drop(h);
+    let mut h = open(dir.path());
+    assert_eq!(h.app.open_service(), Some(service));
+    assert!(start_remotes(dir.path(), &h).session(&token).is_some());
+    // A clean quit restores nothing, so the phone stops; opening the same
+    // service later does not bring it back.
+    h.app.closing();
+    drop(h);
+    let mut h = open(dir.path());
+    assert_eq!(h.app.open_service(), None);
+    assert!(start_remotes(dir.path(), &h).session(&token).is_none());
+    ok(h.app
+        .handle(Request::Service(ServiceRequest::Open(service))));
+    assert!(start_remotes(dir.path(), &h).session(&token).is_none());
+}
+
 #[test]
 fn a_clean_quit_or_an_idle_app_restores_nothing() {
     let dir = tempfile::tempdir().unwrap();
