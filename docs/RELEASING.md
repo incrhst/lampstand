@@ -146,6 +146,12 @@ On a Linux container with a null sink the same example was recorded and measured
   - Song cards show their colours: verse blue, chorus teal, pre-chorus violet, bridge orange, on the wall, a phone's wall and in the song editor.
 - **What the notes should say**, under `**What's new in 0.9.2**`: "Present is calmer: the controls moved to the right side, in boxes that fold away. Focus (F) is in the bar at the top, works in Plan too, and lets you switch between Plan and Present without leaving it. Song slides are coloured by part: verse, chorus, pre-chorus and bridge."
 
+### Releasing 0.9.2: the Present redesign
+
+- **No sync change.** 0.9.2 is still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together and a church can update them one at a time. #253 changes when a newly paired computer starts dialling and turns away one unpaired mid-handshake, with nothing new on the wire.
+- **Present looks different.** The top bar, the strip above the slides and the More menu are replaced by one panel on the right, and Focus is a labelled button in the menu bar for Plan and Present. The notes should say where things went: Show, Idle and Blank, Safe area guide and Logo bug are in the Screen card; Clear in the Clear card; Connect a phone or tablet and Clicker mode in Remotes.
+- **Training.** Some Training Session 1 videos still show the More menu and the strip. Re-render and publish them when ready (no release needed). The cheat sheet and the training service notes already describe the panel.
+
 ### Releasing 0.9.1: training videos download, the phone wall and a speaker's phone
 
 - **No sync change.** 0.9.1 is still sync protocol 10, so 0.9.0 and 0.9.1 computers work together and a church can update them one at a time. The live state gains a `cleared` field that a 0.9.0 computer ignores.
