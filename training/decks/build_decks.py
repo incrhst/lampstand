@@ -386,6 +386,36 @@ Operator: full stop. Then full stop again when the trainer says "Back"."""},
 ]
 save("t2-sermon-sunday.pptx", "Sermon (updated Sunday morning)", T2, SERMON_V2)
 
+save("t2-phones.pptx", "Phones and tablets", T2, [
+    {"kind": "title", "kicker": "Training Session 2", "heading": "Phones and tablets",
+     "sub": "A helper can run the service from a phone. A speaker can step through their own slides.",
+     "notes": """
+Trainer: This part takes about ten minutes and needs a phone on the same Wi-Fi as this computer.
+Phones and tablets connect from Present, with nothing to install. There are two kinds, and
+choosing the right one is the whole lesson."""},
+    {"kind": "bullets", "heading": "Two kinds of phone", "builds": True, "items": [
+        "Run the service: every slide as cards, Next and Back, Blank, Idle and the sound",
+        "Speaker: one item's slides, with its notes and a timer",
+        "A speaker's Next and Back work only while their slides are on the screen",
+        "You can still run everything from this computer",
+    ], "notes": """
+Trainer: Run the service is for a second volunteer, or for you away from the desk. It can do
+almost everything Present can, so give it only to someone on the team.
+Speaker is for the preacher or anyone presenting their own slides. Their phone shows only their
+item: the slide on screen, the next click, their notes and a timer. Next on their last slide does
+nothing, so a speaker can never move the service on by accident. If you clear the screen, their
+phone says so and waits."""},
+    {"kind": "bullets", "heading": "Connecting one", "builds": True, "items": [
+        "Present › More › Connect a phone or tablet",
+        "Choose Run the service, or Speaker and whose slides",
+        "They scan the code and type the PIN",
+        "Setup › Devices lists every phone; Revoke disconnects one",
+    ], "notes": """
+Trainer: The PIN works for five minutes and only once. A speaker's phone stops working by itself
+when the service is closed. A Run the service phone stays paired until you revoke it in Setup ›
+Devices. Now try it: the next item is the practice."""},
+])
+
 save("t2-debrief.pptx", "Debrief", T2, [
     {"kind": "bullets", "heading": "How did it go?", "builds": True, "items": [
         "Did the room ever see a wrong slide?",
