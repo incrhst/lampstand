@@ -39,6 +39,7 @@
   import { link } from "./link.svelte";
   import SoundBox from "./SoundBox.svelte";
   import { keepAwake } from "./wake";
+  import SectionTag from "../lib/kit/SectionTag.svelte";
 
   let online = $derived(link.state === "online");
   let loaded = $derived(link.loaded);
@@ -312,7 +313,7 @@
     <SlidePreview lines={c.slide.lines} footer={c.slide.footer} image={picture ? pictureAt(picture) : null} size="small" empty={c.label} />
     <span class="caption">
       {#if c.mark === "live"}<StatusPill tone="live">LIVE</StatusPill>{:else if c.mark === "next"}<StatusPill tone="gold">NEXT</StatusPill>{/if}
-      <span class="label">{c.label}</span>
+      <span class="label"><SectionTag label={c.label} /></span>
       {#if c.slide.steps > 0}<span class="builds">{wallWords.builds(c.slide.steps)}</span>{/if}
     </span>
   </button>

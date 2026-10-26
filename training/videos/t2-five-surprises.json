@@ -17,13 +17,13 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 42,
-     "y": 83,
+     "x": 45,
+     "y": 84,
      "label": "Press the verse number, or C"
     },
     {
-     "x": 26,
-     "y": 83,
+     "x": 27,
+     "y": 84,
      "label": "Or click the card"
     }
    ],
@@ -38,13 +38,13 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 26,
-     "y": 86,
+     "x": 27,
+     "y": 69,
      "label": "Shift+↓ to the new item"
     },
     {
-     "x": 10,
-     "y": 79,
+     "x": 11,
+     "y": 61,
      "label": "Enter starts it"
     }
    ],
@@ -94,13 +94,13 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 95.6,
-     "y": 22,
+     "x": 95,
+     "y": 45.5,
      "label": "Full stop. Now."
     },
     {
-     "x": 8.5,
-     "y": 21,
+     "x": 86.5,
+     "y": 25,
      "label": "The room sees black"
     }
    ],

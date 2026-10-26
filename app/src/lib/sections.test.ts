@@ -1,7 +1,7 @@
 // node --test --experimental-strip-types (npm test)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseLabel, parseOrder, sectionCursor, unknownLabels } from "./sections.ts";
+import { parseLabel, parseOrder, sectionCursor, sectionTone, unknownLabels } from "./sections.ts";
 import type { LoadedService } from "./api";
 
 const slide = (label: string) => ({ label, lines: [label], footer: null, steps: 0, notes: "" });
@@ -58,4 +58,18 @@ test("a typed order splits on spaces and commas", () => {
 test("labels that match no section are listed, ignoring case", () => {
   assert.deepEqual(unknownLabels(["v1", "C", "b", "V9"], ["V1", "C", "V2"]), ["b", "V9"]);
   assert.deepEqual(unknownLabels([], ["V1"]), []);
+});
+
+test("sectionTone colours verses, choruses, pre-choruses and bridges only", () => {
+  assert.equal(sectionTone("V1"), "verse");
+  assert.equal(sectionTone("Verse 2"), "verse");
+  assert.equal(sectionTone("C"), "chorus");
+  assert.equal(sectionTone("Refrain"), "chorus");
+  assert.equal(sectionTone("pre-chorus"), "prechorus");
+  assert.equal(sectionTone("P"), "prechorus");
+  assert.equal(sectionTone("Bridge"), "bridge");
+  assert.equal(sectionTone("Tag"), null);
+  assert.equal(sectionTone("Slide 2"), null);
+  assert.equal(sectionTone("John 3:16"), null);
+  assert.equal(sectionTone(null), null);
 });

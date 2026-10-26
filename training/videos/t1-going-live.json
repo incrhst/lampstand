@@ -17,29 +17,29 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 42,
-     "y": 83,
+     "x": 45,
+     "y": 84,
      "label": "LIVE: on air now"
     },
     {
-     "x": 8.5,
-     "y": 21,
-     "label": "The main screen, small"
+     "x": 86.5,
+     "y": 25,
+     "label": "The main screen"
     },
     {
-     "x": 89,
-     "y": 22,
+     "x": 87.5,
+     "y": 45.5,
      "label": "Next: Space or →"
     },
     {
-     "x": 80,
-     "y": 22,
+     "x": 79,
+     "y": 45.5,
      "label": "Previous: ←"
     }
    ],
-   "say": "The card marked LIVE, in red, is on air. The small picture at the top left shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "say": "The card marked LIVE, in red, is on air. The picture at the top right shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
    "narration": "narration/t1-going-live/02.mp3",
-   "durationSec": 19
+   "durationSec": 17
   },
   {
    "type": "screenshot",
@@ -48,8 +48,8 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 58,
-     "y": 84,
+     "x": 63,
+     "y": 85,
      "label": "NEXT: the next slide"
     },
     {
@@ -58,7 +58,7 @@
      "label": "Notes for you"
     },
     {
-     "x": 26,
+     "x": 27,
      "y": 57,
      "label": "Every slide of the service"
     }
@@ -74,18 +74,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 26,
-     "y": 86,
+     "x": 27,
+     "y": 69,
      "label": "Shift+↓ chooses"
     },
     {
-     "x": 8.5,
-     "y": 21,
+     "x": 86.5,
+     "y": 25,
      "label": "Still on air"
     },
     {
-     "x": 42,
-     "y": 86,
+     "x": 45,
+     "y": 69,
      "label": "Click a card to show it now"
     }
    ],
@@ -100,24 +100,24 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 6,
-     "y": 57,
+     "x": 86.5,
+     "y": 25,
      "label": "On screen now"
     },
     {
-     "x": 28,
-     "y": 57,
-     "label": "What the next click shows"
+     "x": 86.5,
+     "y": 50,
+     "label": "Clicks left on this slide"
     },
     {
-     "x": 23,
-     "y": 34.5,
-     "label": "Clicks left on this slide"
+     "x": 86.5,
+     "y": 66,
+     "label": "What the next click shows"
     }
    ],
-   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, a panel shows what is on screen beside what the next click shows, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, the On air box on the right shows what the next click brings, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
    "narration": "narration/t1-going-live/05.mp3",
-   "durationSec": 24.5
+   "durationSec": 23
   },
   {
    "type": "bullets",
@@ -126,37 +126,43 @@
    "items": [
     "1 to 9 jump to that verse",
     "C jumps to the chorus",
+    "Verses are blue, choruses teal",
     "Or click the card you want"
    ],
-   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. Or click the card you want.",
+   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. Each part of a song has its own colour, verses blue and choruses teal, so you can find them at a glance. Or click the card you want.",
    "narration": "narration/t1-going-live/06.mp3",
-   "durationSec": 10.5
+   "durationSec": 18
   },
   {
    "type": "screenshot",
    "src": "shots/training/focus.png",
-   "heading": "Focus: only the cards",
+   "heading": "Focus: only the slides",
    "tone": "screen",
    "callouts": [
     {
-     "x": 64.5,
-     "y": 3.8,
+     "x": 55,
+     "y": 4,
+     "label": "Plan or Present"
+    },
+    {
+     "x": 65,
+     "y": 4,
      "label": "What is on air"
     },
     {
      "x": 76,
-     "y": 3.8,
+     "y": 4,
      "label": "Blank, always in reach"
     },
     {
      "x": 94,
-     "y": 3.8,
+     "y": 4,
      "label": "F or Esc comes back"
     }
    ],
-   "say": "Press F for Focus. Everything above the wall hides, so you see only the cards. Blank, and Stop the sound now, stay in the small bar at the top. Press F again, or Escape, to bring everything back.",
+   "say": "Press F, or the Focus button at the top right, for Focus. The bar along the top and the controls on the right hide, so you see only the slides. Blank, and Stop the sound now, stay in the small bar at the top, with Plan and Present. Press F again, or Escape, to bring everything back.",
    "narration": "narration/t1-going-live/07.mp3",
-   "durationSec": 21.5
+   "durationSec": 24
   },
   {
    "type": "cta",
