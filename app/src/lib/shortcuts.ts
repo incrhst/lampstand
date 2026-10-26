@@ -39,11 +39,11 @@ export interface TargetLike {
 }
 
 /**
- * True when a key press lands in a control that takes text, so the plain
- * keys of Present and Focus leave it alone. A switch or radio button is not
- * typing: after clicking Logo bug or Safe area guide, Space must still be
- * Next (and must not flip the switch), and the arrows, F and the jump keys
- * must still work.
+ * True when a key press lands in a control that takes keys, so the plain
+ * keys of Present and Focus leave it alone. A switch is not: after clicking
+ * Logo bug or Safe area guide, Space must still be Next (and must not flip
+ * the switch), and the arrows, F and the jump keys must still work. A radio
+ * button is, because the arrows choose within its group.
  */
 export function isTyping(target: TargetLike | null | undefined): boolean {
   if (!target) return false;
@@ -52,7 +52,7 @@ export function isTyping(target: TargetLike | null | undefined): boolean {
   if (tag === "TEXTAREA" || tag === "SELECT") return true;
   if (tag !== "INPUT") return false;
   const type = (target.type ?? "text").toLowerCase();
-  return type !== "checkbox" && type !== "radio";
+  return type !== "checkbox";
 }
 
 /** The keys of the Present screen, for the sidecard's Keys card and the Help screen. */

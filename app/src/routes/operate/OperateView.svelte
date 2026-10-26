@@ -192,6 +192,9 @@
   function onkeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
     if (isTyping(target)) return;
+    // A dialog over the service (Connect a phone or tablet, Quick add) has
+    // its own keys; none of them may move the screen.
+    if (connectOpen || quickAddOpen || target?.closest?.('[aria-modal="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
@@ -1410,7 +1413,7 @@
     .sidecard {
       order: -1;
       flex: 0 1 auto;
-      max-height: max(45%, 18.5rem);
+      max-height: max(45%, 20rem);
       padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--line);
       flex-direction: row;
@@ -1431,8 +1434,9 @@
       flex-direction: column;
       gap: 0.6rem;
     }
+    /* A warning such as "No screen is on" first, above the Sound box. */
     .side-notice {
-      order: 0;
+      order: -2;
     }
     .side-rest > :global(.sound) {
       order: -1;
