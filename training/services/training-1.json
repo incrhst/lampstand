@@ -17,10 +17,10 @@
   {"scripture": {"reference": "John 3:16-18", "translation": "KJV"},
    "notes": "Practice: a Bible reading. Space through the verses. Watch the gold NEXT card to see what comes after the last one."},
   {"video": {"file": "t1-blank-idle-clear.mp4", "name": "Blank, Idle, Clear.mp4"},
-   "notes": "Press Space when the video ends. Then try each one on the sermon deck: full stop to blank, Idle, Clear text, and Show to come back."},
+   "notes": "Press Space when the video ends. Then try each one on the sermon deck: full stop to blank, Idle, then open the Clear box on the right and press Text, and Show to come back."},
   {"deck": {"file": "t1-sermon-practice.pptx", "title": "Practice: a sermon deck"},
    "notes": "Practice: five slides with builds. Watch the On air box on the right: what is on screen, the next click, and the clicks left. The preacher's notes for each slide are in the slide's own notes. Try Blank (full stop) once in the middle, then bring it back. Try Focus (F) too, and Esc to come back."},
   {"deck": {"file": "t1-ready.pptx", "title": "You're ready"},
-   "notes": "Hand over the printed key sheet. Then close the service with Close service, top right."}
+   "notes": "Hand over the printed key sheet. Then close the service with Close service, bottom right."}
  ]
 }

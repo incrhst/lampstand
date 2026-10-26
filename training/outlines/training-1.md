@@ -11,6 +11,6 @@ For operators. 10 minutes. Ends with: a practice service run with no wrong slide
 | 5 | Header: "Practice. Run these as if it were Sunday" | The trainee drives from here. |
 | 6 | Song: Amazing Grace (seeded, public domain) | Space through the verses; press 1 to go back to verse 1. |
 | 7 | Scripture: John 3:16-18 (KJV) | A reading across slides. |
-| 8 | Video: Blank, Idle, Clear (`videos/t1-blank-idle-clear.json`, about 1 min) | Full stop, Idle, Clear text, Show. Blank first, think second. |
+| 8 | Video: Blank, Idle, Clear (`videos/t1-blank-idle-clear.json`, about 1 min) | Full stop, Idle, Clear › Text, Show. Blank first, think second. |
 | 9 | Deck: Practice: a sermon deck (`t1-sermon-practice.pptx`, 5 slides) | Psalm 23 with click builds (the builds panel shows the next click), Fade transitions and the preacher's notes. Blank once in the middle; try Focus. |
 | 10 | Deck: You're ready (`t1-ready.pptx`, 2 slides) | Sunday step by step. Hand over the printed key sheet; Close service. |
