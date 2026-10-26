@@ -1,12 +1,12 @@
 # Training Session 2: Confident operator
 
-For operators who have taken Training Session 1. 30 minutes. Ends with: recovering from five surprises with the
+For operators who have taken Training Session 1. 40 minutes. Ends with: recovering from five surprises with the
 screen calm. A trainer runs it: the surprises are in the notes, which the trainee does not read ahead.
 Run the rehearsal twice, slowly then at real speed, with **Reset training** in Plan between runs.
 
 | # | Item | Surprise in the notes |
 | --- | --- | --- |
-| 1 | Header: "Training Session 2: Confident operator (30 minutes)" | |
+| 1 | Header: "Training Session 2: Confident operator (40 minutes)" | |
 | 2 | Video: Five surprises (`videos/t2-five-surprises.json`, about 1.5 min) | The five moves, one scene each. |
 | 3 | Deck: Briefing (`t2-briefing.pptx`, 3 slides) | How the session runs; the five moves; "the room never sees you looking". |
 | 4 | Header: "Rehearsal service. The trainer calls the surprises" | |
@@ -17,7 +17,7 @@ Run the rehearsal twice, slowly then at real speed, with **Reset training** in P
 | 9 | Deck: Sermon (sent on Thursday) (`t2-sermon-thursday.pptx`) | 4. Updated deck (cued during the reading): "The preacher changed the verse slide this morning." Skip this deck: Shift+Down to the next, Enter. Its verse slide has the wrong reference on purpose. |
 | 10 | Deck: Sermon (updated Sunday morning) (`t2-sermon-sunday.pptx`) | The corrected deck, with builds. |
 | 11 | Header: "Phones and tablets (10 minutes)" | Needs a phone on the same Wi-Fi. |
-| 12 | Video: Phones and tablets (`t2-phones.mp4`) | Not published yet: the item says "This training video isn't ready yet" until it is on the website. No release is needed when it arrives. |
+| 12 | Video: Phones and tablets (`t2-phones.mp4`) | Not published yet: the item says "This training video isn't ready yet" until it is on the website (or, offline before the first check, to connect to the internet). No release is needed when it arrives. |
 | 13 | Deck: Phones and tablets (`t2-phones.pptx`, 3 slides) | Run the service versus Speaker; how to connect one (Present › More › Connect a phone or tablet) and revoke it (Setup › Devices). |
 | 14 | Text: Practice: a speaker's phone | Connect the trainee's phone as Speaker for the Sunday sermon, step through it, see Next stop on the last slide and the cleared-screen message, then revoke it. |
 | 15 | Header: "Debrief" | |
