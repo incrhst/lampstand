@@ -266,13 +266,14 @@
     {#snippet actions()}
       <Button onclick={() => (connecting = true)}>Connect a phone or tablet</Button>
     {/snippet}
-    <p class="muted">Phones and tablets that run the slides and the sound from their browser. Revoke one to disconnect it at once.</p>
+    <p class="muted">Phones and tablets that run the slides and the sound from their browser, and speakers' phones that page through one item's slides. Revoke one to disconnect it at once.</p>
     <ul class="list">
       {#each remotes?.sessions ?? [] as r (r.id)}
         <li>
           <span>
             <span class="dot" class:on={r.connected} aria-hidden="true"></span>
             <strong>{r.name}</strong>
+            {#if r.speaker}<small class="speaker">Speaker · {r.speaker}</small>{/if}
             <small class="muted">{r.connected ? "connected now" : `last seen ${ago(r.last_seen_ms, now)}`} · paired {new Date(r.paired_ms).toLocaleDateString()}</small>
           </span>
           <span class="row">
@@ -389,5 +390,12 @@
   }
   .dot.on {
     background: var(--live);
+  }
+  .speaker {
+    margin: 0 0.4rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    color: var(--gold);
   }
 </style>

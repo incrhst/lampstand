@@ -207,7 +207,18 @@ async fn api(
         .await),
         Request::Remote(request) => Ok(match (&state.remotes, &state.sync) {
             (Some(hub), Some(sync)) => {
-                crate::remote::handle(hub, request, sync.local_addr().port())
+                // A speaker's PIN is for an item of the service open now.
+                let found = match &request {
+                    lampstand_api::RemoteRequest::StartSpeakerPairing { item } => {
+                        let (app, item) = (state.app.clone(), *item);
+                        tauri::async_runtime::spawn_blocking(move || lock(&app).speaker_item(item))
+                            .await
+                            .ok()
+                            .flatten()
+                    }
+                    _ => None,
+                };
+                crate::remote::handle(hub, request, sync.local_addr().port(), |_| found)
             }
             _ => Response::Error {
                 message: "Remotes are off: the local server did not start.".into(),
@@ -490,12 +501,33 @@ async fn slide_thumbnail(
 /// Carries out a request from a remote that passed the gate
 /// (`crate::remote::answer`), as Present's own screen would: sent on to the
 /// presenting device when this one drives it, and otherwise to the app.
+///
+/// A speaker's Next, Back and Blank are checked against the live engine and
+/// carried out under one lock (`App::speaker_live`). They are never sent on
+/// to another device: there the check could not be made in the same step as
+/// the change.
 async fn remote_request(
     app: Arc<Mutex<App>>,
     sync: Arc<Sync>,
     thumbnails: Option<Arc<Renderer>>,
+    caller: crate::gate::Caller,
     request: Request,
 ) -> Response {
+    if let (crate::gate::Caller::Speaker(own), Request::Live(command)) = (caller, &request) {
+        if sync.node().driving().is_some() {
+            eprintln!("lampstand: refused a speaker's command: this device drives another");
+            return Response::Error {
+                message: "A speaker's phone works only with the computer that runs the screens."
+                    .into(),
+            };
+        }
+        let command = *command;
+        return tauri::async_runtime::spawn_blocking(move || lock(&app).speaker_live(own, command))
+            .await
+            .unwrap_or_else(|e| Response::Error {
+                message: e.to_string(),
+            });
+    }
     if let Some(response) = sync.forward(&request).await {
         return response;
     }
@@ -834,18 +866,26 @@ fn serve_remotes(
     emit: crate::handler::EventSink,
 ) {
     let (handler_app, handler_sync) = (app.clone(), sync.clone());
-    hub.set_handler(Arc::new(move |request| {
+    hub.set_handler(Arc::new(move |kind, request| {
         let (app, sync, thumbnails) = (
             handler_app.clone(),
             handler_sync.clone(),
             thumbnails.clone(),
         );
         Box::pin(async move {
-            crate::remote::answer(request, |request| {
-                remote_request(app, sync, thumbnails, request)
+            crate::remote::answer(&kind, request, |caller, request| {
+                remote_request(app, sync, thumbnails, caller, request)
             })
             .await
         })
+    }));
+    // Ending the service (it stays open) stops the speakers' phones, as
+    // closing it does through `remote::bridge`.
+    let ended = Arc::downgrade(hub);
+    lock(app).on_service_ended(Arc::new(move || {
+        if let Some(hub) = ended.upgrade() {
+            crate::remote::end_speakers(&hub, None);
+        }
     }));
     let (watched, port) = (Arc::downgrade(hub), sync.local_addr().port());
     hub.on_change(Arc::new(move || {

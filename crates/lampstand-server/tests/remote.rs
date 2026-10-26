@@ -14,7 +14,7 @@ use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
 use lampstand_core::scene::Scene;
 use lampstand_server::remote::REVOKED;
-use lampstand_server::{Backend, RemoteHub, Server};
+use lampstand_server::{Backend, RemoteHub, RemoteKind, Server};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -54,8 +54,8 @@ async fn fixture() -> Fixture {
 
 async fn fixture_in(dir: tempfile::TempDir) -> Fixture {
     let hub = Arc::new(RemoteHub::open(dir.path().join("remotes.json")).unwrap());
-    hub.set_handler(Arc::new(|request| {
-        Box::pin(async move { json!({ "echo": request }) })
+    hub.set_handler(Arc::new(|kind, request| {
+        Box::pin(async move { json!({ "echo": request, "kind": kind }) })
     }));
     let server = Server::start(
         SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -319,6 +319,58 @@ async fn revoking_a_session_closes_its_socket_at_once() {
     // The other phone carries on.
     f.hub.publish("Live", r#"{"type":"Live","data":3}"#);
     assert_eq!(next(&mut kept).await["event"]["data"], 3);
+}
+
+#[tokio::test]
+async fn a_speakers_page_is_told_its_item_and_ends_with_its_service() {
+    let f = fixture().await;
+    let speaker = RemoteKind::Speaker {
+        service: "s1".into(),
+        item: "i1".into(),
+        title: "Sermon".into(),
+    };
+    let pin = f.hub.start_pairing_as(speaker);
+    let reply = f.pair(&pin.pin).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let cookie = reply.cookie().unwrap();
+    let session = f
+        .http(
+            "GET",
+            "/remote/session",
+            &format!("Cookie: {cookie}\r\n"),
+            "",
+        )
+        .await;
+    assert!(
+        session.body.contains(r#""kind":"Speaker""#),
+        "{}",
+        session.body
+    );
+    let mut ws = f.ws(Some(&cookie)).await.unwrap();
+    let hello = next(&mut ws).await;
+    assert_eq!(hello["hello"]["kind"]["kind"], "Speaker");
+    assert_eq!(hello["hello"]["kind"]["item"], "i1");
+    // The handler hears who asks, so the app's gate can tell a speaker.
+    let ask = json!({ "id": 1, "request": { "area": "Live", "request": "Next" } });
+    ws.send(Message::Text(ask.to_string().into()))
+        .await
+        .unwrap();
+    assert_eq!(next(&mut ws).await["response"]["kind"]["title"], "Sermon");
+    // Closing its service ends it, as a revoke does.
+    assert_eq!(f.hub.end_speakers(|s| s == "s1"), 1);
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Close(Some(frame)))) => return Some(u16::from(frame.code)),
+                Some(Ok(_)) => continue,
+                _ => return None,
+            }
+        }
+    })
+    .await
+    .expect("closed within 2 s");
+    assert_eq!(closed, Some(REVOKED));
+    assert_eq!(f.ws(Some(&cookie)).await.err(), Some(401));
 }
 
 #[tokio::test]

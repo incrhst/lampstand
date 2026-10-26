@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T99 to T102); amended 2026-10-25 (Lampstand Remote also runs the sound)
+- Status: accepted (T99 to T102); amended 2026-10-25 (Lampstand Remote also runs the sound); amended for 0.9.1 (a speaker's phone)
 - Date: 2026-10-20
 
 ## Question
@@ -94,6 +94,41 @@ Still nothing that edits, reads settings or the library, touches outputs or
 roles, or pairs anything. What someone who captures a session on the Wi-Fi
 can do grows by one thing: start, pause or stop the music, as they could by
 walking up to the laptop. Revoking the phone still ends it at once.
+
+## Amendment for 0.9.1: a speaker's phone
+
+The owner's design adds a second kind of remote: a speaker pages through
+their own slides from their phone, with their notes and a timer. The
+operator chooses "What is it for?" in the Connect dialog: **Run the
+service** (everything above) or **Speaker**, for one item of the open
+service.
+
+A speaker gets less than an operator's phone, never more, and the limit is
+kept on the laptop, not in the page:
+
+- The PIN carries the kind, and the session keeps it in `remotes.json`
+  (`Operator`, or `Speaker` with the service and item). A session saved
+  before 0.9.1 has no kind and stays an operator's.
+- In the one gate, a speaker may send only `Next`, `Previous` and
+  `ToggleBlack`, and ask for pictures of its own item's slides. Show, Idle,
+  Clear, the sound, `EndService`, and anything about another item are
+  refused and logged.
+- `Next` and `Previous` (and Blank) pass only while the speaker's item is
+  on air and the screens do not show the idle screen, and only if the
+  result stays inside that item: Next on its last slide, fully built, and
+  Back on its first are refused and do nothing. This is decided against the
+  live engine and applied in the same step, under the app's one lock, so a
+  press that races the operator moving on is checked against where the
+  service is when it is applied, never where it was. A speaker's command is
+  never passed on to another device, where that could not be guaranteed.
+- The session ends, and its page is disconnected at once, when its service
+  is closed or ended, or another service is opened; and, as for any remote,
+  when it is revoked in Setup › Devices.
+
+So capturing a speaker's session on the Wi-Fi lets someone page through,
+or blank, one item while it is on the screen, which is less than an
+operator's phone. Pairing is the same PIN, and the socket the same remote
+socket (no sync protocol change).
 
 ## Why this is acceptable on plain HTTP
 

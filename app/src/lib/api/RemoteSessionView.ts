@@ -12,4 +12,9 @@ name: string, paired_ms: number, last_seen_ms: number | null,
 /**
  * Its remote page is open now.
  */
-connected: boolean, };
+connected: boolean, 
+/**
+ * A speaker's phone: the title of the item whose slides it pages
+ * through. `None` for a phone that runs the service.
+ */
+speaker: string | null, };

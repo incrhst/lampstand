@@ -48,6 +48,12 @@ pub enum RemoteRequest {
     /// Shows a fresh PIN for five minutes, replacing any shown before, with
     /// the addresses a phone opens.
     StartPairing,
+    /// Shows a fresh PIN for a speaker's phone (0.9.1): it will page
+    /// through `item`'s slides of the open service while that item is on
+    /// air, and nothing else. It stops working when the service is closed.
+    StartSpeakerPairing {
+        item: ItemId,
+    },
     StopPairing,
     /// Forgets a paired phone (`RemoteSessionView::id`): its open page is
     /// disconnected at once and it must pair again.
@@ -63,6 +69,9 @@ pub enum RemoteRequest {
 pub struct RemotesView {
     /// The PIN shown now, while a phone may pair.
     pub pairing: Option<RemotePinView>,
+    /// While a speaker's PIN is shown: the title of the item it is for.
+    #[serde(default)]
+    pub pairing_speaker: Option<String>,
     /// Where a phone opens the remote, the likeliest first, while pairing:
     /// `http://<lan-ip>:<port>/remote` with the port the server got. Empty
     /// when not pairing, or when this computer has no network.
@@ -102,6 +111,10 @@ pub struct RemoteSessionView {
     pub last_seen_ms: Option<i64>,
     /// Its remote page is open now.
     pub connected: bool,
+    /// A speaker's phone: the title of the item whose slides it pages
+    /// through. `None` for a phone that runs the service.
+    #[serde(default)]
+    pub speaker: Option<String>,
 }
 
 /// Playing the sound in a service (decision 0010, the Audio role). Any

@@ -1,4 +1,4 @@
-// T100: Lampstand Remote, at phone size. `cargo run --example remote_fixture`
+// T100 and 0.9.1: Lampstand Remote at phone size (and a tablet), and a speaker's phone. `cargo run --example remote_fixture`
 // serves the real page and routes with a stand-in for the app. Each test
 // pairs with a fresh PIN, then presses the page's buttons and checks that
 // what is on screen follows, including a change made on the laptop.
@@ -81,8 +81,9 @@ async function connect(page: Page) {
   await expect(page.getByRole("status").filter({ hasText: "Connected" })).toBeVisible();
 }
 
-const what = (page: Page) => page.locator(".now .what");
-const coming = (page: Page) => page.locator(".next .about p");
+/** What the top strip says: LIVE, IDLE or BLANK, the item and its slide. */
+const said = (page: Page) => page.locator(".said");
+const card = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 
 test("a wrong PIN is refused and the right one pairs", async ({ page }) => {
   await page.goto(`${base}/remote`);
@@ -98,48 +99,143 @@ test("a wrong PIN is refused and the right one pairs", async ({ page }) => {
   expect(session.find((c) => c.name === "lampstand_remote")?.httpOnly).toBe(true);
 });
 
-test("Next and Back move the slide, and now and next follow", async ({ page }) => {
+test("the phone sees the whole service as a wall", async ({ page }) => {
   await connect(page);
-  await expect(what(page)).toHaveText("Nothing on screen yet. Next shows the first slide.");
-  await expect(coming(page)).toHaveText("Amazing Grace · V1");
-  await page.getByRole("button", { name: "Next" }).click();
-  await expect(what(page)).toHaveText("Amazing Grace · V1");
-  await expect(page.locator(".now .screen")).toContainText("Amazing Grace, V1, line one");
-  await expect(coming(page)).toHaveText("Amazing Grace · V2");
-  await page.getByRole("button", { name: "Next" }).click();
-  await expect(what(page)).toHaveText("Amazing Grace · V2");
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(what(page)).toHaveText("Amazing Grace · V1");
-  // The big buttons are well over 44 pt, for a thumb.
-  const next = await page.getByRole("button", { name: "Next" }).boundingBox();
-  expect(next!.height).toBeGreaterThan(80);
+  await expect(page.getByRole("heading", { name: "Gathering" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Word" })).toBeVisible();
+  await expect(page.locator(".row", { hasText: "Amazing Grace" })).toContainText("2 slides");
+  // A music-only item is a dashed sound card.
+  await expect(page.locator(".row", { hasText: "Walk-in" }).locator(".sound-card")).toContainText("Waits for Play");
+  // Deck slides come as pictures from the laptop.
+  await page.locator(".row", { hasText: "Notices" }).scrollIntoViewIfNeeded();
+  await expect(card(page, "Notices · Slide 1").locator("img")).toHaveAttribute("src", /^data:image/);
+  // Everything a thumb needs is at least 44 px; Next is the big one.
+  for (const name of ["Back", "Blank", "Idle", "Stop the sound now"]) {
+    const box = await page.getByRole("button", { name, exact: true }).boundingBox();
+    expect(box!.height, name).toBeGreaterThanOrEqual(44);
+  }
+  const next = await page.locator(".drive .go").boundingBox();
+  expect(next!.height).toBeGreaterThanOrEqual(64);
+  // Nothing wider than the phone.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test("a change made on the laptop shows on the phone", async ({ page }) => {
+test("a tap selects a card, and Show this slide puts it on the screen", async ({ page }) => {
   await connect(page);
-  const before = await what(page).textContent();
+  const v1 = card(page, "Amazing Grace · V1");
+  await v1.click();
+  await expect(v1).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Selected: Amazing Grace · V1")).toBeVisible();
+  // Not on air yet.
+  await expect(v1).not.toHaveAttribute("aria-current", "true");
+  await page.getByRole("button", { name: "Show this slide" }).click();
+  await expect(v1).toHaveAttribute("aria-current", "true");
+  await expect(said(page)).toContainText("LIVE");
+  await expect(said(page)).toContainText("Amazing Grace");
+  await expect(page.getByText("Selected:")).toHaveCount(0);
+  // Tapping a card twice shows it too; Cancel drops a selection.
+  const v2 = card(page, "Amazing Grace · V2");
+  await v2.click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(v2).toHaveAttribute("aria-pressed", "false");
+  await v2.click();
+  await v2.click();
+  await expect(v2).toHaveAttribute("aria-current", "true");
+});
+
+test("Next and Back move the slide, and a change on the laptop cancels a selection", async ({ page }) => {
+  await connect(page);
+  await say("show 2 0", "MOVED");
+  await expect(said(page)).toContainText("V1");
+  await page.getByRole("button", { name: /^Next/ }).click();
+  await expect(said(page)).toContainText("V2");
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(said(page)).toContainText("V1");
+  await card(page, "Notices · Slide 1").click();
+  await expect(page.getByText("Selected: Notices · Slide 1")).toBeVisible();
   await say("next", "MOVED");
-  await expect(what(page)).not.toHaveText(before ?? "");
+  await expect(said(page)).toContainText("V2");
+  await expect(page.getByText("Selected:")).toHaveCount(0);
 });
 
-test("Black toggles and says so", async ({ page }) => {
+test("a deck slide with builds says how many are left", async ({ page }) => {
   await connect(page);
-  const black = page.getByRole("button", { name: "Black" });
-  await black.click();
-  await expect(black).toHaveAttribute("aria-pressed", "true");
-  await expect(what(page)).toHaveText("The screen is black");
-  await black.click();
-  await expect(black).toHaveAttribute("aria-pressed", "false");
+  await say("show 4 1", "MOVED");
+  await expect(page.locator(".drive .go")).toHaveText("Next · 2 left");
+  await page.locator(".drive .go").click();
+  await expect(said(page)).toContainText("build 1 of 2");
+  await expect(page.locator(".drive .go")).toHaveText("Next · 1 left");
 });
 
-test("the Sound box plays, pauses and stops", async ({ page }) => {
+test("Blank toggles and says so", async ({ page }) => {
   await connect(page);
+  const blank = page.getByRole("button", { name: "Blank", exact: true });
+  await blank.click();
+  await expect(blank).toHaveAttribute("aria-pressed", "true");
+  await expect(said(page)).toContainText("BLANK");
+  await blank.click();
+  await expect(blank).toHaveAttribute("aria-pressed", "false");
+});
+
+test("the Sound box folds out; Stop the sound now stays in the bar", async ({ page }) => {
+  await connect(page);
+  await page.locator(".sound-handle").click();
+  await page.getByRole("button", { name: /^Show all/ }).click();
   await page.getByRole("button", { name: "Play Walk-out music" }).click();
   await expect(page.locator(".sound .playing")).toContainText("Playing");
   await page.getByRole("button", { name: "Pause" }).click();
   await expect(page.locator(".sound .playing")).toContainText("Paused");
   await page.getByRole("button", { name: "Stop the sound now" }).click();
   await expect(page.locator(".sound .playing")).toContainText("Nothing is playing.");
+});
+
+test("on a tablet the rows become the desktop wall, with the controls along the top", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await connect(page);
+  await expect(page.locator("main.remote.wide")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeVisible();
+  const cards = page.locator(".row", { hasText: "Sermon" }).locator(".card");
+  await expect(cards).toHaveCount(3);
+  // A wrapping grid: all three cards in one row, side by side.
+  const [a, b] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()];
+  expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
+  // Touch still takes two taps.
+  await cards.nth(2).click();
+  await expect(page.getByText("Selected: Sermon · Slide 3")).toBeVisible();
+});
+
+test("a speaker's phone pages through its own item only", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto(`${base}/remote`);
+  const pin = (await say("speaker", "PIN")).split(" ")[1];
+  await page.getByPlaceholder("000 000").fill(pin);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByText("Your slides", { exact: true })).toBeVisible();
+  await say("show 2 0", "MOVED");
+  await expect(page.getByText("Waiting for your slides")).toBeVisible();
+  await expect(page.getByText("On the screen now: Amazing Grace · V1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+
+  await say("show 5 0", "MOVED");
+  await expect(page.getByText("Slide 1 of 3")).toBeVisible();
+  await expect(page.getByText("Welcome everyone.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back" })).toBeDisabled();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Slide 2 of 3 · build 0 of 1")).toBeVisible();
+  await expect(page.getByText("1 click left on this slide")).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Slide 3 of 3")).toBeVisible();
+  await expect(page.getByText("Last slide. The service team takes it from here.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  const next = await page.getByRole("button", { name: "Next" }).boundingBox();
+  expect(next!.height).toBeGreaterThanOrEqual(76);
+
+  // Closing the service ends the speaker's phone.
+  await say("close", "CLOSED");
+  await expect(page.getByText("This remote was disconnected on the laptop.")).toBeVisible();
+  await context.close();
 });
 
 test("a revoked phone is sent back to the PIN form", async ({ page }) => {

@@ -2470,3 +2470,72 @@ fn the_address_obs_is_given_follows_the_network_but_the_key_stays() {
         after.split_once("?k=").unwrap().1
     );
 }
+
+/// A speaker's phone (0.9.1): Next and Back page through its own item only
+/// while it is on air, never past either end, and ending the service tells
+/// the shell so the phone stops.
+#[test]
+fn a_speaker_pages_through_its_own_item_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let (first, _) = search(&mut h, "holy")[0].clone();
+    let service = insert_song(&mut h, &service, first);
+    let (second, _) = search(&mut h, "amazing")[0].clone();
+    let service = insert_song(&mut h, &service, second);
+    let loaded = open_service(&mut h, &service);
+    let (song, talk) = (&loaded.items[0], &loaded.items[1]);
+    assert_eq!(
+        h.app.speaker_item(talk.id),
+        Some((service.id, talk.title.clone()))
+    );
+    assert!(h.app.speaker_item(ItemId::generate()).is_none());
+
+    let live = |h: &Harness| h.app.program().content.clone();
+    let refused = |r: Response| matches!(r, Response::Error { .. });
+    // Nothing on air, then the first song: the speaker's item is not up.
+    assert!(refused(h.app.speaker_live(talk.id, Command::Next)));
+    ok(h.app
+        .handle(Request::Live(Command::Show(lampstand_live::Cursor {
+            item: song.id,
+            slide: song.slides.len() - 1,
+            step: 0,
+        }))));
+    let before = live(&h);
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Next)),
+        "Next would land on its item, but it is not up yet"
+    );
+    assert!(refused(h.app.speaker_live(talk.id, Command::ToggleBlack)));
+    assert_eq!(live(&h), before);
+
+    // The operator puts the talk up.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Previous)),
+        "its first slide"
+    );
+    let n = talk.slides.len();
+    for _ in 1..n {
+        ok(h.app.speaker_live(talk.id, Command::Next));
+    }
+    let last = live(&h);
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Next)),
+        "its last slide"
+    );
+    assert_eq!(live(&h), last, "the service did not move on");
+    ok(h.app.speaker_live(talk.id, Command::Previous));
+    ok(h.app.speaker_live(talk.id, Command::ToggleBlack));
+    assert_eq!(h.app.program().overlay, Overlay::Black);
+
+    let ended = Arc::new(Mutex::new(0));
+    let count = ended.clone();
+    h.app
+        .on_service_ended(Arc::new(move || *count.lock().unwrap() += 1));
+    ok(h.app.handle(Request::Live(Command::EndService)));
+    assert_eq!(*ended.lock().unwrap(), 1);
+    assert!(refused(h.app.speaker_live(talk.id, Command::Next)));
+}

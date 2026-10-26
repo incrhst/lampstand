@@ -21,7 +21,8 @@ use lampstand_api::{
     Event, RemoteAddress, RemotePinView, RemoteRequest, RemoteSessionView, RemotesView, Request,
     Response, ServiceRequest,
 };
-use lampstand_server::RemoteHub;
+use lampstand_core::service::{ItemId, ServiceId};
+use lampstand_server::{RemoteHub, RemoteKind};
 use qrcode::render::svg;
 use qrcode::QrCode;
 
@@ -37,8 +38,15 @@ pub fn open_hub(data_dir: &Path) -> io::Result<RemoteHub> {
     RemoteHub::open(data_dir.join("sync").join("remotes.json"))
 }
 
-/// Tells the remote pages about `event`, if it is one they show.
+/// Tells the remote pages about `event`, if it is one they show. A
+/// speaker's phone ends with its service: when the service is closed, or
+/// another is opened in its place.
 pub fn bridge(hub: &RemoteHub, event: &Event) {
+    match event {
+        Event::Unloaded => end_speakers(hub, None),
+        Event::Loaded(view) => end_speakers(hub, Some(view.service)),
+        _ => {}
+    }
     let kind = match event {
         Event::Live { .. } => "Live",
         // The last of these two is what a page needs when it connects.
@@ -52,6 +60,25 @@ pub fn bridge(hub: &RemoteHub, event: &Event) {
     }
 }
 
+/// Disconnects the speakers' phones paired for any service but `open` (all
+/// of them when nothing is open, or the service was ended).
+pub fn end_speakers(hub: &RemoteHub, open: Option<ServiceId>) {
+    let open = open.map(|s| s.to_string());
+    let gone = hub.end_speakers(|service| open.as_deref() != Some(service));
+    if gone > 0 {
+        eprintln!("lampstand: the service ended, so {gone} speaker's phone(s) stopped");
+    }
+}
+
+/// Who a remote session is, for the gate: a speaker for its item, or an
+/// operator's phone. `None` for a speaker whose item cannot be read.
+pub fn caller(kind: &RemoteKind) -> Option<Caller> {
+    match kind {
+        RemoteKind::Operator => Some(Caller::Remote),
+        RemoteKind::Speaker { item, .. } => item.parse::<ItemId>().ok().map(Caller::Speaker),
+    }
+}
+
 fn error(message: &str) -> serde_json::Value {
     serde_json::to_value(Response::Error {
         message: message.into(),
@@ -59,14 +86,24 @@ fn error(message: &str) -> serde_json::Value {
     .unwrap_or_default()
 }
 
-/// Answers a request from a remote page (JSON as the page sent it): the
-/// gate, then `dispatch`, which carries it out as the operator's own screen
-/// would. A refused request is logged and never dispatched.
-pub async fn answer<F, Fut>(request: serde_json::Value, dispatch: F) -> serde_json::Value
+/// Answers a request from a remote page (JSON as the page sent it), from a
+/// session paired as `kind`: the gate, then `dispatch`, which carries it out
+/// as the operator's own screen would. A refused request is logged and
+/// never dispatched. A speaker's live command that passes still has to pass
+/// `gate::speaker_apply` where `dispatch` carries it out.
+pub async fn answer<F, Fut>(
+    kind: &RemoteKind,
+    request: serde_json::Value,
+    dispatch: F,
+) -> serde_json::Value
 where
-    F: FnOnce(Request) -> Fut,
+    F: FnOnce(Caller, Request) -> Fut,
     Fut: Future<Output = Response>,
 {
+    let Some(who) = caller(kind) else {
+        eprintln!("lampstand: refused a speaker's phone whose item is unreadable");
+        return error("This phone is not set up right. Ask for a new PIN on the laptop.");
+    };
     let mut request = match serde_json::from_value::<Request>(request) {
         Ok(request) => request,
         Err(e) => {
@@ -74,23 +111,44 @@ where
             return error("This page is out of date or damaged. Reload the page and try again.");
         }
     };
-    if !gate::allows(Caller::Remote, &request) {
-        eprintln!("lampstand: refused a remote's request: {request:?}");
-        return error("A remote can only run the slides and the sound.");
+    if !gate::allows(who, &request) {
+        eprintln!("lampstand: refused a remote's request ({who:?}): {request:?}");
+        return error(match who {
+            Caller::Speaker(_) => "A speaker's phone can only change its own slides.",
+            _ => "A remote can only run the slides and the sound.",
+        });
     }
     if let Request::Service(ServiceRequest::SlideThumbnail { width, .. }) = &mut request {
         *width = (*width).clamp(16, MAX_THUMB);
     }
-    serde_json::to_value(dispatch(request).await).unwrap_or_else(|e| error(&e.to_string()))
+    serde_json::to_value(dispatch(who, request).await).unwrap_or_else(|e| error(&e.to_string()))
 }
 
 /// `Remote` requests, for the Connect dialog and the devices screen.
-/// `port` is the local server's.
-pub fn handle(hub: &RemoteHub, request: RemoteRequest, port: u16) -> Response {
+/// `port` is the local server's; `speaker_item` finds an item of the open
+/// service for a speaker's PIN (its service and title).
+pub fn handle(
+    hub: &RemoteHub,
+    request: RemoteRequest,
+    port: u16,
+    speaker_item: impl FnOnce(ItemId) -> Option<(ServiceId, String)>,
+) -> Response {
     match request {
         RemoteRequest::Status => {}
         RemoteRequest::StartPairing => {
             hub.start_pairing();
+        }
+        RemoteRequest::StartSpeakerPairing { item } => {
+            let Some((service, title)) = speaker_item(item) else {
+                return Response::Error {
+                    message: "That item is not in the open service, or has no slides.".into(),
+                };
+            };
+            hub.start_pairing_as(RemoteKind::Speaker {
+                service: service.to_string(),
+                item: item.to_string(),
+                title,
+            });
         }
         RemoteRequest::StopPairing => hub.stop_pairing(),
         RemoteRequest::Revoke { id } => {
@@ -120,7 +178,12 @@ pub fn view(hub: &RemoteHub, port: u16) -> RemotesView {
     } else {
         Vec::new()
     };
+    let speaker = |kind: &RemoteKind| match kind {
+        RemoteKind::Speaker { title, .. } => Some(title.clone()),
+        RemoteKind::Operator => None,
+    };
     RemotesView {
+        pairing_speaker: pairing.as_ref().and_then(|p| speaker(&p.kind)),
         pairing: pairing.map(|p| RemotePinView {
             pin: p.pin,
             expires_ms: p.expires_ms,
@@ -130,6 +193,7 @@ pub fn view(hub: &RemoteHub, port: u16) -> RemotesView {
             .sessions()
             .into_iter()
             .map(|s| RemoteSessionView {
+                speaker: speaker(&s.kind),
                 id: s.id,
                 name: s.name,
                 paired_ms: s.paired_ms,
@@ -249,12 +313,13 @@ mod tests {
     fn the_dialog_gets_addresses_only_while_a_pin_is_shown() {
         let dir = tempfile::tempdir().unwrap();
         let hub = open_hub(dir.path()).unwrap();
-        let idle = handle(&hub, RemoteRequest::Status, 7340);
+        let idle = handle(&hub, RemoteRequest::Status, 7340, |_| None);
         let Response::Remotes(idle) = idle else {
             panic!()
         };
         assert!(idle.pairing.is_none() && idle.addresses.is_empty());
-        let Response::Remotes(pairing) = handle(&hub, RemoteRequest::StartPairing, 7340) else {
+        let Response::Remotes(pairing) = handle(&hub, RemoteRequest::StartPairing, 7340, |_| None)
+        else {
             panic!()
         };
         assert_eq!(pairing.pairing.unwrap().pin.len(), 6);
@@ -267,8 +332,52 @@ mod tests {
                 id: "nobody".into(),
             },
             7340,
+            |_| None,
         ) else {
             panic!("revoking a remote that is not paired is an error")
         };
+    }
+
+    #[test]
+    fn a_speakers_pin_is_for_an_item_of_the_open_service_and_ends_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = open_hub(dir.path()).unwrap();
+        let (service, item) = (ServiceId::generate(), ItemId::generate());
+        let Response::Error { .. } = handle(
+            &hub,
+            RemoteRequest::StartSpeakerPairing { item },
+            7340,
+            |_| None,
+        ) else {
+            panic!("an item that is not open cannot be paired for")
+        };
+        let Response::Remotes(view) = handle(
+            &hub,
+            RemoteRequest::StartSpeakerPairing { item },
+            7340,
+            |i| (i == item).then(|| (service, "Sermon".to_string())),
+        ) else {
+            panic!()
+        };
+        assert_eq!(view.pairing_speaker.as_deref(), Some("Sermon"));
+        let pin = view.pairing.unwrap().pin;
+        let from = v4(192, 168, 1, 30);
+        let token = hub.pair(from, &pin, "Pastor").unwrap().0;
+        let (_, _, kind) = hub.session_kind(&token).unwrap();
+        assert_eq!(caller(&kind), Some(Caller::Speaker(item)));
+        assert_eq!(view_sessions(&hub), [Some("Sermon".to_string())]);
+        // The same service reloaded keeps it; closing the service ends it.
+        end_speakers(&hub, Some(service));
+        assert!(hub.session_kind(&token).is_some());
+        bridge(&hub, &Event::Unloaded);
+        assert!(hub.session_kind(&token).is_none());
+    }
+
+    fn view_sessions(hub: &RemoteHub) -> Vec<Option<String>> {
+        view(hub, 7340)
+            .sessions
+            .into_iter()
+            .map(|s| s.speaker)
+            .collect()
     }
 }
