@@ -11,11 +11,12 @@ use std::sync::{Arc, Weak};
 
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
-use super::{Found, SyncNode, SERVICE_TYPE};
+use super::{lock, Found, SyncNode};
 use crate::team::DeviceKey;
 
 pub(crate) struct Discovery {
     daemon: ServiceDaemon,
+    service: String,
     instance: String,
     host: String,
     port: u16,
@@ -31,6 +32,7 @@ impl Discovery {
         // copies on one machine) never clash.
         let instance = format!("lampstand-{}", &id[..12]);
         let d = Self {
+            service: lock(&node.service).clone(),
             host: format!("{instance}.local."),
             instance,
             daemon,
@@ -39,7 +41,7 @@ impl Discovery {
             name: node.name.clone(),
         };
         d.advertise(node.status().pairing.is_some());
-        let events = d.daemon.browse(SERVICE_TYPE)?;
+        let events = d.daemon.browse(&d.service)?;
         let node: Weak<SyncNode> = Arc::downgrade(node);
         std::thread::Builder::new()
             .name("lampstand-mdns".into())
@@ -93,7 +95,7 @@ impl Discovery {
             ("v", "1"),
         ];
         let info = ServiceInfo::new(
-            SERVICE_TYPE,
+            &self.service,
             &self.instance,
             &self.host,
             "",

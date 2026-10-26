@@ -55,8 +55,9 @@ fn key_in(dir: &Path) -> DeviceKeypair {
     }
 }
 
-/// A node and its server on `port` (0 for any), as the app runs them.
-async fn node(dir: &Path, name: &str, port: u16, mdns: bool) -> (Arc<SyncNode>, Server) {
+/// A node and its server on `port` (0 for any), as the app runs them, with
+/// mDNS on this mDNS service type if one is given.
+async fn node(dir: &Path, name: &str, port: u16, mdns: Option<&str>) -> (Arc<SyncNode>, Server) {
     let key = key_in(dir);
     let repo = Arc::new(
         Repo::open(
@@ -76,14 +77,21 @@ async fn node(dir: &Path, name: &str, port: u16, mdns: bool) -> (Arc<SyncNode>, 
     .unwrap();
     // Every interface when advertising, as the app listens; mDNS gives
     // out the LAN address.
-    let ip = if mdns { [0, 0, 0, 0] } else { [127, 0, 0, 1] };
+    let ip = if mdns.is_some() {
+        [0, 0, 0, 0]
+    } else {
+        [127, 0, 0, 1]
+    };
     let server = Server::start(
         SocketAddr::from((ip, port)),
         Arc::new(Sync(Some(node.clone()))),
     )
     .await
     .unwrap();
-    node.start(server.local_addr().port(), mdns);
+    if let Some(service) = mdns {
+        node.set_mdns_service(service);
+    }
+    node.start(server.local_addr().port(), mdns.is_some());
     (node, server)
 }
 
@@ -100,7 +108,7 @@ async fn http_status(addr: SocketAddr, path: &str) -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn sync_upgrades_and_the_rest_is_404_until_t43() {
     let dir = tempfile::tempdir().unwrap();
-    let (presenter, server) = node(&dir.path().join("a"), "Sanctuary", 0, false).await;
+    let (presenter, server) = node(&dir.path().join("a"), "Sanctuary", 0, None).await;
     let addr = server.local_addr();
     assert!(http_status(addr, "/obs/x?k=y").await.contains("404"));
     assert!(http_status(addr, "/google/picker").await.contains("404"));
@@ -108,7 +116,7 @@ async fn sync_upgrades_and_the_rest_is_404_until_t43() {
     assert!(!http_status(addr, "/sync").await.contains("101"));
 
     // The upgrade reaches the node, which refuses a stranger...
-    let (stranger, _s) = node(&dir.path().join("b"), "Stranger", 0, false).await;
+    let (stranger, _s) = node(&dir.path().join("b"), "Stranger", 0, None).await;
     match stranger.connect(&addr.to_string()).await {
         Err(NetError::Refused(why)) => assert!(why.contains("not paired"), "{why}"),
         other => panic!("expected a refusal, got {other:?}"),
@@ -155,8 +163,8 @@ async fn child(dir: PathBuf) {
         .unwrap()
         .parse()
         .unwrap();
-    let mdns = std::env::var("LAMPSTAND_SYNC_MDNS").is_ok();
-    let (node, server) = node(&dir, "Sanctuary", port, mdns).await;
+    let mdns = std::env::var("LAMPSTAND_SYNC_MDNS").ok();
+    let (node, server) = node(&dir, "Sanctuary", port, mdns.as_deref()).await;
     let repo = node.repo().clone();
     if repo.list(DocKind::Song).is_empty() {
         for title in ["Be Thou My Vision", "It Is Well"] {
@@ -222,7 +230,7 @@ struct Presenter {
 }
 
 impl Presenter {
-    fn spawn(dir: &Path, port: u16, mdns: bool) -> Self {
+    fn spawn(dir: &Path, port: u16, mdns: Option<&str>) -> Self {
         let mut cmd = Command::new(std::env::current_exe().unwrap());
         cmd.args([
             "--exact",
@@ -233,8 +241,8 @@ impl Presenter {
         .env("LAMPSTAND_SYNC_PORT", port.to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
-        if mdns {
-            cmd.env("LAMPSTAND_SYNC_MDNS", "1");
+        if let Some(service) = mdns {
+            cmd.env("LAMPSTAND_SYNC_MDNS", service);
         }
         let mut process = cmd.spawn().unwrap();
         let stdin = process.stdin.take().unwrap();
@@ -304,8 +312,17 @@ async fn two_processes_pair_find_converge_and_catch_up() {
     let dir = tempfile::tempdir().unwrap();
     let presenter_dir = dir.path().join("presenter");
     // mDNS is tried; networks (and CI runners) that block multicast fall
-    // back to the address, as a church would.
-    let mdns = std::env::var_os("LAMPSTAND_NO_MDNS").is_none();
+    // back to the address, as a church would. Under a service type of this
+    // run's own, so pairing without an address finds only this presenter:
+    // not a Lampstand running elsewhere on the network, nor another copy
+    // of this test, whose codes it would guess at and use up.
+    let service = format!(
+        "_lst-{}._tcp.local.",
+        &SongId::generate().uuid().simple().to_string()[24..]
+    );
+    let mdns = std::env::var_os("LAMPSTAND_NO_MDNS")
+        .is_none()
+        .then_some(service.as_str());
     let mut presenter = Presenter::spawn(&presenter_dir, free_port(), mdns);
     let address = format!("127.0.0.1:{}", presenter.port);
 
@@ -320,7 +337,7 @@ async fn two_processes_pair_find_converge_and_catch_up() {
     let code = presenter.expect("CODE");
     let start = Instant::now();
     let mut found = false;
-    while mdns && start.elapsed() < Duration::from_secs(5) {
+    while mdns.is_some() && start.elapsed() < Duration::from_secs(5) {
         if office.status().nearby.iter().any(|n| n.pairing) {
             found = true;
             break;
