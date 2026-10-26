@@ -67,6 +67,10 @@ pub const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../../training/decks/t2-sermon-thursday.pptx"),
     ),
     (
+        "t2-phones.pptx",
+        include_bytes!("../../../training/decks/t2-phones.pptx"),
+    ),
+    (
         "t2-sermon-sunday.pptx",
         include_bytes!("../../../training/decks/t2-sermon-sunday.pptx"),
     ),

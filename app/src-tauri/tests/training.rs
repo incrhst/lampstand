@@ -13,7 +13,7 @@ use lampstand_api::{
     TrainingVideoState,
 };
 use lampstand_app::handler::{App, Placement, WindowHost, TRAINING_READ_ONLY};
-use lampstand_app::training_videos::{self, OFFLINE};
+use lampstand_app::training_videos::{self, NOT_READY, OFFLINE};
 use lampstand_core::output::{BackgroundMode, OutputConfig, OutputId, OutputRole, OutputTarget};
 use lampstand_core::program::Content;
 use lampstand_core::safe_area::SafeArea;
@@ -462,12 +462,25 @@ fn run_through(h: &mut Harness, summary: &ServiceSummary, videos_play: bool) {
                 .find(|(c, _)| *c == cursor)
                 .unwrap_or_else(|| panic!("{}: unexpected {cursor:?}", summary.title));
             let content = h.app.program().content.clone();
+            // A video the website hasn't published yet (a lesson's video can
+            // follow a release) says so instead of playing.
+            let published = |blob| {
+                training_videos::published()
+                    .videos
+                    .iter()
+                    .any(|v| v.blake3 == blob)
+            };
             let fits = match (kind, &content) {
                 (ItemKind::Media { blob, .. }, Some(Content::Video { blob: playing, .. })) => {
-                    videos_play && blob == playing
+                    videos_play && published(*blob) && blob == playing
                 }
-                (ItemKind::Media { .. }, Some(Content::Text { slide })) => {
-                    !videos_play && slide.lines.join(" ") == OFFLINE
+                (ItemKind::Media { blob, .. }, Some(Content::Text { slide })) => {
+                    let said = slide.lines.join(" ");
+                    if published(*blob) {
+                        !videos_play && said == OFFLINE
+                    } else {
+                        said == NOT_READY || (!videos_play && said == OFFLINE)
+                    }
                 }
                 _ => matches!(
                     (kind, &content),

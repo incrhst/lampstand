@@ -16,8 +16,12 @@ Run the rehearsal twice, slowly then at real speed, with **Reset training** in P
 | 8 | Scripture: Psalm 23:1-3 (WEB) | 3. Scripture on the fly: "Turn to Romans 8:28." Press /, type Rom 8:28, Shift+Enter. Quick add is allowed in a training service while it is open for live; Reset training takes it out. The cue for 4 is given here, before the reading ends. |
 | 9 | Deck: Sermon (sent on Thursday) (`t2-sermon-thursday.pptx`) | 4. Updated deck (cued during the reading): "The preacher changed the verse slide this morning." Skip this deck: Shift+Down to the next, Enter. Its verse slide has the wrong reference on purpose. |
 | 10 | Deck: Sermon (updated Sunday morning) (`t2-sermon-sunday.pptx`) | The corrected deck, with builds. |
-| 11 | Header: "Debrief" | |
-| 12 | Deck: Debrief (`t2-debrief.pptx`, 2 slides) | Wrong slide? Desktop? Hardest surprise? Any yes: Reset training and run it again. |
+| 11 | Header: "Phones and tablets (10 minutes)" | Needs a phone on the same Wi-Fi. |
+| 12 | Video: Phones and tablets (`t2-phones.mp4`) | Not published yet: the item says "This training video isn't ready yet" until it is on the website. No release is needed when it arrives. |
+| 13 | Deck: Phones and tablets (`t2-phones.pptx`, 3 slides) | Run the service versus Speaker; how to connect one (Present › More › Connect a phone or tablet) and revoke it (Setup › Devices). |
+| 14 | Text: Practice: a speaker's phone | Connect the trainee's phone as Speaker for the Sunday sermon, step through it, see Next stop on the last slide and the cleared-screen message, then revoke it. |
+| 15 | Header: "Debrief" | |
+| 16 | Deck: Debrief (`t2-debrief.pptx`, 2 slides) | Wrong slide? Desktop? Hardest surprise? Any yes: Reset training and run it again. |
 
 On a real Sunday an updated deck reaches the operator because the planner adds the new file in
 Plan, from any computer on the team; the operator's job is to pick the right one, never to edit
