@@ -3,10 +3,10 @@
  "scenes": [
   {
    "type": "title",
-   "kicker": "Training 0",
+   "kicker": "Training Session 0",
    "heading": "Welcome to Lampstand",
    "sub": "Five minutes, for everyone on the team",
-   "say": "Welcome to Lampstand. This short training is for everyone on the team, not only the person at the projection computer.",
+   "say": "Welcome to Lampstand. This short video is for everyone on the team, not only the person at the projection computer.",
    "narration": "narration/t0-welcome/01.mp3",
    "durationSec": 9
   },
@@ -100,7 +100,7 @@
    ],
    "say": "Switch with Control and one for Plan, Control and two for Present, or Control and backslash to go back and forth. On a Mac, use Command.",
    "narration": "narration/t0-welcome/06.mp3",
-   "durationSec": 11.5
+   "durationSec": 13
   },
   {
    "type": "screenshot",
@@ -111,12 +111,12 @@
     {
      "x": 50,
      "y": 64,
-     "label": "Training 0 to 2, built in"
+     "label": "Training Sessions 0 to 2, built in"
     }
    ],
-   "say": "This training is itself a service. Training 1 teaches you to run one. Training 2 practises the surprises. They work offline and never change your own services.",
+   "say": "Training Session 0 is itself a service. Training Session 1 teaches you to run one. Training Session 2 practises the surprises. They work offline and never change your own services.",
    "narration": "narration/t0-welcome/07.mp3",
-   "durationSec": 14.5
+   "durationSec": 17
   },
   {
    "type": "cta",

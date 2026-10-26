@@ -1,4 +1,4 @@
-//! Training services (#190): a fresh install has Training 0 to 2, each runs
+//! Training services (#190): a fresh install has Training Sessions 0 to 2, each runs
 //! start to finish in Present with nothing but what is bundled, and they
 //! stay read-only, resettable, out of the repo (so out of sync) and out of
 //! CCLI reports.
@@ -143,9 +143,9 @@ fn a_fresh_install_has_training_0_to_2_after_the_churchs_own_services() {
     assert_eq!(
         titles,
         [
-            "Training 0: Orientation",
-            "Training 1: Run a service",
-            "Training 2: Confident operator"
+            "Training Session 0: Orientation",
+            "Training Session 1: Run a service",
+            "Training Session 2: Confident operator"
         ]
     );
     // Nothing of training is a document, so nothing of it can sync.
@@ -213,7 +213,7 @@ fn every_training_service_runs_start_to_finish_in_present() {
             }
         }
 
-        if !summary.title.starts_with("Training 0") {
+        if !summary.title.starts_with("Training Session 0") {
             // The lesson decks' click builds came through the importer.
             assert!(builds >= 3, "{}: {builds} build steps", summary.title);
         }

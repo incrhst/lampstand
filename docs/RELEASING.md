@@ -147,7 +147,7 @@ On a Linux container with a null sink the same example was recorded and measured
     - On a Mac: the Login Items entry appears and goes, and Lampstand opens after logging out and in. `pmset -g assertions` lists Lampstand while a screen is open.
     - On Windows: the Startup apps entry appears and goes. `powercfg /requests` still lists Lampstand under DISPLAY and SYSTEM after it has been idle for more than 10 seconds with a screen open.
   - **Pairing on a Mac:** two Macs pair, with the Local Network prompt shown once.
-  - **Training:** each of Training 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
+  - **Training:** each of Training Sessions 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
   - **The role bar:** looks right in the status bar and in Setup › Devices.
 
 ### Releasing 0.8.0: roles and sound

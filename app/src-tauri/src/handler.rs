@@ -2558,7 +2558,7 @@ fn fresh_key() -> String {
 }
 
 /// The services as the list shows them, in order.
-/// The training services, Training 0 first, listed after the church's own.
+/// The training services, Training Session 0 first, listed after the church's own.
 fn training_summaries(library: &Library) -> Vec<ServiceSummary> {
     library
         .training_services()

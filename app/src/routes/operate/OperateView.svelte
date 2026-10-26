@@ -76,7 +76,7 @@
   // upcoming ones first, then undated ones newest first.
   const OFFERED = 5;
   let services: ServiceSummary[] = $state([]);
-  /** Training 0 to 2 (#190), offered below the church's own services. */
+  /** Training Sessions 0 to 2 (#190), offered below the church's own services. */
   let trainingServices: ServiceSummary[] = $state([]);
   $effect(() => {
     if (live.loaded) return;
