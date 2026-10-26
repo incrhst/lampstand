@@ -137,7 +137,7 @@ On a Linux container with a null sink the same example was recorded and measured
 
 ### Releasing 0.9.2: the Present redesign
 
-- **No sync change.** Still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together.
+- **No sync change.** Still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together and a church can update them one at a time. #253 changes when a newly paired computer starts dialling and turns away one unpaired mid-handshake, with nothing new on the wire.
 - **Publish the training videos with the release, not before.** They were re-rendered for the new layout (the right side instead of the strip on top and the More menu, Focus in the menu bar, coloured song sections). 0.9.1 downloads its training videos from the website too, so publishing them early shows 0.9.1 operators a screen they don't have. On release day, after publishing the GitHub release: `node training/build.mjs publish`, then merge `training/` and `site/training/` to `main`. The decks, the cheat sheet and the training services' notes are bundled and change with the release itself.
 - **A quick look in the desktop app before tagging** is enough: 0.9.x is pre-release, and testing on real projectors and second screens waits for 1.0.0. The redesign was checked in a browser against the capture mock; the things worth a glance:
   - F turns Focus on and off in Plan and in Present (not while typing in a field); Esc leaves it; the Focus button sits top right; Plan | Present in each Focus pill switches mode and stays in Focus.
@@ -145,6 +145,7 @@ On a Linux container with a null sink the same example was recorded and measured
   - Present's right side scrolls on its own beside the wall. Remotes, Clear and Keys fold and stay folded after a restart. Clicker mode, the logo bug and the safe area guide switch from there; the OBS control opens the OBS drawer; Close service asks first when something is on air.
   - Song cards show their colours: verse blue, chorus teal, pre-chorus violet, bridge orange, on the wall, a phone's wall and in the song editor.
 - **What the notes should say**, under `**What's new in 0.9.2**`: "Present is calmer: the controls moved to the right side, in boxes that fold away. Focus (F) is in the bar at the top, works in Plan too, and lets you switch between Plan and Present without leaving it. Song slides are coloured by part: verse, chorus, pre-chorus and bridge."
+- **Where the old controls went**, for the notes: Show, Idle and Blank, Safe area guide, Logo bug and Change idle screen are in the Screen card; Clear text and Clear all in Clear; Connect a phone or tablet and Clicker mode in Remotes; Keys is its own card; Close service moved from the top bar to the bottom of the right side.
 
 ### Releasing 0.9.1: training videos download, the phone wall and a speaker's phone
 
