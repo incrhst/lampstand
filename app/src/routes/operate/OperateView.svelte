@@ -35,7 +35,7 @@
   import { formatWhen } from "../../lib/when";
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
   import { steppedDown, windowToDemote } from "../../lib/primary";
-  import { KEYS as keys, modLabel } from "../../lib/shortcuts";
+  import { isTyping, KEYS as keys, modLabel } from "../../lib/shortcuts";
   import ModeSwitch from "../../lib/kit/ModeSwitch.svelte";
   import SideCard from "../../lib/kit/SideCard.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
@@ -64,8 +64,8 @@
   // OBS only appears for devices that stream (lib/obs.ts).
   let pill = $derived(obsPill(live.obs));
 
-  // The OBS drawer (T91), from the strip or with O. Closing it gives focus
-  // back to the strip, so the keyboard carries on where it was.
+  // The OBS drawer (T91), from the OBS control or with O. Closing it gives focus
+  // back to the control, so the keyboard carries on where it was.
   let obsOpen = $state(false);
   let obsToggle: HTMLButtonElement | undefined = $state();
   function setObsOpen(open: boolean) {
@@ -167,7 +167,7 @@
   // idle screen up without ending the service; Black and Idle toggle in the
   // engine, so choosing one sends the toggle that gets there. Choosing Show
   // again re-shows the live slide, which brings text back after Clear text.
-  // The church's logo is the logo bug (More), not a screen of its own.
+  // The church's logo is the logo bug (the Screen card), not a screen of its own.
   const modes = [
     { id: "None", label: "Show" },
     { id: "Idle", label: "Idle" },
@@ -187,12 +187,11 @@
   // Space or Right: Next. Left: Previous. Full stop: Black. 1 to 9 jump to
   // that verse; C, B, P, T, I, E to the next chorus, bridge, pre-chorus,
   // tag, intro or ending of the live song. Typing in a field never
-  // triggers a shortcut.
+  // triggers a shortcut. A switch (Logo bug, Safe area guide) is not a
+  // field: Space stays Next there, and does not flip the switch.
   function onkeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
-      return;
-    }
+    if (isTyping(target)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
@@ -676,7 +675,10 @@
             <ModeSwitch current="operate" {mod} {onplan} />
             <span class="state" role="status"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
             {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
-            <!-- The panic controls stay within reach in focus. -->
+            <!-- Labelled controls, so Focus never relies on keys alone; the
+                 panic controls stay within reach. -->
+            <Button size="small" icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
+            <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
             <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
             <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
             <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the menu bar and the sidecard again (F or Esc)">Exit focus</Button>
@@ -753,145 +755,156 @@
           {/each}
         </div>
         {#if !live.focus}
+        <!-- Wide, one column: the notices, On air, Sound, then the rest.
+             Narrow, On air stands on its own beside a column of the rest
+             (Sound first) that scrolls, so Previous, Next, Blank and Stop
+             the sound now always stay in view. -->
         <aside class="sidecard" aria-label="On air and the room">
-          {#if screensOn === 0}<div class="no-screen">{@render noScreen()}</div>{/if}
-          {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
-          {#if loadedTraining && trainingLine}
-            <p class="training-note" role="status">
-              <Icon name={trainingVideosBusy(live.trainingVideos) ? "info" : "alert"} size={14} />{trainingLine}
-            </p>
-          {/if}
-
-          <SideCard title="On air">
-            <figure class="monitor">
-              <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
-                <SlidePreview
-                  lines={live.shownSlide?.lines ?? []}
-                  footer={live.shownSlide?.footer ?? null}
-                  image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
-                  overlay={live.overlay}
-                  safeArea={output?.safe_area}
-                  {showGuide}
-                  size="small"
-                  idle={live.idle || live.overlay === "Idle" ? look.idle : null}
-                  brand={look.brand}
-                  empty="Nothing on air"
-                />
+          <div class="side-onair">
+            <SideCard title="On air">
+              <figure class="monitor">
+                <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
+                  <SlidePreview
+                    lines={live.shownSlide?.lines ?? []}
+                    footer={live.shownSlide?.footer ?? null}
+                    image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
+                    overlay={live.overlay}
+                    safeArea={output?.safe_area}
+                    {showGuide}
+                    size="small"
+                    idle={live.idle || live.overlay === "Idle" ? look.idle : null}
+                    brand={look.brand}
+                    empty="Nothing on air"
+                  />
+                </div>
+              </figure>
+              <div class="wall-now">
+                <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+                <span class="muted wall-where">
+                  {#if live.overlay === "Idle" && liveItem && live.live}
+                    {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
+                  {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+                </span>
               </div>
-            </figure>
-            <div class="wall-now">
-              <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-              <span class="muted wall-where">
-                {#if live.overlay === "Idle" && liveItem && live.live}
-                  {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
-                {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
-              </span>
-            </div>
-            <div class="transport">
-              <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
-              <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
-              <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
-            </div>
-            {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
-              {@const left = live.liveSlide.steps - live.live.step}
-              <section class="wall-steps" aria-label="Builds on this slide">
-                <p class="wall-steps-head muted">{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}</p>
-                <figure>
-                  {#if clickNext}
-                    <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
-                  {:else}
-                    <SlidePreview empty="End of service" size="small" />
-                  {/if}
-                  <figcaption class="muted">Next click</figcaption>
-                </figure>
-              </section>
-            {/if}
-          </SideCard>
-
-          <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
-            <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
-            <p class="side-line muted"><Icon name="monitor" size={14} />{output?.name ?? "No screen yet"}</p>
-            <Switch checked={showGuide} label="Safe area guide" onchange={() => { showGuide = !showGuide; used("safe-area"); }} />
-            <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Setup)"} onchange={toggleBug} />
-            {#if onidle}<button type="button" class="side-row" onclick={onidle}><Icon name="image" size={14} />Idle screen<span class="side-hint">Change</span></button>{/if}
-          </SideCard>
-
-          <SideCard title="The room">
-            {#if pill}
-              <!-- The OBS controller: what OBS has on air and what the next
-                   item switches to. Opens the drawer of scenes, preview and
-                   mutes. The connection's status sits quietly in the footer. -->
-              <button
-                bind:this={obsToggle}
-                class="obs-control"
-                class:open={obsOpen}
-                onclick={() => setObsOpen(!obsOpen)}
-                aria-expanded={obsOpen}
-                aria-controls="obs-drawer"
-                title="Control OBS: switch scenes, preview them, mute audio (O)"
-              >
-                <span class="obs-tag"><Icon name="remote" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
-                {#if obsOn && live.obs?.program_scene}
-                  <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
-                  {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
-                {:else}
-                  <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
-                {/if}
-                <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
-              </button>
-            {/if}
-            <button type="button" class="side-row" title="Quick add a song or scripture after what is on air" onclick={() => { quickAddOpen = true; used("quick-add"); }}><Icon name="plus" size={14} />Quick add<kbd>/</kbd></button>
-          </SideCard>
-
-          <SoundPanel {items} {service} />
-          {#if live.loaded && liveSection}
-            <LiveLoop loaded={live.loaded} section={liveSection} />
-          {/if}
-
-          <SideCard title="Remotes" key="lampstand.present.remotes" open={false} summary={clicker ? "Clicker on" : undefined}>
-            <Switch checked={clicker} label="Clicker mode" onchange={toggleClicker} />
-            <button type="button" class="side-row" onclick={() => (connectOpen = true)}><Icon name="phone" size={14} />Connect a phone or tablet</button>
-          </SideCard>
-
-          <SideCard title="Clear" key="lampstand.present.clear" open={false}>
-            <div class="clear">
-              <Button onclick={() => command("ClearText")} title="Clear the text and keep the background">Text</Button>
-              <Button onclick={() => command("ClearAll")} title="Clear the text, background and overlay">Everything</Button>
-            </div>
-          </SideCard>
-
-          <SideCard title="Keys" key="lampstand.present.keys" open={false}>
-            <dl class="keys">
-              {#each keys as [k, what]}
-                <dt>{k}</dt>
-                <dd>{what}</dd>
-              {/each}
-              <dt>F</dt>
-              <dd>Focus: the cards only</dd>
-              {#if pill}
-                <dt>O</dt>
-                <dd>Control OBS</dd>
+              <div class="transport">
+                <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
+                <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
+                <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+              </div>
+              {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
+                {@const left = live.liveSlide.steps - live.live.step}
+                <section class="wall-steps" aria-label="Builds on this slide">
+                  <p class="wall-steps-head muted">{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}</p>
+                  <figure>
+                    {#if clickNext}
+                      <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
+                    {:else}
+                      <SlidePreview empty="End of service" size="small" />
+                    {/if}
+                    <figcaption class="muted">Next click</figcaption>
+                  </figure>
+                </section>
               {/if}
-              <dt>{mod}1 · {mod}2 · {mod}\</dt>
-              <dd>Plan · Present · switch between them</dd>
-            </dl>
-          </SideCard>
+            </SideCard>
+          </div>
 
-          {#if tip}
-            <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
-          {/if}
+          <div class="side-rest">
+            {#if screensOn === 0}<div class="no-screen side-notice">{@render noScreen()}</div>{/if}
+            {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice side-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
+            {#if loadedTraining && trainingLine}
+              <p class="training-note side-notice" role="status">
+                <Icon name={trainingVideosBusy(live.trainingVideos) ? "info" : "alert"} size={14} />{trainingLine}
+              </p>
+            {/if}
 
-          {#if confirmClose}
-            <div class="close">
-              <span class="close-ask">Something is on air. Close the service?</span>
-              <span class="close-buttons">
-                <Button size="small" variant="danger" onclick={closeService}>Close service</Button>
-                <Button size="small" variant="ghost" onclick={() => (confirmClose = false)}>Keep open</Button>
-              </span>
-            </div>
-          {:else}
-            <button type="button" class="side-row quiet" title="Put the service away; it stays in Plan" onclick={askClose}><Icon name="x" size={14} />Close service</button>
-          {/if}
+            <!-- Straight after On air, so Stop the sound now is never below
+                 the fold; it stays shown even with the Sound box folded. -->
+            <SoundPanel {items} {service} />
+
+            <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
+              <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
+              <p class="side-line muted"><Icon name="monitor" size={14} />{output?.name ?? "No screen yet"}</p>
+              <Switch checked={showGuide} label="Safe area guide" onchange={() => { showGuide = !showGuide; used("safe-area"); }} />
+              <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Setup)"} onchange={toggleBug} />
+              {#if onidle}<button type="button" class="side-row" onclick={onidle}><Icon name="image" size={14} />Idle screen<span class="side-hint">Change</span></button>{/if}
+            </SideCard>
+
+            <SideCard title="The room">
+              {#if pill}
+                <!-- The OBS controller: what OBS has on air and what the next
+                     item switches to. Opens the drawer of scenes, preview and
+                     mutes. The connection's status sits quietly in the footer. -->
+                <button
+                  bind:this={obsToggle}
+                  class="obs-control"
+                  class:open={obsOpen}
+                  onclick={() => setObsOpen(!obsOpen)}
+                  aria-expanded={obsOpen}
+                  aria-controls="obs-drawer"
+                  title="Control OBS: switch scenes, preview them, mute audio (O)"
+                >
+                  <span class="obs-tag"><Icon name="remote" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
+                  {#if obsOn && live.obs?.program_scene}
+                    <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
+                    {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
+                  {:else}
+                    <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
+                  {/if}
+                  <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
+                </button>
+              {/if}
+              <button type="button" class="side-row" title="Quick add a song or scripture after what is on air" onclick={() => { quickAddOpen = true; used("quick-add"); }}><Icon name="plus" size={14} />Quick add<kbd>/</kbd></button>
+            </SideCard>
+
+            {#if live.loaded && liveSection}
+              <LiveLoop loaded={live.loaded} section={liveSection} />
+            {/if}
+
+            <SideCard title="Remotes" key="lampstand.present.remotes" open={false} summary={clicker ? "Clicker on" : undefined}>
+              <Switch checked={clicker} label="Clicker mode" onchange={toggleClicker} />
+              <button type="button" class="side-row" onclick={() => (connectOpen = true)}><Icon name="phone" size={14} />Connect a phone or tablet</button>
+            </SideCard>
+
+            <SideCard title="Clear" key="lampstand.present.clear" open={false}>
+              <div class="clear">
+                <Button onclick={() => command("ClearText")} title="Clear the text and keep the background">Text</Button>
+                <Button onclick={() => command("ClearAll")} title="Clear the text, background and overlay">Everything</Button>
+              </div>
+            </SideCard>
+
+            <SideCard title="Keys" key="lampstand.present.keys" open={false}>
+              <dl class="keys">
+                {#each keys as [k, what]}
+                  <dt>{k}</dt>
+                  <dd>{what}</dd>
+                {/each}
+                <dt>F</dt>
+                <dd>Focus: the cards only</dd>
+                {#if pill}
+                  <dt>O</dt>
+                  <dd>Control OBS</dd>
+                {/if}
+                <dt>{mod}1 · {mod}2 · {mod}\</dt>
+                <dd>Plan · Present · switch between them</dd>
+              </dl>
+            </SideCard>
+
+            {#if tip}
+              <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
+            {/if}
+
+            {#if confirmClose}
+              <div class="close">
+                <span class="close-ask">Something is on air. Close the service?</span>
+                <span class="close-buttons">
+                  <Button size="small" variant="danger" onclick={closeService}>Close service</Button>
+                  <Button size="small" variant="ghost" onclick={() => (confirmClose = false)}>Keep open</Button>
+                </span>
+              </div>
+            {:else}
+              <button type="button" class="side-row quiet" title="Put the service away; it stays in Plan" onclick={askClose}><Icon name="x" size={14} />Close service</button>
+            {/if}
+          </div>
         </aside>
         {/if}
       </section>
@@ -1293,6 +1306,14 @@
   .sidecard .no-screen {
     margin-bottom: 0;
   }
+  /* Wide: the two parts are one column, with the notices above On air. */
+  .side-onair,
+  .side-rest {
+    display: contents;
+  }
+  .side-notice {
+    order: -1;
+  }
   .sidecard :global(.sound) {
     margin: 0;
     background: var(--panel);
@@ -1376,28 +1397,52 @@
     margin: 0;
     color: var(--muted);
   }
-  /* A narrow window: the sidecard above the wall, the two scrolling together. */
+  /* A narrow window: the sidecard above the wall, On air beside a column of
+     the rest. The wall scrolls on its own, as it does when wide, and the
+     sidecard is a bounded block: On air stays put and the rest scrolls,
+     Sound first. So following the service down the wall never takes
+     Previous, Next, Blank or Stop the sound now off screen (nor the Focus
+     pill, which sits over the wall). */
   @media (max-width: 900px) {
     .wall-pane {
       flex-direction: column;
-      overflow-y: auto;
     }
     .sidecard {
       order: -1;
-      flex: none;
-      overflow: visible;
-      padding: 0.75rem 1rem 0;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-      align-items: start;
+      flex: 0 1 auto;
+      max-height: max(45%, 18.5rem);
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--line);
+      flex-direction: row;
+      overflow: hidden;
+    }
+    .side-onair,
+    .side-rest {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    .side-onair {
+      display: block;
+    }
+    .side-rest {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .side-notice {
+      order: 0;
+    }
+    .side-rest > :global(.sound) {
+      order: -1;
+    }
+    .side-rest > :global(*) {
+      flex-shrink: 0;
     }
     .sidecard .monitor,
     .sidecard .wall-steps figure {
-      max-width: 18rem;
-    }
-    .wall-pane > .wall-body {
-      flex: none;
-      overflow: visible;
+      max-width: 12rem;
     }
   }
   /* Focus: the cards only, with what is on air and the way out in a pill. */
@@ -1415,6 +1460,12 @@
     border-radius: 999px;
     background: var(--panel);
     font-size: 0.75rem;
+  }
+  /* The smallest windows: the buttons keep their words, the key hints go. */
+  @media (max-width: 780px) {
+    .focus-pill :global(kbd) {
+      display: none;
+    }
   }
   /* Room above the first row, so the pill never covers a card. */
   .focus-pill ~ .wall-body {

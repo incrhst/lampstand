@@ -31,7 +31,31 @@ export function modLabel(platform: string): string {
   return /mac|iphone|ipad/i.test(platform) ? "⌘" : "Ctrl+";
 }
 
-/** The keys of the Present screen, for the More menu and the Help screen. */
+/** The parts of a key press's target that say whether it is typing. */
+export interface TargetLike {
+  tagName: string;
+  type?: string;
+  isContentEditable?: boolean;
+}
+
+/**
+ * True when a key press lands in a control that takes text, so the plain
+ * keys of Present and Focus leave it alone. A switch or radio button is not
+ * typing: after clicking Logo bug or Safe area guide, Space must still be
+ * Next (and must not flip the switch), and the arrows, F and the jump keys
+ * must still work.
+ */
+export function isTyping(target: TargetLike | null | undefined): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName.toUpperCase();
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag !== "INPUT") return false;
+  const type = (target.type ?? "text").toLowerCase();
+  return type !== "checkbox" && type !== "radio";
+}
+
+/** The keys of the Present screen, for the sidecard's Keys card and the Help screen. */
 export const KEYS: [string, string][] = [
   ["← → or Space", "Next and previous"],
   [".", "Blank"],

@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { modLabel, screenForKey, type KeyLike } from "./shortcuts.ts";
+import { isTyping, modLabel, screenForKey, type KeyLike } from "./shortcuts.ts";
+
+test("a switch or radio button is not typing, so Present's keys still work", () => {
+  assert.equal(isTyping({ tagName: "INPUT", type: "checkbox" }), false);
+  assert.equal(isTyping({ tagName: "INPUT", type: "radio" }), false);
+  assert.equal(isTyping({ tagName: "BUTTON" }), false);
+  assert.equal(isTyping({ tagName: "DIV" }), false);
+  assert.equal(isTyping(null), false);
+});
+
+test("text fields, text areas, menus and editable text are typing", () => {
+  assert.equal(isTyping({ tagName: "INPUT", type: "text" }), true);
+  assert.equal(isTyping({ tagName: "INPUT", type: "search" }), true);
+  assert.equal(isTyping({ tagName: "INPUT" }), true);
+  assert.equal(isTyping({ tagName: "TEXTAREA" }), true);
+  assert.equal(isTyping({ tagName: "SELECT" }), true);
+  assert.equal(isTyping({ tagName: "DIV", isContentEditable: true }), true);
+});
 
 const press = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,

@@ -14,7 +14,7 @@
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
   import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
-  import { modLabel, screenForKey } from "./lib/shortcuts";
+  import { isTyping, modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning } from "./lib/presenting";
   import { heldRoles, streamOfflineLine, uncheckedRoles, withRoster } from "./lib/roles";
   import RoleBar from "./lib/kit/RoleBar.svelte";
@@ -50,9 +50,12 @@
       return;
     }
     // F: Focus in Plan and Present. Esc leaves it in Plan; Present's own
-    // Esc closes its OBS drawer first. Typing in a field never triggers it.
+    // Esc closes its OBS drawer first. Typing in a field never triggers it
+    // (a switch is not a field). With a dialog open, such as the song
+    // editor, F and Esc are the dialog's: hiding it would lose its edits.
     const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+    if (isTyping(target)) return;
+    if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey || !focusable) return;
     if (e.key === "f" || e.key === "F") {
       e.preventDefault();
