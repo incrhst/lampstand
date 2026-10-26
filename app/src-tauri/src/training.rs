@@ -1,4 +1,4 @@
-//! Training services (#190): Training 0 to 2, bundled with the app and
+//! Training services (#190): Training Sessions 0 to 2, bundled with the app and
 //! built from `training/` at every start, so a fresh install has them,
 //! offline, and an update brings the new ones.
 //!
@@ -331,9 +331,9 @@ mod tests {
         assert_eq!(
             titles,
             [
-                "Training 0: Orientation",
-                "Training 1: Run a service",
-                "Training 2: Confident operator"
+                "Training Session 0: Orientation",
+                "Training Session 1: Run a service",
+                "Training Session 2: Confident operator"
             ]
         );
     }
