@@ -422,6 +422,8 @@ pub struct SyncNode {
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
     discovery: Mutex<Option<Discovery>>,
+    /// The mDNS service type to advertise and browse ([`SERVICE_TYPE`]).
+    service: Mutex<String>,
     roles: Mutex<Roles>,
     /// Whether another device was operating this one at the last check, so
     /// the app is told when that changes.
@@ -588,6 +590,7 @@ impl SyncNode {
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
+            service: Mutex::new(SERVICE_TYPE.into()),
             roles: Mutex::new(roles),
             last_driven: Mutex::new(false),
             contacts: Mutex::new(saved::load_contacts(&dir)),
@@ -607,6 +610,15 @@ impl SyncNode {
             started: Instant::now(),
             me: me.clone(),
         }))
+    }
+
+    /// Advertises and browses `service` (`_name._tcp.local.`) instead of
+    /// [`SERVICE_TYPE`], before [`SyncNode::start`]: a test that uses mDNS
+    /// then sees only its own devices, not a Lampstand elsewhere on the
+    /// network or another copy of the test.
+    #[doc(hidden)]
+    pub fn set_mdns_service(&self, service: &str) {
+        *lock(&self.service) = service.into();
     }
 
     /// Starts pushing changes, a dialler per paired device and, with
@@ -876,7 +888,6 @@ impl SyncNode {
         };
         if peer.paired_now {
             self.bump();
-            self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
             lock(&self.roles).seed_from(peer.device);
             // The device that showed the code is the main machine: it takes
@@ -889,7 +900,13 @@ impl SyncNode {
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
         let link = link.encrypt(keys);
-        if let Some(session) = self.begin(link, &peer, peer.device, None).await {
+        let session = self.begin(link, &peer, peer.device, None).await;
+        // Only now: a dialler started before this connection is registered
+        // finds none and opens a second one (see `dial`).
+        if peer.paired_now {
+            self.ensure_dialler(peer.device);
+        }
+        if let Some(session) = session {
             let _ = session.await;
         }
     }
@@ -958,14 +975,19 @@ impl SyncNode {
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, Some(address.to_string()));
         if peer.paired_now {
             self.bump();
-            self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
             lock(&self.roles).seed_from(peer.device);
         }
-        match self
+        let session = self
             .begin(link, &peer, self.device(), Some(address.to_string()))
-            .await
-        {
+            .await;
+        // Only once this connection is registered: a dialler started before
+        // finds no connection and dials the same address again, and the two
+        // sides can keep different ones of the pair and close the other.
+        if peer.paired_now {
+            self.ensure_dialler(peer.device);
+        }
+        match session {
             Some(session) => Ok((peer, session)),
             // Already connected the other way, which wins: fine.
             None => Ok((peer, tokio::spawn(async {}))),
@@ -1000,7 +1022,8 @@ impl SyncNode {
     }
 
     /// Registers a session for `peer` and spawns it, unless a connection
-    /// that wins the tie-break is already open.
+    /// that wins the tie-break is already open or `peer` is no longer
+    /// paired.
     async fn begin(
         &self,
         link: Link,
@@ -1010,8 +1033,13 @@ impl SyncNode {
     ) -> Option<tokio::task::JoinHandle<()>> {
         loop {
             let old = {
+                // Trust is checked under the peers lock, and held across it:
+                // a handshake can pass just before `unpair` and register just
+                // after it, and that session, which `unpair` never saw to
+                // stop, would stay up for good, kept alive by its beats.
+                let trust = lock(&self.trust);
                 let mut peers = lock(&self.peers);
-                if peers.offline {
+                if peers.offline || !trust.is_paired(peer.device) {
                     return None;
                 }
                 match peers.sessions.get(&peer.device) {
@@ -1043,6 +1071,7 @@ impl SyncNode {
                         // believed, however long this process has run.
                         self.note_session_begin(&mut peers, peer.device);
                         drop(peers);
+                        drop(trust);
                         self.bump();
                         self.driving_changed();
                         let node = self.arc();
