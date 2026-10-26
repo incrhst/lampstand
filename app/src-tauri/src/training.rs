@@ -29,7 +29,7 @@ use lampstand_library::Library;
 use serde::Deserialize;
 use uuid::Uuid;
 
-/// The service definitions, Training 0 first.
+/// The service definitions, Training Session 0 first.
 pub const SERVICES: [&str; 3] = [
     include_str!("../../../training/services/training-0.json"),
     include_str!("../../../training/services/training-1.json"),

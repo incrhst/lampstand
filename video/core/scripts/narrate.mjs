@@ -18,7 +18,10 @@ const rate = val("--rate", "0.9");
 const pronFile = join(dirname(fileURLToPath(import.meta.url)), "..", "pronunciations.json");
 const pronIpa = JSON.parse(readFileSync(pronFile, "utf8")).ipa ?? {};
 // Only lines that use a mapped word depend on the map, so adding an entry re-voices just those lines.
-const pronFor = (say) => { const e = Object.entries(pronIpa).filter(([k]) => say.includes(k)); return e.length ? `|${JSON.stringify(e)}` : ""; };
+// The same whole-word, any-case match narrate.py uses, so the cache key
+// changes exactly when the voice would say a line differently.
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const pronFor = (say) => { const e = Object.entries(pronIpa).filter(([k]) => new RegExp(`(?<!\\w)${escapeRe(k)}(?!\\w)`, "i").test(say)); return e.length ? `|${JSON.stringify(e)}` : ""; };
 const slug = basename(file, ".json");
 const dir = resolve("public/narration", slug);
 mkdirSync(dir, { recursive: true });
