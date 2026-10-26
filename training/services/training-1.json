@@ -1,9 +1,9 @@
 {
  "id": "01920000-0000-7000-8000-747261696e31",
- "title": "Training 1: Run a service",
+ "title": "Training Session 1: Run a service",
  "items": [
   {"header": {"title": "Welcome. Press Space to start"},
-   "notes": "Training 1 takes about ten minutes. It ends with a practice service run with no wrong slide and no desktop showing."},
+   "notes": "Training Session 1 takes about ten minutes. It ends with a practice service run with no wrong slide and no desktop showing."},
   {"video": {"file": "t1-welcome.mp4", "name": "Welcome.mp4"},
    "notes": "Press Space when the video ends."},
   {"deck": {"file": "t1-present-screen.pptx", "title": "The Present screen"},

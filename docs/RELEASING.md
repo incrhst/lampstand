@@ -137,10 +137,10 @@ On a Linux container with a null sink the same example was recorded and measured
 
 ### Releasing 0.9.1: training videos download
 
-- **The installer no longer carries the training videos.** It is about 6.8 MB smaller. The training videos are on the website (`site/training/`, https://lampstand.dbain.com/training/) and download the first time a training service is opened. Decks, songs and scripture are still bundled, so the rest of each training service runs offline.
+- **The installer no longer carries the training videos.** It is about 6.9 MB smaller. The training videos are on the website (`site/training/`, https://lampstand.dbain.com/training/) and download the first time a training service is opened. Decks, songs and scripture are still bundled, so the rest of each training service runs offline.
 - **What the notes should say**, under `**What's new in 0.9.1**`: "The training videos download the first time you open a training service, so the first time needs the internet. Without it, each video says so and the rest of the training service still runs. Once downloaded, they work offline."
 - **A video can follow the release.** A training service item may name a video the website does not list yet. Until it does, the item shows "This training video isn't ready yet. Check back soon." and the rest of the service runs; publish the video later and installed copies download it with no update. Merge `site/training/` changes before tagging for every video that is ready. The release reads the manifest it was built with until it first reaches the website.
-- **Check before tagging**, on a Mac and on Windows: with the network off, open Training 1 and run it to the end (each video item shows "The training videos download the first time. Connect to the internet to watch them."). Turn the network on, open it again, watch Present show the download, and play a video through an output window. Turn the network off again and quit: the videos still play after a restart.
+- **Check before tagging**, on a Mac and on Windows: with the network off, open Training Session 1 and run it to the end (each video item shows "The training videos download the first time. Connect to the internet to watch them."). Turn the network on, open it again, watch Present show the download, and play a video through an output window. Turn the network off again and quit: the videos still play after a restart.
 - **Updating a training video needs no release.** Render it, run `node training/build.mjs publish`, and merge `training/` and `site/training/` to `main`. Installed copies fetch it the next time a training service is opened a day after their last check, or at once after Reset training. See `training/README.md`.
 
 ### Releasing 0.9.0: sync protocol 10
@@ -155,7 +155,7 @@ On a Linux container with a null sink the same example was recorded and measured
     - On a Mac: the Login Items entry appears and goes, and Lampstand opens after logging out and in. `pmset -g assertions` lists Lampstand while a screen is open.
     - On Windows: the Startup apps entry appears and goes. `powercfg /requests` still lists Lampstand under DISPLAY and SYSTEM after it has been idle for more than 10 seconds with a screen open.
   - **Pairing on a Mac:** two Macs pair, with the Local Network prompt shown once.
-  - **Training:** each of Training 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
+  - **Training:** each of Training Sessions 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
   - **The role bar:** looks right in the status bar and in Setup › Devices.
 
 ### Releasing 0.8.0: roles and sound

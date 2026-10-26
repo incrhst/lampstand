@@ -1,0 +1,6 @@
+{
+  "_comment": "Shared by every narration (core/scripts/narrate.mjs passes it to narrate.py --pronunciations). ipa entries are Google custom pronunciations (en-US voices only) and match the exact, case-sensitive phrase. Present is Lampstand's mode name, said as the verb: pri-ZENT, never PREH-zent.",
+  "ipa": {
+    "Present": "prɪˈzɛnt"
+  }
+}

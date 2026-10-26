@@ -57,31 +57,31 @@ const shots = {
   // Plan with a training service chosen: read-only, Reset training.
   "plan": async (p) => {
     await p.getByRole("button", { name: "Plan", exact: true }).first().click();
-    await p.getByText("Training 1: Run a service").first().click();
+    await p.getByText("Training Session 1: Run a service").first().click();
   },
-  // Training 1, Amazing Grace on air.
-  "song": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 3, 1); },
+  // Training Session 1, Amazing Grace on air.
+  "song": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); },
   // The same in focus (F): the cards only.
-  "focus": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
+  "focus": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
   // The same with Idle chosen: the idle screen is up, the service stays open.
   "idle": async (p) => {
-    await openTraining(p, "Training 1: Run a service");
+    await openTraining(p, "Training Session 1: Run a service");
     await go(p, 3, 1);
     await p.getByRole("radio", { name: "Idle" }).or(p.getByRole("button", { name: "Idle", exact: true })).first().click();
   },
-  // Training 1, the sermon deck one click into slide 2's builds: the builds panel shows.
-  "deck": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 8, 2); },
+  // Training Session 1, the sermon deck one click into slide 2's builds: the builds panel shows.
+  "deck": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 8, 2); },
   // The same, blanked with the full stop.
-  "blank": async (p) => { await openTraining(p, "Training 1: Run a service"); await go(p, 8, 2); await p.keyboard.press("."); },
-  // Training 2: Shift+Down has chosen Amazing Grace while Holy, Holy, Holy is on air.
+  "blank": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 8, 2); await p.keyboard.press("."); },
+  // Training Session 2: Shift+Down has chosen Amazing Grace while Holy, Holy, Holy is on air.
   "choose": async (p) => {
-    await openTraining(p, "Training 2: Confident operator");
+    await openTraining(p, "Training Session 2: Confident operator");
     await go(p, 1);
     await p.keyboard.press("Shift+ArrowDown");
   },
-  // Training 2: Quick add with Romans 8:28 typed.
+  // Training Session 2: Quick add with Romans 8:28 typed.
   "quickadd": async (p) => {
-    await openTraining(p, "Training 2: Confident operator");
+    await openTraining(p, "Training Session 2: Confident operator");
     await go(p, 3);
     await p.keyboard.press("/");
     await p.keyboard.type("rom 8:28", { delay: 20 });

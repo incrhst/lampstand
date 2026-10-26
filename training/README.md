@@ -1,6 +1,6 @@
 # Training services
 
-Lampstand teaches the Present screen by having a volunteer run it (#190). Training 0, 1 and 2 are
+Lampstand teaches the Present screen by having a volunteer run it (#190). Training Sessions 0, 1 and 2 are
 services bundled with the app: they are in every install, are read-only in Plan, have **Reset
 training**, stay out of CCLI reports and never sync. Present lists them under "Learn by running it";
 Plan lists them under Training.
@@ -11,11 +11,11 @@ installer: they are on the website and download the first time a training servic
 
 | Service | For | Time | Ends with | Outline |
 | --- | --- | --- | --- | --- |
-| Training 0: Orientation | Everyone | 5 min | Plan vs Present, what Setup is for | [outlines/training-0.md](outlines/training-0.md) |
-| Training 1: Run a service | Operators | 10 min | A practice service with no wrong slide and no desktop showing | [outlines/training-1.md](outlines/training-1.md) |
-| Training 2: Confident operator | Operators | 30 min | Recovering from five surprises | [outlines/training-2.md](outlines/training-2.md) |
+| Training Session 0: Orientation | Everyone | 5 min | Plan vs Present, what Setup is for | [outlines/training-0.md](outlines/training-0.md) |
+| Training Session 1: Run a service | Operators | 10 min | A practice service with no wrong slide and no desktop showing | [outlines/training-1.md](outlines/training-1.md) |
+| Training Session 2: Confident operator | Operators | 30 min | Recovering from five surprises | [outlines/training-2.md](outlines/training-2.md) |
 
-Training 3 to 5 (Planner, Setup and the stream, Admin) are for a later release.
+Training Sessions 3 to 5 (Planner, Setup and the stream, Admin) are for a later release.
 
 ## What is here
 
@@ -72,7 +72,7 @@ The website publishes the training videos. `site/training/` holds them and a man
 {
   "version": 1,
   "videos": [
-    { "id": "t1-welcome", "file": "t1-welcome.mp4", "size": 691112, "blake3": "8929…ec85" }
+    { "id": "t1-welcome", "file": "t1-welcome.mp4", "size": 702064, "blake3": "90ff…c6f9" }
   ]
 }
 ```

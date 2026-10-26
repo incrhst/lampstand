@@ -1,9 +1,9 @@
 {
  "id": "01920000-0000-7000-8000-747261696e32",
- "title": "Training 2: Confident operator",
+ "title": "Training Session 2: Confident operator",
  "items": [
-  {"header": {"title": "Training 2: Confident operator (30 minutes)"},
-   "notes": "Take Training 1 first. The trainer reads the surprises from these notes. Do not tell the trainee which one is coming."},
+  {"header": {"title": "Training Session 2: Confident operator (30 minutes)"},
+   "notes": "Take Training Session 1 first. The trainer reads the surprises from these notes. Do not tell the trainee which one is coming."},
   {"video": {"file": "t2-five-surprises.mp4", "name": "Five surprises.mp4"},
    "notes": "Press Space when the video ends."},
   {"deck": {"file": "t2-briefing.pptx", "title": "Briefing: five surprises"},
