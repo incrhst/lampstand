@@ -449,10 +449,19 @@ impl RemoteHub {
 
     /// Forgets every speaker's phone whose service `ended` says is over
     /// (closed, ended, or another opened in its place): their pages are
-    /// disconnected at once, as by a revoke. How many went.
+    /// disconnected at once, as by a revoke. A speaker's PIN shown for such a
+    /// service is voided too, so it cannot pair afterwards. How many phones
+    /// went.
     pub fn end_speakers(&self, ended: impl Fn(&str) -> bool) -> usize {
+        let mut voided = false;
         let gone = {
             let mut inner = lock(&self.inner);
+            if inner.pin.as_ref().is_some_and(
+                |p| matches!(&p.pin.kind, RemoteKind::Speaker { service, .. } if ended(service)),
+            ) {
+                inner.pin = None;
+                voided = true;
+            }
             let before = inner.sessions.len();
             inner.sessions.retain(|s| match &s.kind {
                 RemoteKind::Speaker { service, .. } => !ended(service),
@@ -468,6 +477,8 @@ impl RemoteHub {
         };
         if gone > 0 {
             self.revoked.send_modify(|n| *n += 1);
+        }
+        if gone > 0 || voided {
             self.changed();
         }
         gone
@@ -722,6 +733,27 @@ mod tests {
             hub.session_kind(&run).is_some(),
             "an operator's phone stays"
         );
+    }
+
+    #[test]
+    fn a_speakers_pin_dies_with_its_service_and_an_operators_does_not() {
+        let (hub, _dir) = hub();
+        let speaker = RemoteKind::Speaker {
+            service: "s1".into(),
+            item: "i1".into(),
+            title: "Sermon".into(),
+        };
+        let pin = hub.start_pairing_as(speaker);
+        hub.end_speakers(|s| s == "other");
+        assert!(hub.pairing().is_some(), "another service's end leaves it");
+        hub.end_speakers(|s| s == "s1");
+        assert!(hub.pairing().is_none());
+        assert_eq!(hub.pair(HOME, &pin.pin, "x"), Err(PairError::NoPin));
+        assert!(hub.sessions().is_empty());
+        // A PIN for running the service is not a speaker's.
+        let pin = hub.start_pairing();
+        hub.end_speakers(|_| true);
+        assert!(hub.pair(other(2), &pin.pin, "x").is_ok());
     }
 
     #[test]

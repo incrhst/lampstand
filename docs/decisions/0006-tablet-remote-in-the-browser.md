@@ -114,7 +114,9 @@ kept on the laptop, not in the page:
   Clear, the sound, `EndService`, and anything about another item are
   refused and logged.
 - `Next` and `Previous` (and Blank) pass only while the speaker's item is
-  on air and the screens do not show the idle screen, and only if the
+  on air and the screens do not show the idle screen. Next and Back also
+  wait while the operator has cleared the words (a speaker must not put
+  them back); Blank stays allowed then, as it never shows words. And only if the
   result stays inside that item: Next on its last slide, fully built, and
   Back on its first are refused and do nothing. This is decided against the
   live engine and applied in the same step, under the app's one lock, so a
@@ -122,8 +124,10 @@ kept on the laptop, not in the page:
   service is when it is applied, never where it was. A speaker's command is
   never passed on to another device, where that could not be guaranteed.
 - The session ends, and its page is disconnected at once, when its service
-  is closed or ended, or another service is opened; and, as for any remote,
-  when it is revoked in Setup › Devices.
+  is closed or ended, or another service is opened; when Lampstand quits
+  (only a crash restore of the same service keeps it); and, as for any
+  remote, when it is revoked in Setup › Devices. A speaker's PIN that is
+  still shown when its service ends stops working too.
 
 So capturing a speaker's session on the Wi-Fi lets someone page through,
 or blank, one item while it is on the screen, which is less than an

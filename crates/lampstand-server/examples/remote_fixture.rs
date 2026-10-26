@@ -13,6 +13,8 @@
 //!   and prints `MOVED`;
 //! - `show <item> <slide>` puts that slide live (items counted from 0, as
 //!   listed below) and prints `MOVED`;
+//! - `clear` takes the live slide's words off the screen (Clear all) and
+//!   prints `MOVED`;
 //! - `close` closes the service, which ends the speakers' phones, and
 //!   prints `CLOSED`;
 //! - `revoke` forgets every paired phone and prints `REVOKED`.
@@ -131,6 +133,8 @@ struct Engine {
     overlay: &'static str,
     playing: Option<(String, String, bool)>,
     open: bool,
+    /// The operator cleared the words of what is live.
+    cleared: bool,
 }
 
 fn is_text(label: &str) -> bool {
@@ -216,6 +220,7 @@ impl Engine {
             "preview": null,
             "idle": self.at.is_none(),
             "overlay": self.overlay,
+            "cleared": self.cleared && self.at.is_some(),
         } })
     }
 
@@ -278,6 +283,7 @@ impl Engine {
             self.shown = Some(at);
         }
         self.at = Some(at);
+        self.cleared = false;
     }
 
     /// The speaker's rule, as the app's gate has it: its item on air, not
@@ -288,6 +294,9 @@ impl Engine {
         }
         if self.overlay == "Idle" {
             return Some("The service team has put up the idle screen.");
+        }
+        if command != "ToggleBlack" && self.cleared {
+            return Some("The service team has cleared the screen.");
         }
         match command {
             "ToggleBlack" => None,
@@ -377,7 +386,7 @@ fn handle(engine: &Mutex<Engine>, hub: &RemoteHub, kind: &RemoteKind, request: V
         ("Live", Some("ToggleIdle")) => {
             e.overlay = if e.overlay == "Idle" { "None" } else { "Idle" }
         }
-        ("Live", Some("ClearText")) => {}
+        ("Live", Some("ClearText" | "ClearAll")) => e.cleared = true,
         ("Live", None) if what.get("Show").is_some() => {
             let show = &what["Show"];
             let (Some(item), Some(slide), Some(step)) = (
@@ -487,6 +496,12 @@ async fn main() {
                         e.take((item, slide, 0));
                     }
                 }
+                hub.publish("Live", &e.live_event().to_string());
+                println!("MOVED");
+            }
+            ["clear"] => {
+                let mut e = engine.lock().unwrap();
+                e.cleared = true;
                 hub.publish("Live", &e.live_event().to_string());
                 println!("MOVED");
             }

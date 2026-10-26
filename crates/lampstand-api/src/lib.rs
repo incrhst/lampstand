@@ -1684,6 +1684,12 @@ pub enum Event {
         idle: bool,
         /// Black or logo, which persist across slides.
         overlay: Overlay,
+        /// Something is live but the operator cleared its words (Clear
+        /// text, Clear all), so nothing of it is on the screens. A speaker's
+        /// phone waits until the slides are back (0.9.1). Absent from an
+        /// older device's message: false.
+        #[serde(default)]
+        cleared: bool,
     },
     /// A service was loaded or reloaded (an edit synced in mid-service):
     /// the operator view should show these slides.

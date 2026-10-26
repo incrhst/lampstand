@@ -879,14 +879,21 @@ fn serve_remotes(
             .await
         })
     }));
+    // A speaker's phone does not outlive a quit: at start only the service
+    // the journal restored (a crash mid-service) keeps its speakers.
     // Ending the service (it stays open) stops the speakers' phones, as
-    // closing it does through `remote::bridge`.
-    let ended = Arc::downgrade(hub);
-    lock(app).on_service_ended(Arc::new(move || {
-        if let Some(hub) = ended.upgrade() {
-            crate::remote::end_speakers(&hub, None);
-        }
-    }));
+    // closing it does through `remote::bridge`. Both under one lock, so a
+    // service closed in between is not missed.
+    {
+        let mut opened = lock(app);
+        crate::remote::end_speakers(hub, opened.open_service());
+        let ended = Arc::downgrade(hub);
+        opened.on_service_ended(Arc::new(move || {
+            if let Some(hub) = ended.upgrade() {
+                crate::remote::end_speakers(&hub, None);
+            }
+        }));
+    }
     let (watched, port) = (Arc::downgrade(hub), sync.local_addr().port());
     hub.on_change(Arc::new(move || {
         if let Some(hub) = watched.upgrade() {

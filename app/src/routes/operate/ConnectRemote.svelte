@@ -20,7 +20,6 @@
   let purpose: "run" | "speaker" = $state("run");
   let items = $derived(speakerChoices(live.loaded));
   let item: string | null = $state(defaultSpeakerItem(live.loaded, live.live?.item ?? null));
-  let itemTitle = $derived(items.find((i) => i.id === item)?.title ?? "");
   function choose(want: "run" | "speaker", which: string | null = item) {
     purpose = want;
     item = which;
@@ -31,8 +30,9 @@
   let view = $state<RemotesView | null>(null);
   let chosen = $state(0);
   let now = $state(Date.now());
-  /** The phone or tablet that just paired, by name. */
+  /** The phone or tablet that just paired, by name, and the item it is a speaker for (as the laptop says). */
   let paired = $state<string | null>(null);
+  let pairedSpeaker = $state<string | null>(null);
   /** Remotes paired before the dialog opened, so a new one can be told apart. */
   let known = new Set<string>();
 
@@ -40,19 +40,25 @@
   let address = $derived(view?.addresses[Math.min(chosen, (view?.addresses.length ?? 1) - 1)] ?? null);
   let left = $derived(pin ? Math.max(0, Math.round((pin.expires_ms - now) / 1000)) : 0);
 
+  /** Each start counts, so an answer that arrives after a later one is dropped. */
+  let asked = 0;
   async function start() {
     const ask: RemoteRequest | null = purpose === "run" ? "StartPairing" : item ? { StartSpeakerPairing: { item } } : null;
+    const n = ++asked;
     try {
-      if (!ask) {
-        // No item to pair a speaker for: no PIN.
-        if (view?.pairing) view = await request({ area: "Remote", request: "StopPairing" }, "Remotes");
-        return;
-      }
-      view = await request({ area: "Remote", request: ask }, "Remotes");
+      // No item to pair a speaker for: no PIN.
+      const answer = ask
+        ? await request({ area: "Remote", request: ask }, "Remotes")
+        : view?.pairing
+          ? await request({ area: "Remote", request: "StopPairing" }, "Remotes")
+          : null;
+      if (answer && n === asked) view = answer;
     } catch (e) {
       report(e);
     }
   }
+  /** What the PIN shown now is for, as the laptop says: a speaker's item title, or null for running the service. */
+  let pinSpeaker = $derived(view?.pairing_speaker ?? null);
 
   function close() {
     if (!paired) send({ area: "Remote", request: "StopPairing" }).catch(report);
@@ -66,6 +72,7 @@
     const fresh = e.data.sessions.find((s) => !known.has(s.id));
     if (fresh && !paired) {
       paired = fresh.name;
+      pairedSpeaker = fresh.speaker ?? null;
       closing = setTimeout(onclose, 2500);
     }
   });
@@ -137,7 +144,7 @@
 
     {#if paired}
       <p class="done" role="status">
-        <Icon name="checkCircle" size={18} />{purpose === "speaker" ? `${paired} is connected. It shows only “${itemTitle}”.` : `${paired} is connected. It can run the slides and the sound.`}
+        <Icon name="checkCircle" size={18} />{pairedSpeaker ? `${paired} is connected. It shows only “${pairedSpeaker}”.` : `${paired} is connected. It can run the slides and the sound.`}
       </p>
     {:else if purpose === "speaker" && items.length === 0}
       <!-- Nothing to pair a speaker for. -->
@@ -150,7 +157,7 @@
           <!-- The core made this SVG from the address; nothing typed is in it. -->
           <div class="qr" aria-hidden="true">{@html address.qr_svg}</div>
           <div class="steps">
-            {#if purpose === "speaker"}<p class="scan"><strong>{speakerWords.scanSpeaker}</strong></p>{/if}
+            {#if pinSpeaker}<p class="scan"><strong>{speakerWords.scanSpeaker}</strong></p>{/if}
             <p>1. On the phone or tablet, open the camera and point it at the code, or go to</p>
             <p class="url">{address.url}</p>
             <p>2. Type this PIN:</p>
@@ -158,7 +165,7 @@
             <p class="muted small" role="timer">Works for {minutes(left)}. A new PIN is shown each time.</p>
           </div>
         </div>
-        <p class="muted note">{purpose === "speaker" ? speakerWords.speakerNote(itemTitle) : speakerWords.runNote}</p>
+        <p class="muted note">{pinSpeaker ? speakerWords.speakerNote(pinSpeaker) : speakerWords.runNote}</p>
         {#if view.addresses.length > 1}
           <div class="others">
             <span class="muted small">This laptop is on more than one network. The phone or tablet must be on the same one:</span>

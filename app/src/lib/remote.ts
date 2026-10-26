@@ -59,6 +59,8 @@ export type LiveState = {
   preview: Cursor | null;
   idle: boolean;
   overlay: Overlay;
+  /** The operator cleared the words of what is live (0.9.1; absent from an older laptop). */
+  cleared?: boolean;
 };
 
 export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };

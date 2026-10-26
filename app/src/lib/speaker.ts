@@ -14,6 +14,8 @@ export const speakerWords = {
   waitingLead: (item: string) => `Next and Back work when the service team puts “${item}” on the screen.`,
   onScreenNow: (what: string) => `On the screen now: ${what}`,
   nothingOnScreen: "On the screen now: nothing yet",
+  cleared: "The service team has cleared the screen.",
+  clearedLead: "Next and Back work when your slides are back.",
   live: "LIVE",
   blank: "BLANK",
   blankButton: "Blank",
@@ -68,6 +70,8 @@ export type SpeakerNext =
 
 export type SpeakerView =
   | { state: "gone" }
+  /** Its item is live, but the service team cleared the screen. */
+  | { state: "cleared"; title: string }
   | {
       state: "waiting";
       title: string;
@@ -108,6 +112,9 @@ export function speakerView(loaded: LoadedService | null, live: LiveState | null
   }
   const slide = item.slides[cursor.slide];
   if (!slide) return { state: "waiting", title: item.title, onScreen: item.title };
+  // The operator took the words off the screen: Next and Back would put
+  // them back, so the laptop refuses them until the slides are back.
+  if (live?.cleared) return { state: "cleared", title: item.title };
   const steps = slide.steps;
   const position =
     steps > 0

@@ -85,6 +85,7 @@ async fn fixture_as(kind: RemoteKind) -> Fixture {
                                 preview: None,
                                 idle: false,
                                 overlay: Overlay::None,
+                                cleared: false,
                             },
                         );
                     }

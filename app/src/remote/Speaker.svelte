@@ -20,6 +20,8 @@
   let online = $derived(link.state === "online");
   let view = $derived(speakerView(link.loaded, link.live, item));
   let onAir = $derived(online && view.state === "live");
+  /** Its item is live, words cleared or not: the timer keeps running. */
+  let inItem = $derived(online && (view.state === "live" || view.state === "cleared"));
   let heading = $derived(view.state === "gone" ? title : view.title);
 
   // The timer runs from when the item went on air; it starts again each time.
@@ -30,7 +32,7 @@
     return () => clearInterval(timer);
   });
   $effect(() => {
-    const next = liveSince(since, onAir, Date.now());
+    const next = liveSince(since, inItem, Date.now());
     if (next !== since) since = next;
   });
 
@@ -111,6 +113,11 @@
         <p class="state"><span class="dot"></span>{speakerWords.waiting}</p>
         <p>{speakerWords.waitingLead(view.title)}</p>
         <p class="muted">{view.onScreen ? speakerWords.onScreenNow(view.onScreen) : speakerWords.nothingOnScreen}</p>
+      </div>
+    {:else if view.state === "cleared"}
+      <div class="waiting">
+        <p class="state"><span class="dot"></span>{speakerWords.cleared}</p>
+        <p>{speakerWords.clearedLead}</p>
       </div>
     {:else}
       <div class="status">

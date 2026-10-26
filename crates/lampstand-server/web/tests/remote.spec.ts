@@ -221,6 +221,11 @@ test("a speaker's phone pages through its own item only", async ({ browser }) =>
   await expect(page.getByText("Slide 1 of 3")).toBeVisible();
   await expect(page.getByText("Welcome everyone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Back" })).toBeDisabled();
+  // The operator clears the screen: the phone waits, and Next is grey.
+  await say("clear", "MOVED");
+  await expect(page.getByText("The service team has cleared the screen.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await say("show 5 0", "MOVED");
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByText("Slide 2 of 3 · build 0 of 1")).toBeVisible();
   await expect(page.getByText("1 click left on this slide")).toBeVisible();

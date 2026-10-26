@@ -73,6 +73,16 @@ test("live: the slide, its place, the next click and the notes", () => {
   if (full.next?.kind === "slide") assert.equal(full.next.title, "Slide 3");
 });
 
+test("a cleared screen stops the speaker until the slides are back", () => {
+  const cleared = { ...at("talk", 1), cleared: true };
+  assert.deepEqual(speakerView(loaded, cleared, "talk"), { state: "cleared", title: "Sermon" });
+  assert.equal(speakerView(loaded, { ...cleared, cleared: false }, "talk").state, "live");
+  // An older laptop says nothing about it: live, as before.
+  assert.equal(speakerView(loaded, at("talk", 1), "talk").state, "live");
+  // Another item cleared: still just waiting.
+  assert.equal(speakerView(loaded, { ...at("song", 0), cleared: true }, "talk").state, "waiting");
+});
+
 test("the last slide fully built greys Next", () => {
   const last = speakerView(loaded, at("talk", 2), "talk");
   if (last.state !== "live") return assert.fail();

@@ -88,7 +88,8 @@ pub fn allows(caller: Caller, request: &Request) -> bool {
 
 /// Why a speaker's live command is refused, in the words its phone shows,
 /// or `None` if the live engine as it is now lets it through: the speaker's
-/// item is on air, the screens do not show the idle screen, and Next or
+/// item is on air, the screens do not show the idle screen, its words have
+/// not been cleared (Next and Back only; Blank stays allowed), and Next or
 /// Back lands on a slide or build of that same item. Next on its last slide,
 /// fully built, and Back on its first are refused, so a speaker can never
 /// move the service on to another item.
@@ -99,8 +100,17 @@ pub fn speaker_refusal(own: ItemId, command: Command, live: &LiveEngine) -> Opti
     if live.program().overlay == Overlay::Idle {
         return Some("The service team has put up the idle screen.");
     }
+    // Blank stays allowed: it never puts words back on the screen, and
+    // taking Blank off again shows only what was there.
+    if command == Command::ToggleBlack {
+        return None;
+    }
+    // The operator cleared the words (Clear text, Clear all): Next or Back
+    // would put a slide's words back on the projector.
+    if live.program().content.is_none() {
+        return Some("The service team has cleared the screen.");
+    }
     match command {
-        Command::ToggleBlack => None,
         Command::Next if live.next_target().is_some_and(|t| t.item == own) => None,
         Command::Next => Some("That is the last slide. The service team takes it from here."),
         Command::Previous if live.previous_target().is_some_and(|t| t.item == own) => None,
@@ -306,6 +316,30 @@ mod tests {
             assert_eq!(live.program().overlay, Overlay::Black);
             speaker_apply(talk, Command::ToggleBlack, &mut live).unwrap();
             assert_eq!(live.program().overlay, Overlay::None);
+        }
+
+        #[test]
+        fn a_speaker_cannot_put_words_back_after_the_operator_clears_them() {
+            for clear in [Command::ClearAll, Command::ClearText] {
+                let (mut live, _, talk, _) = service();
+                live.apply(Command::Show(at(talk, 0, 0)));
+                live.apply(clear);
+                assert!(live.program().content.is_none());
+                for command in [Command::Next, Command::Previous] {
+                    let why = speaker_apply(talk, command, &mut live).unwrap_err();
+                    assert_eq!(why, "The service team has cleared the screen.");
+                }
+                assert_eq!(live.live(), Some(at(talk, 0, 0)), "nothing moved");
+                assert!(live.program().content.is_none(), "still clear");
+                // Blank stays allowed, and brings no words back.
+                speaker_apply(talk, Command::ToggleBlack, &mut live).unwrap();
+                speaker_apply(talk, Command::ToggleBlack, &mut live).unwrap();
+                assert!(live.program().content.is_none());
+                // The operator shows the talk again: the speaker carries on.
+                live.apply(Command::Show(at(talk, 0, 0)));
+                speaker_apply(talk, Command::Next, &mut live).unwrap();
+                assert_eq!(live.live(), Some(at(talk, 1, 0)));
+            }
         }
 
         #[test]

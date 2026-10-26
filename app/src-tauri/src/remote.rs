@@ -373,6 +373,16 @@ mod tests {
         assert!(hub.session_kind(&token).is_none());
     }
 
+    #[test]
+    fn a_live_event_without_cleared_reads_as_not_cleared() {
+        // As a 0.9.0 device sends it when it drives this one.
+        let old = r#"{"type":"Live","data":{"live":null,"shown":null,"preview":null,"idle":true,"overlay":"None"}}"#;
+        let Event::Live { cleared, .. } = serde_json::from_str::<Event>(old).unwrap() else {
+            panic!()
+        };
+        assert!(!cleared);
+    }
+
     fn view_sessions(hub: &RemoteHub) -> Vec<Option<String>> {
         view(hub, 7340)
             .sessions

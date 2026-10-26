@@ -149,7 +149,14 @@ type LiveState = (
     bool,
     Overlay,
     Option<Cursor>,
+    bool,
 );
+
+/// Something is live but its words were cleared (Clear text, Clear all):
+/// `Event::Live::cleared`, so a speaker's phone waits too.
+fn cleared(live: &LiveEngine) -> bool {
+    live.live().is_some() && live.program().content.is_none()
+}
 
 /// The whole seconds a countdown shows now, rounded up as it is drawn.
 fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
@@ -436,6 +443,11 @@ impl App {
     /// `BrowserSourceUrl` gives.
     pub fn set_server_address(&mut self, address: String) {
         self.server = Some(address);
+    }
+
+    /// The service open now (restored after a crash, at start), if any.
+    pub fn open_service(&self) -> Option<ServiceId> {
+        self.loaded.as_ref().map(|l| l.view.service)
     }
 
     /// The open service and the title of its item `item`, if it has one
@@ -1575,6 +1587,7 @@ impl App {
                 self.live.is_idle(),
                 self.live.program().overlay,
                 self.live.shown(),
+                cleared(&self.live),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
@@ -1583,6 +1596,7 @@ impl App {
                     preview: state.1,
                     idle: state.2,
                     overlay: state.3,
+                    cleared: state.5,
                 });
             }
             self.told_ui = Some(state);
@@ -2383,6 +2397,7 @@ impl App {
             preview: self.live.preview(),
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
+            cleared: cleared(&self.live),
         });
     }
 

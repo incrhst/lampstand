@@ -2530,6 +2530,27 @@ fn a_speaker_pages_through_its_own_item_only() {
     ok(h.app.speaker_live(talk.id, Command::Previous));
     ok(h.app.speaker_live(talk.id, Command::ToggleBlack));
     assert_eq!(h.app.program().overlay, Overlay::Black);
+    ok(h.app.speaker_live(talk.id, Command::ToggleBlack));
+
+    // The operator clears the words: the phone is told, and a speaker's
+    // Next cannot put them back.
+    let cleared = |h: &Harness| {
+        h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+            Event::Live { cleared, .. } => Some(*cleared),
+            _ => None,
+        })
+    };
+    assert_eq!(cleared(&h), Some(false));
+    ok(h.app.handle(Request::Live(Command::ClearAll)));
+    assert_eq!(cleared(&h), Some(true));
+    let r = h.app.speaker_live(talk.id, Command::Next);
+    assert!(
+        matches!(&r, Response::Error { message } if message.contains("cleared")),
+        "{r:?}"
+    );
+    assert!(h.app.program().content.is_none(), "the words stay off");
+    ok(h.app.handle(Request::Live(Command::Previous)));
+    assert_eq!(cleared(&h), Some(false), "back on the screen");
 
     let ended = Arc::new(Mutex::new(0));
     let count = ended.clone();
