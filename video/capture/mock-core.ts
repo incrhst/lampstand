@@ -41,12 +41,14 @@ const trainingDecks = [
 ];
 deckSlides["deck-t1-screen"] = [
   { label: "Slide 1", lines: ["The Present screen", "Four places to look. One rule."], steps: 0, notes: "Trainer: point at each part of the screen as we go." },
-  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is what Space puts up. The strip on top is the main screen and the controls." },
+  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is the next slide. The strip on top is the main screen and the controls." },
 ];
 deckSlides["deck-t1-sermon"] = [
   { label: "Slide 1", lines: ["The Lord is my shepherd", "Psalm 23"], steps: 0, notes: "Preacher: Good morning. Our reading today is Psalm 23.\nOperator: each Space press brings in one point." },
   { label: "Slide 2", lines: ["He leads me", "Green pastures", "Still waters", "Paths of righteousness"], steps: 3, notes: "Preacher: He leads me beside the still waters.\nOperator: three points, three presses." },
   { label: "Slide 3", lines: ["Yea, though I walk through the valley", "of the shadow of death, I will fear no evil"], steps: 0, notes: "Preacher: read the verse slowly." },
+  { label: "Slide 4", lines: ["Three things to take home", "You are known", "You are led", "You are not alone"], steps: 3, notes: "Preacher: three things to take home this week." },
+  { label: "Slide 5", lines: ["Surely goodness and mercy", "shall follow me all the days of my life"], steps: 0, notes: "Preacher: let us pray." },
 ];
 deckSlides["deck-t2-thursday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "As sent on Thursday"], steps: 0, notes: "SURPRISE 4 (updated deck). Trainer: \"The preacher changed the verse slide this morning. Use the new deck.\"" }];
 deckSlides["deck-t2-sunday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "Updated Sunday morning"], steps: 0, notes: "Preacher: Good morning. This is the corrected deck." }];
@@ -215,10 +217,12 @@ function move(dir: number, byItem = false) {
     const step = cur.step + dir;
     if (step >= 0 && step <= steps) { state.preview = { ...cur, step }; return; }
   }
+  // Previous from a slide's first step lands on the slide before, fully built.
+  const built = (c: any) => (dir < 0 && !byItem && c ? { ...c, step: state.loaded.items.find((i: any) => i.id === c.item)?.slides[c.slide]?.steps ?? 0 } : c);
   const base = state.live ?? state.preview; let at = base ? f.findIndex((c: any) => c.item === base.item && c.slide === base.slide) : -1;
   if (byItem) { const cur = base?.item; let n = at; while (n >= 0 && n < f.length && f[n].item === cur) n += dir; at = n < 0 ? 0 : Math.min(n, f.length - 1); if (dir < 0) { const it = f[at].item; at = f.findIndex((c: any) => c.item === it); } }
   else at = Math.max(0, Math.min(f.length - 1, at + dir));
-  state.preview = f[Math.max(0, at)];
+  state.preview = built(f[Math.max(0, at)]);
 }
 const svgThumb = (label: string) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='95' fill='#f5f1e8' font-family='serif' font-size='20' text-anchor='middle'>${label}</text></svg>`);
 

@@ -250,18 +250,18 @@ and no desktop showing. Point at each part of the screen as we go."""},
     {"kind": "bullets", "heading": "Four places to look", "builds": True, "items": [
         "The wall: every slide of the service",
         "Red LIVE: what the room sees now",
-        "Gold NEXT: what Space puts up",
+        "Gold NEXT: the next slide",
         "The strip on top: the main screen and the buttons",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
 The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
-NEXT card is what Space shows next. The notes, where you are reading this, sit beside the
-item on air. The strip on top has a small picture of the main screen, then Next, Previous
-and Blank. Show, Idle and Blank, top right, switch the room between the slide, the idle
+NEXT card is the next slide. On a slide with builds, Space plays the next build first.
+The notes, where you are reading this, sit beside the item on air. The strip on top has a
+small picture of the main screen, then Focus, Quick add, Previous, Next and Blank. Show, Idle and Blank, top right, switch the room between the slide, the idle
 screen and black. Press F for Focus to see only the cards; F or Esc brings the rest back."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
-Trainer: Choosing an item with Shift and Down only shows it to you. It goes on air when you
+Trainer: Choosing an item with Shift and Down only marks it for you. The room sees nothing new. It goes on air when you
 start it with Enter, or click one of its cards. Space always moves on from what is live."""},
     {"kind": "keys", "heading": "The keys you need today", "rows": [
         ("Space  →", "Next slide"),
@@ -351,16 +351,16 @@ Full stop blanks the screen. Press it again to bring the slide back."""},
     {"kind": "quote", "text": "The room never sees you looking for something.", "source": "The aim",
      "notes": """
 Trainer: The skill is to blank or hold while you look, never to search on the live screen.
-Everything you choose with Shift and arrows is shown only to you until you press Enter."""},
+Choosing with Shift and the arrows only marks an item for you. The room sees nothing new until you press Enter."""},
 ])
 
 SERMON_V1 = [
     {"kind": "title", "kicker": "Rehearsal sermon", "heading": "The Lord is my shepherd",
      "sub": "As sent on Thursday",
      "notes": """
-SURPRISE 4 (updated deck). Trainer, before this deck goes live, say:
+SURPRISE 4 (updated deck). The trainer gave the cue during the reading:
 "The preacher changed the verse slide this morning. Use the new deck."
-Operator: do not use this one. Shift and Down to the next item, "Sermon (updated Sunday
+Operator: if this deck is on air, blank first. Do not use this one. Shift and Down to the next item, "Sermon (updated Sunday
 morning)", and press Enter. On a real Sunday the planner adds the new file in Plan, from any
 computer on the team, and it appears in your order. Never edit during the service."""},
     {"kind": "bullets", "heading": "He leads me", "builds": True, "items": [
