@@ -41,8 +41,15 @@ pub(crate) struct Gpu {
 
 impl Gpu {
     pub fn new(choice: AdapterChoice) -> Result<Self, RenderError> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        // No debug labels unless WGPU_DEBUG=1, even in debug builds. They
+        // turn on VK_EXT_debug_utils, and the Vulkan loader before 1.4.350
+        // (Ubuntu 26.04 ships 1.4.341) names an object by walking every
+        // device in the process while another thread's vkDestroyDevice
+        // frees one: a segfault whenever renderers come and go in parallel,
+        // as in the tests (KhronosGroup/Vulkan-Loader#1863).
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+        descriptor.flags.remove(wgpu::InstanceFlags::DEBUG);
+        let instance = wgpu::Instance::new(descriptor.with_env());
         let adapter =
             pollster::block_on(pick_adapter(&instance, choice)).ok_or(RenderError::NoAdapter)?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
