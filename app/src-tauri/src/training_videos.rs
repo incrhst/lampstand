@@ -131,6 +131,9 @@ struct Shared {
     latest: VideoManifest,
     checked_at: Option<i64>,
     running: bool,
+    /// The end of the last download has been told (`Event::TrainingVideos`),
+    /// so `wait` returns only after the final view has gone out.
+    told: bool,
     /// A download was tried since the app started.
     tried: bool,
     /// Bytes done and to do, while downloading.
@@ -177,6 +180,7 @@ impl TrainingVideos {
                     latest,
                     checked_at: saved.checked_at,
                     running: false,
+                    told: true,
                     tried: false,
                     progress: None,
                     ended: false,
@@ -251,6 +255,7 @@ impl TrainingVideos {
                 return;
             }
             shared.running = true;
+            shared.told = false;
             shared.tried = true;
         }
         (self.emit)(Event::TrainingVideos(self.view()));
@@ -269,6 +274,7 @@ impl TrainingVideos {
             eprintln!("lampstand: the training videos cannot download: {e}");
             let mut shared = self.lock();
             shared.running = false;
+            shared.told = true;
             self.shared.1.notify_all();
         }
     }
@@ -324,7 +330,7 @@ impl TrainingVideos {
     pub fn wait(&self) {
         let (lock, done) = &*self.shared;
         let mut shared = lock.lock().unwrap_or_else(|e| e.into_inner());
-        while shared.running {
+        while shared.running || !shared.told {
             shared = done.wait(shared).unwrap_or_else(|e| e.into_inner());
         }
     }
@@ -467,7 +473,10 @@ impl Job {
             shared.failed_at = failed.then(Instant::now);
             self.shared.1.notify_all();
         }
+        // Told outside the lock; then whoever waits may read it.
         self.tell();
+        self.lock().told = true;
+        self.shared.1.notify_all();
     }
 
     /// One look at the website and the downloads it calls for. False if
