@@ -91,6 +91,12 @@ In the app (`app/src-tauri/src/training_videos.rs`):
   its size and hash match the manifest (the temporary file is removed either way), then put in the
   blob store, which renames it into place. The live engine and output windows play it from there
   like any other video.
+- After a download fails (offline, a missing or damaged file), opening a training service does not
+  try again for 10 minutes; Reset training always does. A changed video replaces the old one only
+  once it has arrived, so a failed update leaves the old video playing.
+- The manifest may be at most 64 KiB, each video at most 250 MB and all of them 1 GB; anything
+  larger is refused before it downloads. An https website is never left for plain http by a
+  redirect.
 - The manifest last fetched is saved in `training-videos/videos.json`, so videos already downloaded
   keep working offline. Before the website has been reached, the app uses the manifest it was built
   with.

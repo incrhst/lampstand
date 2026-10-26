@@ -68,6 +68,20 @@ pub fn unpublished(file: &str) -> BlobHash {
 /// How often the manifest is fetched again, in milliseconds: once a day.
 const RECHECK_MS: i64 = 24 * 60 * 60 * 1000;
 
+/// After a download that failed (offline, a missing file, a damaged one),
+/// opening a training service does not try again for this long. Reset
+/// training always does.
+const BACKOFF: Duration = Duration::from_secs(10 * 60);
+
+/// The largest manifest read: it is a short list.
+pub const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+
+/// The largest training video downloaded, as for a sound file.
+pub const MAX_VIDEO_BYTES: u64 = 250 * 1024 * 1024;
+
+/// The most all the training videos together may take.
+pub const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
+
 /// The manifest last fetched, in `training-videos/`.
 const SAVED: &str = "videos.json";
 
@@ -76,6 +90,27 @@ struct Saved {
     /// When the website last answered, in ms since 1970.
     checked_at: Option<i64>,
     manifest: Option<VideoManifest>,
+    /// The videos the training services play: a changed video replaces
+    /// its old one only once it is here, so this can lag `manifest`.
+    #[serde(default)]
+    installed: Option<VideoManifest>,
+}
+
+/// What a download that ended changed, from [`TrainingVideos::take_changes`].
+#[derive(Debug, Default, PartialEq)]
+pub struct Changes {
+    /// Each video whose hash moved, old to new, now that the new one is
+    /// here: point the training services at it.
+    pub moved: Vec<(BlobHash, BlobHash)>,
+    /// A video arrived, so items waiting for it can play.
+    pub arrived: bool,
+}
+
+impl Changes {
+    /// Whether a training service shows anything new.
+    pub fn any(&self) -> bool {
+        self.arrived || !self.moved.is_empty()
+    }
 }
 
 /// The training videos on this device, and their download.
@@ -102,6 +137,12 @@ struct Shared {
     progress: Option<(u64, u64)>,
     /// A download ended since `take_changes`.
     ended: bool,
+    /// A video arrived since `take_changes`.
+    arrived: bool,
+    /// When the last download failed, for [`BACKOFF`].
+    failed_at: Option<Instant>,
+    /// Reset training asked for a new look while a download ran.
+    recheck_pending: bool,
 }
 
 impl TrainingVideos {
@@ -112,14 +153,19 @@ impl TrainingVideos {
         library: Arc<Library>,
         emit: EventSink,
     ) -> Self {
+        // Temporary files a crash mid-download left.
+        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            if entry.file_name().to_string_lossy().starts_with(".tmp-") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
         let saved: Saved = fs::read(dir.join(SAVED))
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        // A video a newer release names before its website list was
-        // fetched comes from the list it was built with.
-        let installed = merged(saved.manifest.clone(), published());
-        let latest = saved.manifest.unwrap_or_else(published);
+        let published = published();
+        let installed = installed_at_start(&saved, &published, &library);
+        let latest = saved.manifest.unwrap_or(published);
         Self {
             dir,
             source: source.map(|s| if s.ends_with('/') { s } else { s + "/" }),
@@ -134,6 +180,9 @@ impl TrainingVideos {
                     tried: false,
                     progress: None,
                     ended: false,
+                    arrived: false,
+                    failed_at: None,
+                    recheck_pending: false,
                 }),
                 Condvar::new(),
             )),
@@ -165,7 +214,11 @@ impl TrainingVideos {
     /// problem with the connection.
     pub fn missing_message(&self, blob: &BlobHash) -> &'static str {
         let shared = self.lock();
-        let listed = shared.latest.videos.iter().any(|v| v.blake3 == *blob);
+        let listed = shared
+            .latest
+            .videos
+            .iter()
+            .any(|v| v.blake3 == *blob || unpublished(&v.file) == *blob);
         if !listed && shared.checked_at.is_some() {
             NOT_READY
         } else if shared.running {
@@ -177,7 +230,8 @@ impl TrainingVideos {
 
     /// Starts a download if a training video is missing, or the manifest
     /// is a day old, or `recheck` (Reset training) asks for a new look.
-    /// Returns at once; the download runs on its own thread.
+    /// Without `recheck`, nothing is tried within [`BACKOFF`] of a failed
+    /// download. Returns at once; the download runs on its own thread.
     pub fn ensure(&self, recheck: bool) {
         let Some(source) = self.source.clone() else {
             return;
@@ -185,6 +239,11 @@ impl TrainingVideos {
         {
             let mut shared = self.lock();
             if shared.running {
+                // Looked at again once this download ends.
+                shared.recheck_pending |= recheck;
+                return;
+            }
+            if !recheck && shared.failed_at.is_some_and(|t| t.elapsed() < BACKOFF) {
                 return;
             }
             let stale = recheck || is_stale(shared.checked_at, now_ms());
@@ -214,36 +273,51 @@ impl TrainingVideos {
         }
     }
 
-    /// `Some` once after each download ends, however it went, so an open
-    /// training service is loaded again: its video items play, or say they
-    /// could not download. In it, each video whose hash moved, old to new,
-    /// so the training services can be pointed at the new one.
-    pub fn take_changes(&self) -> Option<Vec<(BlobHash, BlobHash)>> {
+    /// `Some` once after each download ends, however it went, saying what
+    /// changed. A changed video replaces its old one only once it is on
+    /// this device; until then the old one keeps playing, and the switch
+    /// waits for a later download.
+    pub fn take_changes(&self) -> Option<Changes> {
         let mut shared = self.lock();
         if !shared.ended {
             return None;
         }
         shared.ended = false;
-        let mut moved: Vec<(BlobHash, BlobHash)> = shared
-            .installed
-            .videos
-            .iter()
-            .filter_map(|old| {
-                let new = shared.latest.video(&old.file)?;
-                (new.blake3 != old.blake3).then_some((old.blake3, new.blake3))
-            })
-            .collect();
-        // A video published after the release that names it.
-        moved.extend(
-            shared
-                .latest
-                .videos
-                .iter()
-                .filter(|new| shared.installed.video(&new.file).is_none())
-                .map(|new| (unpublished(&new.file), new.blake3)),
-        );
-        shared.installed = merged(Some(shared.latest.clone()), shared.installed.clone());
-        Some(moved)
+        let here = |hash: &BlobHash| self.library.repo().blobs().path(hash).is_some();
+        let mut changes = Changes {
+            moved: Vec::new(),
+            arrived: std::mem::take(&mut shared.arrived),
+        };
+        let mut installed = shared.installed.clone();
+        for new in &shared.latest.videos {
+            if !here(&new.blake3) {
+                continue;
+            }
+            match installed.videos.iter_mut().find(|v| v.file == new.file) {
+                Some(old) if old.blake3 != new.blake3 => {
+                    changes.moved.push((old.blake3, new.blake3));
+                    *old = new.clone();
+                }
+                Some(_) => {}
+                // A video published after the release that names it.
+                None => {
+                    changes.moved.push((unpublished(&new.file), new.blake3));
+                    installed.videos.push(new.clone());
+                }
+            }
+        }
+        if installed != shared.installed {
+            shared.installed = installed;
+            let saved = Saved {
+                checked_at: shared.checked_at,
+                manifest: Some(shared.latest.clone()),
+                installed: Some(shared.installed.clone()),
+            };
+            if let Err(e) = save(&self.dir, &saved) {
+                eprintln!("lampstand: the training video list was not saved: {e}");
+            }
+        }
+        Some(changes)
     }
 
     /// Waits for a running download to finish (tests).
@@ -261,14 +335,38 @@ pub fn published() -> VideoManifest {
     serde_json::from_str(PUBLISHED).expect("site/training/videos.json is a manifest")
 }
 
-/// `newer`, plus any video of `older` it does not name.
-fn merged(newer: Option<VideoManifest>, older: VideoManifest) -> VideoManifest {
-    let Some(mut out) = newer else {
-        return older;
+/// The videos the training services play at start, file by file: the one
+/// they played last time, else the website's latest, else the one this
+/// build was published with, whichever is first on this device; failing
+/// that, the latest known, so it downloads. A video a newer release names
+/// before its website list was fetched comes from the published list.
+fn installed_at_start(
+    saved: &Saved,
+    published: &VideoManifest,
+    library: &Library,
+) -> VideoManifest {
+    let here = |v: &&TrainingVideo| library.repo().blobs().path(&v.blake3).is_some();
+    let lists: Vec<&VideoManifest> = [saved.installed.as_ref(), saved.manifest.as_ref()]
+        .into_iter()
+        .flatten()
+        .chain([published])
+        .collect();
+    let mut out = VideoManifest {
+        version: VideoManifest::VERSION,
+        videos: Vec::new(),
     };
-    for video in older.videos {
-        if out.video(&video.file).is_none() {
-            out.videos.push(video);
+    for list in &lists {
+        for video in &list.videos {
+            if out.video(&video.file).is_some() {
+                continue;
+            }
+            let candidates = || lists.iter().filter_map(|l| l.video(&video.file));
+            let chosen = candidates()
+                .find(here)
+                .or_else(|| saved.manifest.as_ref().and_then(|m| m.video(&video.file)))
+                .or_else(|| candidates().next())
+                .expect("listed above");
+            out.videos.push(chosen.clone());
         }
     }
     out
@@ -342,61 +440,83 @@ impl Job {
         (self.emit)(Event::TrainingVideos(view));
     }
 
-    fn run(self) {
-        match tokio::runtime::Builder::new_current_thread()
+    fn run(mut self) {
+        let failed = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
         {
-            Ok(runtime) => runtime.block_on(self.download()),
-            Err(e) => eprintln!("lampstand: the training videos cannot download: {e}"),
-        }
+            Ok(runtime) => loop {
+                let ok = runtime.block_on(self.download());
+                // Reset training while this ran: look again now.
+                let again = std::mem::take(&mut self.lock().recheck_pending);
+                if !again {
+                    break !ok;
+                }
+                self.recheck = true;
+            },
+            Err(e) => {
+                eprintln!("lampstand: the training videos cannot download: {e}");
+                true
+            }
+        };
         {
             let mut shared = self.lock();
             shared.running = false;
             shared.progress = None;
             shared.ended = true;
+            shared.failed_at = failed.then(Instant::now);
             self.shared.1.notify_all();
         }
         self.tell();
     }
 
-    async fn download(&self) {
+    /// One look at the website and the downloads it calls for. False if
+    /// anything failed: the list could not be fetched when it was due, or
+    /// a video did not arrive.
+    async fn download(&self) -> bool {
         let client = match reqwest::Client::builder()
             .user_agent(concat!("lampstand/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30))
+            // Never from https to plain http by a redirect.
+            .https_only(self.source.starts_with("https://"))
             .build()
         {
             Ok(client) => client,
             Err(e) => {
                 eprintln!("lampstand: the training videos cannot download: {e}");
-                return;
+                return false;
             }
         };
+        let mut ok = true;
         let now = now_ms();
         let stale = self.recheck || is_stale(self.lock().checked_at, now);
         if stale {
             match fetch_manifest(&client, &self.source).await {
                 Ok(fetched) => {
-                    let saved = Saved {
-                        checked_at: Some(now),
-                        manifest: Some(fetched.clone()),
-                    };
-                    if let Err(e) = save(&self.dir, &saved) {
-                        eprintln!("lampstand: the training video list was not saved: {e}");
-                    }
                     // The website's list is the one to follow.
                     let mut shared = self.lock();
                     shared.checked_at = Some(now);
                     shared.latest = fetched;
+                    let saved = Saved {
+                        checked_at: Some(now),
+                        manifest: Some(shared.latest.clone()),
+                        installed: Some(shared.installed.clone()),
+                    };
+                    if let Err(e) = save(&self.dir, &saved) {
+                        eprintln!("lampstand: the training video list was not saved: {e}");
+                    }
                 }
-                Err(e) => eprintln!("lampstand: the training video list is unavailable: {e}"),
+                Err(e) => {
+                    eprintln!("lampstand: the training video list is unavailable: {e}");
+                    ok = false;
+                }
             }
         }
 
         let wanted = missing(&self.lock().latest, &self.library);
         if wanted.is_empty() {
-            return;
+            return ok;
         }
         let total = wanted.iter().map(|v| v.size).sum();
         self.lock().progress = Some((0, total));
@@ -422,11 +542,16 @@ impl Job {
             )
             .await;
             done = before + video.size;
-            if let Err(e) = result {
-                eprintln!("lampstand: training video {}: {e}", video.file);
+            match result {
+                Ok(()) => self.lock().arrived = true,
+                Err(e) => {
+                    eprintln!("lampstand: training video {}: {e}", video.file);
+                    ok = false;
+                }
             }
             self.lock().progress = Some((done, total));
         }
+        ok
     }
 }
 
@@ -438,21 +563,53 @@ fn save(dir: &Path, saved: &Saved) -> std::io::Result<()> {
 }
 
 async fn fetch_manifest(client: &reqwest::Client, source: &str) -> Result<VideoManifest, String> {
-    let response = client
+    let mut response = client
         .get(format!("{source}videos.json"))
         .send()
         .await
         .and_then(|r| r.error_for_status())
         .map_err(|e| e.to_string())?;
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let too_big = || format!("the list is larger than {MAX_MANIFEST_BYTES} bytes");
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_MANIFEST_BYTES)
+    {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if (bytes.len() + chunk.len()) as u64 > MAX_MANIFEST_BYTES {
+            return Err(too_big());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     let manifest: VideoManifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    check_manifest(&manifest)?;
+    Ok(manifest)
+}
+
+/// Refuses a list that names anything but plain video files, or more than
+/// this device should download: it comes from the network.
+fn check_manifest(manifest: &VideoManifest) -> Result<(), String> {
     if let Some(bad) = manifest.videos.iter().find(|v| !safe_name(&v.file)) {
         return Err(format!(
             "the list names {:?}, which is not a video file",
             bad.file
         ));
     }
-    Ok(manifest)
+    if let Some(big) = manifest.videos.iter().find(|v| v.size > MAX_VIDEO_BYTES) {
+        return Err(format!(
+            "{} is {} bytes, more than a training video may be",
+            big.file, big.size
+        ));
+    }
+    let total: u64 = manifest.videos.iter().map(|v| v.size).sum();
+    if total > MAX_TOTAL_BYTES {
+        return Err(format!(
+            "the videos come to {total} bytes, more than the training videos may"
+        ));
+    }
+    Ok(())
 }
 
 /// A plain file name ending in `.mp4`: the manifest comes from the network.
@@ -478,6 +635,9 @@ async fn fetch_video(
     if !safe_name(&video.file) {
         return Err("not a video file".into());
     }
+    if video.size > MAX_VIDEO_BYTES {
+        return Err("larger than a training video may be".into());
+    }
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tmp = dir.join(format!(".tmp-{}", video.file));
     let result = async {
@@ -495,7 +655,8 @@ async fn fetch_video(
         let mut written = 0u64;
         while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
             written += chunk.len() as u64;
-            if written > video.size {
+            // `size` is at most MAX_VIDEO_BYTES, so this caps the stream too.
+            if written > video.size || written > MAX_VIDEO_BYTES {
                 return Err("it is larger than the list says".into());
             }
             hasher.update(&chunk);
@@ -701,7 +862,7 @@ mod tests {
         again.wait();
         assert!(s.has(WELCOME));
         assert_eq!(again.view().state, TrainingVideoState::Ready);
-        assert_eq!(again.take_changes(), Some(vec![]));
+        assert_eq!(again.take_changes(), Some(Changes::default()));
     }
 
     #[test]
@@ -744,7 +905,10 @@ mod tests {
         assert!(s.has(NEW));
         assert_eq!(
             videos.take_changes(),
-            Some(vec![(BlobHash::of(WELCOME), BlobHash::of(NEW))])
+            Some(Changes {
+                moved: vec![(BlobHash::of(WELCOME), BlobHash::of(NEW))],
+                arrived: true
+            })
         );
         assert_eq!(
             videos.manifest().video("t1-welcome.mp4").unwrap().blake3,
@@ -765,7 +929,10 @@ mod tests {
         assert!(s.has(NEWER));
         assert_eq!(
             later.take_changes(),
-            Some(vec![(BlobHash::of(NEW), BlobHash::of(NEWER))])
+            Some(Changes {
+                moved: vec![(BlobHash::of(NEW), BlobHash::of(NEWER))],
+                arrived: true
+            })
         );
     }
 
@@ -794,8 +961,166 @@ mod tests {
         videos.ensure(true);
         videos.wait();
         assert!(s.has(LATER));
-        let moved = videos.take_changes().unwrap();
+        let moved = videos.take_changes().unwrap().moved;
         assert!(moved.contains(&(later, BlobHash::of(LATER))), "{moved:?}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_is_not_tried_again_for_a_while_unless_reset() {
+        let server = MockServer::start().await;
+        let list = manifest(&[("t1-welcome.mp4", WELCOME)]);
+        // Listed, but the file is not there (a 404).
+        serve(&server, &list, &[]).await;
+        let s = setup();
+        let videos = s.videos(Some(format!("{}/training/", server.uri())));
+        videos.ensure(false);
+        videos.wait();
+        assert_eq!(videos.take_changes(), Some(Changes::default()));
+        let before = server.received_requests().await.unwrap().len();
+        for _ in 0..5 {
+            videos.ensure(false);
+            videos.wait();
+        }
+        let after = server.received_requests().await.unwrap().len();
+        assert_eq!(after, before, "nothing asked again");
+        assert!(videos.take_changes().is_none());
+        // Reset training always tries.
+        videos.ensure(true);
+        videos.wait();
+        assert!(server.received_requests().await.unwrap().len() > before);
+    }
+
+    #[tokio::test]
+    async fn a_changed_video_replaces_the_old_one_only_once_it_is_here() {
+        const NEW: &[u8] = b"a better welcome video";
+        let server = MockServer::start().await;
+        let source = format!("{}/training/", server.uri());
+        let first: [(&str, &[u8]); 1] = [("t1-welcome.mp4", WELCOME)];
+        serve(&server, &manifest(&first), &first).await;
+        let s = setup();
+        let videos = s.videos(Some(source.clone()));
+        videos.ensure(false);
+        videos.wait();
+        videos.take_changes();
+        let plays = |v: &TrainingVideos| v.manifest().video("t1-welcome.mp4").unwrap().blake3;
+        assert_eq!(plays(&videos), BlobHash::of(WELCOME));
+
+        // The list says A′, but A′ arrives damaged.
+        let list = manifest(&[("t1-welcome.mp4", NEW)]);
+        serve(
+            &server,
+            &list,
+            &[("t1-welcome.mp4", b"a better welcome vide0")],
+        )
+        .await;
+        videos.ensure(true);
+        videos.wait();
+        assert!(!s.has(NEW));
+        let changes = videos.take_changes().unwrap();
+        assert!(!changes.any(), "{changes:?}");
+        assert_eq!(
+            plays(&videos),
+            BlobHash::of(WELCOME),
+            "the old one still plays"
+        );
+
+        // And after a restart, offline.
+        let again = s.videos(Some(unreachable()));
+        assert_eq!(plays(&again), BlobHash::of(WELCOME));
+
+        // Once A′ arrives, it replaces A.
+        serve(&server, &list, &[("t1-welcome.mp4", NEW)]).await;
+        let later = s.videos(Some(source));
+        later.ensure(true);
+        later.wait();
+        assert_eq!(
+            later.take_changes().unwrap().moved,
+            [(BlobHash::of(WELCOME), BlobHash::of(NEW))]
+        );
+        assert_eq!(plays(&later), BlobHash::of(NEW));
+        assert_eq!(plays(&s.videos(None)), BlobHash::of(NEW));
+    }
+
+    #[tokio::test]
+    async fn a_list_too_large_or_naming_too_much_is_refused() {
+        let s = &setup();
+        let refused = move |list: serde_json::Value| async move {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/training/videos.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(list))
+                .mount(&server)
+                .await;
+            let videos = s.videos(Some(format!("{}/training/", server.uri())));
+            videos.ensure(true);
+            videos.wait();
+            let asked: Vec<String> = server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| r.url.path().to_string())
+                .collect();
+            // The refused list's videos are never asked for; the list the
+            // app already had stands.
+            assert_eq!(asked[0], "/training/videos.json");
+            assert!(
+                asked.iter().all(|p| p == "/training/videos.json"
+                    || published().videos.iter().any(|v| p.ends_with(&v.file))),
+                "{asked:?}"
+            );
+            assert_eq!(videos.manifest(), published());
+        };
+        let entry = |file: &str, size: u64| {
+            serde_json::json!({"id": file.trim_end_matches(".mp4"), "file": file, "size": size,
+                "blake3": BlobHash::of(file.as_bytes()).to_string()})
+        };
+        // Larger than 64 KiB.
+        let padding = "x".repeat(MAX_MANIFEST_BYTES as usize);
+        refused(serde_json::json!({"version": 1, "videos": [], "padding": padding})).await;
+        // One video over 250 MB.
+        refused(
+            serde_json::json!({"version": 1, "videos": [entry("big.mp4", MAX_VIDEO_BYTES + 1)]}),
+        )
+        .await;
+        // Five under it, over 1 GB together.
+        let videos: Vec<_> = (0..5)
+            .map(|n| entry(&format!("v{n}.mp4"), MAX_VIDEO_BYTES))
+            .collect();
+        refused(serde_json::json!({"version": 1, "videos": videos})).await;
+    }
+
+    #[tokio::test]
+    async fn a_video_longer_than_its_list_says_is_cut_off() {
+        let server = MockServer::start().await;
+        let list = manifest(&[("t1-welcome.mp4", WELCOME)]);
+        Mock::given(method("GET"))
+            .and(path("/training/videos.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&list))
+            .mount(&server)
+            .await;
+        // More than the list says.
+        let body = [WELCOME, b" and then a great deal more"].concat();
+        Mock::given(method("GET"))
+            .and(path("/training/t1-welcome.mp4"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+            .mount(&server)
+            .await;
+        let s = setup();
+        let videos = s.videos(Some(format!("{}/training/", server.uri())));
+        videos.ensure(false);
+        videos.wait();
+        assert!(!s.has(WELCOME));
+        s.no_temp_files();
+    }
+
+    #[test]
+    fn leftover_temp_files_are_cleared_at_start() {
+        let s = setup();
+        fs::create_dir_all(&s.data).unwrap();
+        fs::write(s.data.join(".tmp-t1-welcome.mp4"), b"half a video").unwrap();
+        let _videos = s.videos(None);
+        assert!(!s.data.join(".tmp-t1-welcome.mp4").exists());
     }
 
     #[test]

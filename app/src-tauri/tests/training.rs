@@ -77,13 +77,14 @@ fn site() -> PathBuf {
 /// Serves `site/training/` as the website does.
 async fn website() -> wiremock::MockServer {
     let server = wiremock::MockServer::start().await;
-    publish(&server, None).await;
+    publish(&server, None, None).await;
     server
 }
 
 /// Serves `site/training/` on `server`, without `held` (a video not
-/// published yet) in the list or beside it.
-async fn publish(server: &wiremock::MockServer, held: Option<&str>) {
+/// published yet) in the list or beside it, and without the file `gone`
+/// although the list names it (a 404).
+async fn publish(server: &wiremock::MockServer, held: Option<&str>, gone: Option<&str>) {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, ResponseTemplate};
     server.reset().await;
@@ -94,7 +95,7 @@ async fn publish(server: &wiremock::MockServer, held: Option<&str>) {
         .respond_with(ResponseTemplate::new(200).set_body_json(&list))
         .mount(server)
         .await;
-    for video in &list.videos {
+    for video in list.videos.iter().filter(|v| Some(v.file.as_str()) != gone) {
         let file = site().join(&video.file);
         let name = &video.file;
         Mock::given(method("GET"))
@@ -309,7 +310,7 @@ async fn videos_already_downloaded_play_offline() {
 async fn a_video_not_published_yet_says_so_and_plays_once_it_is() {
     use lampstand_app::training_videos::NOT_READY;
     let website = website().await;
-    publish(&website, Some("t1-welcome.mp4")).await;
+    publish(&website, Some("t1-welcome.mp4"), None).await;
     let dir = tempfile::tempdir().unwrap();
     let mut h = open(dir.path());
     h.app
@@ -331,7 +332,7 @@ async fn a_video_not_published_yet_says_so_and_plays_once_it_is() {
     assert_eq!(videos_state(&mut h), TrainingVideoState::Ready);
 
     // Published later: Reset training (or the next day's look) finds it.
-    publish(&website, None).await;
+    publish(&website, None, None).await;
     h.events.lock().unwrap().clear();
     service_request(&mut h, ServiceRequest::ResetTraining);
     h.app.wait_for_training_videos();
@@ -349,6 +350,51 @@ async fn a_video_not_published_yet_says_so_and_plays_once_it_is() {
     assert_eq!(lines(&reloaded, "Welcome.mp4"), "");
     service_request(&mut h, ServiceRequest::Close(t1.id));
     run_through(&mut h, &t1, true);
+}
+
+/// A listed video the website cannot serve is not fetched over and over:
+/// with the training service open, ticking, and Present asking for the
+/// service again on each reload, the file is asked for at most once.
+#[tokio::test]
+async fn a_missing_video_is_not_downloaded_again_and_again() {
+    let website = wiremock::MockServer::start().await;
+    publish(&website, None, Some("t1-welcome.mp4")).await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    h.app
+        .set_training_source(Some(format!("{}/training/", website.uri())));
+    add_screen(&mut h);
+    let t1 = training(&mut h).remove(1);
+    let loaded = open_and_settle(&mut h, &t1);
+    let welcome = loaded
+        .items
+        .iter()
+        .find(|i| i.title == "Welcome.mp4")
+        .unwrap();
+    assert_eq!(welcome.slides[0].lines.join(" "), OFFLINE);
+    for _ in 0..10 {
+        h.events.lock().unwrap().clear();
+        h.app.tick();
+        // What Present does on each Loaded.
+        get(&mut h, &t1);
+        h.app.wait_for_training_videos();
+        let reloaded = h
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Loaded(_)));
+        assert!(!reloaded, "nothing changed, so nothing is loaded again");
+    }
+    let asked = website
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/training/t1-welcome.mp4")
+        .count();
+    assert_eq!(asked, 1, "the missing video was asked for {asked} times");
+    assert_eq!(videos_state(&mut h), TrainingVideoState::Offline);
 }
 
 /// Runs one training service from its first slide to its last.

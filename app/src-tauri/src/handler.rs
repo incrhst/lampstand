@@ -251,6 +251,9 @@ pub struct App {
     /// The training videos, downloaded the first time a training service
     /// is opened (#190).
     training_videos: TrainingVideos,
+    /// The open service has a video item saying it is downloading, so it
+    /// is loaded again when the download ends, however it went.
+    shows_downloading: bool,
 }
 
 /// Why a training service refuses a change (#190).
@@ -339,6 +342,7 @@ impl App {
             presenting: true,
             seen_displays: Vec::new(),
             training_videos,
+            shows_downloading: false,
         };
         app.place_windows();
         app.restore();
@@ -1210,6 +1214,7 @@ impl App {
             .map_err(err)?
             .ok_or("no such service")?;
         let training = self.library.is_training(id);
+        self.shows_downloading = false;
         let primary = self.primary_output();
         let theme = self.pagination_theme(service.theme, &primary);
         let mut items = Vec::new();
@@ -1252,6 +1257,7 @@ impl App {
             if let (true, ItemKind::Media { blob, .. }) = (training, &item.kind) {
                 if self.library.repo().blobs().path(blob).is_none() {
                     let message = self.training_videos.missing_message(blob);
+                    self.shows_downloading |= message == training_videos::DOWNLOADING;
                     loaded.slides = text_slides(message, None)
                         .into_iter()
                         .map(|slide| LoadedSlide {
@@ -2289,23 +2295,32 @@ impl App {
 
     /// Points the training services at the videos that arrived or changed,
     /// and loads an open one again, so its video items play.
+    /// Only when something changed: a download that changed nothing
+    /// reloads nothing (the download itself tells Present how it went), so
+    /// a missing video never sets off another look.
     fn training_videos_tick(&mut self) {
-        let Some(moved) = self.training_videos.take_changes() else {
+        let Some(changes) = self.training_videos.take_changes() else {
             return;
         };
-        for (from, to) in moved {
+        let changed = changes.any();
+        for (from, to) in changes.moved {
             self.library.replace_training_media(from, to);
         }
-        let open = self.loaded.as_ref().map(|l| l.view.service);
-        if let Some(open) = open.filter(|id| self.library.is_training(*id)) {
-            if let Err(e) = self.reload_if_open(open) {
-                eprintln!("lampstand: the training service was not loaded again: {e}");
+        // An item saying "downloading" should now say how it went.
+        if changed || self.shows_downloading {
+            let open = self.loaded.as_ref().map(|l| l.view.service);
+            if let Some(open) = open.filter(|id| self.library.is_training(*id)) {
+                if let Err(e) = self.reload_if_open(open) {
+                    eprintln!("lampstand: the training service was not loaded again: {e}");
+                }
             }
         }
-        (self.emit)(Event::Changed {
-            kind: "service".into(),
-            id: String::new(),
-        });
+        if changed {
+            (self.emit)(Event::Changed {
+                kind: "service".into(),
+                id: String::new(),
+            });
+        }
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
