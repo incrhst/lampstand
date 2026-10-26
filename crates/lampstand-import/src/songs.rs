@@ -7,3 +7,4 @@ pub mod openlyrics;
 pub mod opensong;
 pub mod propresenter;
 pub mod songselect;
+pub mod web;

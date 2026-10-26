@@ -35,6 +35,7 @@ use lampstand_api::{
     Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
     UpdateState,
 };
+use lampstand_connectors::pages::fetch_page;
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
 use lampstand_core::output::OutputId;
@@ -57,7 +58,7 @@ use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
 use crate::handler::{App, EventSink, Machine, Placement, WindowHost};
-use crate::import::{import_files, import_song_select_downloads};
+use crate::import::{add_song_page, import_files, import_song_select_downloads};
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
@@ -412,6 +413,46 @@ async fn api(
             done(match &response {
                 Ok(Response::Deck(deck)) => format!("Added {}", deck.title),
                 Ok(Response::Error { message }) => format!("Could not add the deck: {message}"),
+                _ => String::new(),
+            });
+            response
+        }
+        Request::Library(LibraryRequest::AddSongFromLink { url }) => {
+            emit(Event::ImportProgress {
+                done: 0,
+                total: 1,
+                message: "Reading the song page".into(),
+            });
+            let done = |message: String| {
+                emit(Event::ImportProgress {
+                    done: 1,
+                    total: 1,
+                    message,
+                })
+            };
+            let html = match fetch_page(&url).await {
+                Ok(html) => html,
+                Err(e) => {
+                    use lampstand_connectors::FetchError;
+                    let why = match e {
+                        FetchError::Network(why) | FetchError::NotADeck(why) => why,
+                        FetchError::Forbidden => "the site refused to show the page".into(),
+                        FetchError::NotFound => "there is no page at that link".into(),
+                    };
+                    let message = format!("Could not add the song: {why}");
+                    done(message.clone());
+                    return Ok(Response::Error { message });
+                }
+            };
+            let response = blocking(Box::new(move || {
+                add_song_page(&library, &html)
+                    .map(Response::Song)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await;
+            done(match &response {
+                Ok(Response::Song(song)) => format!("Added {}", song.title),
+                Ok(Response::Error { message }) => format!("Could not add the song: {message}"),
                 _ => String::new(),
             });
             response

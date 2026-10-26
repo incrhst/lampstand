@@ -681,6 +681,11 @@ impl App {
                 // and then adds it as `AddDeckFile` does.
                 return Err("deck links are downloaded by the app shell".into());
             }
+            LibraryRequest::AddSongFromLink { .. } => {
+                // The page is fetched by the shell, which then reads and
+                // adds the song with `import::add_song_page`.
+                return Err("song links are fetched by the app shell".into());
+            }
             LibraryRequest::AcceptDeckUpdate(_) => {
                 return Err("linked deck updates arrive with T41".into())
             }

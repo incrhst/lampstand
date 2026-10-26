@@ -106,9 +106,9 @@ export function isLink(query: string): boolean {
 }
 
 /**
- * The rows a pasted link offers: a deck, a sound, or (for a streaming page)
- * the reason it can't be added. A Drive or OneDrive link could be either,
- * so it offers both.
+ * The rows a pasted link offers: a deck, a sound, a song from a web page,
+ * or (for a streaming page) the reason it can't be added. A Drive or
+ * OneDrive link could be a deck or a sound, so it offers both.
  */
 export function linkEntries(link: string): Entry[] {
   const url = link.trim();
@@ -116,6 +116,7 @@ export function linkEntries(link: string): Entry[] {
   const rows: Entry[] = [];
   if (offers.deck) rows.push({ key: "link", kind: "deck", title: "Add deck from link", subtitle: url, item: null });
   if (offers.sound) rows.push({ key: "link:sound", kind: "media", title: "Add sound from link", subtitle: url, item: null });
+  if (offers.song) rows.push({ key: "link:song", kind: "song", title: "Add song from link", subtitle: url, item: null });
   if (offers.streaming) {
     rows.push({ key: "link:streaming", kind: "media", title: "This link can't be added", subtitle: streamingRefusal, item: null });
   }
