@@ -52,23 +52,23 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 8.5,
-     "y": 21,
+     "x": 86.5,
+     "y": 25,
      "label": "What the room sees"
     },
     {
-     "x": 42,
-     "y": 74,
+     "x": 45,
+     "y": 72,
      "label": "LIVE: on air now"
     },
     {
-     "x": 89,
-     "y": 22,
+     "x": 87.5,
+     "y": 45.5,
      "label": "Space moves on"
     },
     {
-     "x": 11,
-     "y": 80,
+     "x": 11.5,
+     "y": 70,
      "label": "Notes only you see"
     }
    ],

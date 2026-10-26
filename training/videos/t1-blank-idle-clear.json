@@ -17,18 +17,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 95.6,
-     "y": 22,
+     "x": 95,
+     "y": 45.5,
      "label": "Full stop blanks"
     },
     {
-     "x": 8.5,
-     "y": 21,
+     "x": 86.5,
+     "y": 25,
      "label": "The room sees black"
     },
     {
-     "x": 77,
-     "y": 10,
+     "x": 86.5,
+     "y": 85,
      "label": "Show · Idle · Blank"
     }
    ],
@@ -43,18 +43,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 77,
-     "y": 10,
+     "x": 86.5,
+     "y": 58.3,
      "label": "Idle"
     },
     {
-     "x": 8.5,
-     "y": 21,
+     "x": 86.5,
+     "y": 25,
      "label": "The idle screen is up"
     },
     {
-     "x": 34,
-     "y": 23,
+     "x": 79,
+     "y": 58.3,
      "label": "Show goes back to the slide"
     }
    ],
@@ -72,9 +72,9 @@
     "Clear text: hides the words, keeps the picture",
     "Show: back to the slide"
    ],
-   "say": "Blank puts up black. Idle puts up the waiting screen, for gaps between items. Clear text, in the More menu, hides the words but keeps the background. Show brings the slide back.",
+   "say": "Blank puts up black. Idle puts up the waiting screen, for gaps between items. Clear, in the boxes on the right, hides the words but keeps the background. Show brings the slide back.",
    "narration": "narration/t1-blank-idle-clear/04.mp3",
-   "durationSec": 16
+   "durationSec": 13
   },
   {
    "type": "quote",
