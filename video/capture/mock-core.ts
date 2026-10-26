@@ -85,12 +85,12 @@ const tipsService = {
 const john = { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 18 } };
 const psalm = { book: 19, start: { chapter: 23, verse: 1 }, end: { chapter: 23, verse: 3 } };
 const training = [
-  { id: "training-0", title: "Training 0: Orientation", training: true, starts_at: null, time_zone: null, theme: null, items: {
-    a1: item({ Header: { title: "Training 0: Orientation (5 minutes). Press Space to start" } }),
+  { id: "training-0", title: "Training Session 0: Orientation", training: true, starts_at: null, time_zone: null, theme: null, items: {
+    a1: item({ Header: { title: "Training Session 0: Orientation (5 minutes). Press Space to start" } }),
     a2: item({ Media: { blob: "v0", name: "Welcome to Lampstand.mp4", looped: false } }),
     a3: item({ Deck: { deck: "deck-t1-screen" } }),
   } as Record<string, any> },
-  { id: "training-1", title: "Training 1: Run a service", training: true, starts_at: null, time_zone: null, theme: null, items: {
+  { id: "training-1", title: "Training Session 1: Run a service", training: true, starts_at: null, time_zone: null, theme: null, items: {
     b1: item({ Header: { title: "Welcome. Press Space to start" } }),
     b2: item({ Media: { blob: "v1", name: "Welcome.mp4", looped: false } }, "Press Space when the video ends."),
     b3: item({ Deck: { deck: "deck-t1-screen" } }, "Point at each part of the real screen as the slides describe it."),
@@ -101,7 +101,7 @@ const training = [
     b8: item({ Media: { blob: "v3", name: "Blank, Idle, Clear.mp4", looped: false } }),
     b9: item({ Deck: { deck: "deck-t1-sermon" } }, "Practice: five slides with builds. Try Blank (full stop) once in the middle."),
   } as Record<string, any> },
-  { id: "training-2", title: "Training 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
+  { id: "training-2", title: "Training Session 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
     c1: item({ Header: { title: "Rehearsal service. The trainer calls the surprises" } }),
     c2: item({ Text: { title: "Welcome", body: "Welcome!\nWe are glad you are here.", attribution: null } }, "SURPRISE 5 (blank in an emergency) can come at any moment from here on."),
     c3: item({ Song: { song: "holy-holy-holy", arrangement: null } }, "SURPRISE 2 (order change). Trainer: \"We are singing Amazing Grace first.\""),
@@ -283,6 +283,8 @@ function api(req: any): any {
         case "List": return { type: "Services", data: summaries() };
         case "ListChecked": return { type: "ServiceList", data: { services: summaries(), newer: 0, damaged: [] } };
         case "ResetTraining": return ok;
+        // The screenshots show a device that has its training videos.
+        case "TrainingVideos": return { type: "TrainingVideos", data: { state: "Ready", message: "" } };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
         case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }

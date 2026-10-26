@@ -1,4 +1,4 @@
-# Training 1: Run a service
+# Training Session 1: Run a service
 
 For operators. 10 minutes. Ends with: a practice service run with no wrong slide and no desktop showing.
 

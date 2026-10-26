@@ -18,6 +18,7 @@ import {
   type SyncSummary,
   type DeviceSettings,
   type Theme,
+  type TrainingVideos,
   type UpdateStatus,
 } from "./api";
 import { loadSettings, updateSettings } from "./settings";
@@ -67,6 +68,8 @@ class LiveState {
   updateCheckedAt: number | null = $state(null);
   /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
   displaysVersion: number = $state(0);
+  /** Whether the training videos are here, downloading or out of reach (#190); null until first asked. */
+  trainingVideos: TrainingVideos | null = $state(null);
 
   /** The library's themes, Starter first. Kept current by `refreshThemes`. */
   themes: Theme[] = $state([]);
@@ -139,6 +142,9 @@ onEvent((event) => {
       break;
     case "DisplaysChanged":
       live.displaysVersion++;
+      break;
+    case "TrainingVideos":
+      live.trainingVideos = event.data;
       break;
   }
 });

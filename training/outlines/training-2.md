@@ -1,12 +1,12 @@
-# Training 2: Confident operator
+# Training Session 2: Confident operator
 
-For operators who have taken Training 1. 30 minutes. Ends with: recovering from five surprises with the
+For operators who have taken Training Session 1. 30 minutes. Ends with: recovering from five surprises with the
 screen calm. A trainer runs it: the surprises are in the notes, which the trainee does not read ahead.
 Run the rehearsal twice, slowly then at real speed, with **Reset training** in Plan between runs.
 
 | # | Item | Surprise in the notes |
 | --- | --- | --- |
-| 1 | Header: "Training 2: Confident operator (30 minutes)" | |
+| 1 | Header: "Training Session 2: Confident operator (30 minutes)" | |
 | 2 | Video: Five surprises (`videos/t2-five-surprises.json`, about 1.5 min) | The five moves, one scene each. |
 | 3 | Deck: Briefing (`t2-briefing.pptx`, 3 slides) | How the session runs; the five moves; "the room never sees you looking". |
 | 4 | Header: "Rehearsal service. The trainer calls the surprises" | |

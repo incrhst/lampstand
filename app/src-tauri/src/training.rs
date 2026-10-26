@@ -1,13 +1,16 @@
-//! Training services (#190): Training 0 to 2, bundled with the app and
+//! Training services (#190): Training Sessions 0 to 2, bundled with the app and
 //! built from `training/` at every start, so a fresh install has them,
 //! offline, and an update brings the new ones.
 //!
-//! `training/services/*.json` say what is in each service; the decks
-//! (`training/decks/*.pptx`) and videos (`training/media/*.mp4`) they name
-//! are embedded here and put in the blob store, where the renderer finds
-//! them like any other. The songs are the seeded public-domain hymns, parsed
-//! again as training's own copies, and the scripture uses the bundled KJV
-//! and WEB. `training/README.md` says how to rebuild the decks and videos.
+//! `training/services/*.json` say what is in each service; the decks they
+//! name (`training/decks/*.pptx`) are embedded here and put in the blob
+//! store, where the renderer finds them like any other. The training videos
+//! are not embedded: a video item names its video by the hash in the
+//! website's manifest, and `training_videos` downloads it into the blob
+//! store the first time a training service is opened. The songs are the
+//! seeded public-domain hymns, parsed again as training's own copies, and
+//! the scripture uses the bundled KJV and WEB. `training/README.md` says
+//! how to rebuild the decks and videos, and how to publish a video.
 //!
 //! The services, decks and songs go to the library's training set
 //! (`lampstand_library::training`), never to the repo: they are read-only
@@ -24,19 +27,20 @@ use lampstand_core::service::{ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::song::{Song, SongId};
 use lampstand_import::songs::openlyrics::parse_song;
 use lampstand_library::bundled::BUNDLED;
-use lampstand_library::training::TrainingSet;
+use lampstand_library::training::{TrainingSet, VideoManifest};
 use lampstand_library::Library;
 use serde::Deserialize;
 use uuid::Uuid;
 
-/// The service definitions, Training 0 first.
+/// The service definitions, Training Session 0 first.
 pub const SERVICES: [&str; 3] = [
     include_str!("../../../training/services/training-0.json"),
     include_str!("../../../training/services/training-1.json"),
     include_str!("../../../training/services/training-2.json"),
 ];
 
-/// Every deck and video a definition may name, by file name.
+/// Every deck a definition may name, by file name. Videos are downloaded
+/// (`training_videos`).
 pub const FILES: &[(&str, &[u8])] = &[
     (
         "t0-plan-and-present.pptx",
@@ -69,26 +73,6 @@ pub const FILES: &[(&str, &[u8])] = &[
     (
         "t2-debrief.pptx",
         include_bytes!("../../../training/decks/t2-debrief.pptx"),
-    ),
-    (
-        "t0-welcome.mp4",
-        include_bytes!("../../../training/media/t0-welcome.mp4"),
-    ),
-    (
-        "t1-welcome.mp4",
-        include_bytes!("../../../training/media/t1-welcome.mp4"),
-    ),
-    (
-        "t1-going-live.mp4",
-        include_bytes!("../../../training/media/t1-going-live.mp4"),
-    ),
-    (
-        "t1-blank-idle-clear.mp4",
-        include_bytes!("../../../training/media/t1-blank-idle-clear.mp4"),
-    ),
-    (
-        "t2-five-surprises.mp4",
-        include_bytes!("../../../training/media/t2-five-surprises.mp4"),
     ),
 ];
 
@@ -132,7 +116,8 @@ pub enum Item {
     Header {
         title: String,
     },
-    /// A video in `training/media`; `name` must end in `.mp4`.
+    /// A training video the website's manifest lists by `file` (its
+    /// source is `training/media`); `name` must end in `.mp4`.
     Video {
         file: String,
         name: String,
@@ -181,8 +166,10 @@ fn derived(service: Uuid, n: u128) -> Uuid {
     Uuid::from_u128(service.as_u128().wrapping_add(n << 64))
 }
 
-/// Builds the training set, putting the files it uses in the blob store.
-pub fn build(library: &Library) -> Result<TrainingSet, String> {
+/// Builds the training set, putting the decks it uses in the blob store.
+/// Video items name their videos by `videos`' hashes, whether or not they
+/// have been downloaded yet.
+pub fn build(library: &Library, videos: &VideoManifest) -> Result<TrainingSet, String> {
     let blobs = library.repo().blobs();
     let put = |bytes: &[u8]| -> Result<BlobHash, String> {
         let hash = BlobHash::of(bytes);
@@ -216,7 +203,12 @@ pub fn build(library: &Library) -> Result<TrainingSet, String> {
                     file: name,
                     name: shown,
                 } => ItemKind::Media {
-                    blob: put(file(name)?)?,
+                    // Not published yet: the item says so until a later
+                    // list names it.
+                    blob: videos
+                        .video(name)
+                        .map(|v| v.blake3)
+                        .unwrap_or_else(|| crate::training_videos::unpublished(name)),
                     name: shown.clone(),
                     looped: false,
                 },
@@ -282,9 +274,18 @@ pub fn build(library: &Library) -> Result<TrainingSet, String> {
 
 /// Builds the training services and gives them to the library. Run at
 /// every start; a failure leaves the app without training, never stopped.
-pub fn install(library: &Library) -> Result<(), String> {
-    library.install_training(build(library)?);
+pub fn install(library: &Library, videos: &VideoManifest) -> Result<(), String> {
+    library.install_training(build(library, videos)?);
     Ok(())
+}
+
+/// Whether a training service has a video item, so opening it is when the
+/// training videos download.
+pub fn has_video(service: &Service) -> bool {
+    service
+        .items
+        .values()
+        .any(|i| matches!(i.kind, ItemKind::Media { .. }))
 }
 
 #[cfg(test)]
@@ -293,29 +294,60 @@ mod tests {
 
     #[test]
     fn every_file_is_used_and_every_name_exists() {
-        let mut used = Vec::new();
+        let videos = crate::training_videos::published();
+        let (mut decks, mut shown) = (Vec::new(), Vec::new());
         for def in definitions().unwrap() {
             for entry in def.items {
                 match entry.item {
                     Item::Video { file, name } => {
+                        // It may not be published yet (see
+                        // a_video_not_published_yet_is_no_error).
                         assert!(name.ends_with(".mp4"), "{name} plays as a video");
-                        used.push(file);
+                        shown.push(file);
                     }
-                    Item::Deck { file, .. } => used.push(file),
+                    Item::Deck { file, .. } => decks.push(file),
                     _ => {}
                 }
             }
         }
         for (name, bytes) in FILES {
             assert!(
-                used.iter().any(|u| u == name),
+                decks.iter().any(|u| u == name),
                 "{name} is bundled but unused"
             );
             assert!(!bytes.is_empty(), "{name} is empty");
+            assert!(name.ends_with(".pptx"), "{name}: only decks are bundled");
         }
-        for name in &used {
+        for name in &decks {
             file(name).unwrap();
         }
+        for video in &videos.videos {
+            assert!(
+                shown.contains(&video.file),
+                "{} is published but no training service shows it",
+                video.file
+            );
+        }
+    }
+
+    #[test]
+    fn a_video_not_published_yet_is_no_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(dir.path(), key).unwrap();
+        let mut videos = crate::training_videos::published();
+        videos.videos.retain(|v| v.file != "t1-welcome.mp4");
+        let set = build(&library, &videos).unwrap();
+        let blobs: Vec<BlobHash> = set
+            .services
+            .iter()
+            .flat_map(|s| s.items.values())
+            .filter_map(|i| match i.kind {
+                ItemKind::Media { blob, .. } => Some(blob),
+                _ => None,
+            })
+            .collect();
+        assert!(blobs.contains(&crate::training_videos::unpublished("t1-welcome.mp4")));
     }
 
     #[test]
@@ -323,17 +355,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let key = lampstand_sync::team::DeviceKeypair::generate();
         let library = Library::open(dir.path(), key).unwrap();
-        let a = build(&library).unwrap();
-        let b = build(&library).unwrap();
+        let videos = crate::training_videos::published();
+        let a = build(&library, &videos).unwrap();
+        let b = build(&library, &videos).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.services.len(), 3);
         let titles: Vec<&str> = a.services.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(
             titles,
             [
-                "Training 0: Orientation",
-                "Training 1: Run a service",
-                "Training 2: Confident operator"
+                "Training Session 0: Orientation",
+                "Training Session 1: Run a service",
+                "Training Session 2: Confident operator"
             ]
         );
     }

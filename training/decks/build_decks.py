@@ -4,7 +4,7 @@
 
 The decks are real PowerPoint files: the app imports them with the same deck importer
 as a church's own, so they double as fidelity fixtures. Each slide's speaker notes hold
-the trainer's script, and in Training 2 the surprises the trainer calls, so a trainer
+the trainer's script, and in Training Session 2 the surprises the trainer calls, so a trainer
 reads them on the confidence monitor or beside the item on air in Present.
 
 Builds are ordinary PowerPoint "appear by paragraph" click effects, written as the XML
@@ -191,11 +191,11 @@ def save(name, title, label, slides):
     print(f"{name}: {len(slides)} slides, {len(out.getvalue()) // 1024} KB")
 
 
-# ---------------------------------------------------------------- Training 0
+# ---------------------------------------------------------------- Training Session 0
 
 T0 = "Lampstand training · 0 Orientation"
 save("t0-plan-and-present.pptx", "Plan and Present", T0, [
-    {"kind": "title", "kicker": "Training 0", "heading": "Two modes and a toolbox",
+    {"kind": "title", "kicker": "Training Session 0", "heading": "Two modes and a toolbox",
      "sub": "Plan during the week. Present on Sunday. Setup once.",
      "notes": """
 Trainer: Welcome everyone. This takes five minutes and is for everybody on the team,
@@ -219,7 +219,7 @@ Say: nothing you do in Plan reaches the screen in the room."""},
 Trainer: Present is the operator's screen. One service is open at a time, and every slide
 of it is laid out as cards. The card marked LIVE, in red, is what the room sees, and so is the
 small picture at the top left. Everything else is only for you.
-This training is itself a service, open in Present right now."""},
+This training service is open in Present right now, and it works like any other service."""},
     {"kind": "bullets", "heading": "Setup: once, then rarely", "fade": True, "items": [
         "Screens: which screen is the projector",
         "Themes: how the words look",
@@ -238,11 +238,11 @@ Plan. Find this service in the list under Training. Then press it again to come 
 The service stays open for live while you look at Plan."""},
 ])
 
-# ---------------------------------------------------------------- Training 1
+# ---------------------------------------------------------------- Training Session 1
 
 T1 = "Lampstand training · 1 Run a service"
 save("t1-present-screen.pptx", "The Present screen", T1, [
-    {"kind": "title", "kicker": "Training 1", "heading": "The Present screen",
+    {"kind": "title", "kicker": "Training Session 1", "heading": "The Present screen",
      "sub": "Four places to look. One rule.",
      "notes": """
 Trainer: Ten minutes from now you will run a short practice service with no wrong slide
@@ -309,7 +309,7 @@ or Idle if the room should see the idle screen."""},
 ])
 
 save("t1-ready.pptx", "You're ready", T1, [
-    {"kind": "title", "kicker": "Training 1", "heading": "You're ready",
+    {"kind": "title", "kicker": "Training Session 1", "heading": "You're ready",
      "sub": "You have run a service: songs, scripture, a sermon deck and the blank screen.",
      "notes": """
 Trainer: Well done. Ask the trainee: what would you do if the wrong slide went up?
@@ -322,14 +322,14 @@ Trainer: Well done. Ask the trainee: what would you do if the wrong slide went u
     ], "notes": """
 Trainer: Walk through a real Sunday. Point out Close service in the bar at the top right.
 Give them the printed key sheet to keep by the computer.
-Next: Training 2, Confident operator, practises the five surprises that happen on a real Sunday."""},
+Next: Training Session 2, Confident operator, practises the five surprises that happen on a real Sunday."""},
 ])
 
-# ---------------------------------------------------------------- Training 2
+# ---------------------------------------------------------------- Training Session 2
 
 T2 = "Lampstand training · 2 Confident operator"
 save("t2-briefing.pptx", "Briefing: five surprises", T2, [
-    {"kind": "title", "kicker": "Training 2", "heading": "Five surprises",
+    {"kind": "title", "kicker": "Training Session 2", "heading": "Five surprises",
      "sub": "A rehearsal service. The trainer calls the surprises. You keep the screen calm.",
      "notes": """
 Trainer: This takes about thirty minutes. The surprises are written in the notes of each
@@ -393,12 +393,12 @@ save("t2-debrief.pptx", "Debrief", T2, [
         "Which surprise felt hardest?",
     ], "notes": """
 Trainer: Ask each question and let the trainee answer. If any answer is yes, run the
-rehearsal again: press Reset training in Plan, open Training 2 for live and start from the top.
+rehearsal again: press Reset training in Plan, open Training Session 2 for live and start from the top.
 A confident operator gets through all five surprises with the screen calm every time."""},
-    {"kind": "title", "kicker": "Training 2", "heading": "Confident operator",
-     "sub": "Next for planners: Training 3. For media volunteers: Training 4.",
+    {"kind": "title", "kicker": "Training Session 2", "heading": "Confident operator",
+     "sub": "Next for planners: Training Session 3. For media volunteers: Training Session 4.",
      "notes": """
-Trainer: That is the end of operator training. Training 3 (Planner) and 4 (Setup and the
+Trainer: That is the end of operator training. Training Session 3 (Planner) and Training Session 4 (Setup and the
 stream) come in a later version of Lampstand. Close the service with Close service, top right."""},
 ])
 

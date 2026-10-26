@@ -13,5 +13,6 @@ lampstand-core.workspace = true
 lampstand-import.workspace = true
 lampstand-library.workspace = true
 reqwest = { workspace = true, features = ["blocking"] }
+serde_json.workspace = true
 tempfile.workspace = true
 zip.workspace = true

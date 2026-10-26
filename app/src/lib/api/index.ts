@@ -110,6 +110,8 @@ export * from "./TextStyle";
 export * from "./Theme";
 export * from "./ThemeSample";
 export * from "./Timestamp";
+export * from "./TrainingVideoState";
+export * from "./TrainingVideos";
 export * from "./Transition";
 export * from "./TransitionKind";
 export * from "./Translation";
