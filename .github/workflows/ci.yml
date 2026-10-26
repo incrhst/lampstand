@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `labeled`, so adding the all-platforms label re-runs with macOS and Windows.
+    types: [opened, synchronize, reopened, labeled]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -57,17 +59,27 @@ jobs:
               esac
               case "$file" in
                 Cargo.toml|Cargo.lock|*/Cargo.toml|deny.toml|rust-toolchain*|.cargo/*|\
+                */package.json|*/package-lock.json|\
                 .github/workflows/*|\
                 app/src-tauri/tauri.conf.json|app/src-tauri/build.rs|app/src-tauri/*.plist|app/src-tauri/capabilities/*|\
                 crates/lampstand-render/*|crates/lampstand-media/*|crates/lampstand-sync/src/net/*)
                   platforms=true; echo "all platforms: $file" ;;
               esac
             done < <(git diff --name-only "origin/$BASE...HEAD")
-            # Rust code that adds or removes operating-system-specific code.
-            if git diff "origin/$BASE...HEAD" -- '*.rs' \
-                | grep -qE '^[+-].*cfg\((not\()?(target_os|target_family|windows|unix)'; then
+            # Rust that adds or removes operating-system-specific code
+            # (cfg, cfg!, cfg_attr, any/all/not, target_vendor), or that
+            # changes a source file holding some (code inside an existing
+            # OS-only block). Tests are left out of the second check.
+            os_cfg='cfg(_attr)?!?\(.*(target_os|target_family|target_vendor|windows|unix)'
+            if git diff "origin/$BASE...HEAD" -- '*.rs' | grep -qE "^[+-].*$os_cfg"; then
               platforms=true; echo "all platforms: a cfg for an operating system changed"
             fi
+            while IFS= read -r file; do
+              case "$file" in */tests/*) continue ;; esac
+              if [ -f "$file" ] && grep -qE "$os_cfg" "$file"; then
+                platforms=true; echo "all platforms: $file has operating-system-specific code"
+              fi
+            done < <(git diff --name-only "origin/$BASE...HEAD" -- '*.rs')
           fi
           echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
           echo "platforms=$platforms" >> "$GITHUB_OUTPUT"
@@ -82,7 +94,8 @@ jobs:
     name: check (${{ matrix.os }})
     needs: changes
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # A cold cache and slow apt have taken a successful job to 36 minutes.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -187,7 +200,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
