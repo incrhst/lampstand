@@ -37,3 +37,12 @@ npm run lamp:sheet -- projects/lampstand/videos/X.json --sheet [--aspect 9:16]  
 npm run lamp:render -- projects/lampstand/videos/X.json [--aspect 1:1]           # out/X.mp4
 ```
 Samples: `sample-what-is-lampstand.json` (59s intro), `sample-roles-explained.json` (roles and devices).
+
+## The hero tour (`"composition": "Tour"`, `videos/hero-tour.json`)
+
+The site's 72 s fly-over: one camera over a `world`, so not the scenes above. `world.windows[]`: id, src (`shots/*.png`), title, x, y, z, yaw, scale. `world.screen`: x, y, yaw, lyrics[][], credit. `world.backdrop`: paper, folds, labels.
+| type | props | example |
+|---|---|---|
+| open / stop / close | tag, title, sub?, keys[0-4]?, stops[1-3]: on? (window id or `screen`), x, y, d, yaw, pitch, roll, atSec; captionIn?, captionOut?, sfx[] | `{"type":"stop","durationSec":5,"tag":"Plan","title":"Build the order of service.","stops":[{"on":"plan","d":1610,"yaw":12,"pitch":11}]}` |
+
+`open` big caption lower left, `stop` lower left, `close` centred end card. `npm run hero` (render), `npm run hero:sheet`. All colours, type, spacing and motion: `tokens.ts`.

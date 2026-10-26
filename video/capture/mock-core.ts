@@ -28,7 +28,7 @@ const deckSlides: Record<string, any[]> = {
   ],
   "deck-sermon": [
     { label: "Slide 1", lines: ["The Good Shepherd", "John 10"], steps: 0, notes: "Open with the story of the lost sheep." },
-    { label: "Slide 2", lines: ["I know my sheep", "and my sheep know me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
+    { label: "Slide 2", lines: ["I know my sheep", "They hear my voice", "They follow me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
     { label: "Slide 3", lines: ["He lays down his life"], steps: 1, notes: "Slow down." },
   ],
 };
@@ -41,12 +41,14 @@ const trainingDecks = [
 ];
 deckSlides["deck-t1-screen"] = [
   { label: "Slide 1", lines: ["The Present screen", "Four places to look. One rule."], steps: 0, notes: "Trainer: point at each part of the screen as we go." },
-  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is what Space puts up. The strip on top is the main screen and the controls." },
+  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is the next slide. The strip on top is the main screen and the controls." },
 ];
 deckSlides["deck-t1-sermon"] = [
   { label: "Slide 1", lines: ["The Lord is my shepherd", "Psalm 23"], steps: 0, notes: "Preacher: Good morning. Our reading today is Psalm 23.\nOperator: each Space press brings in one point." },
   { label: "Slide 2", lines: ["He leads me", "Green pastures", "Still waters", "Paths of righteousness"], steps: 3, notes: "Preacher: He leads me beside the still waters.\nOperator: three points, three presses." },
   { label: "Slide 3", lines: ["Yea, though I walk through the valley", "of the shadow of death, I will fear no evil"], steps: 0, notes: "Preacher: read the verse slowly." },
+  { label: "Slide 4", lines: ["Three things to take home", "You are known", "You are led", "You are not alone"], steps: 3, notes: "Preacher: three things to take home this week." },
+  { label: "Slide 5", lines: ["Surely goodness and mercy", "shall follow me all the days of my life"], steps: 0, notes: "Preacher: let us pray." },
 ];
 deckSlides["deck-t2-thursday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "As sent on Thursday"], steps: 0, notes: "SURPRISE 4 (updated deck). Trainer: \"The preacher changed the verse slide this morning. Use the new deck.\"" }];
 deckSlides["deck-t2-sunday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "Updated Sunday morning"], steps: 0, notes: "Preacher: Good morning. This is the corrected deck." }];
@@ -184,6 +186,16 @@ function pushLive() {
   const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
   if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
   emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay } });
+  if (soundOn) emit({ type: "Sound", data: soundView() });
+}
+// Sound (window.__soundOn): Amazing Grace has a backing track that starts on its own when the song
+// goes live, as Next does in the engine, and plays on until another sound starts.
+let soundOn = false;
+let playing: any = null;
+const BACKING = { name: "Amazing Grace (backing track)", file: "s1", length_ms: 212000, start: "OnItsOwn", keep_off_stream: false };
+function soundView() {
+  if (state.live?.item === "i3" && playing?.item !== "i3") playing = { item: "i3", name: BACKING.name, paused: false, ending: false, position_ms: 4000, length_ms: BACKING.length_ms };
+  return { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing, problem: null, problem_item: null };
 }
 // A looping section moves the live slide on by itself, as the real engine does.
 setInterval(() => {
@@ -205,10 +217,12 @@ function move(dir: number, byItem = false) {
     const step = cur.step + dir;
     if (step >= 0 && step <= steps) { state.preview = { ...cur, step }; return; }
   }
+  // Previous from a slide's first step lands on the slide before, fully built.
+  const built = (c: any) => (dir < 0 && !byItem && c ? { ...c, step: state.loaded.items.find((i: any) => i.id === c.item)?.slides[c.slide]?.steps ?? 0 } : c);
   const base = state.live ?? state.preview; let at = base ? f.findIndex((c: any) => c.item === base.item && c.slide === base.slide) : -1;
   if (byItem) { const cur = base?.item; let n = at; while (n >= 0 && n < f.length && f[n].item === cur) n += dir; at = n < 0 ? 0 : Math.min(n, f.length - 1); if (dir < 0) { const it = f[at].item; at = f.findIndex((c: any) => c.item === it); } }
   else at = Math.max(0, Math.min(f.length - 1, at + dir));
-  state.preview = f[Math.max(0, at)];
+  state.preview = built(f[Math.max(0, at)]);
 }
 const svgThumb = (label: string) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='95' fill='#f5f1e8' font-family='serif' font-size='20' text-anchor='middle'>${label}</text></svg>`);
 
@@ -371,7 +385,7 @@ function api(req: any): any {
     case "Team": return { type: "Team", data: team() };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
-    case "Sound": return { type: "Sound", data: { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
+    case "Sound": return { type: "Sound", data: soundOn ? soundView() : { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
   }
   return { type: "Error", data: { message: `mock: unhandled ${area}.${key}` } };
 }
@@ -392,6 +406,7 @@ export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_versio
   state.paired = [{ device: "bb", fingerprint: "a1b2 c3d4", name: "Office PC", address: "192.168.1.30:7340", connected: true, problem: null, presenting: false }];
   emit({ type: "SyncStatus", data: { sync: { state: "Synced", paired: 1, connected: 1, reason: null, last_in_ms: null, last_out_ms: null } } });
 };
+(window as any).__soundOn = () => { soundOn = true; sunday.items.i3.backing = BACKING; };
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {

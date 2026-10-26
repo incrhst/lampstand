@@ -36,4 +36,4 @@ Only when the existing scenes cannot say it. One-off: add a component to `video/
 
 ## Don't
 
-Do not touch `crates/` or `app/`. The older fly-over (`video/src`, `npm run render`) is separate; leave it alone unless asked.
+Do not touch `crates/` or `app/`. The site's hero fly-over is `video/projects/lampstand/videos/hero-tour.json` (composition `Tour`, rendered with `npm run hero`); change it only when asked.
