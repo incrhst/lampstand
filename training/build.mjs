@@ -1,23 +1,30 @@
 // Rebuilds the bundled training material (#190) from its sources in training/.
 //
-//   node training/build.mjs                 decks and videos
+//   node training/build.mjs                 decks, key sheet, videos, then publish
 //   node training/build.mjs decks           only the PPTX decks
 //   node training/build.mjs videos          only the videos (narration, render, compress)
 //   node training/build.mjs videos t1-welcome   one video
 //   node training/build.mjs sheet           the printable key sheet (Chrome prints it to PDF)
+//   node training/build.mjs publish         copy the videos to the website, with their manifest
 //   --no-narrate                            render with the narration already in video/public
 //
-// Decks: training/decks/build_decks.py writes training/decks/*.pptx (python-pptx, through uv).
+// Decks: training/decks/build_decks.py writes training/decks/*.pptx (python-pptx, through uv),
+// which the app embeds (app/src-tauri/src/training.rs).
 // Videos: each training/videos/<name>.json is a scene list for the parametric Remotion framework
 // in video/ (theme `lampstand`). The build narrates it (video/core/scripts/narrate.mjs: Google
 // Cloud TTS, Chirp 3 HD voice Algenib, which needs Google credentials; it only re-synthesises
 // lines whose words changed), renders it at 1920x1080, and compresses it to 1280x720 H.264 with
-// mono AAC into training/media/<name>.mp4, which the app embeds (app/src-tauri/src/training.rs).
+// mono AAC into training/media/<name>.mp4.
+// Publish: the app does not embed the videos. `cargo xtask training-videos` copies
+// training/media/*.mp4 into site/training/ and writes site/training/videos.json (each video's
+// file, size and BLAKE3 hash). Merged to main, the website serves them at
+// https://lampstand.dbain.com/training/, and installed copies download a new or changed video
+// the next time a training service is opened: no release needed.
 //
 // The screenshots the videos show come from scripted runs of the real UI:
 // `npm run capture:serve` and `npm run capture:training` in video/.
 //
-// Needs: node, uv, ffmpeg; `npm install` in video/ once.
+// Needs: node, uv, ffmpeg, cargo; `npm install` in video/ once.
 import { execFileSync } from "node:child_process";
 import { readdirSync, statSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -74,4 +81,10 @@ if (what === "all" || what === "videos") {
     ]);
     console.log(`${name}.mp4: ${(statSync(small).size / 1024).toFixed(0)} KB`);
   }
+  if (what === "videos") console.log("Then publish them: node training/build.mjs publish");
+}
+
+if (what === "all" || what === "publish") {
+  // The hashes are BLAKE3, the app's blob hash, so the xtask writes the manifest.
+  run("cargo", ["xtask", "training-videos"], resolve(here, ".."));
 }

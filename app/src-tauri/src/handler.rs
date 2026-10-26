@@ -78,6 +78,7 @@ use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
 use crate::training;
+use crate::training_videos::{self, TrainingVideos};
 pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
@@ -247,6 +248,9 @@ pub struct App {
     /// The displays the windows were last placed against, so a display that
     /// appears after that, even before the shell's first look, is noticed.
     seen_displays: Vec<DisplayInfo>,
+    /// The training videos, downloaded the first time a training service
+    /// is opened (#190).
+    training_videos: TrainingVideos,
 }
 
 /// Why a training service refuses a change (#190).
@@ -281,7 +285,14 @@ impl App {
         let key = device_key(data_dir).map_err(err)?;
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
-        if let Err(e) = training::install(&library) {
+        // Reads only what an earlier run saved: nothing downloads at start.
+        let training_videos = TrainingVideos::open(
+            data_dir.join("training-videos"),
+            Some(training_videos::SOURCE.to_string()),
+            library.clone(),
+            emit.clone(),
+        );
+        if let Err(e) = training::install(&library, &training_videos.manifest()) {
             eprintln!("lampstand: the training services could not be added: {e}");
         }
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
@@ -327,6 +338,7 @@ impl App {
             quiet_cues: false,
             presenting: true,
             seen_displays: Vec::new(),
+            training_videos,
         };
         app.place_windows();
         app.restore();
@@ -688,7 +700,12 @@ impl App {
                     damaged: scan.damaged,
                 })
             }
-            ServiceRequest::Get(id) => Response::Service(get(id)?),
+            ServiceRequest::Get(id) => {
+                let service = get(id)?;
+                self.fetch_training_videos(id);
+                Response::Service(service)
+            }
+            ServiceRequest::TrainingVideos => Response::TrainingVideos(self.training_videos.view()),
             ServiceRequest::Create {
                 title,
                 starts_at,
@@ -769,6 +786,8 @@ impl App {
             }
             ServiceRequest::ResetTraining => {
                 lib.reset_training();
+                // And a new look for new training videos.
+                self.training_videos.ensure(true);
                 if let Some(open) = self.loaded.as_ref().map(|l| l.view.service) {
                     self.reload_if_open(open)?;
                 }
@@ -902,6 +921,7 @@ impl App {
                 if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
                     self.loop_overrides.clear();
                 }
+                self.fetch_training_videos(id);
                 Response::Loaded(self.load_service(id)?)
             }
             ServiceRequest::SetMediaLooped {
@@ -1189,6 +1209,7 @@ impl App {
             .service(id)
             .map_err(err)?
             .ok_or("no such service")?;
+        let training = self.library.is_training(id);
         let primary = self.primary_output();
         let theme = self.pagination_theme(service.theme, &primary);
         let mut items = Vec::new();
@@ -1226,6 +1247,21 @@ impl App {
                 obs_scenes.insert(item_id, scene.clone());
             }
             let mut loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            // A training video not downloaded yet says so instead, and the
+            // rest of the service runs. It is loaded again when it arrives.
+            if let (true, ItemKind::Media { blob, .. }) = (training, &item.kind) {
+                if self.library.repo().blobs().path(blob).is_none() {
+                    let message = self.training_videos.missing_message(blob);
+                    loaded.slides = text_slides(message, None)
+                        .into_iter()
+                        .map(|slide| LoadedSlide {
+                            content: Content::Text { slide },
+                            steps: 0,
+                            dwell_ms: None,
+                        })
+                        .collect();
+                }
+            }
             if !matches!(item.kind, ItemKind::Header { .. }) {
                 if let Some(open) = sections.last_mut() {
                     open.items.push(item_id);
@@ -2220,6 +2256,56 @@ impl App {
         self.church_tick();
         self.sound_tick(now);
         self.audio_tick();
+        self.training_videos_tick();
+    }
+
+    /// Where the training videos come from: `None` never downloads them.
+    /// The website, unless a test says otherwise.
+    pub fn set_training_source(&mut self, source: Option<String>) {
+        self.training_videos.set_source(source);
+    }
+
+    /// Waits for a training video download to finish and applies it, as
+    /// the next tick would (tests).
+    pub fn wait_for_training_videos(&mut self) {
+        self.training_videos.wait();
+        self.training_videos_tick();
+    }
+
+    /// Opening a training service with videos (in Plan or Present) is when
+    /// they download, if they are missing or a day has passed. Never for
+    /// any other service.
+    fn fetch_training_videos(&self, service: ServiceId) {
+        let videos = self
+            .library
+            .is_training(service)
+            .then(|| self.library.service(service).ok().flatten())
+            .flatten()
+            .is_some_and(|s| training::has_video(&s));
+        if videos {
+            self.training_videos.ensure(false);
+        }
+    }
+
+    /// Points the training services at the videos that arrived or changed,
+    /// and loads an open one again, so its video items play.
+    fn training_videos_tick(&mut self) {
+        let Some(moved) = self.training_videos.take_changes() else {
+            return;
+        };
+        for (from, to) in moved {
+            self.library.replace_training_media(from, to);
+        }
+        let open = self.loaded.as_ref().map(|l| l.view.service);
+        if let Some(open) = open.filter(|id| self.library.is_training(*id)) {
+            if let Err(e) = self.reload_if_open(open) {
+                eprintln!("lampstand: the training service was not loaded again: {e}");
+            }
+        }
+        (self.emit)(Event::Changed {
+            kind: "service".into(),
+            id: String::new(),
+        });
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -2253,7 +2339,12 @@ impl App {
     fn restore(&mut self) {
         let record = self.journal.recover(now());
         let loaded = match record.as_ref().and_then(|r| r.service) {
-            Some(service) => self.load_service(service).map(|_| ()),
+            Some(service) => {
+                // A training service back in Present: its videos download
+                // on their own thread, so the start is not held up.
+                self.fetch_training_videos(service);
+                self.load_service(service).map(|_| ())
+            }
             None => Ok(()),
         };
         self.restoring = false;

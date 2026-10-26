@@ -43,6 +43,7 @@
   import { driverOffline, isDriving } from "../../lib/driving";
   import { slideMark } from "../../lib/presentView";
   import { useLiveLook } from "../../lib/liveLook.svelte";
+  import { trainingVideosBusy, trainingVideosLine } from "../../lib/trainingVideos";
 
   /** This device only plans: it cannot take a service live until it presents, unless it drives the presenter. */
   let planningOnly = $derived(isPlanning(live.team) && !isDriving(live.team));
@@ -87,6 +88,17 @@
       })
       .catch(report);
   });
+
+  // The training videos download the first time a training service is
+  // opened (#190); until then, and offline, Present says so.
+  $effect(() => {
+    if (live.trainingVideos !== null || trainingServices.length === 0) return;
+    request({ area: "Service", request: "TrainingVideos" }, "TrainingVideos")
+      .then((v) => (live.trainingVideos = v))
+      .catch(report);
+  });
+  let trainingLine = $derived(trainingVideosLine(live.trainingVideos));
+  let loadedTraining = $derived(trainingServices.some((s) => s.id === live.loaded?.service));
 
   async function openService(id: string) {
     try {
@@ -618,7 +630,7 @@
         <p class="pick-group" id="pick-training">Learn by running it</p>
         <ul class="plain pick-list" aria-labelledby="pick-training">
           {#each trainingServices as svc (svc.id)}
-            <ListRow title={svc.title} subtitle={`${svc.items} ${svc.items === 1 ? "item" : "items"} · works offline`} divided>
+            <ListRow title={svc.title} subtitle={`${svc.items} ${svc.items === 1 ? "item" : "items"}`} divided>
               {#snippet trailing()}
                 <Button size="small" icon="play" disabled={planningOnly} onclick={() => openService(svc.id)} label="Open {svc.title} for live">
                   Open
@@ -627,6 +639,8 @@
             </ListRow>
           {/each}
         </ul>
+        <!-- The videos are not in the installer; the rest runs offline. -->
+        <p class="pick-note muted" role="status">{trainingLine ?? ""}</p>
       {/if}
       {#if onplan}
         <div class="pick-foot">
@@ -644,6 +658,11 @@
         <!-- Most services share a title ("Sunday service"), so the date tells them apart. -->
         {#if service?.starts_at != null}<span class="when">· {formatWhen(service.starts_at, service.time_zone)}</span>{/if}
       </p>
+      {#if loadedTraining && trainingLine}
+        <span class="training-note" role="status">
+          <Icon name={trainingVideosBusy(live.trainingVideos) ? "info" : "alert"} size={14} />{trainingLine}
+        </span>
+      {/if}
       {#if confirmClose}
         <span class="close">
           <span class="close-ask">Something is on air. Close the service?</span>
@@ -1085,6 +1104,21 @@
     display: flex;
     justify-content: center;
     margin-top: 1rem;
+  }
+  .pick-note {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+  }
+  .pick-note:empty {
+    display: none;
+  }
+  .training-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
   }
   .none .no-screen {
     width: min(36rem, calc(100% - 2rem));

@@ -23,13 +23,22 @@
 //! Practice changes (a verse added with Quick add while one is open for
 //! live) are kept in memory until [`Library::reset_training`] or the next
 //! start, when each service is as it was bundled again.
+//!
+//! The decks are bundled; the training videos are not. The website
+//! publishes them with a [`VideoManifest`] (`site/training/videos.json`),
+//! and the app downloads them into the blob store the first time a
+//! training service is opened, so a new training video needs no release. A
+//! video item names its video by the manifest's BLAKE3 hash, which is its
+//! blob hash.
 
 use std::collections::HashMap;
 
 use lampstand_core::deck::{Deck, DeckId};
+use lampstand_core::id::BlobHash;
 use lampstand_core::scripture::{Translation, TranslationId};
-use lampstand_core::service::{Service, ServiceId};
+use lampstand_core::service::{ItemKind, Service, ServiceId};
 use lampstand_core::song::{Song, SongId};
+use serde::{Deserialize, Serialize};
 
 use crate::Library;
 
@@ -43,6 +52,38 @@ pub struct TrainingSet {
     /// Used only when the library has no translation with the same ID (a
     /// bundled Bible the church deleted).
     pub translations: Vec<Translation>,
+}
+
+/// The training videos the website offers: `site/training/videos.json`,
+/// written by `cargo xtask training-videos` and read by the app.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VideoManifest {
+    /// [`VideoManifest::VERSION`]. Fields this Lampstand does not know are
+    /// ignored, so adding one needs no new version.
+    pub version: u32,
+    pub videos: Vec<TrainingVideo>,
+}
+
+/// One training video, at `<file>` beside the manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingVideo {
+    /// The file name without `.mp4`: "t1-welcome".
+    pub id: String,
+    /// What `training/services/*.json` names: "t1-welcome.mp4".
+    pub file: String,
+    /// In bytes.
+    pub size: u64,
+    /// The BLAKE3 hash of the file, which is also its blob hash.
+    pub blake3: BlobHash,
+}
+
+impl VideoManifest {
+    pub const VERSION: u32 = 1;
+
+    /// The video a training service names by file.
+    pub fn video(&self, file: &str) -> Option<&TrainingVideo> {
+        self.videos.iter().find(|v| v.file == file)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -97,6 +138,23 @@ impl Training {
     pub(crate) fn has_service(&self, id: ServiceId) -> bool {
         self.services.contains_key(&id)
     }
+
+    fn replace_media(&mut self, from: BlobHash, to: BlobHash) {
+        let services = self
+            .bundled
+            .services
+            .iter_mut()
+            .chain(self.services.values_mut());
+        for service in services {
+            for item in service.items.values_mut() {
+                if let ItemKind::Media { blob, .. } = &mut item.kind {
+                    if *blob == from {
+                        *blob = to;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Library {
@@ -121,6 +179,14 @@ impl Library {
     /// The decks the training services use.
     pub fn training_decks(&self) -> Vec<Deck> {
         self.training().bundled.decks.clone()
+    }
+
+    /// Points every training item that plays `from` at `to`: a training
+    /// video the website changed. Practice changes stay.
+    pub fn replace_training_media(&self, from: BlobHash, to: BlobHash) {
+        if from != to {
+            self.training().replace_media(from, to);
+        }
     }
 
     /// Whether `id` is a training service.
@@ -213,6 +279,61 @@ mod tests {
 
         library.reset_training();
         assert_eq!(library.service(id).unwrap(), Some(set.services[0].clone()));
+    }
+
+    #[test]
+    fn a_changed_video_replaces_the_old_one_and_practice_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::open(dir.path(), DeviceKeypair::generate()).unwrap();
+        let mut set = set();
+        let (old, new) = (BlobHash::of(b"old"), BlobHash::of(b"new"));
+        set.services[0].insert(
+            1,
+            ItemKind::Media {
+                blob: old,
+                name: "Welcome.mp4".into(),
+                looped: false,
+            },
+        );
+        let id = set.services[0].id;
+        library.install_training(set);
+        let mut practised = library.service(id).unwrap().unwrap();
+        practised.insert(
+            0,
+            ItemKind::Header {
+                title: "Added in practice".into(),
+            },
+        );
+        library.put_service(&practised).unwrap();
+
+        library.replace_training_media(old, new);
+        let media = |s: &Service| -> Vec<BlobHash> {
+            s.items
+                .values()
+                .filter_map(|i| match i.kind {
+                    ItemKind::Media { blob, .. } => Some(blob),
+                    _ => None,
+                })
+                .collect()
+        };
+        let now = library.service(id).unwrap().unwrap();
+        assert_eq!(media(&now), [new]);
+        assert_eq!(now.items.len(), 3, "the practice change stays");
+        library.reset_training();
+        assert_eq!(media(&library.service(id).unwrap().unwrap()), [new]);
+    }
+
+    #[test]
+    fn the_manifest_reads_as_the_website_writes_it() {
+        let json = format!(
+            r#"{{"version":1,"videos":[{{"id":"t1-welcome","file":"t1-welcome.mp4","size":3,"blake3":"{}","later":true}}]}}"#,
+            BlobHash::of(b"abc")
+        );
+        let manifest: VideoManifest = serde_json::from_str(&json).unwrap();
+        let video = manifest.video("t1-welcome.mp4").unwrap();
+        assert_eq!(video.blake3, BlobHash::of(b"abc"));
+        assert_eq!(video.size, 3);
+        assert!(manifest.video("t0-welcome.mp4").is_none());
     }
 
     #[test]
