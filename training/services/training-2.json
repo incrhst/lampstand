@@ -29,7 +29,7 @@
   {"deck": {"file": "t2-phones.pptx", "title": "Phones and tablets"},
    "notes": "Two kinds of phone, and how to connect one. Space through the builds."},
   {"text": {"title": "Practice: a speaker's phone", "body": "Connect your phone as a speaker\nfor the sermon, then step through it."},
-   "notes": "Trainee: Present › More › Connect a phone or tablet. Choose Speaker, and for whose slides choose \"Sermon (updated Sunday morning)\". Scan the code with your phone and type the PIN. The phone says \"Waiting for your slides\". Trainer: Shift+Up to the sermon and Enter. Trainee: press Next on the phone through the builds; on the last slide Next does nothing. Trainer: More › Clear all; the phone says the service team has cleared the screen. Then show the sermon again. Finally, Setup › Devices › Revoke the phone. If there is time, connect it again as Run the service and press Next from the phone."},
+   "notes": "Trainee: Present › Remotes › Connect a phone or tablet. Choose Speaker, and for whose slides choose \"Sermon (updated Sunday morning)\". Scan the code with your phone and type the PIN. The phone says \"Waiting for your slides\". Trainer: Shift+Up to the sermon and Enter. Trainee: press Next on the phone through the builds; on the last slide Next does nothing. Trainer: Clear › Everything; the phone says the service team has cleared the screen. Then show the sermon again. Finally, Setup › Devices › Revoke the phone. If there is time, connect it again as Run the service and press Next from the phone."},
   {"header": {"title": "Debrief"},
    "notes": "Stop the rehearsal here and talk it through."},
   {"deck": {"file": "t2-debrief.pptx", "title": "Debrief"},

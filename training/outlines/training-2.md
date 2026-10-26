@@ -18,7 +18,7 @@ Run the rehearsal twice, slowly then at real speed, with **Reset training** in P
 | 10 | Deck: Sermon (updated Sunday morning) (`t2-sermon-sunday.pptx`) | The corrected deck, with builds. |
 | 11 | Header: "Phones and tablets (10 minutes)" | Needs a phone on the same Wi-Fi. |
 | 12 | Video: Phones and tablets (`t2-phones.mp4`) | Not published yet: the item says "This training video isn't ready yet" until it is on the website (or, offline before the first check, to connect to the internet). No release is needed when it arrives. |
-| 13 | Deck: Phones and tablets (`t2-phones.pptx`, 3 slides) | Run the service versus Speaker; how to connect one (Present › More › Connect a phone or tablet) and revoke it (Setup › Devices). |
+| 13 | Deck: Phones and tablets (`t2-phones.pptx`, 3 slides) | Run the service versus Speaker; how to connect one (Present › Remotes › Connect a phone or tablet) and revoke it (Setup › Devices). |
 | 14 | Text: Practice: a speaker's phone | Connect the trainee's phone as Speaker for the Sunday sermon, step through it, see Next stop on the last slide and the cleared-screen message, then revoke it. |
 | 15 | Header: "Debrief" | |
 | 16 | Deck: Debrief (`t2-debrief.pptx`, 2 slides) | Wrong slide? Desktop? Hardest surprise? Any yes: Reset training and run it again. |

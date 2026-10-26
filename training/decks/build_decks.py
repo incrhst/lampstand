@@ -218,7 +218,7 @@ Say: nothing you do in Plan reaches the screen in the room."""},
     ], "notes": """
 Trainer: Present is the operator's screen. One service is open at a time, and every slide
 of it is laid out as cards. The card marked LIVE, in red, is what the room sees, and so is the
-small picture at the top left. Everything else is only for you.
+picture at the top right. Everything else is only for you.
 This training service is open in Present right now, and it works like any other service."""},
     {"kind": "bullets", "heading": "Setup: once, then rarely", "fade": True, "items": [
         "Screens: which screen is the projector",
@@ -251,14 +251,16 @@ and no desktop showing. Point at each part of the screen as we go."""},
         "The wall: every slide of the service",
         "Red LIVE: what the room sees now",
         "Gold NEXT: the next slide",
-        "The strip on top: the main screen and the buttons",
+        "The right side: the main screen and the buttons",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
 The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
 NEXT card is the next slide. On a slide with builds, Space plays the next build first.
-The notes, where you are reading this, sit beside the item on air. The strip on top has a
-small picture of the main screen, then Focus, Quick add, Previous, Next and Blank. Show, Idle and Blank, top right, switch the room between the slide, the idle
-screen and black. Press F for Focus to see only the cards; F or Esc brings the rest back."""},
+The notes, where you are reading this, sit beside the item on air. The right side starts with
+On air: a picture of the main screen, then Previous, Next and Blank. Under it, Show, Idle and
+Blank switch the room between the slide, the idle screen and black. Below that are Quick add,
+the sound, and boxes that fold away: Remotes, Clear and Keys. Press F, or Focus at the top
+right, to see only the cards; F or Esc brings the rest back."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
 Trainer: Choosing an item with Shift and Down only marks it for you. The room sees nothing new. It goes on air when you
@@ -279,8 +281,8 @@ save("t1-sermon-practice.pptx", "Practice sermon: The Lord is my shepherd", T1, 
      "notes": """
 Preacher: Good morning. Our reading today is Psalm 23.
 Operator: this deck has builds. Each Space press brings in one point. When the slide is
-complete, the next Space goes to the next slide. While a slide with builds is on air, a panel
-above the wall shows what is on screen beside the next click, and how many clicks are left."""},
+complete, the next Space goes to the next slide. While a slide with builds is on air, the On air
+box on the right shows what the next click brings, and how many clicks are left."""},
     {"kind": "bullets", "heading": "He leads me", "builds": True, "fade": True, "items": [
         "Green pastures",
         "Still waters",
@@ -318,9 +320,9 @@ Trainer: Well done. Ask the trainee: what would you do if the wrong slide went u
         "Before: screens on, open the service for live",
         "Start on the idle screen; Space puts the first slide up",
         "During: Space to move on, full stop to blank",
-        "After: Close service, top right",
+        "After: Close service, bottom right",
     ], "notes": """
-Trainer: Walk through a real Sunday. Point out Close service in the bar at the top right.
+Trainer: Walk through a real Sunday. Point out Close service at the bottom of the right side.
 Give them the printed key sheet to keep by the computer.
 Next: Training Session 2, Confident operator, practises the five surprises that happen on a real Sunday."""},
 ])
@@ -406,7 +408,7 @@ item: the slide on screen, the next click, their notes and a timer. Next on thei
 nothing, so a speaker can never move the service on by accident. If you clear the screen, their
 phone says so and waits."""},
     {"kind": "bullets", "heading": "Connecting one", "builds": True, "items": [
-        "Present › More › Connect a phone or tablet",
+        "Present › Remotes › Connect a phone or tablet",
         "Choose Run the service, or Speaker and whose slides",
         "They scan the code and type the PIN",
         "Setup › Devices lists every phone; Revoke disconnects one",
@@ -429,7 +431,7 @@ A confident operator gets through all five surprises with the screen calm every 
      "sub": "Next for planners: Training Session 3. For media volunteers: Training Session 4.",
      "notes": """
 Trainer: That is the end of operator training. Training Session 3 (Planner) and Training Session 4 (Setup and the
-stream) come in a later version of Lampstand. Close the service with Close service, top right."""},
+stream) come in a later version of Lampstand. Close the service with Close service, bottom right."""},
 ])
 
 if __name__ == "__main__":

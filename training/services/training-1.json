@@ -7,7 +7,7 @@
   {"video": {"file": "t1-welcome.mp4", "name": "Welcome.mp4"},
    "notes": "Press Space when the video ends."},
   {"deck": {"file": "t1-present-screen.pptx", "title": "The Present screen"},
-   "notes": "Point at each part of the real screen as the slides describe it: the wall, the LIVE and NEXT cards, the sidecard on the right, and Show, Idle and Blank."},
+   "notes": "Point at each part of the real screen as the slides describe it: the wall, the LIVE and NEXT cards, the right side, and Show, Idle and Blank."},
   {"video": {"file": "t1-going-live.mp4", "name": "Going live and moving through slides.mp4"},
    "notes": "Press Space when the video ends. Then the practice starts."},
   {"header": {"title": "Practice. Run these as if it were Sunday"},
@@ -19,7 +19,7 @@
   {"video": {"file": "t1-blank-idle-clear.mp4", "name": "Blank, Idle, Clear.mp4"},
    "notes": "Press Space when the video ends. Then try each one on the sermon deck: full stop to blank, Idle, Clear text, and Show to come back."},
   {"deck": {"file": "t1-sermon-practice.pptx", "title": "Practice: a sermon deck"},
-   "notes": "Practice: five slides with builds. Watch the On air card on the right: what is on screen, the next click, and the clicks left. The preacher's notes for each slide are in the slide's own notes. Try Blank (full stop) once in the middle, then bring it back. Try Focus (F) too, and Esc to come back."},
+   "notes": "Practice: five slides with builds. Watch the On air box on the right: what is on screen, the next click, and the clicks left. The preacher's notes for each slide are in the slide's own notes. Try Blank (full stop) once in the middle, then bring it back. Try Focus (F) too, and Esc to come back."},
   {"deck": {"file": "t1-ready.pptx", "title": "You're ready"},
    "notes": "Hand over the printed key sheet. Then close the service with Close service, top right."}
  ]

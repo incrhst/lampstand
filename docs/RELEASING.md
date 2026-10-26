@@ -135,6 +135,17 @@ Nothing in CI can listen. Before a release that changes sound, on a Mac and on a
 
 On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
 
+### Releasing 0.9.2: the Present redesign
+
+- **No sync change.** Still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together.
+- **Publish the training videos with the release, not before.** They were re-rendered for the new layout (the right side instead of the strip on top and the More menu, Focus in the menu bar, coloured song sections). 0.9.1 downloads its training videos from the website too, so publishing them early shows 0.9.1 operators a screen they don't have. On release day, after publishing the GitHub release: `node training/build.mjs publish`, then merge `training/` and `site/training/` to `main`. The decks, the cheat sheet and the training services' notes are bundled and change with the release itself.
+- **Check in the desktop app before tagging**, on a Mac and on Windows with a real projector or second screen. The redesign was checked only in a browser against the capture mock:
+  - F turns Focus on and off in Plan and in Present (not while typing in a field); Esc leaves it; the Focus button sits top right; Plan | Present in each Focus pill switches mode and stays in Focus.
+  - Plan in Focus hides the services list and the Library, and both come back as they were.
+  - Present's right side scrolls on its own beside the wall. Remotes, Clear and Keys fold and stay folded after a restart. Clicker mode, the logo bug and the safe area guide switch from there; the OBS control opens the OBS drawer; Close service asks first when something is on air.
+  - Song cards show their colours: verse blue, chorus teal, pre-chorus violet, bridge orange, on the wall, a phone's wall and in the song editor.
+- **What the notes should say**, under `**What's new in 0.9.2**`: "Present is calmer: the controls moved to the right side, in boxes that fold away. Focus (F) is in the bar at the top, works in Plan too, and lets you switch between Plan and Present without leaving it. Song slides are coloured by part: verse, chorus, pre-chorus and bridge."
+
 ### Releasing 0.9.1: training videos download, the phone wall and a speaker's phone
 
 - **No sync change.** 0.9.1 is still sync protocol 10, so 0.9.0 and 0.9.1 computers work together and a church can update them one at a time. The live state gains a `cleared` field that a 0.9.0 computer ignores.
