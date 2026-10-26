@@ -9,6 +9,7 @@
   import type { Song } from "../../lib/api";
   import Button from "../../lib/kit/Button.svelte";
   import SongOrder from "./SongOrder.svelte";
+  import { sectionTone } from "../../lib/sections";
 
   let { song: id, onclose }: { song: string; onclose: () => void } = $props();
 
@@ -95,7 +96,7 @@
           {#each draft.sections as section, i (section.uid)}
             <li>
               <div class="section-head">
-                <input type="text" class="label" aria-label="Section label" placeholder="V1" bind:value={section.label} />
+                <input type="text" class="label {sectionTone(section.label) ?? ''}" aria-label="Section label" placeholder="V1" bind:value={section.label} />
                 <Button variant="ghost" size="small" icon="prev" label="Move up" disabled={i === 0} onclick={() => draft && (draft.sections = moved(draft.sections, i, -1))} />
                 <Button variant="ghost" size="small" icon="next" label="Move down" disabled={i === draft.sections.length - 1} onclick={() => draft && (draft.sections = moved(draft.sections, i, 1))} />
                 <Button variant="ghost" size="small" icon="trash" label="Remove section {section.label}" onclick={() => draft && (draft.sections = draft.sections.filter((s) => s !== section))} />
@@ -229,6 +230,19 @@
   .label {
     width: 6rem;
     margin-right: auto;
+  }
+  /* The section's colour, as on the wall in Present. */
+  .label.verse {
+    box-shadow: inset 3px 0 0 var(--section-verse);
+  }
+  .label.chorus {
+    box-shadow: inset 3px 0 0 var(--section-chorus);
+  }
+  .label.prechorus {
+    box-shadow: inset 3px 0 0 var(--section-prechorus);
+  }
+  .label.bridge {
+    box-shadow: inset 3px 0 0 var(--section-bridge);
   }
   .problems {
     flex: 1;

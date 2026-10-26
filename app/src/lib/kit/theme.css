@@ -37,6 +37,15 @@
   --role-stream: #8865cd;
   --role-audio: #bf6a1a;
 
+  /* Song sections, so a verse, chorus, pre-chorus or bridge is spotted at
+     a glance (lib/sections.ts sectionTone). Never red or gold, which mean
+     LIVE and NEXT; each is at least 6:1 on --canvas, --panel and --raised.
+     The label (V1, C, P, B) is always shown too, so colour is never alone. */
+  --section-verse: #7fa8f5;
+  --section-chorus: #4cc7b0;
+  --section-prechorus: #b49af2;
+  --section-bridge: #eb9a5c;
+
   --radius: 6px;
   --radius-lg: 10px;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);

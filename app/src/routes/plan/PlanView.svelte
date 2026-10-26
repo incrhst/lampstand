@@ -87,8 +87,11 @@
   let libraryChoice = $state(choice("lampstand.plan.library"));
   let narrow = $derived(width < DRAWERS_BELOW);
   let drawer: "services" | "library" | null = $state(null);
-  let showServices = $derived(narrow ? drawer === "services" : (servicesChoice ?? width >= SERVICES_FROM));
-  let showLibrary = $derived(narrow ? drawer === "library" : (libraryChoice ?? width >= LIBRARY_FROM));
+  // Focus (F, from the menu bar) leaves just the order of service: both
+  // side columns and their strips go, without changing what is remembered.
+  let focus = $derived(live.focus);
+  let showServices = $derived(!focus && (narrow ? drawer === "services" : (servicesChoice ?? width >= SERVICES_FROM)));
+  let showLibrary = $derived(!focus && (narrow ? drawer === "library" : (libraryChoice ?? width >= LIBRARY_FROM)));
   function setServices(shown: boolean) {
     if (narrow) {
       drawer = shown ? "services" : null;
@@ -1029,8 +1032,8 @@
 
 <svelte:window bind:innerWidth={width} onkeydown={(e) => narrow && drawer && e.key === "Escape" && (drawer = null)} />
 
-<div class="plan" class:narrow class:no-services={!showServices} class:no-library={!showLibrary}>
-  {#if !showServices || narrow}
+<div class="plan" class:narrow class:focus class:no-services={!showServices} class:no-library={!showLibrary}>
+  {#if (!showServices || narrow) && !focus}
     <button
       type="button"
       class="rail rail-left"
@@ -1489,7 +1492,7 @@
     onhide={() => setLibrary(false)}
   />
   </div>
-  {#if !showLibrary || narrow}
+  {#if (!showLibrary || narrow) && !focus}
     <button
       type="button"
       class="rail rail-right"
@@ -1544,6 +1547,13 @@
   .rail.open {
     color: var(--text);
     background: var(--raised);
+  }
+  .plan.focus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plan.focus > .order {
+    width: min(56rem, 100%);
+    justify-self: center;
   }
   .plan > [hidden] {
     display: none;

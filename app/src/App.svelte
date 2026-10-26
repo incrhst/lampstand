@@ -27,6 +27,7 @@
   import Icon from "./lib/kit/Icon.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
+  import ModeSwitch from "./lib/kit/ModeSwitch.svelte";
 
   // The operator view keeps its T47 name in code; volunteers call it Present.
   const screens = [
@@ -43,10 +44,30 @@
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
   function onkeydown(e: KeyboardEvent) {
     const next = screenForKey(e, screen);
-    if (!next) return;
-    e.preventDefault();
-    screen = next;
+    if (next) {
+      e.preventDefault();
+      screen = next;
+      return;
+    }
+    // F: Focus in Plan and Present. Esc leaves it in Plan; Present's own
+    // Esc closes its OBS drawer first. Typing in a field never triggers it.
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || !focusable) return;
+    if (e.key === "f" || e.key === "F") {
+      e.preventDefault();
+      live.focus = !live.focus;
+    } else if (e.key === "Escape" && focused && screen === "plan") {
+      e.preventDefault();
+      live.focus = false;
+    }
   }
+
+  // Focus is one switch for Plan and Present: Plan keeps the order of
+  // service, Present the cards. Switching modes keeps it; Present needs a
+  // service open to have anything to focus on.
+  let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
+  let focused = $derived(live.focus && focusable);
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -220,8 +241,8 @@
 <svelte:window {onkeydown} />
 
 <div class="shell">
-  <!-- Present's focus mode shows the cards only, so the bar goes too. -->
-  {#if !(live.focus && screen === "operate")}
+  <!-- Focus hides the bar; its pill (here for Plan, on the wall for Present) keeps the way out and the other mode. -->
+  {#if !focused}
   <header>
     <nav aria-label="Screens">
       {#each screens as s}
@@ -231,8 +252,7 @@
       {/each}
     </nav>
     <div class="right">
-      <!-- Present's own bar already names the service, so it is not said twice there. -->
-      {#if live.loaded && screen !== "operate"}
+      {#if live.loaded}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
@@ -247,8 +267,22 @@
         <Icon name="setup" size={16} />
         <span class="setup-word">Setup</span>
       </button>
+      {#if focusable}
+        <button class="setup focus-on" title="{screen === "plan" ? "Just the order of service: hide the services and the Library" : "Cards only: hide the bar and the sidecard"} (F)" onclick={() => (live.focus = true)}>
+          <Icon name="focus" size={16} />
+          <span class="setup-word">Focus</span>
+          <kbd>F</kbd>
+        </button>
+      {/if}
     </div>
   </header>
+  {:else if screen === "plan"}
+  <div class="focus-row">
+    <div class="focus-pill" role="group" aria-label="Focus">
+      <ModeSwitch current="plan" {mod} onpresent={() => (screen = "operate")} />
+      <button class="focus-exit" title="Show the services and the Library again (F or Esc)" onclick={() => (live.focus = false)}>Exit focus <kbd>F</kbd></button>
+    </div>
+  </div>
   {/if}
 
   <PresenterNotices />
@@ -397,6 +431,55 @@
   }
   .setup:hover {
     color: var(--text);
+  }
+  /* Framed, so the way into Focus is easy to find; its pill takes this corner in Focus. */
+  .focus-on {
+    border: 1px solid var(--line-strong);
+    color: var(--text);
+  }
+  .focus-on:hover {
+    border-color: var(--muted);
+  }
+  .focus-on kbd,
+  .focus-exit kbd {
+    font: inherit;
+    font-size: 0.72em;
+    opacity: 0.7;
+    padding: 0 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+  }
+  .focus-row {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.5rem 1rem 0;
+  }
+  .focus-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--panel);
+    font-size: 0.8rem;
+  }
+  .focus-exit {
+    font: inherit;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 1.75rem;
+    padding: 0 0.6rem 0 0.75rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: none;
+    cursor: pointer;
+  }
+  .focus-exit:hover {
+    border-color: var(--muted);
   }
   .setup.active {
     color: var(--text);
