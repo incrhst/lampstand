@@ -21,8 +21,10 @@ npm run studio        # live preview and scrubbing (composition "Tour")
 ```
 
 The render is a high-quality master (H.264 CRF 18, about 80 MB). The site's copy
-(`site/media/lampstand-tour.mp4`, about 6 MB) is a smaller re-encode of it, for example
-`ffmpeg -i out/hero-tour.mp4 -c:v libx264 -crf 28 -preset slow -movflags +faststart -c:a aac -b:a 128k site/media/lampstand-tour.mp4`.
+(`site/media/lampstand-tour.mp4`, about 8 MB) is a 720p re-encode of it:
+`ffmpeg -i out/hero-tour.mp4 -vf scale=1280:720:flags=lanczos -c:v libx264 -crf 28 -preset slow -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 96k site/media/lampstand-tour.mp4`.
+The poster (`site/media/tour-poster.jpg`) is the frame where the camera reaches the wall, before its caption:
+`ffmpeg -ss 26.45 -i out/hero-tour.mp4 -frames:v 1 -vf scale=1280:720 -q:v 3 site/media/tour-poster.jpg`.
 Update the size in `site/index.html` if it changes. `out/` is not committed.
 
 ## Design system
@@ -84,10 +86,14 @@ licensed. `npm run sfx` rewrites `public/sfx/*.wav`. The cues follow the scene l
 ```bash
 npm run capture:serve   # terminal 1: the UI with the fake bridge, port 1431
 npm run capture         # terminal 2: writes public/shots/*.png
+npm run capture:remote  # the phone shot, public/shots/9-remote.png (no capture server needed)
 ```
 
 `capture/shoot.mjs` drives Chrome through each moment (Get started strip, Plan,
-quick add, decks, Present with Shift+Down and Enter, OBS, Setup › Screens).
+quick add, decks, the Present wall, the builds panel, Focus, the Sound box open
+and folded, OBS, Setup › Screens). `capture/remote.mjs` pairs Lampstand Remote at
+phone size with the server's stand-in (`cargo run -p lampstand-server --example
+remote_fixture`); set `LAMPSTAND_REMOTE_FIXTURE` to a built fixture to skip the build.
 Set `CHROME=/path/to/chrome` if Chrome isn't in the usual macOS place.
 
 No claims about downloads, users or dates appear in the video, in line with

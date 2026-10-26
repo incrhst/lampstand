@@ -28,7 +28,7 @@ const deckSlides: Record<string, any[]> = {
   ],
   "deck-sermon": [
     { label: "Slide 1", lines: ["The Good Shepherd", "John 10"], steps: 0, notes: "Open with the story of the lost sheep." },
-    { label: "Slide 2", lines: ["I know my sheep", "and my sheep know me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
+    { label: "Slide 2", lines: ["I know my sheep", "They hear my voice", "They follow me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
     { label: "Slide 3", lines: ["He lays down his life"], steps: 1, notes: "Slow down." },
   ],
 };
@@ -184,6 +184,16 @@ function pushLive() {
   const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
   if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
   emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay } });
+  if (soundOn) emit({ type: "Sound", data: soundView() });
+}
+// Sound (window.__soundOn): Amazing Grace has a backing track that starts on its own when the song
+// goes live, as Next does in the engine, and plays on until another sound starts.
+let soundOn = false;
+let playing: any = null;
+const BACKING = { name: "Amazing Grace (backing track)", file: "s1", length_ms: 212000, start: "OnItsOwn", keep_off_stream: false };
+function soundView() {
+  if (state.live?.item === "i3" && playing?.item !== "i3") playing = { item: "i3", name: BACKING.name, paused: false, ending: false, position_ms: 4000, length_ms: BACKING.length_ms };
+  return { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing, problem: null, problem_item: null };
 }
 // A looping section moves the live slide on by itself, as the real engine does.
 setInterval(() => {
@@ -371,7 +381,7 @@ function api(req: any): any {
     case "Team": return { type: "Team", data: team() };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
-    case "Sound": return { type: "Sound", data: { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
+    case "Sound": return { type: "Sound", data: soundOn ? soundView() : { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
   }
   return { type: "Error", data: { message: `mock: unhandled ${area}.${key}` } };
 }
@@ -392,6 +402,7 @@ export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_versio
   state.paired = [{ device: "bb", fingerprint: "a1b2 c3d4", name: "Office PC", address: "192.168.1.30:7340", connected: true, problem: null, presenting: false }];
   emit({ type: "SyncStatus", data: { sync: { state: "Synced", paired: 1, connected: 1, reason: null, last_in_ms: null, last_out_ms: null } } });
 };
+(window as any).__soundOn = () => { soundOn = true; sunday.items.i3.backing = BACKING; };
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {
