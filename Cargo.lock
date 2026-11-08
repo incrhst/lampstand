@@ -3635,6 +3635,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-util",
  "lampstand-connectors",
+ "lampstand-core",
  "reqwest",
  "serde",
  "serde_json",

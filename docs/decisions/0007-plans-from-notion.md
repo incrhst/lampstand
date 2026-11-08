@@ -1,6 +1,6 @@
 # 0007. Service plans from Notion
 
-- Status: proposed (not implemented; tickets T103 to T112)
+- Status: accepted, revised 2026-11-08 (see "Revision: reading the chapel's pages"); T103 and the page reader are built, T104 to T112 as revised below
 - Date: 2026-10-21
 
 ## Question
@@ -71,6 +71,33 @@ The churches' existing Notion plans will differ. The connector does not try to r
 | Reference, Translation | `reference`, `translation` |
 
 A Song item whose relation is empty uses the item's own Title as the song title.
+
+## Revision: reading the chapel's pages (2026-11-08)
+
+Open question 5 is answered. Mona Heights Chapel's service plans (8 November, 11 October and 23 August 2026) are not the three databases above. Each is an ordinary Notion page: the chairperson's script, one page per Sunday, built from the same template. Asking the planners to retype it into databases each week would move the retyping, not remove it. **Lampstand reads the pages as they are.** The database convention is not built; it stays here as the shape to use if another church wants strict structure.
+
+What the page reader (`connectors::notion::page`) takes from a page:
+
+| On the page | In the plan |
+| --- | --- |
+| Title "Service Plan – November 8, 2026 – Ada Example" | `title` "Service Plan – November 8, 2026". Segments after the date are a person and are dropped. |
+| "Status: Draft" before the order of service | `status` |
+| The date in the title, else "Date: 11/08/2026" (US order, as Notion shows it) | with the first section's time and the church's offset, `starts_at` |
+| A heading that starts with a time, "10:05 am – Opening Songs" | a `header` entry, notes "Planned for 10:05 am". "Sermon" is `slides`, "Announcements" and "Notices" are `announcement`. |
+| "Opening Song: Come Thou Almighty King (C major)", any label with "song" or "hymn" | a `song` entry, `key` "C". A bracket that is not a key stays in the title. |
+| An unlabelled list directly under a song, hymn, worship or praise heading | one `song` entry per item |
+| A line that starts with a reference, or one labelled "reading", "passage" or "scripture": "Romans 8:18-21 (NKJV) — est. 1 minute", "Communion Passages: Mark 14:12-26; Exodus 12:7-20 (NIV)" | a `scripture` entry per passage; a version given once at the end is for all of them; text after a spaced dash is ignored |
+| "TBD" or "TBA" for a song or reading | an `other` entry, notes "Not chosen yet in Notion" |
+
+What it never reads: callouts and quotes (notes for the chairperson, printed verses), anything under an untimed subheading (birthdays, anniversaries, the prayer diary, the weekly schedule with its meeting IDs), labels about people ("Leader:", "Chairperson:", "Speaker:"), and all other free text. Nothing from the page is copied into notes beyond what the reader understood, so the names on the page never reach Lampstand. A test checks this.
+
+The page order is kept even when a time is earlier than the one before it (the 23 August page has 10:15 before 10:05); the review shows a warning. Each entry's `source_id` is the Notion block ID it came from (`<block>#2` for the second passage on a line), so an update can find it again.
+
+**Just the link.** A page shared to the web (Share › Publish) reads from its link alone: no integration, no token, no setup. The chapel's pages are shared this way. `connectors::notion::public` reads them through `POST https://www.notion.so/api/v3/loadPageChunk`, the endpoint Notion's own public page uses. It is not Notion's published API and may change without notice, so it sits in one module, a test reads the live 8 November page (`--ignored`), and the official API stays as the fallback. A private page comes back empty, and Lampstand says how to publish it or connect an integration.
+
+**Private pages.** With an internal integration token saved once in Setup, `NotionClient` reads the same page through the official API: `GET /v1/pages/{id}` and `GET /v1/blocks/{id}/children` (paged, nested blocks followed except inside quotes and child pages), Notion-Version `2025-09-03`. No data-source queries are needed.
+
+Either way, Plan › New service › From Notion asks for the page's link. Listing a week's pages to pick from needs the parent page and is a follow-up. A callout is a note for the chairperson and is not read, except one that says only "TBD" or "TBA" (the template's 🔶 marker), which is a placeholder.
 
 ## How it works
 

@@ -16,9 +16,13 @@ obs = [
     "dep:tokio-tungstenite",
 ]
 
+# The Notion page reader (`notion`, decision 0007).
+notion = ["dep:lampstand-core", "dep:serde_json", "dep:tokio"]
+
 [dependencies]
 base64.workspace = true
 futures-util = { workspace = true, optional = true }
+lampstand-core = { workspace = true, optional = true }
 reqwest.workspace = true
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -28,7 +32,8 @@ tokio-tungstenite = { workspace = true, optional = true }
 url.workspace = true
 
 [dev-dependencies]
-lampstand-connectors = { path = ".", features = ["obs"] }
+lampstand-connectors = { path = ".", features = ["obs", "notion"] }
+serde_json.workspace = true
 tokio-tungstenite.workspace = true
 tokio.workspace = true
 wiremock.workspace = true

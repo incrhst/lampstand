@@ -476,9 +476,9 @@ Only say this when the service has a stream output or items with an OBS scene, s
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T103 | Plan contract types | S | — | PL-4 | `core/src/plan.rs` | Not started |
-| T104 | Notion client | S | — | PL-4 | `connectors/src/notion.rs`, `connectors/Cargo.toml` | Not started |
-| T105 | Notion to plan mapping | S | T103, T104 | PL-4 | `connectors/src/notion/plan.rs`, `connectors/tests/fixtures/notion/` | Not started |
+| T103 | Plan contract types | S | — | PL-4 | `core/src/plan.rs` | Done |
+| T104 | Notion client | S | — | PL-4 | `connectors/src/notion.rs`, `connectors/Cargo.toml` | Done (pages and blocks; see 0007 revision) |
+| T105 | Notion page to plan | S | T103, T104 | PL-4 | `connectors/src/notion/page.rs`, `connectors/tests/notion.rs` | Done (reads the chapel's pages, not databases) |
 | T106 | Song and passage resolver | **O** | T103, T15 | PL-4 | `library/src/plan_match.rs` | Not started |
 | T107 | Service remembers its source | S | — | PL-4 | `core/src/service.rs` | Not started |
 | T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
@@ -487,7 +487,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
-T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
+**Revised 2026-11-08:** the chapel's plans are free-form pages, so T104 reads a page's blocks and T105 reads the page template instead of three databases ([decision 0007, revision](decisions/0007-plans-from-notion.md#revision-reading-the-chapels-pages-2026-11-08)). T108's `DraftFromNotion` takes a page link, not a Services row, reads it with `notion::public` first and the token client only for a private page, and `NotionServices` waits for a parent-page listing. T110 (the token) is needed only for private pages. T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
 
 **T103. Plan contract types.** Add `core::plan` with `Plan`, `PlanSource`, `PlanEntry`, `EntryType`, `SongHint` and `PlanError`, with serde (and ts-rs behind the `ts` feature) exactly as [plan-contract.md](plan-contract.md) lays them out. `Plan::from_json` checks the `contract` version (refuse a higher major with a readable reason), rejects an empty title, an entry without `order` or `source_id`, and duplicate `source_id`s, ignores unknown fields, reads an unknown `type` as `other` with a warning, and returns the warnings alongside the plan. `Plan::ordered` sorts by `order`, ties by `source_id`. Done when tests cover the example in the contract round-tripping, each refusal, an unknown field and type, a tie, and a plan with no entries.
 
