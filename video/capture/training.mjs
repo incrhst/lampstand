@@ -57,12 +57,15 @@ const shots = {
   // Plan with a training service chosen: read-only, Reset training.
   "plan": async (p) => {
     await p.getByRole("button", { name: "Plan", exact: true }).first().click();
+    await p.waitForTimeout(300);
+    // The services list is a page inside Library & controls.
+    await p.locator("#library-and-controls").getByRole("button", { name: /^Services/ }).first().click();
     await p.getByText("Training Session 1: Run a service").first().click();
   },
   // Training Session 1, Amazing Grace on air.
   "song": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); },
-  // The same in focus (F): the cards only.
-  "focus": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
+  // The same with Library & controls hidden (F): the slides, and the small bar.
+  "hidden": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
   // The same with Idle chosen: the idle screen is up, the service stays open.
   "idle": async (p) => {
     await openTraining(p, "Training Session 1: Run a service");

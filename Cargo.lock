@@ -3676,6 +3676,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "zip 9.0.5",
 ]
 
@@ -3818,6 +3819,7 @@ dependencies = [
  "tokio-tungstenite",
  "ts-rs",
  "uuid",
+ "windows-sys 0.61.2",
  "x25519-dalek",
  "zeroize",
 ]

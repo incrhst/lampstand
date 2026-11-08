@@ -54,10 +54,29 @@ pub fn encode_bible_text(text: &BibleText) -> Result<Vec<u8>, SyncError> {
     zstd::encode_all(raw.as_slice(), BIBLE_ZSTD_LEVEL).map_err(SyncError::Io)
 }
 
-/// The inverse of [`encode_bible_text`].
+/// The most a Bible blob may inflate to: 50 MB. A whole Bible is a few MB
+/// as postcard, so a blob past this is damaged or hostile (a synced blob
+/// comes from another device).
+pub const MAX_BIBLE_BYTES: u64 = 50 * 1024 * 1024;
+
+/// The inverse of [`encode_bible_text`]. Refuses a blob that inflates past
+/// [`MAX_BIBLE_BYTES`], without inflating more than that.
 pub fn decode_bible_text(bytes: &[u8]) -> Result<BibleText, SyncError> {
-    let raw = zstd::decode_all(bytes)
-        .map_err(|e| SyncError::Corrupt(format!("Bible text is not valid zstd: {e}")))?;
+    use std::io::Read;
+    let corrupt =
+        |e: std::io::Error| SyncError::Corrupt(format!("Bible text is not valid zstd: {e}"));
+    let mut raw = Vec::new();
+    zstd::stream::read::Decoder::new(bytes)
+        .map_err(corrupt)?
+        .take(MAX_BIBLE_BYTES + 1)
+        .read_to_end(&mut raw)
+        .map_err(corrupt)?;
+    if raw.len() as u64 > MAX_BIBLE_BYTES {
+        return Err(SyncError::Corrupt(format!(
+            "Bible text inflates past {} MB",
+            MAX_BIBLE_BYTES / (1024 * 1024)
+        )));
+    }
     postcard::from_bytes(&raw)
         .map_err(|e| SyncError::Corrupt(format!("Bible text is not valid postcard: {e}")))
 }
@@ -451,7 +470,7 @@ pub fn theme_from_brand(brand: &Brand, id: ThemeId) -> Theme {
     theme
 }
 
-/// White Noto Sans on black, full screen, four lines a slide. A fresh
+/// White Literata on black, full screen, four lines a slide. A fresh
 /// library gets it as a document; the app also falls back to it when every
 /// theme has been deleted (deletes sync, so that can happen mid-service).
 pub fn starter_theme() -> Theme {
@@ -459,7 +478,7 @@ pub fn starter_theme() -> Theme {
         id: ThemeId::from_uuid(STARTER_THEME_ID),
         name: "Starter".into(),
         text: TextStyle {
-            font_family: "Noto Sans".into(),
+            font_family: "Literata".into(),
             size: 72.0,
             min_size: 36.0,
             weight: 400,
@@ -677,6 +696,19 @@ mod tests {
         assert_eq!(lib.translations().unwrap(), vec![t]);
     }
 
+    /// A small blob that inflates past the cap (zeros compress to almost
+    /// nothing) is refused, not inflated into memory.
+    #[test]
+    fn bible_decode_refuses_oversized_text() {
+        let zeros = vec![0u8; MAX_BIBLE_BYTES as usize + 1];
+        let bomb = zstd::encode_all(zeros.as_slice(), 1).unwrap();
+        assert!(bomb.len() < 1024 * 1024);
+        match decode_bible_text(&bomb) {
+            Err(SyncError::Corrupt(why)) => assert!(why.contains("50 MB"), "{why}"),
+            other => panic!("expected Corrupt, got {other:?}"),
+        }
+    }
+
     #[test]
     fn bible_encode_store_decode() {
         let text = bible();
@@ -764,7 +796,7 @@ mod tests {
             let themes = lib.themes().unwrap();
             assert_eq!(themes.len(), 1);
             let t = &themes[0];
-            assert_eq!(t.text.font_family, "Noto Sans");
+            assert_eq!(t.text.font_family, "Literata");
             assert_eq!(t.text.color, Color::WHITE);
             assert_eq!(t.background, Background::Color(Color::BLACK));
             assert_eq!(t.max_lines, 4);

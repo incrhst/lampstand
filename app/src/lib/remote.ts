@@ -5,6 +5,7 @@
 
 import type { Cursor, LoadedItemView, LoadedService, Overlay, SlideView, SoundStart } from "./api";
 import { nextClick } from "./cursor.ts";
+import { loadedItem } from "./ready.ts";
 import { REMOTE_NAME } from "./product.ts";
 import { lengthLabel } from "./sound.ts";
 
@@ -61,6 +62,8 @@ export type LiveState = {
   overlay: Overlay;
   /** The operator cleared the words of what is live (0.9.1; absent from an older laptop). */
   cleared?: boolean;
+  /** On a side-trip to a ready item, where Next goes back to (absent from an older laptop). */
+  returns_to?: Cursor | null;
 };
 
 export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };
@@ -69,7 +72,7 @@ export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };
 export function onScreen(loaded: LoadedService | null, live: LiveState | null): Shown | null {
   const cursor = live?.shown !== undefined ? live.shown : live?.live;
   if (!loaded || !cursor) return null;
-  const item = loaded.items.find((i) => i.id === cursor.item);
+  const item = loadedItem(loaded, cursor.item);
   const slide = item?.slides[cursor.slide];
   return item && slide ? { item, slide, cursor } : null;
 }
@@ -79,7 +82,7 @@ export type Coming = { title: string; slide: SlideView; cursor: Cursor; build: b
 /** What Next puts on screen: the next build step of the slide, the next slide, or nothing at the end. */
 export function upNext(loaded: LoadedService | null, live: LiveState | null): Coming | null {
   if (!loaded) return null;
-  const next = nextClick(loaded, live?.live ?? null);
+  const next = nextClick(loaded, live?.live ?? null, live?.returns_to ?? null);
   return next ? { title: next.title, slide: next.slide, cursor: next.cursor, build: next.build } : null;
 }
 

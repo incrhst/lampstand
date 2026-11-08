@@ -232,6 +232,7 @@ mod tests {
                 auto_advance_ms: None,
                 loop_group: None,
                 sound_only: false,
+                auto_builds_ms: Vec::new(),
             }
         }
 

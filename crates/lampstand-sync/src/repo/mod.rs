@@ -2,7 +2,7 @@
 //! per-peer sync state and the blob store.
 
 mod blobs;
-mod fsutil;
+pub(crate) mod fsutil;
 mod store;
 
 use std::collections::hash_map::Entry as MapEntry;

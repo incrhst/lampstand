@@ -222,11 +222,7 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> io::Result<()> {
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let tmp = target.with_extension(format!("json.{}.tmp", hex(&random::<4>())));
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, target).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    lampstand_sync::write_atomic(target, bytes)
 }
 
 impl RemoteHub {

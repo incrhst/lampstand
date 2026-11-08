@@ -15,6 +15,8 @@
     empty = "",
     image = null,
     idle = null,
+    idleVideo = false,
+    idleTag = true,
     brand = null,
   }: {
     lines?: readonly string[];
@@ -31,6 +33,10 @@
     image?: string | null;
     /** A picture of the screen's idle screen, shown when there is nothing to show and under the Idle overlay. */
     idle?: string | null;
+    /** The idle screen is a looping video: its picture is a still, so it says so. */
+    idleVideo?: boolean;
+    /** The "Idle screen" label over the picture; a tile with its own caption shows only a play mark for a video. */
+    idleTag?: boolean;
     /** The church's logo, for the logo bug. */
     brand?: { logo: string | null; background: string; accent: string; bug?: LogoBug } | null;
   } = $props();
@@ -57,10 +63,10 @@
   {#if overlay === "Idle"}
     <!-- The idle screen put up mid-service; plain until a picture arrives. -->
     {#if idle}<img class="picture idle" src={idle} alt="Idle screen" />{/if}
-    <span class="idle-tag">Idle screen</span>
+    {#if idleTag}<span class="idle-tag">Idle screen{#if idleVideo}<span class="video-tag"><span aria-hidden="true">▶</span> Looping video</span>{/if}</span>{:else if idleVideo}<span class="play-mark" aria-label="Looping video">▶</span>{/if}
   {:else if overlay === "None" && idle && lines.length === 0 && !image}
     <img class="picture idle" src={idle} alt="Idle screen" />
-    <span class="idle-tag">Idle screen</span>
+    {#if idleTag}<span class="idle-tag">Idle screen{#if idleVideo}<span class="video-tag"><span aria-hidden="true">▶</span> Looping video</span>{/if}</span>{:else if idleVideo}<span class="play-mark" aria-label="Looping video">▶</span>{/if}
   {:else if overlay === "None" && image}
     <img class="picture" src={image} alt="" />
   {:else if overlay === "None"}
@@ -139,6 +145,25 @@
     background: rgb(0 0 0 / 0.6);
     color: #fff;
     font-size: 0.7rem;
+  }
+  .play-mark {
+    position: absolute;
+    right: 0.35rem;
+    bottom: 0.35rem;
+    display: grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 0.65);
+    color: #fff;
+    font-size: 0.6rem;
+  }
+  .video-tag {
+    margin-left: 0.4rem;
+    padding-left: 0.4rem;
+    border-left: 1px solid rgb(255 255 255 / 0.4);
+    font-weight: 600;
   }
   .picture {
     position: absolute;

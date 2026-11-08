@@ -12,7 +12,8 @@
     footer = "",
     width = 1920,
     height = 1080,
-  }: { theme: Theme; lines: readonly string[]; footer?: string; width?: number; height?: number } = $props();
+    song = false,
+  }: { theme: Theme; lines: readonly string[]; footer?: string; width?: number; height?: number; song?: boolean } = $props();
 
   let bg = $derived(theme.background);
   let color = $derived(typeof bg === "object" && "Color" in bg ? toHex(bg.Color) : "#000");
@@ -22,6 +23,15 @@
   let justify = $derived(justifyBy[t.valign]);
   // Sizes are pixels on a 1080-pixel-tall screen; the sketch is `cqh` of its own height.
   let unit = $derived(100 / 1080);
+  // Songs keep 4em of the text size clear of the screen's left and right
+  // edges, as the core lays them out (SONG_MARGIN_EM in compose.rs).
+  let margin = $derived(4 * t.size * unit);
+  let pad = $derived(
+    song
+      ? `padding-left:max(1%, calc(${margin}cqh - ${area.x * 100}cqw));` +
+          `padding-right:max(1%, calc(${margin}cqh - ${(1 - area.x - area.width) * 100}cqw));`
+      : "",
+  );
 </script>
 
 <div class="sketch" style="aspect-ratio:{width}/{height};background:{color}" role="img" aria-label="Sketch of the theme">
@@ -32,8 +42,8 @@
     class="text"
     style="left:{area.x * 100}%;top:{area.y * 100}%;width:{area.width * 100}%;height:{area.height * 100}%;
       justify-content:{justify};text-align:{t.align === 'Center' ? 'center' : t.align.toLowerCase()};
-      font-family:'{t.font_family}',sans-serif;font-size:{t.size * unit}cqh;font-weight:{t.weight};
-      font-style:{t.italic ? 'italic' : 'normal'};color:{toHex(t.color)};line-height:{t.line_spacing}"
+      font-family:'{t.font_family}','Literata',serif;font-size:{t.size * unit}cqh;font-weight:{t.weight};
+      font-style:{t.italic ? 'italic' : 'normal'};color:{toHex(t.color)};line-height:{t.line_spacing};{pad}"
   >
     {#each lines.slice(0, theme.max_lines) as line}<span>{line}</span>{/each}
     {#if footer && theme.show_copyright}<small style="font-size:{t.size * 0.4 * unit}cqh">{footer}</small>{/if}

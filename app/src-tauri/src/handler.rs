@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, ItemSoundView, LibraryRequest, LoadedItemView,
-    LoadedService, OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary,
-    SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
+    LoadedService, OutputRequest, ReadyView, Request, Response, SectionView, ServiceRequest,
+    ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -50,7 +50,7 @@ use lampstand_core::scripture::{
     find_translation, parse_reference_versioned, unrecognised_version_message,
 };
 use lampstand_core::service::{
-    CountdownTarget, ItemId, ItemKind, Service, ServiceId, ServiceItem, Sound,
+    CountdownTarget, ItemId, ItemKind, ReadySource, Service, ServiceId, ServiceItem, Sound,
 };
 use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
@@ -149,6 +149,8 @@ type LiveState = (
     Option<Cursor>,
     bool,
     Overlay,
+    Option<Cursor>,
+    bool,
     Option<Cursor>,
     bool,
 );
@@ -717,7 +719,12 @@ impl App {
     fn check_training(&self, request: &ServiceRequest) -> Result<()> {
         let (service, practice) = match request {
             ServiceRequest::InsertItem { service, .. }
-            | ServiceRequest::RemoveItem { service, .. } => (*service, true),
+            | ServiceRequest::RemoveItem { service, .. }
+            | ServiceRequest::PinReady { service, .. }
+            | ServiceRequest::AddReady { service, .. }
+            | ServiceRequest::AddReadySlide { service, .. }
+            | ServiceRequest::RemoveReady { service, .. }
+            | ServiceRequest::MoveReady { service, .. } => (*service, true),
             ServiceRequest::Duplicate { service, .. }
             | ServiceRequest::Reschedule { service, .. }
             | ServiceRequest::Rename { service, .. }
@@ -891,6 +898,74 @@ impl App {
             ServiceRequest::RemoveItem { service, item } => {
                 let mut s = get(service)?;
                 if s.remove(item).is_none() {
+                    return Err("no such item".into());
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::PinReady {
+                service,
+                item,
+                ready,
+            } => {
+                let mut s = get(service)?;
+                if ready {
+                    if !s.pin_ready(item) {
+                        return Err(match s.items.get(&item) {
+                            Some(_) => {
+                                "A header has nothing to show, so it cannot be kept ready.".into()
+                            }
+                            None => "no such item".into(),
+                        });
+                    }
+                } else {
+                    s.unready(item);
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::AddReady { service, kind } => {
+                if !matches!(kind, ItemKind::Deck { .. } | ItemKind::Media { .. }) {
+                    return Err("Only decks and media from the Library can be kept ready on their own. Pin an item of the order to keep it ready.".into());
+                }
+                let mut s = get(service)?;
+                s.add_ready(kind);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::AddReadySlide {
+                service,
+                deck,
+                slide,
+            } => {
+                if lib.deck(deck).map_err(err)?.is_none() {
+                    return Err("no such deck".into());
+                }
+                let mut s = get(service)?;
+                s.add_ready_slide(deck, slide);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::RemoveReady { service, item } => {
+                let mut s = get(service)?;
+                if !s.unready(item) {
+                    return Err("no such item".into());
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::MoveReady {
+                service,
+                item,
+                index,
+            } => {
+                let mut s = get(service)?;
+                if !s.move_ready(item, index) {
                     return Err("no such item".into());
                 }
                 lib.put_service(&s).map_err(err)?;
@@ -1257,6 +1332,7 @@ impl App {
         self.loop_overrides.clear();
         let events = self.live.apply(Command::EndService);
         self.live.load(Vec::new());
+        self.live.set_ready(Vec::new());
         self.after_live(events);
         (self.emit)(Event::Unloaded);
     }
@@ -1385,11 +1461,114 @@ impl App {
                 ..loaded
             });
         }
+        // What is kept ready: a pin shows its item of the order; something
+        // kept only in Ready is loaded beside the order, where `Next` never
+        // reaches it.
+        let mut ready = Vec::new();
+        let mut ready_items = Vec::new();
+        for (ready_id, entry) in service.ready_ordered() {
+            match &entry.source {
+                ReadySource::Order => {
+                    if let Some(view) = views.iter().find(|v| v.id == ready_id) {
+                        ready.push(ReadyView {
+                            item: view.clone(),
+                            in_order: true,
+                        });
+                    }
+                }
+                ReadySource::Slide { deck, slide } => {
+                    // One slide of a deck, on its own: its builds play by
+                    // themselves. Left out if the deck has no such slide.
+                    let Some(d) = self.library.deck(*deck).ok().flatten() else {
+                        continue;
+                    };
+                    let Ok(parsed) = self.parsed_deck(&d) else {
+                        continue;
+                    };
+                    let Some(one) = parsed.slides.get(*slide as usize) else {
+                        continue;
+                    };
+                    let loaded_slide = LoadedSlide {
+                        content: Content::DeckSlide {
+                            deck: *deck,
+                            index: one.index,
+                            step: 0,
+                            scene: one.scenes[0].clone(),
+                            notes: one.notes.clone(),
+                        },
+                        steps: one.builds.len(),
+                        dwell_ms: None,
+                    };
+                    if !one.builds.is_empty() {
+                        builds.insert((ready_id, 0), one.builds.clone());
+                    }
+                    scenes.insert((ready_id, 0), one.scenes.clone());
+                    decks.push(*deck);
+                    blobs.push(d.current.blob);
+                    parsed_decks.insert(*deck, parsed.clone());
+                    let title = format!("{} · slide {}", d.title, slide + 1);
+                    ready.push(ReadyView {
+                        item: LoadedItemView {
+                            id: ready_id,
+                            title: title.clone(),
+                            slides: vec![slide_view(&loaded_slide)],
+                            sounds: Vec::new(),
+                        },
+                        in_order: false,
+                    });
+                    ready_items.push(LoadedItem {
+                        id: ready_id,
+                        title,
+                        slides: vec![loaded_slide],
+                        background: None,
+                        theme: service.theme,
+                        song: None,
+                        auto_advance_ms: None,
+                        loop_group: None,
+                        sound_only: false,
+                        auto_builds_ms: autoplay_waits(&one.entry, &one.builds),
+                    });
+                }
+                ReadySource::Own { kind } => {
+                    let loaded = self.load_item(ready_id, kind, &theme, &primary)?;
+                    if let ItemKind::Deck { deck } = kind {
+                        decks.push(*deck);
+                        let parsed = self.library.deck(*deck).ok().flatten().and_then(|d| {
+                            self.parsed.get(&d.current.blob).cloned().map(|p| (d, p))
+                        });
+                        if let Some((d, parsed)) = parsed {
+                            blobs.push(d.current.blob);
+                            for (i, slide) in parsed.slides.iter().enumerate() {
+                                if !slide.builds.is_empty() {
+                                    builds.insert((ready_id, i), slide.builds.clone());
+                                }
+                                scenes.insert((ready_id, i), slide.scenes.clone());
+                            }
+                            parsed_decks.insert(*deck, parsed);
+                        }
+                    }
+                    ready.push(ReadyView {
+                        item: LoadedItemView {
+                            id: ready_id,
+                            title: loaded.title.clone(),
+                            slides: loaded.slides.iter().map(slide_view).collect(),
+                            sounds: Vec::new(),
+                        },
+                        in_order: false,
+                    });
+                    ready_items.push(LoadedItem {
+                        theme: service.theme,
+                        ..loaded
+                    });
+                }
+            }
+        }
         let view = LoadedService {
             service: id,
             title: service.title.clone(),
             items: views,
             sections,
+            ready,
         };
         // Parsed decks no service uses any more are let go.
         self.parsed.retain(|blob, _| blobs.contains(blob));
@@ -1402,7 +1581,8 @@ impl App {
             slides: parsed_decks,
             obs_scenes,
         });
-        let events = self.live.load(items);
+        let mut events = self.live.load(items);
+        events.extend(self.live.set_ready(ready_items));
         (self.emit)(Event::Loaded(view.clone()));
         self.after_live(events);
         Ok(view)
@@ -1425,6 +1605,7 @@ impl App {
             auto_advance_ms: None,
             loop_group: None,
             sound_only: false,
+            auto_builds_ms: Vec::new(),
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -1630,6 +1811,8 @@ impl App {
                 self.live.program().overlay,
                 self.live.shown(),
                 cleared(&self.live),
+                self.live.returns_to(),
+                self.live.on_detour(),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
@@ -1639,6 +1822,8 @@ impl App {
                     idle: state.2,
                     overlay: state.3,
                     cleared: state.5,
+                    returns_to: state.6,
+                    on_ready: state.7,
                 });
             }
             self.told_ui = Some(state);
@@ -2504,6 +2689,8 @@ impl App {
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
             cleared: cleared(&self.live),
+            returns_to: self.live.returns_to(),
+            on_ready: self.live.on_detour(),
         });
     }
 
@@ -2662,6 +2849,26 @@ fn item_sounds(item: &ServiceItem) -> Vec<ItemSoundView> {
     };
     own.into_iter()
         .chain(item.backing.as_ref().map(|b| view(b, true)))
+        .collect()
+}
+
+/// How long a slide kept ready on its own waits before each of its builds
+/// plays by itself (`LoadedItem::auto_builds_ms`): until what played before
+/// it has finished (what plays as the slide arrives, then each build), and
+/// a short pause to read it.
+fn autoplay_waits(entry: &[Animation], builds: &[Vec<Animation>]) -> Vec<u32> {
+    const PAUSE_MS: u32 = 800;
+    let length = |anims: &[Animation]| {
+        anims
+            .iter()
+            .map(|a| a.delay_ms.saturating_add(a.duration_ms))
+            .max()
+            .unwrap_or(0)
+    };
+    std::iter::once(entry)
+        .chain(builds.iter().map(Vec::as_slice))
+        .take(builds.len())
+        .map(|played| length(played).saturating_add(PAUSE_MS))
         .collect()
 }
 

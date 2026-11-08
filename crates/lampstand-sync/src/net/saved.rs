@@ -268,35 +268,10 @@ pub(super) fn load(dir: &Path) -> Loaded {
     }
 }
 
-/// Writes `name` in `dir` through a temporary file of its own, readable
-/// only by this user on Unix, flushed before it replaces the old one.
+/// Writes `name` in `dir` readable only by this user, through a temporary
+/// file of its own, flushed before it replaces the old one.
 fn write_private(dir: &Path, name: &str, json: &[u8]) -> io::Result<()> {
-    use std::io::Write as _;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SAVES: AtomicU64 = AtomicU64::new(0);
-    let tmp = dir.join(format!(
-        "{name}.{}.{}.tmp",
-        std::process::id(),
-        SAVES.fetch_add(1, Ordering::Relaxed)
-    ));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let written = options.open(&tmp).and_then(|mut f| {
-        f.write_all(json)?;
-        f.sync_all()
-    });
-    match written.and_then(|()| std::fs::rename(&tmp, dir.join(name))) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp);
-            Err(e)
-        }
-    }
+    crate::write_private(&dir.join(name), json)
 }
 
 pub(super) fn save(dir: &Path, file: &RolesFile) -> io::Result<()> {
