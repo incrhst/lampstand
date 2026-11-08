@@ -270,9 +270,20 @@
         <Icon name="setup" size={16} />
         <span class="setup-word">Setup</span>
       </button>
-      {#if focusable}
-        <!-- One name in Plan and Present, so it means the same thing next month. -->
-        <button class="setup focus-on" aria-pressed={!focused} aria-controls="library-and-controls" title="{focused ? "Show" : "Hide"} the Library and the controls (F)" onclick={() => (live.focus = !live.focus)}>
+      {#if screen === "plan" || screen === "operate"}
+        <!-- One name in Plan and Present, so it means the same thing next
+             month. It stays put in Present before a service is open, greyed
+             out with the reason, so it never seems to have gone missing.
+             aria-disabled, not disabled, so the reason still shows on hover. -->
+        <button
+          class="setup focus-on"
+          class:waiting={!focusable}
+          aria-disabled={!focusable}
+          aria-pressed={focusable ? !focused : undefined}
+          aria-controls="library-and-controls"
+          title={focusable ? `${focused ? "Show" : "Hide"} the Library and the controls (F)` : "Open a service first: Library & controls comes with it"}
+          onclick={() => focusable && (live.focus = !live.focus)}
+        >
           <Icon name="panelRight" size={16} />
           <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
           <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what"> library &amp; controls</span></span>
@@ -436,6 +447,15 @@
   }
   .focus-on:hover {
     border-color: var(--muted);
+  }
+  /* Present with no service open: here, but nothing to hide yet. */
+  .focus-on.waiting {
+    color: var(--faint);
+    border-color: var(--line);
+    cursor: default;
+  }
+  .focus-on.waiting:hover {
+    border-color: var(--line);
   }
   .focus-on kbd {
     font: inherit;
