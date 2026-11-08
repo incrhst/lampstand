@@ -13,6 +13,10 @@ use lampstand_core::scene::{
 use lampstand_core::theme::{Background, TextStyle, Theme, REFERENCE_HEIGHT};
 
 use crate::paginate::FOOTER_SCALE;
+
+/// The least space, in multiples of the theme's text size, between song
+/// lyrics and the left and right edges of the safe area.
+pub const SONG_MARGIN_EM: f32 = 4.0;
 use crate::{fit_text, Fonts};
 
 /// Output pixel size of an output, for composition.
@@ -195,6 +199,25 @@ impl Compositor<'_> {
         }
     }
 
+    /// `area` narrowed so song lyrics sit at least [`SONG_MARGIN_EM`] of the
+    /// theme's text size in from the left and right of the safe area. A
+    /// theme whose text area is already narrower keeps it.
+    fn song_margins(&self, area: Rect) -> Rect {
+        let margin = SONG_MARGIN_EM * self.theme.text.size * self.scale;
+        let left = area.x.max(self.safe.x + margin);
+        let right = (area.x + area.width).min(self.safe.x + self.safe.width - margin);
+        if right - left < area.width * 0.25 {
+            // A tiny screen or a huge text size: margins that would leave
+            // almost no room for words are not worth having.
+            return area;
+        }
+        Rect {
+            x: left,
+            width: right - left,
+            ..area
+        }
+    }
+
     fn describe(&self, content: &Content) -> Shown {
         match content {
             Content::Lyrics { slide, .. }
@@ -303,7 +326,10 @@ impl Compositor<'_> {
                 nodes.push(group);
             }
             Shown::Text(slide) => {
-                let area = self.rect_in_safe(self.theme.text_area);
+                let mut area = self.rect_in_safe(self.theme.text_area);
+                if matches!(content, Content::Lyrics { .. }) {
+                    area = self.song_margins(area);
+                }
                 nodes.extend(self.slide_text(&slide, area, true));
             }
             Shown::Nothing => {}
@@ -335,7 +361,10 @@ impl Compositor<'_> {
                     width: 1.0,
                     height: 0.3,
                 };
-                let area = self.rect_in_safe(third);
+                let mut area = self.rect_in_safe(third);
+                if matches!(content, Content::Lyrics { .. }) {
+                    area = self.song_margins(area);
+                }
                 nodes.extend(self.slide_text(&slide, area, true));
             }
             Shown::Nothing => {}
@@ -2065,6 +2094,42 @@ mod tests {
         assert_eq!(size_of(1080.0), 60.0);
         assert_eq!(size_of(2160.0), 120.0);
         assert_eq!(size_of(540.0), 30.0);
+    }
+
+    #[test]
+    fn songs_keep_four_ems_clear_at_the_sides_and_other_text_does_not() {
+        let t = theme(60.0, 30.0);
+        let o = output(
+            OutputRole::Audience { primary: true },
+            BackgroundMode::Bleed,
+            SafeArea::default(),
+        );
+        let rects = |content: Content, h: f32| -> Vec<Rect> {
+            let w = h * 16.0 / 9.0;
+            let c = run(&program(Some(content), Overlay::None), &o, w, h, &t);
+            c.scene
+                .nodes
+                .iter()
+                .filter_map(|n| match &n.kind {
+                    NodeKind::Text(b) => Some(b.rect),
+                    _ => None,
+                })
+                .collect()
+        };
+        for h in [720.0, 1080.0, 2160.0] {
+            let margin = SONG_MARGIN_EM * 60.0 * h / 1080.0;
+            let song = rects(lyrics(), h);
+            assert!(!song.is_empty());
+            for r in song {
+                assert!((r.x - margin).abs() < 0.01, "{h}: left {}", r.x);
+                let right = h * 16.0 / 9.0 - (r.x + r.width);
+                assert!((right - margin).abs() < 0.01, "{h}: right {right}");
+            }
+        }
+        // Scripture keeps the theme's full-width text area.
+        for r in rects(scripture(), 1080.0) {
+            assert_eq!(r.x, 0.0);
+        }
     }
 
     #[test]
