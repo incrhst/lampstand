@@ -19,7 +19,7 @@
   import { isPlanning } from "../../lib/presenting";
   import { SCREENS_DARK } from "../../lib/roles";
 
-  /** Opens Setup › OBS, where pictures sent to OBS are set up. */
+  /** Opens Settings › OBS, where pictures sent to OBS are set up. */
   let { onobs, onidle }: { onobs?: () => void; onidle?: () => void } = $props();
 
   /** The screens: windows and displays. Pictures sent to OBS are on the OBS page. */
@@ -133,7 +133,7 @@
         <h1>Screens</h1>
         <p class="muted intro">
           The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
-          screen on to open its window; fullscreen screens go on a display below. Pictures for OBS are under Setup › OBS.
+          screen on to open its window; fullscreen screens go on a display below. Pictures for OBS are under Settings › OBS.
         </p>
       </div>
       <div class="add">
@@ -165,7 +165,7 @@
     {#if onidle}
       <p class="muted idle-link">
         What the screens show when nothing is on air is under
-        <button class="link" onclick={onidle}>Setup › Idle screen</button>.
+        <button class="link" onclick={onidle}>Settings › Idle screen</button>.
       </p>
     {/if}
 

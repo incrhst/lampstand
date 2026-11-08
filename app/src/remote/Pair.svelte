@@ -1,6 +1,6 @@
 <!-- The remote's first screen: the PIN shown on the laptop, and a name for
      this phone or tablet so the laptop can list it (and revoke it) under
-     Setup › Devices › Remotes. -->
+     Settings › Devices › Remotes. -->
 <script lang="ts">
   import Logo from "../lib/kit/Logo.svelte";
   import { guessName, pinDigits, words } from "../lib/remote.ts";

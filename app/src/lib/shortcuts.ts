@@ -16,7 +16,7 @@ export interface KeyLike {
 /**
  * The screen a key press asks for, or null when it is not one of ours.
  * Mod+1 is Plan, Mod+2 is Present, and Mod+\ goes to the other one of the
- * two (from Setup, to Plan).
+ * two (from Settings, to Plan).
  */
 export function screenForKey(e: KeyLike, current: ScreenId): ScreenId | null {
   if (e.altKey || e.shiftKey || e.metaKey === e.ctrlKey) return null;

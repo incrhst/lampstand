@@ -160,7 +160,7 @@
   let looseMedia: MediaFile[] = $state(load("lampstand.library.media", []));
   let recent: Entry[] = $state(load("lampstand.library.recent", []));
   let translation = $state("");
-  /** Set in Setup › Scripture; what a reference with no version is read from. */
+  /** Set in Settings › Scripture; what a reference with no version is read from. */
   let defaultTranslation: string | null = $state(null);
   let databases: SongDatabase[] = $state([]);
   let database = $state("en");

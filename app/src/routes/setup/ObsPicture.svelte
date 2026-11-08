@@ -1,4 +1,4 @@
-<!-- Setup › OBS › Send to OBS: pictures OBS loads from Lampstand as a
+<!-- Settings › OBS › Send to OBS: pictures OBS loads from Lampstand as a
      Browser source, either lower thirds for the stream or the full
      screen as the room sees it. OBS pulls these over the network with the
      URL below; it is separate from Lampstand controlling OBS (Control

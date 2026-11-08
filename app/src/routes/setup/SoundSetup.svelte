@@ -1,4 +1,4 @@
-<!-- Setup › Sound: whether this device offers music and backing tracks in the
+<!-- Settings › Sound: whether this device offers music and backing tracks in the
      order of the service. Off by default, so a church that does not use sound
      sees nothing about it in Plan. Sound already in a service always shows. -->
 <script lang="ts">

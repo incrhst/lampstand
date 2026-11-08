@@ -59,7 +59,7 @@
   /** Driving a presenter that is not connected: the controls wait. */
   let paused = $derived(driverOffline(live.team));
 
-  /** Opens Setup › Screens (the no-screen prompt), Setup › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen, `ondevices` where devices are paired. */
+  /** Opens Settings › Screens (the no-screen prompt), Settings › OBS and Plan (the blank view); `onidle` opens where the idle screen is chosen, `ondevices` where devices are paired. */
   let { onsetup, onobs, onplan, ontips, onidle, ondevices }: { onsetup?: () => void; onobs?: () => void; onplan?: () => void; ontips?: () => void; onidle?: () => void; ondevices?: () => void } = $props();
 
   // A stream machine (#134) runs the stream and not the service, so it has
@@ -311,7 +311,7 @@
   /** A deck or media from Quick add went to Ready; Shift+Enter shows it now, as a side-trip. */
   function readied(id: string | null, showNow: boolean, title: string) {
     quickAddOpen = false;
-    live.status = `${title} is ready`;
+    live.status = `${title} is in Ready`;
     if (showNow && id) showReady(id);
   }
   /** The "Connect a phone or tablet" dialog (T101). */
@@ -322,6 +322,26 @@
     if (showNow && id) show({ item: id, slide: 0, step: 0 });
   }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
+  /** Ready's tray, at the bottom right: open unless the operator closed it, remembered on this device. */
+  let readyOpen = $state(
+    (() => {
+      try {
+        return localStorage.getItem("lampstand.present.readyOpen") !== "0";
+      } catch {
+        return true;
+      }
+    })(),
+  );
+  /** How wide Library & controls is while shown, so Ready's tray opens beside it and never covers On air. */
+  let sideWidth = $state(0);
+  function setReadyOpen(open: boolean) {
+    readyOpen = open;
+    try {
+      localStorage.setItem("lampstand.present.readyOpen", open ? "1" : "0");
+    } catch {
+      // Not remembered: it opens again next time.
+    }
+  }
   /** "Close service" asks first when something is on air. */
   let confirmClose = $state(false);
   function askClose() {
@@ -564,7 +584,7 @@
     }
   }
 
-  // The logo bug follows the logo set in Setup › Logo and colours; this flips it
+  // The logo bug follows the logo set in Settings › Logo and colours; this flips it
   // on or off during a service and keeps the corner, size and opacity.
   let bugReady = $derived(!!live.settings?.brand?.logo);
   let bugOn = $derived(bugReady && !!live.settings?.brand?.bug.enabled);
@@ -609,7 +629,7 @@
     try {
       if (entry) await request({ area: "Service", request: { RemoveReady: { service: loaded.service, item: entry.id } } }, "Service");
       else await request({ area: "Service", request: { AddReadySlide: { service: loaded.service, deck, slide } } }, "Service");
-      live.status = entry ? `${title} · slide ${slide + 1} is no longer ready` : `${title} · slide ${slide + 1} is ready`;
+      live.status = entry ? `${title} · slide ${slide + 1} is out of Ready` : `${title} · slide ${slide + 1} is in Ready`;
     } catch (e) {
       report(e);
     }
@@ -633,7 +653,7 @@
     if (!loaded) return;
     try {
       await request({ area: "Service", request: { PinReady: { service: loaded.service, item, ready: on } } }, "Service");
-      live.status = on ? `${title} is ready` : `${title} is no longer ready`;
+      live.status = on ? `${title} is in Ready` : `${title} is out of Ready`;
     } catch (e) {
       report(e);
     }
@@ -644,7 +664,7 @@
     if (!loaded) return;
     try {
       await request({ area: "Service", request: { RemoveReady: { service: loaded.service, item: id } } }, "Service");
-      live.status = `${title} is no longer ready`;
+      live.status = `${title} is out of Ready`;
     } catch (e) {
       report(e);
     }
@@ -665,6 +685,65 @@
 </script>
 
 <svelte:window {onkeydown} />
+
+{#snippet readyBody()}
+    <!-- Blank and Idle as pictures of what the screens will show; a
+         looping video idle screen says so, since its picture is a still. -->
+    <div class="ready-screens">
+      <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
+        <SlidePreview overlay="Black" size="small" />
+        <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
+      </button>
+      <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide">
+        <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
+        <span class="screen-caption">
+          <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
+          <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
+        </span>
+      </button>
+    </div>
+    {#if ready.length > 0}
+      <ul class="plain ready-tiles" aria-label="In Ready">
+        {#each readyTiles as r (r.item.id)}
+          {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
+          {@const first = r.item.slides[0]}
+          <li class="ready-tile" class:on-air={onAir}>
+            <button type="button" class="ready-pick" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+              <SlidePreview lines={first?.lines ?? []} footer={first?.footer ?? null} image={first ? thumbFor(r.item.id, 0, first.steps) : null} size="small" empty={r.item.title} />
+              <span class="ready-caption">
+                {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{/if}
+                <span class="ready-title">{r.item.title}</span>
+              </span>
+            </button>
+            <button type="button" class="ready-remove on-tile" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Take ${r.item.title} out of Ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
+              <Icon name="x" size={12} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+      {#if readyRows.length > 0}
+        <ul class="plain ready-list" aria-label="Also in Ready">
+          {#each readyRows as r (r.item.id)}
+            {@const kind = kindOf(r.item.id)}
+            {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
+            <li class="ready-row" class:on-air={onAir}>
+              <button type="button" class="ready-show" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+                <Icon name={kind ? kindIcon[kind] : "file"} size={14} />
+                <span class="ready-title">{r.item.title}</span>
+                {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{:else if !r.in_order}<span class="side-hint">Only here</span>{/if}
+              </button>
+              <button type="button" class="ready-remove" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Take ${r.item.title} out of Ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
+                <Icon name="x" size={12} />
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    {:else}
+      <p class="side-line muted ready-empty">Nothing in Ready yet. Choose <Icon name="star" size={12} /> Add to Ready on an item to put it here, one tap away.</p>
+    {/if}
+    <button type="button" class="side-row" title="Quick add, for Ready: a deck, picture or video from the Library" onclick={() => openQuickAdd(true)}><Icon name="plus" size={14} />Add from the Library</button>
+{/snippet}
 
 {#snippet noScreen()}
   <Banner tone="warn">
@@ -869,9 +948,9 @@
                               class="pin"
                               class:on={pinned.has(item.id)}
                               aria-pressed={pinned.has(item.id)}
-                              title={pinned.has(item.id) ? `Kept ready. Click to stop keeping ${item.title} ready` : `Keep ${item.title} ready, one tap away in Ready`}
+                              title={pinned.has(item.id) ? `${item.title} is in Ready. Click to take it out` : `Optional: add ${item.title} to Ready, one tap away without losing your place`}
                               onclick={() => setPinned(item.id, !pinned.has(item.id), item.title)}
-                            ><Icon name="star" size={12} />{pinned.has(item.id) ? "Ready" : "Keep ready"}</button>
+                            ><Icon name="star" size={12} />{pinned.has(item.id) ? "In Ready" : "Add to Ready"}</button>
                           {/if}
                         </p>
                         {#if i === liveIndex}
@@ -894,8 +973,8 @@
                                 class="keep-slide"
                                 class:on={kept}
                                 aria-pressed={kept}
-                                title={kept ? `Slide ${s + 1} is kept ready. Click to stop keeping it` : `Keep just this slide ready; its builds play by themselves`}
-                                aria-label={kept ? `Stop keeping slide ${s + 1} of ${item.title} ready` : `Keep slide ${s + 1} of ${item.title} ready`}
+                                title={kept ? `Slide ${s + 1} is in Ready. Click to take it out` : `Add just this slide to Ready; its builds play by themselves`}
+                                aria-label={kept ? `Take slide ${s + 1} of ${item.title} out of Ready` : `Add slide ${s + 1} of ${item.title} to Ready`}
                                 onclick={() => toggleSlide(deckId, s, item.title)}
                               ><Icon name="star" size={11} />{kept ? "Ready" : "Keep slide"}</button>
                             {/if}
@@ -916,7 +995,7 @@
              Narrow, On air stands on its own beside a column of the rest
              (Sound first) that scrolls, so Previous, Next, Blank and Stop
              the sound now always stay in view. -->
-        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="Library and controls">
+        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="Library and controls" bind:offsetWidth={sideWidth}>
           <div class="side-onair">
             <SideCard title="On air">
               {#if previewSize !== "off"}
@@ -995,64 +1074,6 @@
             <!-- Ready: the easy way to Blank or the idle screen, and to put
                  up what the service keeps one tap away (a pinned item, or a
                  deck or media kept only here) without losing the place. -->
-            <SideCard title="Ready" key="lampstand.present.ready" summary={ready.length > 0 ? `${ready.length}` : undefined}>
-              <!-- Blank and Idle as pictures of what the screens will show; a
-                   looping video idle screen says so, since its picture is a still. -->
-              <div class="ready-screens">
-                <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
-                  <SlidePreview overlay="Black" size="small" />
-                  <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
-                </button>
-                <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide">
-                  <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
-                  <span class="screen-caption">
-                    <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
-                    <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
-                  </span>
-                </button>
-              </div>
-              {#if ready.length > 0}
-                <ul class="plain ready-tiles" aria-label="Kept ready">
-                  {#each readyTiles as r (r.item.id)}
-                    {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
-                    {@const first = r.item.slides[0]}
-                    <li class="ready-tile" class:on-air={onAir}>
-                      <button type="button" class="ready-pick" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
-                        <SlidePreview lines={first?.lines ?? []} footer={first?.footer ?? null} image={first ? thumbFor(r.item.id, 0, first.steps) : null} size="small" empty={r.item.title} />
-                        <span class="ready-caption">
-                          {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{/if}
-                          <span class="ready-title">{r.item.title}</span>
-                        </span>
-                      </button>
-                      <button type="button" class="ready-remove on-tile" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
-                        <Icon name="x" size={12} />
-                      </button>
-                    </li>
-                  {/each}
-                </ul>
-                {#if readyRows.length > 0}
-                  <ul class="plain ready-list" aria-label="Also kept ready">
-                    {#each readyRows as r (r.item.id)}
-                      {@const kind = kindOf(r.item.id)}
-                      {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
-                      <li class="ready-row" class:on-air={onAir}>
-                        <button type="button" class="ready-show" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
-                          <Icon name={kind ? kindIcon[kind] : "file"} size={14} />
-                          <span class="ready-title">{r.item.title}</span>
-                          {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{:else if !r.in_order}<span class="side-hint">Only here</span>{/if}
-                        </button>
-                        <button type="button" class="ready-remove" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
-                          <Icon name="x" size={12} />
-                        </button>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-              {:else}
-                <p class="side-line muted ready-empty">Tap <Icon name="star" size={12} /> on an item to keep it here.</p>
-              {/if}
-              <button type="button" class="side-row" title="Quick add, for Ready: a deck, picture or video from the Library" onclick={() => openQuickAdd(true)}><Icon name="plus" size={14} />Add from the Library</button>
-            </SideCard>
 
             <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
               <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
@@ -1062,7 +1083,7 @@
               </div>
               <p class="side-line muted"><Icon name="monitor" size={14} />{output?.name ?? "No screen yet"}</p>
               <Switch checked={showGuide} label="Safe area guide" onchange={() => { showGuide = !showGuide; used("safe-area"); }} />
-              <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Setup)"} onchange={toggleBug} />
+              <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Settings)"} onchange={toggleBug} />
               {#if onidle}<button type="button" class="side-row" onclick={onidle}><Icon name="image" size={14} />Idle screen<span class="side-hint">Change</span></button>{/if}
             </SideCard>
 
@@ -1145,6 +1166,26 @@
         {/if}
       </section>
     </div>
+    {#if live.loaded}
+      <!-- Ready: its own button at the bottom right, outside Library &
+           controls, so it never scrolls away or hides with F. Its tray
+           stays open until closed, so each tile is one tap away. -->
+      <div class="ready-fab" class:open={readyOpen}>
+        {#if readyOpen}
+          <section id="ready-tray" class="ready-tray" aria-label="Ready" style:margin-right={!live.focus && sideWidth > 0 ? `${sideWidth}px` : null}>
+            <header class="ready-tray-head">
+              <strong>Ready</strong>
+              <span class="muted ready-tray-say">One tap during the service. Next comes back to the service.</span>
+              <button type="button" class="ready-tray-close" onclick={() => setReadyOpen(false)} title="Close Ready (it stays at the bottom right)" aria-label="Close Ready"><Icon name="x" size={14} /></button>
+            </header>
+            <div class="ready-tray-body">{@render readyBody()}</div>
+          </section>
+        {/if}
+        <button type="button" class="ready-fab-button" class:on={readyOpen} aria-expanded={readyOpen} aria-controls="ready-tray" onclick={() => setReadyOpen(!readyOpen)} title={readyOpen ? "Close Ready" : "Open Ready: Blank, Idle and what you added, one tap away"}>
+          <Icon name="star" size={16} />Ready{#if ready.length > 0}<span class="ready-fab-count num">{ready.length}</span>{/if}
+        </button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -1532,11 +1573,100 @@
     position: relative;
     flex-direction: row;
   }
+  .ready-fab {
+    position: fixed;
+    right: 1rem;
+    bottom: 2.75rem;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    pointer-events: none;
+  }
+  .ready-fab > * {
+    pointer-events: auto;
+  }
+  .ready-fab-button {
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1rem;
+    border-radius: 999px;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--gold);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+  .ready-fab-button.on,
+  .ready-fab-button:hover {
+    background: var(--gold-soft);
+  }
+  .ready-fab-count {
+    min-width: 1.4rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: var(--gold);
+    color: var(--canvas);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+  .ready-tray {
+    width: min(22rem, calc(100vw - 2rem));
+    max-height: min(32rem, 62vh);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
+  .ready-tray-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem 0.4rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .ready-tray-say {
+    flex: 1;
+    font-size: 0.75rem;
+  }
+  .ready-tray-close {
+    align-self: center;
+    font: inherit;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0.2rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .ready-tray-close:hover {
+    color: var(--text);
+  }
+  .ready-tray-body {
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .ready-tray-body .ready-empty {
+    display: block;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
   .sidecard {
     flex: 0 0 21rem;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.75rem 1rem 1.5rem 0;
+    /* Room at the bottom, so the Ready button never covers the last card. */
+    padding: 0.75rem 1rem 4.5rem 0;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
@@ -2048,7 +2178,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.75rem 1.25rem 2rem;
+    /* Room at the bottom, so the Ready button never covers the last slides. */
+    padding: 0.75rem 1.25rem 4.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;

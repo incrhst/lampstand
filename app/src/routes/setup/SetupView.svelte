@@ -56,8 +56,8 @@
 </script>
 
 <div class="setup">
-  <aside class="pane pane-side side" aria-label="Setup">
-    <div class="pane-head"><h2>Setup</h2></div>
+  <aside class="pane pane-side side" aria-label="Settings">
+    <div class="pane-head"><h2>Settings</h2></div>
     <div class="pane-body">
       {#each groups as g, i (g.label)}
         <section class="group" aria-labelledby="setup-group-{i}">

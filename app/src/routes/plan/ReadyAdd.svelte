@@ -136,7 +136,7 @@
         placeholder="A deck or a picture or video from the Library"
         autocomplete="off"
         spellcheck="false"
-        aria-label="Deck or media to keep ready"
+        aria-label="Deck or media to add to Ready"
         aria-controls="ready-add-results"
         aria-activedescendant={slidesOf ? picker?.activeId() : undefined}
       />
@@ -145,7 +145,7 @@
     {#if slidesOf}
       <div class="slides-head">
         <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
-        <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
+        <span>One slide of <strong>{slidesOf.title}</strong> to add to Ready; its builds play by themselves</span>
       </div>
       <DeckSlidePicker bind:this={picker} deck={slidesOf.deck} title={slidesOf.title} {kept} onpick={keepSlide} />
     {:else}
@@ -172,9 +172,9 @@
 
     <p class="keys faint">
       {#if slidesOf}
-      Arrows choose a slide · <kbd>Enter</kbd> or click keeps it ready · <kbd>Esc</kbd> back
+      Arrows choose a slide · <kbd>Enter</kbd> or click adds it to Ready · <kbd>Esc</kbd> back
       {:else}
-      For an item already in the order, use <Icon name="star" size={12} /> Keep ready on it · <kbd>Enter</kbd> add{#if rows[highlight]?.kind === "deck"} · <kbd>→</kbd> one slide{/if} · <kbd>Esc</kbd> close
+      For an item already in the order, use <Icon name="star" size={12} /> Add to Ready on it · <kbd>Enter</kbd> add{#if rows[highlight]?.kind === "deck"} · <kbd>→</kbd> one slide{/if} · <kbd>Esc</kbd> close
       {/if}
     </p>
   </div>

@@ -1134,7 +1134,7 @@ fn shortcut_for(key: Key) -> Shortcut {
 /// The computer's own switches (#140): `tauri-plugin-autostart` for the
 /// startup item, `keepawake` for the sleep assertion (IOKit on macOS, the
 /// execution-state API on Windows). Both are only used when the operator
-/// turned them on in Setup.
+/// turned them on in Settings.
 struct TauriMachine {
     handle: AppHandle,
     awake: Awake,

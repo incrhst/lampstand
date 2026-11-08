@@ -1,4 +1,4 @@
-<!-- Setup › Scripture: the Bible versions on this device, and which one a
+<!-- Settings › Scripture: the Bible versions on this device, and which one a
      reference is read from when it does not name one. "James 3:11" uses the
      default; "James 3:11 ESV" uses the ESV if this device has it. Versions
      are imported in Plan (drop a Bible file on the library). -->

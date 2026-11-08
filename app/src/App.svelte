@@ -1,6 +1,6 @@
 <!-- The shell: a top bar with the two weekly jobs (Plan and Present) and
      Setup apart on the right, the screen, and a status bar whose sync and
-     screens items open Setup. Each screen lives in src/routes/<name>/ so
+     screens items open Settings. Each screen lives in src/routes/<name>/ so
      T47 to T55 can each own one folder. -->
 <script lang="ts">
   import PlanView from "./routes/plan/PlanView.svelte";
@@ -8,7 +8,7 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, report, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { syncPill } from "./lib/sync";
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
@@ -69,6 +69,29 @@
   // Hiding Library & controls is one switch for Plan and Present; switching
   // modes keeps it. It is never remembered, so every launch starts with it
   // open. Present needs a service open to have a sidebar at all.
+  // Close service sits beside the live service's name, in Plan and Present,
+  // so it never scrolls away or hides with Library & controls. It asks
+  // first while something is on air.
+  let confirmClose = $state(false);
+  function askClose() {
+    if (live.live || live.overlay !== "None") confirmClose = true;
+    else closeService();
+  }
+  async function closeService() {
+    const loaded = live.loaded;
+    confirmClose = false;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { Close: loaded.service } }, "Ok");
+      live.loaded = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+  $effect(() => {
+    if (!live.loaded) confirmClose = false;
+  });
+
   let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
   let focused = $derived(live.focus && focusable);
 
@@ -256,20 +279,34 @@
     </nav>
     <div class="right">
       {#if live.loaded}
+        <!-- While Close service asks, the question takes the name's place. -->
+        {#if !confirmClose}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
           {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
         </p>
+        {/if}
+        {#if confirmClose}
+          <span class="close-ask" role="alert">
+            Something is on air. Close the service?
+            <button class="close-live danger" onclick={closeService}>Close service</button>
+            <button class="close-live" onclick={() => (confirmClose = false)}>Keep open</button>
+          </span>
+        {:else}
+          <button class="close-live" onclick={askClose} title="Put the service away; it stays in Plan">
+            <Icon name="x" size={14} />Close service
+          </button>
+        {/if}
       {/if}
       <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
         <span class="setup-word">Help</span>
         {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
-      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
+      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Settings" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
-        <span class="setup-word">Setup</span>
+        <span class="setup-word">Settings</span>
       </button>
       {#if screen === "plan" || screen === "operate"}
         <!-- One name in Plan and Present, so it means the same thing next
@@ -312,7 +349,7 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Settings › Devices">
         <Dot tone={syncStatus.tone} />
         {#if live.team && live.team.paired.length > 0}
           <RoleBar held={heldRoles(live.team)} unchecked={uncheckedRoles(live.team)} />
@@ -324,7 +361,7 @@
         {#if streamOffline}<Dot tone="warn" /><span class="warn">{streamOffline}</span>{/if}
       </span>
       {#if connectLine}
-        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
+        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Settings › Devices">
           Connect another device
         </button>
       {/if}
@@ -352,12 +389,12 @@
       {#if obsStatus}
         <!-- OBS's connection, streaming and recording, kept quiet here;
              Present has the OBS control itself. -->
-        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Settings › OBS">
           <Dot tone={obsStatus.tone} />
           <span class:warn={obsStatus.tone === "warn"}>{obsStatus.text}</span>
         </button>
       {/if}
-      <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
+      <button class="status-link" onclick={() => openSetup("screens")} title="Open Settings › Screens">
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
@@ -365,7 +402,7 @@
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}
-        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Settings › OBS">
           <Icon name="broadcast" size={14} />
           {pictureOutputs.length}
           {pictureOutputs.length === 1 ? "picture" : "pictures"} to OBS
@@ -422,6 +459,37 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+  }
+  .close-live {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.6rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--field-line, var(--line));
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .close-live:hover {
+    border-color: var(--gold-hover);
+  }
+  .close-live.danger {
+    color: #fff;
+    background: var(--live);
+    border-color: var(--live);
+  }
+  .close-ask {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    color: var(--text);
   }
   .setup {
     font: inherit;

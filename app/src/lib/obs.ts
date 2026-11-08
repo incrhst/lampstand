@@ -36,7 +36,7 @@ export const SERVER_OFF_STEPS = [
   "In OBS, open Tools › WebSocket Server Settings.",
   "Tick Enable WebSocket server and click Apply.",
   "Click Show Connect Info and copy the server password.",
-  "Paste it in Setup › OBS here, then Save and test.",
+  "Paste it in Settings › OBS here, then Save and test.",
 ];
 
 /** Skipped frames as a whole-number percentage, or null with none sent. */
