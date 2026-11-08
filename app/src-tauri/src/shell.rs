@@ -32,8 +32,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
 use lampstand_api::{
-    Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
-    UpdateState,
+    Event, LibraryRequest, PlanRequest, Request, Response, ServiceRequest, SoundRequest,
+    UpdateRequest, UpdateState,
 };
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
@@ -377,6 +377,29 @@ async fn api(
                 _ => String::new(),
             });
             response
+        }
+        // Reading a Notion page is a download: done here, off the `App`
+        // lock, and the plan then matched by the app (T108).
+        Request::Plan(PlanRequest::DraftFromNotion {
+            link,
+            time_zone,
+            utc_offset_minutes,
+        }) => {
+            let (plan, warnings) =
+                match crate::plan::read_notion(&link, time_zone, utc_offset_minutes).await {
+                    Ok(read) => read,
+                    Err(message) => return Ok(Response::Error { message }),
+                };
+            let app = state.app.clone();
+            let request = Request::Plan(PlanRequest::DraftFromPlan { plan });
+            let response = blocking(Box::new(move || lock(&app).handle(request))).await;
+            Ok(match response? {
+                Response::PlanDraft(mut draft) => {
+                    draft.warnings.splice(0..0, warnings);
+                    Response::PlanDraft(draft)
+                }
+                other => other,
+            })
         }
         Request::Library(LibraryRequest::AddDeckFromLink { url }) => {
             let link = match decks::classify(&url) {

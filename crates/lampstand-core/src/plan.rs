@@ -130,6 +130,132 @@ pub struct SongHint {
     pub key: Option<String>,
 }
 
+// --- The review: what the matcher found for each entry (T106) and what the
+// person chose (T108). `lampstand-library::plan_match` fills these in.
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedPlan {
+    pub source: PlanSource,
+    pub title: String,
+    pub starts_at: Option<String>,
+    pub time_zone: Option<String>,
+    pub status: Option<PlanStatus>,
+    pub entries: Vec<ResolvedEntry>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedEntry {
+    pub source_id: String,
+    pub entry_type: EntryType,
+    pub title: String,
+    /// The notes the item will carry: the key note, then the plan's notes.
+    pub notes: String,
+    pub outcome: Outcome,
+    /// Shown beside the entry in the review.
+    pub warnings: Vec<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum Outcome {
+    /// A header, or a deck or announcement still to attach.
+    Header,
+    Song {
+        result: SongResult,
+        /// The arrangement for this service, when every label was found.
+        arrangement: Option<Vec<String>>,
+        /// What the plan said about the song, for "create a blank song".
+        hint_title: String,
+        hint_author: Option<String>,
+        hint_ccli: Option<u64>,
+        hint_key: Option<String>,
+        /// The key for remembering the person's choice.
+        remember_as: String,
+    },
+    Scripture {
+        result: PassageResult,
+    },
+    /// Not chosen yet, or unreadable: a header with the reason in its notes.
+    Placeholder {
+        reason: String,
+    },
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum SongResult {
+    Matched {
+        song: crate::song::SongId,
+        title: String,
+        how: MatchedBy,
+    },
+    /// Probably this one; the person confirms it.
+    Likely {
+        song: crate::song::SongId,
+        title: String,
+    },
+    Choose {
+        candidates: Vec<SongCandidate>,
+    },
+    NotFound,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MatchedBy {
+    Ccli,
+    Remembered,
+    Title,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SongCandidate {
+    pub song: crate::song::SongId,
+    pub title: String,
+    pub author: Option<String>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum PassageResult {
+    Found {
+        passage: crate::scripture::Passage,
+        translation: crate::scripture::TranslationId,
+        /// The abbreviation shown in the review.
+        translation_name: String,
+    },
+    /// The book could be several ("J 3"): one passage per reading.
+    Choose {
+        candidates: Vec<crate::scripture::Passage>,
+        translation: crate::scripture::TranslationId,
+        translation_name: String,
+    },
+}
+
+/// What the person decided for one entry in the review.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum Choice {
+    /// Use what the matcher found (a match, a confirmed likely song, the passage).
+    Accept,
+    /// This song from the library.
+    Song { song: crate::song::SongId },
+    /// This passage, from a "choose one".
+    Passage { index: u32 },
+    /// A new song with the plan's title, author, CCLI number and key and no
+    /// lyrics, written to the library first.
+    CreateBlank,
+    /// Leave a placeholder header.
+    Placeholder,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanError {
     /// Not JSON, or a field has the wrong type.
@@ -252,6 +378,12 @@ impl Plan {
         Ok(())
     }
 
+    /// `starts_at` as milliseconds since 1970 (a `Timestamp`), if it is
+    /// RFC 3339 with an offset.
+    pub fn starts_at_millis(&self) -> Option<i64> {
+        self.starts_at.as_deref().and_then(rfc3339_millis)
+    }
+
     /// The entries by `order`, ties by `source_id`.
     pub fn ordered(&self) -> Vec<&PlanEntry> {
         let mut entries: Vec<&PlanEntry> = self.entries.iter().collect();
@@ -277,6 +409,70 @@ fn check_contract(contract: &str) -> Result<(), PlanError> {
         return Err(PlanError::UnknownContract(contract.to_string()));
     }
     Ok(())
+}
+
+/// "2026-11-08T10:00:00-05:00" or "…T15:00:00.000Z" as milliseconds since
+/// 1970. `None` for anything without a full date, time and offset.
+pub fn rfc3339_millis(text: &str) -> Option<i64> {
+    let t = text.trim();
+    let num = |s: &str| -> Option<i64> {
+        s.bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| s.parse().ok())
+            .flatten()
+    };
+    if t.len() < 20 || !t.is_char_boundary(19) {
+        return None;
+    }
+    let (date, rest) = t.split_at(10);
+    let d: Vec<&str> = date.split('-').collect();
+    let [y, mo, da] = d[..] else { return None };
+    let (y, mo, da) = (num(y)?, num(mo)?, num(da)?);
+    if !(rest.starts_with('T') || rest.starts_with('t') || rest.starts_with(' ')) {
+        return None;
+    }
+    let time = &rest[1..9];
+    let hms: Vec<&str> = time.split(':').collect();
+    let [h, mi, se] = hms[..] else { return None };
+    let (h, mi, se) = (num(h)?, num(mi)?, num(se)?);
+    let mut tail = &rest[9..];
+    let mut millis = 0;
+    if let Some(frac) = tail.strip_prefix('.') {
+        let digits = frac.bytes().take_while(u8::is_ascii_digit).count();
+        let first3 = &frac[..digits.min(3)];
+        millis = num(first3)? * 10_i64.pow(3 - first3.len() as u32);
+        tail = &frac[digits..];
+    }
+    let offset_min = match tail {
+        "Z" | "z" => 0,
+        _ if tail.len() == 6
+            && (tail.starts_with('+') || tail.starts_with('-'))
+            && &tail[3..4] == ":" =>
+        {
+            let m = num(&tail[1..3])? * 60 + num(&tail[4..6])?;
+            if tail.starts_with('-') {
+                -m
+            } else {
+                m
+            }
+        }
+        _ => return None,
+    };
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&da) || h > 23 || mi > 59 || se > 60 {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil.
+    let (yy, mm) = if mo <= 2 {
+        (y - 1, mo + 9)
+    } else {
+        (y, mo - 3)
+    };
+    let era = yy.div_euclid(400);
+    let yoe = yy - era * 400;
+    let doy = (153 * mm + 2) / 5 + da - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(((days * 86_400 + h * 3600 + mi * 60 + se) - offset_min * 60) * 1000 + millis)
 }
 
 /// The shape as it arrives, before the checks.
@@ -431,6 +627,23 @@ mod tests {
             .map(|e| e.source_id.as_str())
             .collect();
         assert_eq!(ids, ["z", "a", "b"]);
+    }
+
+    #[test]
+    fn reads_start_times() {
+        assert_eq!(rfc3339_millis("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(rfc3339_millis("1970-01-01T00:00:01.5Z"), Some(1500));
+        // 10:00 in Kingston is 15:00 UTC.
+        assert_eq!(
+            rfc3339_millis("2026-11-08T10:00:00-05:00"),
+            rfc3339_millis("2026-11-08T15:00:00Z")
+        );
+        assert_eq!(
+            rfc3339_millis("2026-11-08T15:00:00Z"),
+            Some(1_794_150_000_000)
+        );
+        assert_eq!(rfc3339_millis("2026-11-08"), None);
+        assert_eq!(rfc3339_millis("2026-11-08T10:00:00"), None);
     }
 
     #[test]

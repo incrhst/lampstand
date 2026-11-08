@@ -7,6 +7,7 @@
 pub mod brand_package;
 pub mod bundled;
 pub mod package;
+pub mod plan_match;
 pub mod readiness;
 pub mod search;
 pub mod training;

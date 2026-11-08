@@ -4,6 +4,7 @@ import type { Command } from "./Command";
 import type { LibraryRequest } from "./LibraryRequest";
 import type { ObsRequest } from "./ObsRequest";
 import type { OutputRequest } from "./OutputRequest";
+import type { PlanRequest } from "./PlanRequest";
 import type { RemoteRequest } from "./RemoteRequest";
 import type { ServiceRequest } from "./ServiceRequest";
 import type { SettingsRequest } from "./SettingsRequest";
@@ -11,4 +12,4 @@ import type { SoundRequest } from "./SoundRequest";
 import type { TeamRequest } from "./TeamRequest";
 import type { UpdateRequest } from "./UpdateRequest";
 
-export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest } | { "area": "Obs", "request": ObsRequest } | { "area": "Settings", "request": SettingsRequest } | { "area": "Sound", "request": SoundRequest } | { "area": "Update", "request": UpdateRequest } | { "area": "About", "request": AboutRequest } | { "area": "Remote", "request": RemoteRequest };
+export type Request = { "area": "Library", "request": LibraryRequest } | { "area": "Service", "request": ServiceRequest } | { "area": "Live", "request": Command } | { "area": "Outputs", "request": OutputRequest } | { "area": "Team", "request": TeamRequest } | { "area": "Obs", "request": ObsRequest } | { "area": "Settings", "request": SettingsRequest } | { "area": "Sound", "request": SoundRequest } | { "area": "Update", "request": UpdateRequest } | { "area": "About", "request": AboutRequest } | { "area": "Remote", "request": RemoteRequest } | { "area": "Plan", "request": PlanRequest };

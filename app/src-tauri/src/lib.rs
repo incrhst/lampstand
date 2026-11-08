@@ -22,6 +22,7 @@ pub mod import;
 pub mod journal;
 pub mod keys;
 pub mod obs_control;
+pub mod plan;
 pub mod remote;
 pub mod seed;
 mod shell;

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::deck::DeckId;
 use crate::id::{BlobHash, Id, Timestamp};
+use crate::plan::PlanSource;
 use crate::scripture::{Passage, TranslationId};
 use crate::song::SongId;
 use crate::theme::ThemeId;
@@ -63,6 +64,14 @@ pub struct Service {
         )
     )]
     pub ready: BTreeMap<ItemId, ReadyEntry>,
+    /// The plan this service was imported from (T107, decision 0007), so a
+    /// second import updates it instead of making another. `None` for a
+    /// service built by hand; such a service, and one saved before this
+    /// field existed, writes no key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub source: Option<PlanSource>,
 }
 
 /// One thing kept ready, at its place in the Ready list.
@@ -130,6 +139,11 @@ impl autosurgeon::Reconcile for Service {
         } else if m.entry("ready").is_some() {
             m.delete("ready")?;
         }
+        match &self.source {
+            Some(source) => m.put("source", source)?,
+            None if m.entry("source").is_some() => m.delete("source")?,
+            None => {}
+        }
         Ok(())
     }
 }
@@ -166,6 +180,20 @@ pub struct ServiceItem {
     #[cfg_attr(feature = "ts", ts(optional))]
     #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
     pub backing: Option<Sound>,
+    /// The plan entry this item was imported from (T107): its `source_id`.
+    /// `None` for an item added by hand. A second import finds the item by
+    /// it. Written only when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub source_id: Option<String>,
+    /// [`ServiceItem::content_hash`] as the import wrote the item. If the
+    /// item still hashes to it, nobody has edited it here and a second
+    /// import may replace it. Written only when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    #[cfg_attr(feature = "automerge", autosurgeon(missing = "Option::default"))]
+    pub import_hash: Option<String>,
 }
 
 /// Sound in the order of the service: a music-only item (walk-in music, a
@@ -281,11 +309,49 @@ impl autosurgeon::Reconcile for ServiceItem {
             None if m.entry("backing").is_some() => m.delete("backing")?,
             None => {}
         }
+        for (key, value) in [
+            ("source_id", &self.source_id),
+            ("import_hash", &self.import_hash),
+        ] {
+            match value {
+                Some(v) => m.put(key, v)?,
+                None if m.entry(key).is_some() => m.delete(key)?,
+                None => {}
+            }
+        }
         Ok(())
     }
 }
 
 impl ServiceItem {
+    /// An item with this kind and nothing else set.
+    pub fn new(position: Position, kind: ItemKind) -> Self {
+        Self {
+            position,
+            kind,
+            notes: String::new(),
+            obs_scene: None,
+            loop_seconds: None,
+            backing: None,
+            source_id: None,
+            import_hash: None,
+        }
+    }
+
+    /// A stable hash of what an import writes into an item: its kind and
+    /// notes. Moving the item, a loop, an OBS scene or a backing track does
+    /// not change it, so a second import can tell an item edited here from
+    /// one that was only moved or dressed up.
+    pub fn content_hash(&self) -> String {
+        let kind = serde_json::to_string(&self.kind).expect("an item kind always serialises");
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"lampstand-item/1\0");
+        hasher.update(kind.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(self.notes.as_bytes());
+        hasher.finalize().to_hex()[..32].to_string()
+    }
+
     /// The sound this item brings: its own, if it is a sound item, and a
     /// song's backing track.
     pub fn sounds(&self) -> impl Iterator<Item = &Sound> {
@@ -403,6 +469,7 @@ impl Service {
             theme: None,
             items: BTreeMap::new(),
             ready: BTreeMap::new(),
+            source: None,
         }
     }
 
@@ -429,6 +496,8 @@ impl Service {
             obs_scene: None,
             loop_seconds: None,
             backing: None,
+            source_id: None,
+            import_hash: None,
         };
         self.items.insert(id, item);
         id
@@ -609,6 +678,8 @@ impl Service {
     pub fn duplicate(&self, title: impl Into<String>) -> Service {
         let mut copy = Service::new(title);
         copy.theme = self.theme;
+        // A copy is a service of its own: importing the plan again updates
+        // the original, never the copy.
         let fresh: BTreeMap<ItemId, ItemId> = self
             .items
             .keys()
@@ -618,7 +689,12 @@ impl Service {
         copy.items = self
             .items
             .iter()
-            .map(|(id, item)| (fresh[id], item.clone()))
+            .map(|(id, item)| {
+                let mut item = item.clone();
+                item.source_id = None;
+                item.import_hash = None;
+                (fresh[id], item)
+            })
             .collect();
         // Ready comes too: a pin follows its item to the item's new ID.
         copy.ready = self
@@ -699,6 +775,8 @@ mod tests {
                 obs_scene: None,
                 loop_seconds: None,
                 backing: None,
+                source_id: None,
+                import_hash: None,
             };
             s.items.insert(ItemId::generate(), item);
         }
@@ -981,6 +1059,75 @@ mod tests {
         assert!(json.get("ready").is_none(), "{json}");
         let read: Service = serde_json::from_value(json).unwrap();
         assert_eq!(read, s);
+    }
+
+    /// T107: an imported service and its items say where they came from,
+    /// and a service built by hand writes no new keys.
+    #[test]
+    fn source_fields_are_optional_and_absent_by_default() {
+        let mut s = Service::new("Sunday");
+        let id = s.insert(0, header("Welcome"));
+        let service = serde_json::to_value(&s).unwrap();
+        assert!(service.get("source").is_none(), "{service}");
+        let item = serde_json::to_value(&s.items[&id]).unwrap();
+        assert!(
+            item.get("source_id").is_none() && item.get("import_hash").is_none(),
+            "{item}"
+        );
+
+        s.source = Some(PlanSource {
+            kind: "notion".into(),
+            id: "page".into(),
+            edited: None,
+        });
+        let item = s.items.get_mut(&id).unwrap();
+        item.source_id = Some("block".into());
+        item.import_hash = Some(item.content_hash());
+        let back: Service = serde_json::from_value(serde_json::to_value(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn editing_notes_or_kind_changes_the_hash_and_moving_does_not() {
+        let mut s = Service::new("Sunday");
+        let a = s.insert(0, header("Welcome"));
+        s.insert(1, header("Sermon"));
+        let before = s.items[&a].content_hash();
+        assert_eq!(before.len(), 32);
+
+        s.move_item(a, 1);
+        let item = s.items.get_mut(&a).unwrap();
+        item.obs_scene = Some("Wide".into());
+        item.loop_seconds = Some(8);
+        assert_eq!(
+            item.content_hash(),
+            before,
+            "moving and dressing up keep the hash"
+        );
+
+        item.notes = "Key: G".into();
+        let noted = item.content_hash();
+        assert_ne!(noted, before);
+        item.kind = header("Welcome!");
+        assert_ne!(item.content_hash(), noted);
+    }
+
+    #[test]
+    fn a_duplicate_is_not_the_imported_service() {
+        let mut s = Service::new("Sunday");
+        let id = s.insert(0, header("Welcome"));
+        s.source = Some(PlanSource {
+            kind: "notion".into(),
+            id: "page".into(),
+            edited: None,
+        });
+        s.items.get_mut(&id).unwrap().source_id = Some("block".into());
+        let copy = s.duplicate("Copy");
+        assert_eq!(copy.source, None);
+        assert!(copy
+            .items
+            .values()
+            .all(|i| i.source_id.is_none() && i.import_hash.is_none()));
     }
 
     #[test]

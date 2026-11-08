@@ -57,6 +57,13 @@ pub struct SongIndex {
     postings: BTreeMap<String, Vec<(u32, Presence)>>,
 }
 
+/// The score [`SongIndex::search`] gives a song whose title holds every
+/// word of `query` whole: the top of the scale, so a hit's score can be
+/// read as a fraction of it (T106).
+pub fn perfect_score(query: &str) -> f32 {
+    words(&strip_chords(query)).len() as f32 * EXACT * TITLE_WEIGHT
+}
+
 impl SongIndex {
     pub fn new() -> Self {
         Self::default()
@@ -269,7 +276,7 @@ fn strip_chords(line: &str) -> String {
 
 /// Lowercase words with accents removed (NFKD, combining marks dropped).
 /// Apostrophes join ("it's" → "its"); other punctuation separates.
-fn words(text: &str) -> Vec<String> {
+pub(crate) fn words(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     for c in text.nfkd() {

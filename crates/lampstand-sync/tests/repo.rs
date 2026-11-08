@@ -69,6 +69,8 @@ fn header(position: &str, title: &str) -> ServiceItem {
         obs_scene: None,
         loop_seconds: None,
         backing: None,
+        source_id: None,
+        import_hash: None,
     }
 }
 
@@ -159,6 +161,12 @@ fn every_item_kind() -> Service {
     s.starts_at = Some(Timestamp(1_790_000_000_000));
     s.time_zone = Some("Europe/London".into());
     s.theme = Some(ThemeId::generate());
+    // Imported from a plan (T107): the source rides along.
+    s.source = Some(lampstand_core::plan::PlanSource {
+        kind: "notion".into(),
+        id: "4127e73a-e67c-813c-933e-eddf604829ae".into(),
+        edited: Some("2026-11-08T05:12:00.000Z".into()),
+    });
     let blob = BlobHash::of(b"video");
     let kinds = [
         ItemKind::Header {
@@ -235,6 +243,8 @@ fn every_item_kind() -> Service {
             loop_seconds: None,
             // The first song carries a backing track.
             backing: (i == 1).then(|| sound("Track", Some(240_000), SoundStart::Waits)),
+            source_id: (i == 0).then(|| "block-1".to_string()),
+            import_hash: (i == 0).then(|| "0123abcd".to_string()),
         };
         s.items.insert(ItemId::generate(), item);
     }

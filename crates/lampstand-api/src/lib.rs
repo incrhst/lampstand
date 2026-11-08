@@ -12,6 +12,7 @@ use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
 use lampstand_core::output::OutputId;
 use lampstand_core::output::{DisplayMatch, IdleScreen, OutputConfig};
+use lampstand_core::plan::{Choice, Plan, ResolvedPlan};
 use lampstand_core::program::Overlay;
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scripture::{Passage, Translation, TranslationId};
@@ -36,6 +37,61 @@ pub enum Request {
     Update(UpdateRequest),
     About(AboutRequest),
     Remote(RemoteRequest),
+    Plan(PlanRequest),
+}
+
+/// A service from a planning tool (decision 0007, T108): read the plan,
+/// match it against the library, show the person the draft, and create the
+/// service from their choices. Nothing is written before `CreateFromPlan`.
+/// Never allowed from a remote or a driving device.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PlanRequest {
+    /// Reads a Notion page from its link (a page shared to the web needs
+    /// nothing else) and answers `Response::PlanDraft`. The page cannot say
+    /// which zone its times are in, so the screen sends this device's zone
+    /// and its offset from UTC in minutes (-300 for Jamaica).
+    DraftFromNotion {
+        link: String,
+        time_zone: Option<String>,
+        utc_offset_minutes: Option<i32>,
+    },
+    /// The same for a plan already in hand, such as a `lampstand-plan/1` file.
+    DraftFromPlan { plan: Plan },
+    /// Writes the service the draft describes, with the person's choice for
+    /// each entry (an entry left out is `Accept`), and answers
+    /// `Response::Service`. Songs the person asked to create are written
+    /// first; the choices are remembered on this device for next time.
+    CreateFromPlan {
+        draft: ResolvedPlan,
+        choices: Vec<EntryChoice>,
+    },
+}
+
+/// The person's choice for one entry, by its `source_id`.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryChoice {
+    pub source_id: String,
+    pub choice: Choice,
+}
+
+/// What a plan would become, for the review.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanDraft {
+    pub plan: ResolvedPlan,
+    /// About the plan as a whole ("no time zone, so no start time").
+    pub warnings: Vec<String>,
+    /// The service an earlier import made from this plan, if there is one.
+    pub existing: Option<ExistingService>,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExistingService {
+    pub id: ServiceId,
+    pub title: String,
 }
 
 /// Phones and tablets that drive the service from their browser (decision
@@ -1543,6 +1599,7 @@ pub enum Response {
     Update(UpdateStatus),
     Remotes(RemotesView),
     TrainingVideos(TrainingVideos),
+    PlanDraft(PlanDraft),
 }
 
 /// The services, and the ones that cannot be shown.

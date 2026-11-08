@@ -28,4 +28,16 @@ loop_seconds: number | null,
  * existed lack the key and read as `None`; an item without one writes
  * no key at all, so a service with no sound is the document it was.
  */
-backing?: Sound, };
+backing?: Sound, 
+/**
+ * The plan entry this item was imported from (T107): its `source_id`.
+ * `None` for an item added by hand. A second import finds the item by
+ * it. Written only when set.
+ */
+source_id?: string, 
+/**
+ * [`ServiceItem::content_hash`] as the import wrote the item. If the
+ * item still hashes to it, nobody has edited it here and a second
+ * import may replace it. Written only when set.
+ */
+import_hash?: string, };

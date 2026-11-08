@@ -35,8 +35,9 @@ use std::sync::Arc;
 
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, ItemSoundView, LibraryRequest, LoadedItemView,
-    LoadedService, OutputRequest, ReadyView, Request, Response, SectionView, ServiceRequest,
-    ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
+    LoadedService, OutputRequest, PlanRequest, ReadyView, Request, Response, SectionView,
+    ServiceRequest, ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot,
+    SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -193,6 +194,8 @@ pub struct App {
     fonts: Fonts,
     outputs: OutputStore,
     settings: SettingsStore,
+    /// Songs picked in earlier plan reviews (T108).
+    plan_choices: crate::plan::PlanChoices,
     /// Bookkeeping for the settings shared with the church's other devices.
     church_sync: ChurchSync,
     /// Bookkeeping for sound files that travel by sync.
@@ -314,6 +317,7 @@ impl App {
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
+        let plan_choices = crate::plan::PlanChoices::load(data_dir.join("plan-choices.json"));
         let audio = AudioDeck::new(
             Parts::real(library.clone()),
             settings.get().sound_output.clone(),
@@ -324,6 +328,7 @@ impl App {
             fonts,
             outputs,
             settings,
+            plan_choices,
             church_sync: ChurchSync::default(),
             sound_sync: SoundSync::default(),
             audio,
@@ -531,6 +536,7 @@ impl App {
             }
             Request::Outputs(r) => self.output_request(r),
             Request::Sound(r) => self.sound_request(r),
+            Request::Plan(r) => self.plan_request(r),
             // The shell answers these from `crate::sync` and
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
@@ -555,6 +561,24 @@ impl App {
             Request::Remote(_) => Err("remotes are not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
+    }
+
+    fn plan_request(&mut self, request: PlanRequest) -> Result<Response> {
+        match request {
+            PlanRequest::DraftFromNotion { .. } => {
+                // A download, like a deck link: the shell reads the page and
+                // then asks for `DraftFromPlan`.
+                Err("Notion pages are read by the app shell".into())
+            }
+            PlanRequest::DraftFromPlan { plan } => Ok(Response::PlanDraft(crate::plan::draft(
+                &self.library,
+                &plan,
+                &self.plan_choices,
+            )?)),
+            PlanRequest::CreateFromPlan { draft, choices } => Ok(Response::Service(
+                crate::plan::create(&self.library, &draft, &choices, &mut self.plan_choices)?,
+            )),
+        }
     }
 
     fn library_request(&mut self, request: LibraryRequest) -> Result<Response> {
