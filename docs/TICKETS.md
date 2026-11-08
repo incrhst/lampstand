@@ -230,9 +230,9 @@ The key scenario is a **service device** (a planner's laptop or the office PC) m
 | T56 | Clicker mode and global shortcuts | S | T46 | PS-9 | `app/src-tauri/src/keys.rs` | Done ([#30](https://github.com/incrhst/lampstand/pull/30)) |
 | T57 | Crash recovery journal | S | T46 | NFR Reliability | `app/src-tauri/src/journal.rs` | Done ([#27](https://github.com/incrhst/lampstand/pull/27)) |
 | T59 | Early-adopter packaging: macOS, Linux, Windows preview, updater | S | T46 | CD-11 | `app/src-tauri/tauri.conf.json`, CI | Done ([#24](https://github.com/incrhst/lampstand/pull/24), [#61](https://github.com/incrhst/lampstand/pull/61), [#64](https://github.com/incrhst/lampstand/pull/64), [#66](https://github.com/incrhst/lampstand/pull/66), [#72](https://github.com/incrhst/lampstand/pull/72), [#74](https://github.com/incrhst/lampstand/pull/74)): a notarised DMG, AppImage, .deb and an unsigned NSIS installer from `release.yml` (docs/RELEASING.md), and the updater, which installs only at a quiet moment |
-| T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Not started |
+| T60 | Accessibility pass (WCAG 2.2 AA) | S | T47–T54 | NFR | `app/src/` | Short pass done for 1.0.0 ([#277](https://github.com/incrhst/lampstand/pull/277)); full audit is #263 (1.5.0) |
 | T61 | Performance and latency on a 2019 laptop | **O** | T47 | NFR | `docs/perf.md`, fixes anywhere | Not started |
-| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Partial ([#86](https://github.com/incrhst/lampstand/pull/86)): the SignPath application, privacy page and code signing policy are on the site; the Windows installer is not signed and there is no Flathub manifest |
+| T95 | Launch packaging: Windows signing and Flathub | S | T59 | CD-11 | `app/src-tauri/tauri.conf.json`, CI, Flathub manifest | Partial: the SignPath application, privacy page and code signing policy are on the site. 1.0.0 ships unsigned (owner's decision, 2026-11-08); signing is #228 and Flathub #264, both 1.1.0 |
 
 **T46. App scaffold (Opus).** Set up the integration hub:
 
@@ -276,7 +276,7 @@ Code from a closed pull request is still on GitHub. Fetch every pull request hea
 | T62 | Full TS-1 calibration design | S | T26 | #5 | `render/src/calibrate.rs` | Done ([#13](https://github.com/incrhst/lampstand/pull/13)) |
 | T63 | Ultra-wide text column and authored-line fitting | **O** | — | #5 | `layout/src/fit.rs`, `layout/src/compose.rs`, `core/src/theme.rs` | Not started |
 | T64 | Relay Docker image, TLS guidance and relay tests | S | T19 | #4 | `relay/` | Not started |
-| T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` | Not started |
+| T65 | Corrupt chunks and stray temp files don't fail a load | S | — | #4 | `sync/src/repo/store.rs` | Done ([#267](https://github.com/incrhst/lampstand/pull/267)) |
 | T66 | Song search by author and CCLI number; finished words | S | — | #1 | `library/src/search.rs` | Not started |
 | T67 | OpenLyrics 0.9 chords | S | — | #1 | `import/src/songs/openlyrics.rs` | Not started |
 | T68 | ChordPro file importer | S | — | #1 | `import/src/songs/chordpro.rs` | Not started |
@@ -349,10 +349,10 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done ([#16](https://github.com/incrhst/lampstand/pull/16)) |
-| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | In review ([#268](https://github.com/incrhst/lampstand/pull/268)) |
-| T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
-| T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
-| T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` | Not started |
+| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | Done ([#268](https://github.com/incrhst/lampstand/pull/268)) |
+| T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Done ([#269](https://github.com/incrhst/lampstand/pull/269)) |
+| T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Done ([#273](https://github.com/incrhst/lampstand/pull/273)) |
+| T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` | Done ([#275](https://github.com/incrhst/lampstand/pull/275)) |
 | T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` | Done ([#270](https://github.com/incrhst/lampstand/pull/270)) |
 | T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Done ([#271](https://github.com/incrhst/lampstand/pull/271)) |
 | T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` | Not started |
@@ -484,7 +484,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T109 | Update a service from its plan | **O** | T107, T108 | PL-4 | `library/src/plan_update.rs`, `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T110 | Setup › Connections: Notion | S | T104 | PL-4 | `app/src/routes/setup/`, `app/src-tauri/src/notion.rs` | Not started |
-| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
+| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | Not started (#284) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
 **Revised 2026-11-08:** the chapel's plans are free-form pages, so T104 reads a page's blocks and T105 reads the page template instead of three databases ([decision 0007, revision](decisions/0007-plans-from-notion.md#revision-reading-the-chapels-pages-2026-11-08)). T108's `DraftFromNotion` takes a page link, not a Services row, reads it with `notion::public` first and the token client only for a private page, and `NotionServices` waits for a parent-page listing. T110 (the token) is needed only for private pages. T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.

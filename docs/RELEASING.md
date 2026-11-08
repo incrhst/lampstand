@@ -135,6 +135,27 @@ Nothing in CI can listen. Before a release that changes sound, on a Mac and on a
 
 On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
 
+### Releasing 1.0.0: church-ready
+
+1.0.0 is the slim, church-ready cut (`docs/TICKETS.md`, 1.0.0): the finished screens made safe, checked by keyboard and on real hardware. Sermon recording waits for 1.5.0; songs from links, ChordPro, CCLI reports, the migration wizard, service packages, Plans from Notion in the app, Flathub and Windows signing wait for 1.1.0.
+
+- **No sync change.** Still sync protocol 10, so 0.9.x and 1.0.0 computers work together and a church can update them one at a time. T77 (#269) and T78 (#273) change how a device treats what it receives, with nothing new on the wire. A service with something kept in Ready (#266) carries a `ready` key that 0.9.2 does not read; 0.9.2 still opens the service and keeps the key.
+- **The Windows installer is still not signed** (owner's decision, 2026-11-08; #228 is in 1.1.0). Windows shows "Windows protected your PC". The notes say so and how to go on: **More info**, then **Run anyway**, as `site/docs/getting-started.html` already does.
+- **Publish the training videos with the release, not before.** They were re-rendered for Library & controls (#276). On release day, after publishing the GitHub release: `node training/build.mjs publish`, then merge `training/` and `site/training/` to `main`. The decks, the cheat sheet, the training services' notes and the quick-tip clips are bundled and change with the release itself.
+- **Check on real hardware before tagging `v1.0.0`** (#231). This is the release the 0.9.x checks were saved for:
+  - **A mock service on a 2019-class laptop** with three outputs and OBS streaming: Plan, Open for live, the whole order in Present by keyboard, Blank and Idle, a deck with builds, a looping group (the gold bar on the LIVE card and On air), Quick add of a song and of one deck slide by keyboard (→, the arrows, Enter), Ready, Close service. Fix what it turns up.
+  - **Sound (#186):** the playback check above, on a Mac and on Windows.
+  - **Lampstand Remote (#179):** an iPhone, an Android phone and a tablet, as in the 0.9.1 notes.
+  - **Library & controls:** F hides and shows it in Plan and Present; Blank, Stop the sound now and the transport stay reachable while it is hidden; every launch starts with it shown.
+  - **Windows:** `device.key` and the OBS password file › Properties › Security list only the signed-in user (T79, #275).
+  - **Training:** Training Sessions 0–2 run start to finish, offline once the videos have downloaded.
+- **What changes for an operator, worth knowing before the notes:**
+  - A save that fails (a full or read-only disk) no longer keeps the edit on screen: the item shows as it is on disk, so the operator can tell it wasn't saved (T78).
+  - A damaged saved chunk is set aside as `<hash>.chunk.corrupt` and the rest of the service or song loads; a document with no readable chunk is listed as damaged and can be deleted (T65).
+  - Size limits: a song file 5 MB, a deck download 512 MB, a Bible's text 50 MB, a file from another device 8 GiB (T76, T80).
+  - Songs use Literata and Source Sans 3 by default, with wider side margins (#274).
+- **What the notes should say**, under `**What's new in 1.0.0**`: "Lampstand 1.0 is ready for Sunday. Plan and Present share one sidebar, Library & controls: press F to hide it and F to bring it back. Keep a deck, a single slide, Blank or Idle in Ready for one tap during the service. Quick add and Add to Ready work from the keyboard, slides included. A looping group shows a gold bar for the time left on each slide. Setup is grouped, and Church look is now Logo and colours. Saving, syncing and downloads are safer: nothing counts as saved until it is on disk, and a damaged file no longer stops the rest loading. Songs use new default fonts. On Windows the installer is not signed yet: choose More info, then Run anyway."
+
 ### Releasing 0.9.2: the Present redesign
 
 - **No sync change.** Still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together and a church can update them one at a time. #253 changes when a newly paired computer starts dialling and turns away one unpaired mid-handshake, with nothing new on the wire.
