@@ -199,23 +199,10 @@ impl SettingsStore {
     }
 }
 
-/// Writes `bytes` to `path` through a temporary file, readable only by
-/// this user on Unix, because it holds the OBS password.
+/// Writes `bytes` to `path` readable only by this user, because it holds
+/// the OBS password.
 fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    use std::io::Write as _;
-    let tmp = path.with_extension("tmp");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&tmp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    std::fs::rename(&tmp, path)
+    lampstand_sync::write_private(path, bytes)
 }
 
 // Finding OBS on this machine.
