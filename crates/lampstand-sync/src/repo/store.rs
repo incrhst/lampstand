@@ -5,14 +5,16 @@
 //!
 //! A chunk that will not load (cut short, or damaged on disk) is skipped
 //! and renamed to `<hash>.chunk.corrupt`, so the rest of the document
-//! still loads and compaction does not delete the bad bytes. Leftover
-//! `.tmp-*` files from an interrupted write are ignored.
+//! still loads and compaction does not delete the bad bytes. When no chunk
+//! loads, the document is damaged rather than empty: loading fails and the
+//! chunks are left in place. Leftover `.tmp-*` files from an interrupted
+//! write are ignored.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use automerge::Automerge;
+use automerge::{Automerge, Change, LoadOptions, OnPartialLoad, VerificationMode};
 use uuid::Uuid;
 
 use super::fsutil::{write_atomic, Durable};
@@ -72,11 +74,33 @@ impl DocStore {
         };
         let mut doc = Automerge::new();
         let mut chunks = 0;
+        let mut bad = Vec::new();
         for path in self.chunk_paths(id)? {
             let bytes = fs::read(&path)?;
-            match doc.load_incremental(&bytes) {
-                Ok(_) => chunks += 1,
-                Err(e) => set_aside(&path, &e.to_string()),
+            let was_empty = doc.is_empty();
+            let loaded = match doc.load_incremental(&bytes) {
+                // Into a document that already has changes, Automerge keeps
+                // whatever part of a chunk parses and says nothing, so a
+                // chunk that added nothing is either a duplicate or garbage.
+                // Parse it again on its own, strictly, to tell which.
+                Ok(0) if !was_empty => check_alone(&bytes),
+                Ok(_) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            };
+            match loaded {
+                Ok(()) => chunks += 1,
+                Err(e) => bad.push((path, e)),
+            }
+        }
+        // Nothing loaded: the document is damaged, not empty. Its chunks
+        // stay as they are, so it can be listed as damaged and deleted.
+        if chunks == 0 {
+            if let Some((path, e)) = bad.into_iter().next() {
+                return Err(SyncError::Corrupt(format!("{}: {e}", path.display())));
+            }
+        } else {
+            for (path, e) in bad {
+                set_aside(&path, &e);
             }
         }
         Ok(Some(Loaded { kind, doc, chunks }))
@@ -127,6 +151,59 @@ impl DocStore {
         }
         Ok(paths)
     }
+}
+
+/// Whether every Automerge chunk in `bytes` parses on its own. A file
+/// holds one or more chunks, each `magic(4) checksum(4) type(1)
+/// length(uleb128) body`. A document chunk is self-contained and is loaded
+/// strictly; a change chunk is parsed without its dependencies.
+fn check_alone(bytes: &[u8]) -> Result<(), String> {
+    let bad = |why: &str| why.to_string();
+    let mut rest = bytes;
+    if rest.is_empty() {
+        return Err(bad("empty chunk file"));
+    }
+    while !rest.is_empty() {
+        let header = rest.get(..9).ok_or_else(|| bad("cut-off chunk header"))?;
+        if header[..4] != MAGIC {
+            return Err(bad("not an Automerge chunk"));
+        }
+        let (len, leb) = uleb128(&rest[9..]).ok_or_else(|| bad("bad chunk length"))?;
+        let end = usize::try_from(len)
+            .ok()
+            .and_then(|len| (9 + leb).checked_add(len))
+            .filter(|&end| end <= rest.len())
+            .ok_or_else(|| bad("chunk cut short"))?;
+        let (chunk, tail) = rest.split_at(end);
+        if header[8] == DOCUMENT_CHUNK {
+            Automerge::load_with_options(
+                chunk,
+                LoadOptions::new()
+                    .on_partial_load(OnPartialLoad::Error)
+                    .verification_mode(VerificationMode::DontCheck),
+            )
+            .map_err(|e| bad(&e.to_string()))?;
+        } else {
+            Change::try_from(chunk).map_err(|e| bad(&e.to_string()))?;
+        }
+        rest = tail;
+    }
+    Ok(())
+}
+
+const MAGIC: [u8; 4] = [0x85, 0x6f, 0x4a, 0x83];
+const DOCUMENT_CHUNK: u8 = 0;
+
+/// An unsigned LEB128 number and how many bytes it took.
+fn uleb128(bytes: &[u8]) -> Option<(u64, usize)> {
+    let mut value = 0u64;
+    for (i, &b) in bytes.iter().enumerate().take(10) {
+        value |= u64::from(b & 0x7f) << (7 * i);
+        if b & 0x80 == 0 {
+            return Some((value, i + 1));
+        }
+    }
+    None
 }
 
 /// Reports a chunk that will not load and renames it out of the way, so
@@ -213,6 +290,43 @@ mod tests {
         assert_eq!(names.iter().filter(|n| n.ends_with(".chunk")).count(), 1);
         assert!(aside.exists());
         assert_eq!(keys(&store.load(id).unwrap().unwrap().doc), ["a", "b"]);
+    }
+
+    #[test]
+    fn a_chunk_already_covered_by_a_snapshot_is_not_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = DocStore::open(dir.path().to_path_buf()).unwrap();
+        let id = Uuid::from_u128(7);
+        let mut doc = Automerge::new();
+        append(&store, id, &mut doc, "a");
+        append(&store, id, &mut doc, "b");
+        // A compaction cut short: the snapshot is in, the old chunks remain.
+        let snapshot = doc.save();
+        fs::write(store.doc_dir(id).join(chunk_name(&snapshot)), &snapshot).unwrap();
+
+        let loaded = store.load(id).unwrap().unwrap();
+        assert_eq!(keys(&loaded.doc), ["a", "b"]);
+        assert_eq!(loaded.chunks, 3);
+        let names = files(&store.doc_dir(id));
+        assert!(!names.iter().any(|n| n.ends_with(".corrupt")), "{names:?}");
+    }
+
+    #[test]
+    fn a_document_with_no_readable_chunk_is_damaged_not_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = DocStore::open(dir.path().to_path_buf()).unwrap();
+        let id = Uuid::from_u128(7);
+        let mut doc = Automerge::new();
+        append(&store, id, &mut doc, "a");
+        append(&store, id, &mut doc, "b");
+        for path in store.chunk_paths(id).unwrap() {
+            fs::write(&path, b"this is not an automerge chunk").unwrap();
+        }
+        let before = files(&store.doc_dir(id));
+
+        assert!(matches!(store.load(id), Err(SyncError::Corrupt(_))));
+        assert_eq!(files(&store.doc_dir(id)), before, "nothing is set aside");
+        assert_eq!(store.ids().unwrap(), [(id, DocKind::Service)]);
     }
 
     #[test]
