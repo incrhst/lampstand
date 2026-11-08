@@ -40,6 +40,7 @@
   let input: HTMLInputElement | undefined = $state();
   let all: Row[] = $state([]);
   /** A deck whose slides are shown, to keep one of them ready. */
+  let picker: DeckSlidePicker | undefined = $state();
   let slidesOf: { deck: string; title: string } | null = $state(null);
   let kept = $derived(
     new Set(
@@ -97,10 +98,18 @@
       e.preventDefault();
       slidesOf = null;
     } else if (slidesOf) {
-      return;
+      // The arrows choose a slide and Enter keeps it ready; Tab stays put.
+      if (picker?.key(e) || e.key === "Tab") e.preventDefault();
     } else if (e.key === "Escape") {
       e.preventDefault();
       onclose();
+    } else if (e.key === "ArrowRight" && rows[highlight]?.kind === "deck" && input?.selectionStart === query.length) {
+      // As in Quick add: the right arrow opens the deck's slides.
+      const row = rows[highlight];
+      if ("Deck" in row.item) {
+        e.preventDefault();
+        slidesOf = { deck: row.item.Deck.deck, title: row.title };
+      }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       highlight = Math.min(highlight + 1, rows.length - 1);
@@ -129,6 +138,7 @@
         spellcheck="false"
         aria-label="Deck or media to keep ready"
         aria-controls="ready-add-results"
+        aria-activedescendant={slidesOf ? picker?.activeId() : undefined}
       />
     </div>
 
@@ -137,7 +147,7 @@
         <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
         <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
       </div>
-      <DeckSlidePicker deck={slidesOf.deck} title={slidesOf.title} {kept} onpick={keepSlide} />
+      <DeckSlidePicker bind:this={picker} deck={slidesOf.deck} title={slidesOf.title} {kept} onpick={keepSlide} />
     {:else}
     <ul id="ready-add-results" class="plain results" role="listbox" aria-label="Library">
       {#each rows as row, i (row.key)}
@@ -149,7 +159,7 @@
           </button>
           {#if row.kind === "deck" && "Deck" in row.item}
             {@const deck = row.item.Deck.deck}
-            <button type="button" class="one-slide" onclick={() => (slidesOf = { deck, title: row.title })} title="Keep just one slide of {row.title} ready">One slide <Icon name="next" size={12} /></button>
+            <button type="button" class="one-slide" onclick={() => (slidesOf = { deck, title: row.title })} title="Keep just one slide of {row.title} ready (→)">One slide <Icon name="next" size={12} /></button>
           {/if}
         </li>
       {:else}
@@ -161,7 +171,11 @@
     {/if}
 
     <p class="keys faint">
-      For an item already in the order, use <Icon name="star" size={12} /> Keep ready on it · <kbd>Enter</kbd> add · <kbd>Esc</kbd> close
+      {#if slidesOf}
+      Arrows choose a slide · <kbd>Enter</kbd> or click keeps it ready · <kbd>Esc</kbd> back
+      {:else}
+      For an item already in the order, use <Icon name="star" size={12} /> Keep ready on it · <kbd>Enter</kbd> add{#if rows[highlight]?.kind === "deck"} · <kbd>→</kbd> one slide{/if} · <kbd>Esc</kbd> close
+      {/if}
     </p>
   </div>
 </div>
