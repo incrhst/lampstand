@@ -133,6 +133,11 @@ const state: any = { services: String((window as any).__scene).startsWith("tips"
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, idle: null, enabled: true });
 (window as any).__mock = state;
 // The Ready card: the announcements deck pinned from the order, and a welcome video kept only in Ready.
+// "ready-few": the walkthrough starts with two and pins more as it goes.
+if (state.scene === "ready-few") (sunday as any).ready = {
+  i2: { position: "5000", source: "Order" },
+  rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
+};
 if (state.scene === "ready") (sunday as any).ready = {
   i2: { position: "5000", source: "Order" },
   rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
