@@ -10,7 +10,7 @@
 
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -378,17 +378,12 @@ async fn a_device_that_unpaired_this_one_shows_as_refused_not_just_offline() {
         .node
         .unpair(office.node.device())
         .expect("unpaired");
-    let status = loop {
-        let st = office.node.status();
-        if st.paired[0].refused {
-            break st;
-        }
-        assert!(
-            office.node.status().connected() <= 1,
-            "still counted as a peer"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    };
+    // The office reconnects (backing off up to 10 s) and is refused.
+    until(Duration::from_secs(30), "the office to be refused", || {
+        office.node.status().paired[0].refused
+    })
+    .await;
+    let status = office.node.status();
     let p = &status.paired[0];
     assert!(!p.connected);
     assert!(
@@ -487,6 +482,41 @@ async fn blobs_are_fetched_by_hash() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_blob_past_the_cap_is_refused_and_the_session_carries_on() {
+    let (presenter, office) = paired().await;
+    until(Duration::from_secs(5), "connected", || {
+        presenter.node.status().connected() == 1
+    })
+    .await;
+    presenter.node.set_max_blob(500_000);
+    // Three chunks: the second takes it past the cap.
+    let bytes: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
+    let hash = office.repo().blobs().put(&bytes).unwrap();
+    let err = presenter.node.fetch_blob(hash).await.unwrap_err();
+    assert!(err.to_string().contains("500000-byte limit"), "{err}");
+    assert!(presenter.repo().blobs().path(&hash).is_none());
+    let incoming = presenter._dir.path().join("sync").join("incoming");
+    let left: Vec<_> = std::fs::read_dir(&incoming)
+        .map(|d| d.collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "nothing left in incoming/: {left:?}");
+    // Asking again fails at once rather than fetching it all again.
+    let start = Instant::now();
+    let again = presenter.node.fetch_blob(hash).await.unwrap_err();
+    assert!(again.to_string().contains("500000-byte limit"), "{again}");
+    assert!(start.elapsed() < Duration::from_millis(100));
+
+    // The connection is still good for changes.
+    let s = song("Amazing Grace", "Amazing grace how sweet the sound");
+    office.repo().put(&s).unwrap();
+    until(Duration::from_secs(5), "the song", || {
+        title(presenter.repo(), s.id).is_some()
+    })
+    .await;
+    assert_eq!(presenter.node.status().connected(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_large_library_syncs_on_first_connect() {
     const SONGS: usize = 500;
     let presenter = peer("Sanctuary").await;
@@ -547,6 +577,8 @@ struct Relay {
     captured: Arc<Mutex<Vec<Vec<u8>>>>,
     /// The node closed the first connection.
     first_closed: Arc<AtomicBool>,
+    /// Connections made through the relay.
+    connections: Arc<AtomicUsize>,
     _task: JoinHandle<()>,
 }
 
@@ -555,10 +587,12 @@ async fn relay(upstream: SocketAddr, attack: Attack) -> Relay {
     let addr = listener.local_addr().unwrap();
     let captured = Arc::<Mutex<Vec<Vec<u8>>>>::default();
     let first_closed = Arc::new(AtomicBool::new(false));
-    let (cap, closed) = (captured.clone(), first_closed.clone());
+    let connections = Arc::new(AtomicUsize::new(0));
+    let (cap, closed, count) = (captured.clone(), first_closed.clone(), connections.clone());
     let task = tokio::spawn(async move {
         let mut first = true;
         while let Ok((stream, _)) = listener.accept().await {
+            count.fetch_add(1, Ordering::SeqCst);
             let attack = if first { attack } else { Attack::Nothing };
             let closed = first.then(|| closed.clone());
             first = false;
@@ -569,6 +603,7 @@ async fn relay(upstream: SocketAddr, attack: Attack) -> Relay {
         addr,
         captured,
         first_closed,
+        connections,
         _task: task,
     }
 }
@@ -694,6 +729,7 @@ async fn changed_replayed_reordered_or_injected_frames_close_the_session() {
     })
     .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(relay.connections.load(Ordering::SeqCst), 1);
     assert!(!relay.first_closed.load(Ordering::SeqCst));
 }
 
@@ -733,6 +769,10 @@ async fn a_capture_of_a_sync_shows_no_plaintext() {
     })
     .await;
     presenter.node.fetch_blob(hash).await.unwrap();
+    // One connection, kept: the office's dialler, started as pairing
+    // finished, must not dial the relay a second time (the two sides could
+    // then keep different ones and close the first).
+    assert_eq!(relay.connections.load(Ordering::SeqCst), 1);
     assert!(!relay.first_closed.load(Ordering::SeqCst));
 
     let captured = relay.captured.lock().unwrap().concat();
@@ -1974,14 +2014,18 @@ async fn a_device_on_the_protocol_before_roles_is_refused_by_a_running_node() {
             .unwrap();
         // (Protocols 5 and 6 are refused the same way: see
         // `versions_say_which_side_should_update`.)
-        let mut reason = None;
-        while let Some(Ok(message)) = ws.next().await {
-            if let Message::Binary(bytes) = message {
-                reason = Some(String::from_utf8_lossy(&bytes).into_owned());
-                break;
+        let read = async {
+            while let Some(Ok(message)) = ws.next().await {
+                if let Message::Binary(bytes) = message {
+                    return Some(String::from_utf8_lossy(&bytes).into_owned());
+                }
             }
-        }
-        let reason = reason.expect("the node answers");
+            None
+        };
+        let reason = tokio::time::timeout(Duration::from_secs(10), read)
+            .await
+            .expect("the node answers within 10 s")
+            .expect("the node answers");
         assert!(
             reason.contains("the other device runs an older Lampstand; update it"),
             "protocol {old}: {reason}"

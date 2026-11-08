@@ -52,14 +52,14 @@ pub async fn fetch_page(input: &str) -> Result<String, FetchError> {
         .content_length()
         .is_some_and(|n| n > MAX_BYTES as u64)
     {
-        return Err(FetchError::Network("the page is too large".into()));
+        return Err(FetchError::TooLarge);
     }
     let bytes = response
         .bytes()
         .await
         .map_err(|e| FetchError::Network(e.to_string()))?;
     if bytes.len() > MAX_BYTES {
-        return Err(FetchError::Network("the page is too large".into()));
+        return Err(FetchError::TooLarge);
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }

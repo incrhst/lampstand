@@ -1,11 +1,13 @@
 //! Connectors to outside services: Google Drive and Slides, OneDrive share
-//! links, song pages, the OBS WebSocket (`obs` feature), and (Phase 2)
-//! Planning Center.
+//! links, song pages, the OBS WebSocket (`obs` feature), Notion service
+//! plans (`notion` feature), and (Phase 2) Planning Center.
 //!
 //! PRD: PS-1, PS-2, PS-5, CD-9.
 
 pub mod google;
 pub mod links;
+#[cfg(feature = "notion")]
+pub mod notion;
 #[cfg(feature = "obs")]
 pub mod obs;
 pub mod pages;
@@ -29,4 +31,6 @@ pub enum FetchError {
     NotFound,
     /// The link points at something that is not a presentation.
     NotADeck(String),
+    /// The file is larger than the limit for its kind.
+    TooLarge,
 }

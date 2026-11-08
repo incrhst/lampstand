@@ -67,12 +67,17 @@ pub enum Content {
 pub enum Overlay {
     #[default]
     None,
+    /// Blank: the audience screens go black.
     Black,
-    Logo,
+    /// The idle screen on air mid-service: each audience screen shows what
+    /// it shows when nothing is on air (`Program::idle`), without ending
+    /// the service.
+    Idle,
 }
 
-/// What an audience screen shows while nothing is on air, already resolved
-/// for that screen (see `output::idle_plan`). Black and Logo cover it.
+/// What an audience screen shows while nothing is on air, or under the
+/// Idle overlay, already resolved for that screen (see `output::idle_plan`).
+/// Black covers it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Idle {
     Image {
@@ -110,14 +115,16 @@ pub struct Mark {
 }
 
 impl Idle {
-    /// The default idle screen: the church's logo and name when `brand`
-    /// has a logo, else Lampstand's lamp and name. A brand with a name but
-    /// no logo still gets the Lampstand lamp, so the screen is never bare.
+    /// The default idle screen: the church's logo, small and centred on its
+    /// colour, when `brand` has a logo (what the Logo screen was before the
+    /// Idle overlay replaced it), else Lampstand's lamp and name. A brand
+    /// with a name but no logo still gets the Lampstand lamp, so the screen
+    /// is never bare.
     pub fn mark(brand: Option<&Brand>) -> Idle {
         match brand.filter(|b| b.logo.is_some()) {
             Some(brand) => Idle::Mark(Mark {
                 logo: brand.logo,
-                name: brand.name.trim().to_string(),
+                name: String::new(),
                 background: brand.primary,
                 text: brand.text_color(),
             }),
@@ -131,14 +138,9 @@ impl Idle {
     }
 }
 
-/// The church's logo screen, for the Logo overlay.
+/// The church's logo, as the compositor draws it over what is on air.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Logo {
-    /// `None` until the church has chosen one: a ring is drawn instead.
-    pub image: Option<BlobHash>,
-    pub background: Color,
-    /// The colour of the ring.
-    pub accent: Color,
     /// The logo bug to draw in a corner over what is on air, for outputs
     /// that show it (audience and stream). `None` when it is off, there is
     /// no logo, or the output does not show it.
@@ -147,7 +149,8 @@ pub struct Logo {
 }
 
 /// The logo drawn small in a corner of the screen. The compositor shows it
-/// unless Black or Logo covers the screen, or the idle screen is the logo.
+/// unless Black covers the screen, or the idle screen (nothing on air, or
+/// the Idle overlay) is the logo itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bug {
     pub image: BlobHash,
@@ -169,11 +172,11 @@ pub struct Program {
     /// The slide after this one, for the stage display.
     pub next: Option<Content>,
     pub theme: Option<ThemeId>,
-    /// Set by the app for an audience output when nothing is on air; the
-    /// engine never sets it.
+    /// Set by the app for an audience output when nothing is on air or the
+    /// Idle overlay is on; the engine never sets it.
     #[serde(default)]
     pub idle: Option<Idle>,
-    /// Set by the app from the church's brand, for the Logo overlay.
+    /// Set by the app from the church's brand, for the logo bug.
     #[serde(default)]
     pub logo: Option<Logo>,
 }
@@ -215,11 +218,11 @@ mod tests {
     }
 
     #[test]
-    fn a_church_logo_brings_its_name_and_colours() {
+    fn a_church_logo_is_its_idle_screen_alone_on_its_colours() {
         let logo = BlobHash::of(b"logo");
         let m = mark(Idle::mark(Some(&brand(" Grace Chapel ", Some(logo)))));
         assert_eq!(m.logo, Some(logo));
-        assert_eq!(m.name, "Grace Chapel");
+        assert_eq!(m.name, "", "the logo alone, as the Logo screen was");
         assert_eq!(m.background, Color::rgb(250, 250, 250));
         assert_eq!(m.text, Color::BLACK, "dark text on a light background");
     }

@@ -14,7 +14,7 @@
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
   import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
-  import { modLabel, screenForKey } from "./lib/shortcuts";
+  import { isTyping, modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning } from "./lib/presenting";
   import { heldRoles, streamOfflineLine, uncheckedRoles, withRoster } from "./lib/roles";
   import RoleBar from "./lib/kit/RoleBar.svelte";
@@ -25,7 +25,6 @@
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
-  import Logo from "./lib/kit/Logo.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -44,10 +43,34 @@
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
   function onkeydown(e: KeyboardEvent) {
     const next = screenForKey(e, screen);
-    if (!next) return;
-    e.preventDefault();
-    screen = next;
+    if (next) {
+      e.preventDefault();
+      screen = next;
+      return;
+    }
+    // F hides and shows Library & controls in Plan and Present (live.focus
+    // is true while it is hidden). Esc brings it back in Plan; Present's own
+    // Esc closes its OBS drawer first. Typing in a field never triggers it
+    // (a switch is not a field). With a dialog open, such as the song
+    // editor, F and Esc are the dialog's: hiding it would lose its edits.
+    const target = e.target as HTMLElement | null;
+    if (isTyping(target)) return;
+    if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || !focusable) return;
+    if (e.key === "f" || e.key === "F") {
+      e.preventDefault();
+      live.focus = !live.focus;
+    } else if (e.key === "Escape" && focused && screen === "plan") {
+      e.preventDefault();
+      live.focus = false;
+    }
   }
+
+  // Hiding Library & controls is one switch for Plan and Present; switching
+  // modes keeps it. It is never remembered, so every launch starts with it
+  // open. Present needs a service open to have a sidebar at all.
+  let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
+  let focused = $derived(live.focus && focusable);
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -221,8 +244,9 @@
 <svelte:window {onkeydown} />
 
 <div class="shell">
+  <!-- The bar always shows, so Plan | Present and the Library & controls
+       button are where a volunteer left them, even with the sidebar hidden. -->
   <header>
-    <span class="brand"><Logo size={22} />Lampstand</span>
     <nav aria-label="Screens">
       {#each screens as s}
         <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
@@ -231,8 +255,7 @@
       {/each}
     </nav>
     <div class="right">
-      <!-- Present's own bar already names the service, so it is not said twice there. -->
-      {#if live.loaded && screen !== "operate"}
+      {#if live.loaded}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
@@ -242,11 +265,32 @@
       <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
         <span class="setup-word">Help</span>
+        {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
         <span class="setup-word">Setup</span>
       </button>
+      {#if screen === "plan" || screen === "operate"}
+        <!-- One name in Plan and Present, so it means the same thing next
+             month. It stays put in Present before a service is open, greyed
+             out with the reason, so it never seems to have gone missing.
+             aria-disabled, not disabled, so the reason still shows on hover. -->
+        <button
+          class="setup focus-on"
+          class:waiting={!focusable}
+          aria-disabled={!focusable}
+          aria-pressed={focusable ? !focused : undefined}
+          aria-controls="library-and-controls"
+          title={focusable ? `${focused ? "Show" : "Hide"} the Library and the controls (F)` : "Open a service first: Library & controls comes with it"}
+          onclick={() => focusable && (live.focus = !live.focus)}
+        >
+          <Icon name="panelRight" size={16} />
+          <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
+          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what">&nbsp;library &amp; controls</span></span>
+          <kbd>F</kbd>
+        </button>
+      {/if}
     </div>
   </header>
 
@@ -256,7 +300,7 @@
 
   <main class:arriving>
     {#if screen === "plan"}
-      <PlanView onopened={() => (screen = "operate")} />
+      <PlanView onopened={() => (screen = "operate")} onscreens={() => openSetup("screens")} />
     {:else if screen === "operate"}
       <OperateView ondevices={() => openSetup("devices")} onsetup={() => openSetup("screens")} onidle={() => openSetup("idle")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
     {:else if screen === "help"}
@@ -300,7 +344,7 @@
     {/snippet}
     {#snippet end()}
       {#if newVersion}
-        <button class="status-link" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
+        <button class="status-link update-pill" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
           <Icon name="download" size={14} />
           <span class="update">Update {newVersion} available</span>
         </button>
@@ -347,15 +391,6 @@
     padding: 0 1.25rem;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
-  }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--gold);
   }
   nav {
     display: flex;
@@ -406,6 +441,31 @@
   .setup:hover {
     color: var(--text);
   }
+  /* Framed, so the way to hide and show Library & controls is easy to find. */
+  .focus-on {
+    border: 1px solid var(--line-strong);
+    color: var(--text);
+  }
+  .focus-on:hover {
+    border-color: var(--muted);
+  }
+  /* Present with no service open: here, but nothing to hide yet. */
+  .focus-on.waiting {
+    color: var(--faint);
+    border-color: var(--line);
+    cursor: default;
+  }
+  .focus-on.waiting:hover {
+    border-color: var(--line);
+  }
+  .focus-on kbd {
+    font: inherit;
+    font-size: 0.72em;
+    opacity: 0.7;
+    padding: 0 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+  }
   .setup.active {
     color: var(--text);
     background: var(--raised);
@@ -441,6 +501,17 @@
       display: none;
     }
   }
+  /* Smaller windows: the button says just Show or Hide. */
+  @media (max-width: 1100px) {
+    .side-what {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
   @media (max-width: 560px) {
     .onair {
       display: none;
@@ -449,8 +520,9 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. */
-    .setup-word {
+    /* Help and Setup as their icons; the title still names them. Show or
+       Hide keeps its word, since an icon alone would not say which. */
+    .setup-word:not(.side-word) {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -488,6 +560,26 @@
   }
   .update {
     color: var(--gold);
+  }
+  /* A new version is waiting: a gold pill in the footer and a dot on Setup. */
+  .update-pill {
+    background: var(--gold-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--gold);
+    font-weight: 600;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+  }
+  .update-pill:hover {
+    background: var(--gold-soft);
+    color: var(--gold-hover);
+  }
+  .update-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-left: 0.15rem;
   }
   .status-link {
     font: inherit;

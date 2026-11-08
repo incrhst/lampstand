@@ -2,7 +2,8 @@
      logo and name, else the Lampstand lamp), the theme's plain background, a
      picture, a looping video (silent) or one slide of a deck.
      Used for every screen at once, and for one screen, which can also say
-     "same as the other screens". Black and Logo still cover it. -->
+     "same as the other screens". Black still covers it; Idle puts it on air
+     mid-service. -->
 <script lang="ts">
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import { request, type Deck, type IdleScreen } from "../api";

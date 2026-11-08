@@ -349,12 +349,12 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done ([#16](https://github.com/incrhst/lampstand/pull/16)) |
-| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | Not started |
+| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | In review ([#268](https://github.com/incrhst/lampstand/pull/268)) |
 | T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
 | T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
 | T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` | Not started |
-| T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` | Not started |
-| T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Not started |
+| T80 | Size caps on zip entries, deck downloads and Bible decompression | S | — | NFR Reliability | `import/src/songs/opensong.rs`, `connectors/src/links.rs`, `library/src/lib.rs` | Done ([#270](https://github.com/incrhst/lampstand/pull/270)) |
+| T81 | Share links: `percent_decode` and filename sanitising | S | — | PS-1 | `connectors/src/links.rs` | Done ([#271](https://github.com/incrhst/lampstand/pull/271)) |
 | T82 | Render thread: decode off-thread, one shaping helper | **O** | — | LV-3, NFR | `render/src/`, `layout/src/` | Not started |
 | T83 | Render tests fail without a GPU when CI expects one | S | — | NFR | `render/tests/`, `.github/workflows/` | Not started |
 | T84 | Contract decision: deck builds on recompose | **O** | — | PS-3 | `layout/src/compose.rs`, `slides/`, ARCHITECTURE.md | Done (with T30, [#22](https://github.com/incrhst/lampstand/pull/22)) |
@@ -453,7 +453,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 
 ### Tablet remote
 
-[Decision 0006](decisions/0006-tablet-remote-in-the-browser.md): an operator remote in the tablet's browser, served over plain HTTP by the local server. A tablet opens it by QR code and pairs with a fresh PIN, and a paired tablet can drive the service and its sound (the decision's amendment) but nothing else. A second Lampstand machine, paired as a sync peer, can drive the service too (T102), through the same gate. T99 to T101 are built as Lampstand Remote (phones and tablets): the phone-first page, `gate.rs` for both callers, Present › More › Connect a phone or tablet, and Remotes in Setup › Devices (ARCHITECTURE.md, "Local server").
+[Decision 0006](decisions/0006-tablet-remote-in-the-browser.md): an operator remote in the tablet's browser, served over plain HTTP by the local server. A tablet opens it by QR code and pairs with a fresh PIN, and a paired tablet can drive the service and its sound (the decision's amendment) but nothing else. A second Lampstand machine, paired as a sync peer, can drive the service too (T102), through the same gate. T99 to T101 are built as Lampstand Remote (phones and tablets): the phone-first page, `gate.rs` for both callers, Present › Library & controls › Remotes › Connect a phone or tablet, and Remotes in Setup › Devices (ARCHITECTURE.md, "Local server").
 
 | ID | Title | Model | Needs | PRD | Files |
 | --- | --- | --- | --- | --- | --- |
@@ -476,9 +476,9 @@ Only say this when the service has a stream output or items with an OBS scene, s
 
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| T103 | Plan contract types | S | — | PL-4 | `core/src/plan.rs` | Not started |
-| T104 | Notion client | S | — | PL-4 | `connectors/src/notion.rs`, `connectors/Cargo.toml` | Not started |
-| T105 | Notion to plan mapping | S | T103, T104 | PL-4 | `connectors/src/notion/plan.rs`, `connectors/tests/fixtures/notion/` | Not started |
+| T103 | Plan contract types | S | — | PL-4 | `core/src/plan.rs` | Done |
+| T104 | Notion client | S | — | PL-4 | `connectors/src/notion.rs`, `connectors/Cargo.toml` | Done (pages and blocks; see 0007 revision) |
+| T105 | Notion page to plan | S | T103, T104 | PL-4 | `connectors/src/notion/page.rs`, `connectors/tests/notion.rs` | Done (reads the chapel's pages, not databases) |
 | T106 | Song and passage resolver | **O** | T103, T15 | PL-4 | `library/src/plan_match.rs` | Not started |
 | T107 | Service remembers its source | S | — | PL-4 | `core/src/service.rs` | Not started |
 | T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
@@ -487,7 +487,7 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
-T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
+**Revised 2026-11-08:** the chapel's plans are free-form pages, so T104 reads a page's blocks and T105 reads the page template instead of three databases ([decision 0007, revision](decisions/0007-plans-from-notion.md#revision-reading-the-chapels-pages-2026-11-08)). T108's `DraftFromNotion` takes a page link, not a Services row, reads it with `notion::public` first and the token client only for a private page, and `NotionServices` waits for a parent-page listing. T110 (the token) is needed only for private pages. T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.
 
 **T103. Plan contract types.** Add `core::plan` with `Plan`, `PlanSource`, `PlanEntry`, `EntryType`, `SongHint` and `PlanError`, with serde (and ts-rs behind the `ts` feature) exactly as [plan-contract.md](plan-contract.md) lays them out. `Plan::from_json` checks the `contract` version (refuse a higher major with a readable reason), rejects an empty title, an entry without `order` or `source_id`, and duplicate `source_id`s, ignores unknown fields, reads an unknown `type` as `other` with a warning, and returns the warnings alongside the plan. `Plan::ordered` sorts by `order`, ties by `source_id`. Done when tests cover the example in the contract round-tripping, each refusal, an unknown field and type, a tie, and a plan with no entries.
 

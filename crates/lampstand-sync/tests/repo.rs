@@ -18,7 +18,7 @@ use lampstand_core::service::{
 use lampstand_core::song::{Section, Song};
 use lampstand_core::theme::{Background, TextStyle, Theme, ThemeId};
 use lampstand_sync::team::DeviceKeypair;
-use lampstand_sync::{actor_device, Doc, DocChanged, DocKind, Repo, SyncError};
+use lampstand_sync::{actor_device, Doc, DocChanged, DocKind, Repo, SyncError, SyncMessage};
 use uuid::Uuid;
 
 fn open(dir: &Path) -> Repo {
@@ -426,6 +426,47 @@ fn a_service_without_sound_is_the_document_it_was() {
     );
 }
 
+/// Ready lives in the service document. A service with nothing kept ready
+/// has no `ready` key (so one saved before Ready existed re-saves
+/// unchanged), entries round-trip, and taking the last one off drops the key.
+#[test]
+fn ready_round_trips_and_an_empty_one_writes_no_key() {
+    use automerge::ReadDoc;
+    let mut service = Service::new("Sunday");
+    let song = service.insert(
+        0,
+        ItemKind::Song {
+            song: Song::new("x").id,
+            arrangement: None,
+        },
+    );
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    assert!(doc.get(automerge::ROOT, "ready").unwrap().is_none());
+    let heads = doc.get_heads();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+    autosurgeon::reconcile(&mut doc, &read).unwrap();
+    assert_eq!(doc.get_heads(), heads, "re-saving wrote something");
+
+    service.pin_ready(song);
+    let deck = service.add_ready(ItemKind::Deck {
+        deck: lampstand_core::deck::DeckId::generate(),
+    });
+    let slide = service.add_ready_slide(lampstand_core::deck::DeckId::generate(), 4);
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+
+    service.unready(song);
+    service.unready(deck);
+    service.unready(slide);
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    assert!(doc.get(automerge::ROOT, "ready").unwrap().is_none());
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+}
+
 /// What an older version does with sound. A backing track on a song is an
 /// extra key the old reader does not know: it reads the song as before, can
 /// edit it, and the track is still there afterwards. A music-only item is a
@@ -809,6 +850,164 @@ fn wrong_kind_in_a_sync_message_is_refused() {
         b.receive_sync_message(a.device(), m),
         Err(SyncError::Corrupt(_))
     ));
+}
+
+#[test]
+fn a_first_message_without_changes_fixes_no_kind() {
+    let (da, db, dc) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (a, b, c) = (open(da.path()), open(db.path()), open(dc.path()));
+    let song = hymn();
+    let id = song.id.uuid();
+    a.put(&song).unwrap();
+    // Another peer offers the same ID first, calling it a service, with no
+    // changes: b keeps no document and no kind for it.
+    let mut opening = a.generate_sync_message(c.device(), id).unwrap();
+    opening.kind = DocKind::Service;
+    b.receive_sync_message(c.device(), opening.clone()).unwrap();
+    assert!(!b.documents().iter().any(|(_, d)| *d == id));
+    assert!(!db.path().join("docs").join(id.to_string()).exists());
+    // It is still answered under the kind it was offered as.
+    assert_eq!(
+        b.generate_sync_message(c.device(), id).map(|m| m.kind),
+        Some(DocKind::Service)
+    );
+    // The song, with its changes, arrives as a song.
+    sync(&a, &b);
+    assert_eq!(b.get::<Song>(id).unwrap(), Some(song.clone()));
+    assert_eq!(b.get::<Service>(id).unwrap(), None);
+    // From now on the kind is fixed: the other peer's claim is refused.
+    assert!(matches!(
+        b.receive_sync_message(c.device(), opening),
+        Err(SyncError::Corrupt(_))
+    ));
+    drop(b);
+    let b = open(db.path());
+    assert_eq!(b.get::<Song>(id).unwrap(), Some(song));
+}
+
+/// T77: the bound on offers of documents a device does not have still lets
+/// a new device take a large library in one connection, past the first
+/// bound of 10,000. Kept to 12,000 so `cargo test` stays quick on CI's
+/// slowest disk; the full-size run is below.
+#[test]
+fn a_first_sync_of_a_large_library_completes_in_one_connection() {
+    first_sync_in_one_connection(12_000);
+}
+
+/// The same with the 25,000 documents a church library can reach. Ignored
+/// by default because writing 25,000 documents takes minutes on a slow or
+/// busy disk; run it with `cargo test -p lampstand-sync --test repo --
+/// --ignored first_sync`.
+#[test]
+#[ignore = "slow: writes 25,000 documents"]
+fn a_first_sync_of_a_25_000_document_library_completes_in_one_connection() {
+    first_sync_in_one_connection(25_000);
+}
+
+/// The peer is played by plain Automerge documents, as the session does it:
+/// every document offered at once on connect, then the changes in batches.
+fn first_sync_in_one_connection(library_size: usize) {
+    use automerge::sync::{self, SyncDoc};
+    use automerge::Automerge;
+    let started = std::time::Instant::now();
+    const BATCH: usize = 1_000;
+    let db = tempfile::tempdir().unwrap();
+    let b = open(db.path());
+    let a = DeviceKeypair::generate().public();
+    // autosurgeon is slow in a debug build: reconcile one song, then give
+    // each copy its own title with a plain write.
+    let mut template = Automerge::new();
+    template
+        .transact::<_, _, autosurgeon::ReconcileError>(|tx| {
+            autosurgeon::reconcile(tx, Song::new("Song"))
+        })
+        .unwrap();
+    let mut library: Vec<(Uuid, Automerge, sync::State)> = (0..library_size)
+        .map(|n| {
+            let mut doc = template.fork();
+            doc.transact::<_, _, automerge::AutomergeError>(|tx| {
+                automerge::transaction::Transactable::put(
+                    tx,
+                    automerge::ROOT,
+                    "title",
+                    format!("Song {n}"),
+                )
+                .map(|_| ())
+            })
+            .unwrap();
+            (Uuid::now_v7(), doc, sync::State::new())
+        })
+        .collect();
+    let mut outgoing: Vec<SyncMessage> = library
+        .iter_mut()
+        .filter_map(|(id, doc, state)| {
+            let m = doc.generate_sync_message(state)?;
+            Some(SyncMessage {
+                kind: DocKind::Song,
+                id: *id,
+                data: m.encode(),
+            })
+        })
+        .collect();
+    assert_eq!(outgoing.len(), library_size);
+    // The whole sweep arrives as one batch: every offer waits at once.
+    let mut first = true;
+    for _ in 0..10 {
+        if outgoing.is_empty() {
+            break;
+        }
+        let size = if first { library_size } else { BATCH };
+        first = false;
+        let mut replies = Vec::new();
+        while !outgoing.is_empty() {
+            let batch: Vec<SyncMessage> = outgoing.drain(..size.min(outgoing.len())).collect();
+            let ids: Vec<Uuid> = batch.iter().map(|m| m.id).collect();
+            for (id, result) in b.receive_sync_messages(a, batch) {
+                assert!(result.is_ok(), "{id}: {result:?}");
+            }
+            replies.extend(
+                ids.into_iter()
+                    .filter_map(|id| b.generate_sync_message(a, id)),
+            );
+        }
+        let index: std::collections::HashMap<Uuid, usize> = library
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _, _))| (*id, i))
+            .collect();
+        for reply in replies {
+            let (_, doc, state) = &mut library[index[&reply.id]];
+            doc.receive_sync_message(state, sync::Message::decode(&reply.data).unwrap())
+                .unwrap();
+            if let Some(m) = doc.generate_sync_message(state) {
+                outgoing.push(SyncMessage {
+                    kind: DocKind::Song,
+                    id: reply.id,
+                    data: m.encode(),
+                });
+            }
+        }
+    }
+    assert!(outgoing.is_empty(), "did not finish in one connection");
+    let held = b
+        .documents()
+        .into_iter()
+        .filter(|(kind, _)| *kind == DocKind::Song)
+        .count();
+    assert_eq!(held, library_size);
+    let (id, _, _) = &library[library_size - 1];
+    assert_eq!(
+        b.get::<Song>(*id).unwrap().map(|s| s.title),
+        Some(format!("Song {}", library_size - 1))
+    );
+    eprintln!(
+        "first sync of {library_size} documents: {:?}",
+        started.elapsed()
+    );
 }
 
 #[test]

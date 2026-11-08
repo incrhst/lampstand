@@ -5,4 +5,4 @@
  * 0006, T99). Each answers `Response::Remotes`. Never allowed from a remote
  * itself, nor from a device driving this one.
  */
-export type RemoteRequest = "Status" | "StartPairing" | "StopPairing" | { "Revoke": { id: string, } };
+export type RemoteRequest = "Status" | "StartPairing" | { "StartSpeakerPairing": { item: string, } } | "StopPairing" | { "Revoke": { id: string, } };

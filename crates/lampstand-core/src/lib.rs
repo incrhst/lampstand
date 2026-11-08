@@ -9,6 +9,7 @@ pub mod deck;
 pub mod geom;
 pub mod id;
 pub mod output;
+pub mod plan;
 pub mod program;
 pub mod safe_area;
 pub mod scene;

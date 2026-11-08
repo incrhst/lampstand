@@ -18,11 +18,13 @@ import {
   type SyncSummary,
   type DeviceSettings,
   type Theme,
+  type TrainingVideos,
   type UpdateStatus,
 } from "./api";
 import { loadSettings, updateSettings } from "./settings";
 import { sortThemes } from "./themes";
 import { syncFailed } from "./sync";
+import { loadedItem } from "./ready";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -31,6 +33,10 @@ class LiveState {
   shown: Cursor | null = $state(null);
   preview: Cursor | null = $state(null);
   overlay: Overlay = $state("None");
+  /** On a side-trip to a ready item, the slide Next goes back to after it. */
+  returnsTo: Cursor | null = $state(null);
+  /** A side-trip to a ready item is under way. */
+  onReady: boolean = $state(false);
   /** Last import message, error or notice, for the status bar. */
   status: string = $state("");
   /** A running import, for the status bar's progress bar. */
@@ -59,12 +65,16 @@ class LiveState {
   realUse = $state(false);
   /** Bumped when a quick tip is put off or dismissed, so the status bar looks again. */
   tipsVersion = $state(0);
+  /** Present's focus mode: the cards only, with the bars hidden. */
+  focus = $state(false);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
   updateCheckedAt: number | null = $state(null);
   /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
   displaysVersion: number = $state(0);
+  /** Whether the training videos are here, downloading or out of reach (#190); null until first asked. */
+  trainingVideos: TrainingVideos | null = $state(null);
 
   /** The library's themes, Starter first. Kept current by `refreshThemes`. */
   themes: Theme[] = $state([]);
@@ -83,7 +93,7 @@ class LiveState {
 
 function slideAt(loaded: LoadedService | null, cursor: Cursor | null): SlideView | null {
   if (!loaded || !cursor) return null;
-  const item = loaded.items.find((i) => i.id === cursor.item);
+  const item = loadedItem(loaded, cursor.item);
   return item?.slides[cursor.slide] ?? null;
 }
 
@@ -101,6 +111,8 @@ onEvent((event) => {
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;
       live.idle = event.data.idle;
+      live.returnsTo = event.data.returns_to ?? null;
+      live.onReady = event.data.on_ready ?? false;
       break;
     case "Loaded":
       live.loaded = event.data;
@@ -137,6 +149,9 @@ onEvent((event) => {
       break;
     case "DisplaysChanged":
       live.displaysVersion++;
+      break;
+    case "TrainingVideos":
+      live.trainingVideos = event.data;
       break;
   }
 });

@@ -111,6 +111,12 @@ const BACKOFF_MAX: Duration = Duration::from_secs(10);
 /// How long after a connection opens a claim made while apart is believed.
 const FRESH_SESSION: Duration = Duration::from_secs(10);
 
+/// The largest blob this device takes from another, unless
+/// [`SyncNode::set_max_blob`] says otherwise: 8 GiB, room for a long
+/// video. A transfer that grows past it is dropped and its file deleted,
+/// so a peer cannot fill the disk with one endless blob.
+pub const MAX_BLOB: u64 = 8 << 30;
+
 #[derive(Debug)]
 pub enum NetError {
     Io(io::Error),
@@ -422,6 +428,8 @@ pub struct SyncNode {
     changed: watch::Sender<u64>,
     port: Mutex<Option<u16>>,
     discovery: Mutex<Option<Discovery>>,
+    /// The mDNS service type to advertise and browse ([`SERVICE_TYPE`]).
+    service: Mutex<String>,
     roles: Mutex<Roles>,
     /// Whether another device was operating this one at the last check, so
     /// the app is told when that changes.
@@ -437,6 +445,11 @@ pub struct SyncNode {
     asleep: std::sync::atomic::AtomicBool,
     /// Tests: ignore asks that arrive.
     lose_asks: std::sync::atomic::AtomicBool,
+    /// The largest blob taken from a peer, in bytes ([`MAX_BLOB`]).
+    max_blob: std::sync::atomic::AtomicU64,
+    /// Blobs dropped for growing past the cap, with the cap they passed,
+    /// so asking again fails at once instead of fetching gigabytes again.
+    too_big: Mutex<HashMap<BlobHash, u64>>,
     /// Which roles a connected device has told this one about in this run.
     heard_roles: Mutex<[bool; 4]>,
     /// Contact times are saved one at a time, newest last.
@@ -550,6 +563,7 @@ impl SyncNode {
             "the node signs with the repo's device key"
         );
         std::fs::create_dir_all(&config.dir)?;
+        session::clear_incoming(&config.dir);
         let trust = Trust::load(config.dir.join("paired.json"))?;
         let loaded = saved::load(&config.dir);
         if loaded.migrated {
@@ -588,6 +602,7 @@ impl SyncNode {
             changed: watch::Sender::new(0),
             port: Mutex::new(None),
             discovery: Mutex::new(None),
+            service: Mutex::new(SERVICE_TYPE.into()),
             roles: Mutex::new(roles),
             last_driven: Mutex::new(false),
             contacts: Mutex::new(saved::load_contacts(&dir)),
@@ -595,6 +610,8 @@ impl SyncNode {
             wall_offset_ms: std::sync::atomic::AtomicI64::new(0),
             asleep: std::sync::atomic::AtomicBool::new(false),
             lose_asks: std::sync::atomic::AtomicBool::new(false),
+            max_blob: std::sync::atomic::AtomicU64::new(MAX_BLOB),
+            too_big: Mutex::new(HashMap::new()),
             heard_roles: Mutex::new([false; 4]),
             contacts_save: Mutex::new(()),
             takeovers_save: Mutex::new(()),
@@ -607,6 +624,45 @@ impl SyncNode {
             started: Instant::now(),
             me: me.clone(),
         }))
+    }
+
+    /// Advertises and browses `service` (`_name._tcp.local.`) instead of
+    /// [`SERVICE_TYPE`], before [`SyncNode::start`]: a test that uses mDNS
+    /// then sees only its own devices, not a Lampstand elsewhere on the
+    /// network or another copy of the test.
+    #[doc(hidden)]
+    pub fn set_mdns_service(&self, service: &str) {
+        *lock(&self.service) = service.into();
+    }
+
+    /// The largest blob, in bytes, this device takes from another
+    /// ([`MAX_BLOB`] unless changed). A transfer that grows past it fails
+    /// and leaves nothing behind. Applies to transfers that start after.
+    pub fn set_max_blob(&self, bytes: u64) {
+        self.max_blob
+            .store(bytes, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub(crate) fn max_blob(&self) -> u64 {
+        self.max_blob.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// A transfer of `hash` passed the cap `limit` and was dropped.
+    pub(crate) fn blob_too_big(&self, hash: BlobHash, limit: u64) {
+        lock(&self.too_big).insert(hash, limit);
+    }
+
+    /// Why `hash` is not worth asking for: it passed the cap before, and
+    /// the cap has not been raised since.
+    fn refused_for_size(&self, hash: &BlobHash) -> Option<NetError> {
+        let limit = *lock(&self.too_big).get(hash)?;
+        (limit >= self.max_blob()).then(|| Self::too_big_error(hash, limit))
+    }
+
+    pub(crate) fn too_big_error(hash: &BlobHash, limit: u64) -> NetError {
+        NetError::Unreachable(format!(
+            "the file {hash} is larger than the {limit}-byte limit"
+        ))
     }
 
     /// Starts pushing changes, a dialler per paired device and, with
@@ -835,6 +891,9 @@ impl SyncNode {
         if self.repo.blobs().path(&hash).is_some() {
             return Ok(());
         }
+        if let Some(e) = self.refused_for_size(&hash) {
+            return Err(e);
+        }
         let controls: Vec<_> = lock(&self.peers)
             .sessions
             .values()
@@ -847,6 +906,10 @@ impl SyncNode {
             }
             if let Ok(Ok(Ok(()))) = tokio::time::timeout(BLOB_TIMEOUT, rx).await {
                 return Ok(());
+            }
+            if let Some(e) = self.refused_for_size(&hash) {
+                // Another device would send the same bytes.
+                return Err(e);
             }
         }
         Err(NetError::Unreachable(format!(
@@ -876,7 +939,6 @@ impl SyncNode {
         };
         if peer.paired_now {
             self.bump();
-            self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
             lock(&self.roles).seed_from(peer.device);
             // The device that showed the code is the main machine: it takes
@@ -889,7 +951,13 @@ impl SyncNode {
         }
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, None);
         let link = link.encrypt(keys);
-        if let Some(session) = self.begin(link, &peer, peer.device, None).await {
+        let session = self.begin(link, &peer, peer.device, None).await;
+        // Only now: a dialler started before this connection is registered
+        // finds none and opens a second one (see `dial`).
+        if peer.paired_now {
+            self.ensure_dialler(peer.device);
+        }
+        if let Some(session) = session {
             let _ = session.await;
         }
     }
@@ -958,14 +1026,19 @@ impl SyncNode {
         let _ = lock(&self.trust).seen_at(peer.device, &peer.name, Some(address.to_string()));
         if peer.paired_now {
             self.bump();
-            self.ensure_dialler(peer.device);
             self.start_over_if_unverified();
             lock(&self.roles).seed_from(peer.device);
         }
-        match self
+        let session = self
             .begin(link, &peer, self.device(), Some(address.to_string()))
-            .await
-        {
+            .await;
+        // Only once this connection is registered: a dialler started before
+        // finds no connection and dials the same address again, and the two
+        // sides can keep different ones of the pair and close the other.
+        if peer.paired_now {
+            self.ensure_dialler(peer.device);
+        }
+        match session {
             Some(session) => Ok((peer, session)),
             // Already connected the other way, which wins: fine.
             None => Ok((peer, tokio::spawn(async {}))),
@@ -1000,7 +1073,8 @@ impl SyncNode {
     }
 
     /// Registers a session for `peer` and spawns it, unless a connection
-    /// that wins the tie-break is already open.
+    /// that wins the tie-break is already open or `peer` is no longer
+    /// paired.
     async fn begin(
         &self,
         link: Link,
@@ -1010,8 +1084,13 @@ impl SyncNode {
     ) -> Option<tokio::task::JoinHandle<()>> {
         loop {
             let old = {
+                // Trust is checked under the peers lock, and held across it:
+                // a handshake can pass just before `unpair` and register just
+                // after it, and that session, which `unpair` never saw to
+                // stop, would stay up for good, kept alive by its beats.
+                let trust = lock(&self.trust);
                 let mut peers = lock(&self.peers);
-                if peers.offline {
+                if peers.offline || !trust.is_paired(peer.device) {
                     return None;
                 }
                 match peers.sessions.get(&peer.device) {
@@ -1043,6 +1122,7 @@ impl SyncNode {
                         // believed, however long this process has run.
                         self.note_session_begin(&mut peers, peer.device);
                         drop(peers);
+                        drop(trust);
                         self.bump();
                         self.driving_changed();
                         let node = self.arc();

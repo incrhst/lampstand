@@ -5,7 +5,7 @@
 //! | --- | --- |
 //! | `GET /remote` | the page (`web/remote/dist`, built from `app/src/remote`) |
 //! | `GET /remote/assets/*` | its script and styles |
-//! | `GET /remote/session` | `{"name"}` for a phone that is paired, else 401 |
+//! | `GET /remote/session` | `{"name", "kind"}` for a phone that is paired, else 401 |
 //! | `POST /remote/pair` | `{"pin", "name"}`: a right PIN sets the session cookie |
 //! | `WS /remote/ws` | the remote socket; needs the session cookie |
 //!
@@ -14,7 +14,7 @@
 //!
 //! - from the page, `{"id": n, "request": <Request>}`, answered with
 //!   `{"id": n, "response": <Response>}`;
-//! - to the page, `{"hello": {"name"}}` once, then `{"event": <Event>}` (the
+//! - to the page, `{"hello": {"name", "kind"}}` once (`kind`: [`RemoteKind`]), then `{"event": <Event>}` (the
 //!   last of each kind at once, then every change), and `{"beat": ms}` every
 //!   few seconds, so a page can tell a quiet link from a dead one.
 //!
@@ -25,7 +25,7 @@
 
 mod hub;
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,7 +43,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::Backend;
 pub use hub::{
-    PairError, RemoteHandler, RemoteHub, RemotePin, RemoteSession, MAX_WRONG, PIN_TTL,
+    PairError, RemoteHandler, RemoteHub, RemoteKind, RemotePin, RemoteSession, MAX_WRONG, PIN_TTL,
     TRIES_PER_ADDRESS, TRY_WINDOW,
 };
 
@@ -146,21 +146,59 @@ fn token(headers: &HeaderMap) -> Option<String> {
 /// A request a page on another site made (a form post, a socket opened by
 /// script) carries that site in `Origin`. Only this server's own page may
 /// pair or drive. A request with no `Origin` is not from a browser page.
+///
+/// A site whose name an attacker points at the laptop's address (DNS
+/// rebinding) has a matching `Origin` and `Host`, so the name is checked
+/// too: the page is only ever reached by an address, `localhost` or a
+/// `.local` name, never by a public one.
 fn same_origin(headers: &HeaderMap) -> bool {
+    let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
+    if !host.is_some_and(local_host) {
+        return false;
+    }
     let Some(origin) = headers.get(header::ORIGIN) else {
         return true;
     };
-    let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
     let origin = origin.to_str().ok().and_then(|o| o.strip_prefix("http://"));
     matches!((origin, host), (Some(o), Some(h)) if o.eq_ignore_ascii_case(h))
+}
+
+/// Whether a `Host` header names this machine on the LAN: an IP address,
+/// `localhost` or a `.local` (mDNS) name, with or without a port.
+fn local_host(host: &str) -> bool {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split_once(']').is_some_and(|(ip, port)| {
+            ip.parse::<Ipv6Addr>().is_ok()
+                && (port.is_empty() || port.strip_prefix(':').is_some_and(is_port))
+        });
+    }
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if is_port(port) => name,
+        Some(_) => return false,
+        None => host,
+    };
+    let name = name.strip_suffix('.').unwrap_or(name).to_ascii_lowercase();
+    let label =
+        |l: &str| !l.is_empty() && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    name.parse::<Ipv4Addr>().is_ok()
+        || name == "localhost"
+        || name
+            .strip_suffix(".local")
+            .is_some_and(|rest| rest.split('.').all(label))
+}
+
+fn is_port(port: &str) -> bool {
+    port.parse::<u16>().is_ok()
 }
 
 async fn session(State(backend): State<Arc<dyn Backend>>, headers: HeaderMap) -> Response {
     let Some(hub) = backend.remotes() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    match token(&headers).and_then(|t| hub.session(&t)) {
-        Some((_, name)) => json_response(StatusCode::OK, json!({ "name": name })),
+    match token(&headers).and_then(|t| hub.session_kind(&t)) {
+        Some((_, name, kind)) => {
+            json_response(StatusCode::OK, json!({ "name": name, "kind": kind }))
+        }
         None => json_response(StatusCode::UNAUTHORIZED, json!({})),
     }
 }
@@ -228,11 +266,11 @@ async fn socket(
     // Watched from before the session is checked, so a revoke while the
     // socket opens still closes it.
     let revocations = hub.revocations();
-    let Some((id, name)) = token(&headers).and_then(|t| hub.session(&t)) else {
+    let Some((id, name, kind)) = token(&headers).and_then(|t| hub.session_kind(&t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     ws.max_message_size(MAX_MESSAGE)
-        .on_upgrade(move |socket| serve(socket, hub, revocations, id, name))
+        .on_upgrade(move |socket| serve(socket, hub, revocations, id, name, kind))
 }
 
 /// Counts a page as connected while it lives.
@@ -263,6 +301,7 @@ async fn serve(
     mut revocations: watch::Receiver<u64>,
     id: String,
     name: String,
+    kind: RemoteKind,
 ) {
     hub.connection(&id, true);
     let _open = Open {
@@ -275,10 +314,11 @@ async fn serve(
     let (asks, mut asked) = mpsc::channel::<Incoming>(16);
     let (answers, mut answered) = mpsc::channel::<String>(16);
     let handler = hub.handler();
+    let hello = json!({ "hello": { "name": name, "kind": kind } }).to_string();
     let worker = tokio::spawn(async move {
         while let Some(Incoming { id, request }) = asked.recv().await {
             let response = match &handler {
-                Some(handle) => handle(request).await,
+                Some(handle) => handle(kind.clone(), request).await,
                 None => refused("The remote is not ready yet."),
             };
             let reply = json!({ "id": id, "response": response }).to_string();
@@ -290,7 +330,6 @@ async fn serve(
     // Subscribed before the last events are sent, so none falls between.
     let mut feed = hub.subscribe();
     let mut beat = tokio::time::interval(BEAT);
-    let hello = json!({ "hello": { "name": name } }).to_string();
     let mut first = vec![Message::Text(hello.into())];
     first.extend(
         hub.latest()
@@ -405,5 +444,52 @@ mod tests {
             (header::ORIGIN, "https://192.168.1.20:7340")
         ])));
         assert!(!same_origin(&headers(&[(header::ORIGIN, "http://x")])));
+    }
+
+    #[test]
+    fn a_page_reached_by_the_laptops_lan_address_passes() {
+        for host in [
+            "192.168.1.20:7340",
+            "10.0.0.5",
+            "localhost:7340",
+            "127.0.0.1:7340",
+            "[fe80::1c2b:3cff:fe4d:5e6f]:7340",
+            "[::1]",
+            "Church-Laptop.local:7340",
+            "church-laptop.local.:7340",
+        ] {
+            let origin = format!("http://{host}");
+            assert!(
+                same_origin(&headers(&[(header::HOST, host), (header::ORIGIN, &origin)])),
+                "{host}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rebound_public_name_is_refused_though_origin_and_host_agree() {
+        // evil.example resolves to 192.168.1.20 once its page has loaded.
+        for host in [
+            "evil.example:7340",
+            "evil.example",
+            "192.168.1.20.nip.io:7340",
+            "localhost.evil.example",
+            "local:7340",
+            ".local",
+            "laptop.local:notaport",
+            "[fe80::1",
+        ] {
+            let origin = format!("http://{host}");
+            assert!(
+                !same_origin(&headers(&[(header::HOST, host), (header::ORIGIN, &origin)])),
+                "{host}"
+            );
+        }
+        // Without an Origin, too: the name alone is enough to refuse.
+        assert!(!same_origin(&headers(&[(
+            header::HOST,
+            "evil.example:7340"
+        )])));
+        assert!(!same_origin(&HeaderMap::new()));
     }
 }

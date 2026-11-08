@@ -9,6 +9,8 @@
   import type { Song } from "../../lib/api";
   import Button from "../../lib/kit/Button.svelte";
   import SongOrder from "./SongOrder.svelte";
+  import { sectionTone } from "../../lib/sections";
+  import { modal } from "../../lib/modal";
 
   let { song: id, onclose }: { song: string; onclose: () => void } = $props();
 
@@ -61,7 +63,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-label="Edit song">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Edit song" tabindex="-1" use:modal={"self"}>
     {#if draft}
       <header>
         <h2>Edit song</h2>
@@ -95,7 +97,7 @@
           {#each draft.sections as section, i (section.uid)}
             <li>
               <div class="section-head">
-                <input type="text" class="label" aria-label="Section label" placeholder="V1" bind:value={section.label} />
+                <input type="text" class="label {sectionTone(section.label) ?? ''}" aria-label="Section label" placeholder="V1" bind:value={section.label} />
                 <Button variant="ghost" size="small" icon="prev" label="Move up" disabled={i === 0} onclick={() => draft && (draft.sections = moved(draft.sections, i, -1))} />
                 <Button variant="ghost" size="small" icon="next" label="Move down" disabled={i === draft.sections.length - 1} onclick={() => draft && (draft.sections = moved(draft.sections, i, 1))} />
                 <Button variant="ghost" size="small" icon="trash" label="Remove section {section.label}" onclick={() => draft && (draft.sections = draft.sections.filter((s) => s !== section))} />
@@ -190,7 +192,7 @@
     font-size: 0.875rem;
     color: var(--text);
     background: var(--canvas);
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     border-radius: var(--radius);
     padding: 0.4rem 0.6rem;
   }
@@ -201,6 +203,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     line-height: 1.4;
   }
+  input:focus,
   textarea:focus {
     outline: none;
     border-color: var(--gold);
@@ -229,6 +232,19 @@
   .label {
     width: 6rem;
     margin-right: auto;
+  }
+  /* The section's colour, as on the wall in Present. */
+  .label.verse {
+    box-shadow: inset 3px 0 0 var(--section-verse);
+  }
+  .label.chorus {
+    box-shadow: inset 3px 0 0 var(--section-chorus);
+  }
+  .label.prechorus {
+    box-shadow: inset 3px 0 0 var(--section-prechorus);
+  }
+  .label.bridge {
+    box-shadow: inset 3px 0 0 var(--section-bridge);
   }
   .problems {
     flex: 1;

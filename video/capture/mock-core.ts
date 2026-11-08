@@ -28,7 +28,7 @@ const deckSlides: Record<string, any[]> = {
   ],
   "deck-sermon": [
     { label: "Slide 1", lines: ["The Good Shepherd", "John 10"], steps: 0, notes: "Open with the story of the lost sheep." },
-    { label: "Slide 2", lines: ["I know my sheep", "and my sheep know me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
+    { label: "Slide 2", lines: ["I know my sheep", "They hear my voice", "They follow me"], steps: 2, notes: "Pause here. Ask: who knows your name?" },
     { label: "Slide 3", lines: ["He lays down his life"], steps: 1, notes: "Slow down." },
   ],
 };
@@ -41,12 +41,14 @@ const trainingDecks = [
 ];
 deckSlides["deck-t1-screen"] = [
   { label: "Slide 1", lines: ["The Present screen", "Four places to look. One rule."], steps: 0, notes: "Trainer: point at each part of the screen as we go." },
-  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "Left is the order. The middle is live. The right is Next and Notes." },
+  { label: "Slide 2", lines: ["Four places to look"], steps: 4, notes: "The wall is every slide. Red LIVE is on air; gold NEXT is the next slide. The strip on top is the main screen and the controls." },
 ];
 deckSlides["deck-t1-sermon"] = [
   { label: "Slide 1", lines: ["The Lord is my shepherd", "Psalm 23"], steps: 0, notes: "Preacher: Good morning. Our reading today is Psalm 23.\nOperator: each Space press brings in one point." },
   { label: "Slide 2", lines: ["He leads me", "Green pastures", "Still waters", "Paths of righteousness"], steps: 3, notes: "Preacher: He leads me beside the still waters.\nOperator: three points, three presses." },
   { label: "Slide 3", lines: ["Yea, though I walk through the valley", "of the shadow of death, I will fear no evil"], steps: 0, notes: "Preacher: read the verse slowly." },
+  { label: "Slide 4", lines: ["Three things to take home", "You are known", "You are led", "You are not alone"], steps: 3, notes: "Preacher: three things to take home this week." },
+  { label: "Slide 5", lines: ["Surely goodness and mercy", "shall follow me all the days of my life"], steps: 0, notes: "Preacher: let us pray." },
 ];
 deckSlides["deck-t2-thursday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "As sent on Thursday"], steps: 0, notes: "SURPRISE 4 (updated deck). Trainer: \"The preacher changed the verse slide this morning. Use the new deck.\"" }];
 deckSlides["deck-t2-sunday"] = [{ label: "Slide 1", lines: ["The Lord is my shepherd", "Updated Sunday morning"], steps: 0, notes: "Preacher: Good morning. This is the corrected deck." }];
@@ -83,12 +85,12 @@ const tipsService = {
 const john = { book: 43, start: { chapter: 3, verse: 16 }, end: { chapter: 3, verse: 18 } };
 const psalm = { book: 19, start: { chapter: 23, verse: 1 }, end: { chapter: 23, verse: 3 } };
 const training = [
-  { id: "training-0", title: "Training 0: Orientation", training: true, starts_at: null, time_zone: null, theme: null, items: {
-    a1: item({ Header: { title: "Training 0: Orientation (5 minutes). Press Space to start" } }),
+  { id: "training-0", title: "Training Session 0: Orientation", training: true, starts_at: null, time_zone: null, theme: null, items: {
+    a1: item({ Header: { title: "Training Session 0: Orientation (5 minutes). Press Space to start" } }),
     a2: item({ Media: { blob: "v0", name: "Welcome to Lampstand.mp4", looped: false } }),
     a3: item({ Deck: { deck: "deck-t1-screen" } }),
   } as Record<string, any> },
-  { id: "training-1", title: "Training 1: Run a service", training: true, starts_at: null, time_zone: null, theme: null, items: {
+  { id: "training-1", title: "Training Session 1: Run a service", training: true, starts_at: null, time_zone: null, theme: null, items: {
     b1: item({ Header: { title: "Welcome. Press Space to start" } }),
     b2: item({ Media: { blob: "v1", name: "Welcome.mp4", looped: false } }, "Press Space when the video ends."),
     b3: item({ Deck: { deck: "deck-t1-screen" } }, "Point at each part of the real screen as the slides describe it."),
@@ -96,10 +98,10 @@ const training = [
     b5: item({ Header: { title: "Practice. Run these as if it were Sunday" } }),
     b6: item({ Song: { song: "amazing-grace", arrangement: null } }, "Practice: press Space for each verse. At the last verse, press 1 to jump back to verse 1."),
     b7: item({ Scripture: { passage: john, translation: "kjv" } }, "Practice: a Bible reading. Space through the verses."),
-    b8: item({ Media: { blob: "v3", name: "Blank, Logo, Clear.mp4", looped: false } }),
+    b8: item({ Media: { blob: "v3", name: "Blank, Idle, Clear.mp4", looped: false } }),
     b9: item({ Deck: { deck: "deck-t1-sermon" } }, "Practice: five slides with builds. Try Blank (full stop) once in the middle."),
   } as Record<string, any> },
-  { id: "training-2", title: "Training 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
+  { id: "training-2", title: "Training Session 2: Confident operator", training: true, starts_at: null, time_zone: null, theme: null, items: {
     c1: item({ Header: { title: "Rehearsal service. The trainer calls the surprises" } }),
     c2: item({ Text: { title: "Welcome", body: "Welcome!\nWe are glad you are here.", attribution: null } }, "SURPRISE 5 (blank in an emergency) can come at any moment from here on."),
     c3: item({ Song: { song: "holy-holy-holy", arrangement: null } }, "SURPRISE 2 (order change). Trainer: \"We are singing Amazing Grace first.\""),
@@ -130,6 +132,21 @@ const themeThumb = (t: any, sample: string, w: number, h: number) => {
 const state: any = { services: String((window as any).__scene).startsWith("tips") ? [tipsService] : String((window as any).__scene).startsWith("training") ? [welcome, sunday, ...training] : [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, idle: null, enabled: true });
 (window as any).__mock = state;
+// The Ready card: the announcements deck pinned from the order, and a welcome video kept only in Ready.
+// "ready-few": the walkthrough starts with two and pins more as it goes.
+if (state.scene === "ready-few") (sunday as any).ready = {
+  i2: { position: "5000", source: "Order" },
+  rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
+};
+// "ready-video": the Ready card with a looping video as the idle screen.
+if (state.scene === "ready-video") settings = { ...settings, idle: { Video: { blob: "vidle", name: "Worship background.mp4" } } };
+if (state.scene === "ready" || state.scene === "ready-video") (sunday as any).ready = {
+  i2: { position: "5000", source: "Order" },
+  rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
+  i4: { position: "5002", source: "Order" },
+  i5: { position: "5003", source: "Order" },
+  i6: { position: "5004", source: "Order" },
+};
 
 const ID = (n: string) => n;
 const sorted = (s: any) => Object.entries(s.items).sort((a: any, b: any) => a[1].position.localeCompare(b[1].position));
@@ -139,7 +156,8 @@ function slidesFor(kind: any) {
   if (kind.Scripture?.passage.book === 19) return verses["Psalm 23:1"].map(([c, v, t]) => ({ label: `Psalm ${c}:${v}`, lines: [t], steps: 0, notes: "" }));
   if (kind.Scripture?.passage.book === 45) return [{ label: "Romans 8:28", lines: [verses["Romans 8:28"][0][2]], steps: 0, notes: "" }];
   if (kind.Scripture) return [{ label: "John 3:16", lines: [verses["John 3:16"][0][2]], steps: 0, notes: "" }];
-  if (kind.Deck) return deckSlides[kind.Deck.deck] ?? [];
+  // As the engine: a deck's slides are pictures (no lines), drawn by SlideThumbnail at their build step.
+  if (kind.Deck) return (deckSlides[kind.Deck.deck] ?? []).map((sl) => ({ ...sl, lines: [] }));
   if (kind.Media) return [{ label: "Video", lines: [], steps: 0, notes: "" }];
   if (kind.Text) {
     const groups: string[][] = [];
@@ -175,14 +193,36 @@ function load(id: string) {
       sections.push({ header: iid, title: it.kind.Header.title, seconds, items: [] });
     } else if (sections.length) sections[sections.length - 1].items.push(iid);
   }
-  return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })), sections };
+  const items = sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind), sounds: [] }));
+  // Ready: pins show their item of the order; a deck or media kept only in Ready is loaded beside it.
+  const ready = Object.entries(s.ready ?? {}).sort((a: any, b: any) => a[1].position.localeCompare(b[1].position)).flatMap(([rid, e]: any) => {
+    if (e.source === "Order") { const v = items.find((i: any) => i.id === rid); return v ? [{ item: v, in_order: true }] : []; }
+    if (e.source.Slide) {
+      const { deck, slide } = e.source.Slide; const sl = deckSlides[deck]?.[slide];
+      return sl ? [{ item: { id: rid, title: `${decks.find((d) => d.id === deck)!.title} · slide ${slide + 1}`, slides: [{ ...sl, lines: [] }], sounds: [] }, in_order: false }] : [];
+    }
+    return [{ item: { id: rid, title: titleFor(e.source.Own.kind), slides: slidesFor(e.source.Own.kind), sounds: [] }, in_order: false }];
+  });
+  return { service: s.id, title: s.title, items, sections, ready };
 }
+const reload = (s: any) => { if (state.loaded?.service === s.id) { state.loaded = load(s.id); emit({ type: "Loaded", data: state.loaded }); } return { type: "Service", data: s }; };
+const readyEnd = (s: any) => String(5000 + Object.keys(s.ready ?? {}).length);
 let liveKey = "";
 let liveSince = 0;
 function pushLive() {
   const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
   if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
-  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay } });
+  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay, cleared: false, returns_to: state.detour?.back ?? null, on_ready: !!state.detour } });
+  if (soundOn) emit({ type: "Sound", data: soundView() });
+}
+// Sound (window.__soundOn): Amazing Grace has a backing track that starts on its own when the song
+// goes live, as Next does in the engine, and plays on until another sound starts.
+let soundOn = false;
+let playing: any = null;
+const BACKING = { name: "Amazing Grace (backing track)", file: "s1", length_ms: 212000, start: "OnItsOwn", keep_off_stream: false };
+function soundView() {
+  if (state.live?.item === "i3" && playing?.item !== "i3") playing = { item: "i3", name: BACKING.name, paused: false, ending: false, position_ms: 4000, length_ms: BACKING.length_ms };
+  return { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing, problem: null, problem_item: null };
 }
 // A looping section moves the live slide on by itself, as the real engine does.
 setInterval(() => {
@@ -195,14 +235,42 @@ setInterval(() => {
   pushLive();
 }, 200);
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
+// As the engine: a slide kept ready on its own plays its builds by itself.
+setInterval(() => {
+  if (!state.detour || !state.live || state.live.item !== state.detour.item) return;
+  const one = state.loaded?.ready?.find((r: any) => r.item.id === state.live.item && !r.in_order)?.item;
+  const steps = one?.slides[0]?.steps ?? 0;
+  if (!one || !/ · slide \d+$/.test(one.title) || state.live.step >= steps) return;
+  state.live = state.preview = { ...state.live, step: state.live.step + 1 };
+  pushLive();
+}, 1400);
 function move(dir: number, byItem = false) {
   const f = flat(); if (!f.length) return;
+  // As the engine: Next plays a slide's builds one click at a time before moving on.
+  const cur = state.live;
+  if (!byItem && cur) {
+    const steps = state.loaded.items.find((i: any) => i.id === cur.item)?.slides[cur.slide]?.steps ?? 0;
+    const step = cur.step + dir;
+    if (step >= 0 && step <= steps) { state.preview = { ...cur, step }; return; }
+  }
+  // Previous from a slide's first step lands on the slide before, fully built.
+  const built = (c: any) => (dir < 0 && !byItem && c ? { ...c, step: state.loaded.items.find((i: any) => i.id === c.item)?.slides[c.slide]?.steps ?? 0 } : c);
   const base = state.live ?? state.preview; let at = base ? f.findIndex((c: any) => c.item === base.item && c.slide === base.slide) : -1;
   if (byItem) { const cur = base?.item; let n = at; while (n >= 0 && n < f.length && f[n].item === cur) n += dir; at = n < 0 ? 0 : Math.min(n, f.length - 1); if (dir < 0) { const it = f[at].item; at = f.findIndex((c: any) => c.item === it); } }
   else at = Math.max(0, Math.min(f.length - 1, at + dir));
-  state.preview = f[Math.max(0, at)];
+  state.preview = built(f[Math.max(0, at)]);
 }
 const svgThumb = (label: string) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='95' fill='#f5f1e8' font-family='serif' font-size='20' text-anchor='middle'>${label}</text></svg>`);
+
+/** A training deck's slide as the core draws it: the heading, then one point per build step. */
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/'/g, "&apos;");
+function deckThumb(sl: any, step: number) {
+  const [head, ...rest] = sl.lines as string[];
+  const shown = sl.steps > 0 ? rest.slice(0, step) : rest;
+  const body = shown.map((l, i) => `<text x='160' y='${92 + i * 20}' fill='#f5f1e8' font-family='sans-serif' font-size='14' text-anchor='middle'>${esc(l)}</text>`).join("");
+  return "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><text x='160' y='${rest.length ? 58 : 96}' fill='#e9b949' font-family='sans-serif' font-weight='700' font-size='${head.length > 30 ? 13 : 20}' text-anchor='middle'>${esc(head)}</text>${body}</svg>`);
+}
+const logoThumb = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='320' height='180' fill='#0b0e16'/><circle cx='160' cy='80' r='18' fill='none' stroke='#e9b949' stroke-width='3'/><path d='M160 68v24M150 78h20' stroke='#e9b949' stroke-width='3'/><text x='160' y='120' fill='#f5f1e8' font-family='serif' font-size='13' text-anchor='middle'>Grace Chapel</text></svg>`);
 
 const summaries = () => state.services.map((s: any) => ({ id: s.id, title: s.title, starts_at: s.starts_at, time_zone: s.time_zone, items: Object.values(s.items).filter((i: any) => !i.kind.Header).length, training: !!s.training }));
 
@@ -229,7 +297,7 @@ function api(req: any): any {
         case "InspectBrand": return { type: "BrandFile", data: { name: "Grace Chapel", has_logo: true, font_family: "Noto Serif", font_installed: true, missing_fonts: [], themes: ["Grace Chapel"], idle: null, has_brand: true } };
         case "ImportBrand": return { type: "Text", data: "Imported the brand: 1 theme added, 0 replaced." };
         case "ThemePreview": return { type: "Thumbnail", data: themeThumb(arg.theme, arg.sample, arg.thumb_width, Math.round(arg.thumb_width * arg.height / arg.width)) };
-        case "DeckSlidePicture": return { type: "DeckSlide", data: { thumbnail: svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } };
+        case "DeckSlidePicture": { const sl = deckSlides[arg.deck]?.[arg.slide]; return { type: "DeckSlide", data: { thumbnail: sl ? deckThumb(sl, sl.steps) : svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } }; }
         case "ListTranslations": return { type: "Translations", data: [{ id: "kjv", name: "King James Version", abbreviation: "KJV", language: "en", licence: "PublicDomain", text: "kjv" }] };
         case "LookupPassage": {
           const typed = arg.reference.toLowerCase();
@@ -241,7 +309,11 @@ function api(req: any): any {
         case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks.filter((d) => !trainingDecks.includes(d)) };
         case "ListTrainingDecks": return { type: "Decks", data: trainingDecks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
-        case "DeckThumbnail": case "MediaThumbnail": case "IdlePreview": return { type: "Thumbnail", data: svgThumb("Slides") };
+        case "DeckThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        // A video's still: a soft gradient with its name, as a stand-in for its first frame.
+        case "MediaThumbnail": return { type: "Thumbnail", data: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#1d2b64'/><stop offset='1' stop-color='#6b3fa0'/></linearGradient></defs><rect width='320' height='180' fill='url(#g)'/><text x='160' y='96' fill='#f5f1e8' font-family='sans-serif' font-size='16' text-anchor='middle'>${String(arg.name).replace(/\.mp4$/, "")}</text></svg>`) };
+        // With a logo, the default idle screen is the logo, small and centred.
+        case "IdlePreview": return { type: "Thumbnail", data: logoThumb };
       }
       break;
     case "Service":
@@ -249,6 +321,8 @@ function api(req: any): any {
         case "List": return { type: "Services", data: summaries() };
         case "ListChecked": return { type: "ServiceList", data: { services: summaries(), newer: 0, damaged: [] } };
         case "ResetTraining": return ok;
+        // The screenshots show a device that has its training videos.
+        case "TrainingVideos": return { type: "TrainingVideos", data: { state: "Ready", message: "" } };
         case "Get": return { type: "Service", data: state.services.find((s: any) => s.id === arg) };
         case "Duplicate": { const src = state.services.find((x: any) => x.id === arg.service); if (!src) throw "no such service"; const items: any = {}; for (const it of Object.values(src.items)) items["itm" + Date.now() + Math.random().toString(36).slice(2)] = JSON.parse(JSON.stringify(it)); const s = { ...JSON.parse(JSON.stringify(src)), id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: arg.time_zone, items }; state.services.push(s); return { type: "Service", data: s }; }
         case "Create": { const s = { id: "svc" + Date.now(), title: arg.title, starts_at: arg.starts_at, time_zone: null, theme: null, items: {} }; state.services.push(s); return { type: "Service", data: s }; }
@@ -268,7 +342,19 @@ function api(req: any): any {
           order.forEach((k: string, n: number) => (s.items[k].position = String(2000 + n).padStart(5, "0")));
           return { type: "Service", data: s };
         }
-        case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
+        case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; if (s.ready?.[arg.item]?.source === "Order") delete s.ready[arg.item]; return reload(s); }
+        case "PinReady": {
+          const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {};
+          if (arg.ready) s.ready[arg.item] ??= { position: readyEnd(s), source: "Order" }; else delete s.ready[arg.item];
+          return reload(s);
+        }
+        case "AddReady": { const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {}; s.ready["r" + Date.now() + (seq++)] = { position: readyEnd(s), source: { Own: { kind: arg.kind } } }; return reload(s); }
+        case "AddReadySlide": {
+          const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {};
+          if (!Object.values(s.ready).some((e: any) => e.source.Slide?.deck === arg.deck && e.source.Slide?.slide === arg.slide)) s.ready["rs" + Date.now() + (seq++)] = { position: readyEnd(s), source: { Slide: { deck: arg.deck, slide: arg.slide } } };
+          return reload(s);
+        }
+        case "RemoveReady": { const s = state.services.find((x: any) => x.id === arg.service); delete s.ready?.[arg.item]; return reload(s); }
         case "SetItemText": {
           const s = state.services.find((x: any) => x.id === arg.service);
           const k = s.items[arg.item].kind.Text;
@@ -298,12 +384,38 @@ function api(req: any): any {
           })) };
         }
         case "Open": { state.loaded = load(arg); emit({ type: "Loaded", data: state.loaded }); return { type: "Loaded", data: state.loaded }; }
-        case "SlideThumbnail": return { type: "Thumbnail", data: svgThumb("Slide") };
+        case "SlideThumbnail": {
+          const kind = state.services.flatMap((sv: any) => Object.entries(sv.items)).find(([id]: any) => id === arg.item)?.[1]?.kind;
+          // A slide kept ready on its own is slide 0 of its entry.
+          const one = state.services.map((sv: any) => sv.ready?.[arg.item]?.source?.Slide).find(Boolean);
+          const sl = one ? deckSlides[one.deck]?.[one.slide] : kind?.Deck ? deckSlides[kind.Deck.deck]?.[arg.slide] : null;
+          return { type: "Thumbnail", data: sl ? deckThumb(sl, arg.step) : svgThumb("Slide") };
+        }
         case "Readiness": return { type: "Text", data: "ready" };
       }
       break;
     case "Live":
+      // As the engine: a move that takes a slide live leaves the idle screen.
+      if (state.overlay === "Idle" && ["Next", "Previous", "NextItem", "PreviousItem", "GoLive", "Show", "ShowReady"].includes(typeof r === "string" ? r : Object.keys(r)[0])) state.overlay = "None";
+      // A side-trip to a ready item: Next past its end, or Previous before its start, goes back.
+      if (state.detour && state.live?.item === state.detour.item && (r === "Next" || r === "Previous")) {
+        const ri = state.loaded.ready.find((x: any) => x.item.id === state.detour.item)?.item;
+        const steps = ri?.slides[state.live.slide]?.steps ?? 0;
+        if (r === "Next" && state.live.step < steps) { state.live = state.preview = { ...state.live, step: state.live.step + 1 }; pushLive(); return ok; }
+        const slide = state.live.slide + (r === "Next" ? 1 : -1);
+        if (ri && slide >= 0 && slide < ri.slides.length) state.live = state.preview = { item: ri.id, slide, step: 0 };
+        else if (state.detour.back) { state.live = state.preview = state.detour.back; state.detour = null; }
+        pushLive();
+        return ok;
+      }
+      if (typeof r !== "string" && !r.ShowReady) state.detour = null;
       switch (typeof r === "string" ? r : Object.keys(r)[0]) {
+        case "ShowReady": {
+          const back = state.detour ? state.detour.back : state.live && state.live.item !== r.ShowReady ? state.live : null;
+          state.detour = { item: r.ShowReady, back };
+          state.live = state.preview = { item: r.ShowReady, slide: 0, step: 0 };
+          break;
+        }
         case "Next": move(1); state.live = state.preview; break;
         case "Previous": move(-1); state.live = state.preview; break;
         case "NextItem": move(1, true); break;
@@ -312,6 +424,7 @@ function api(req: any): any {
         case "Preview": state.preview = r.Preview; break;
         case "Show": state.live = r.Show; state.preview = r.Show; break;
         case "ToggleBlack": state.overlay = state.overlay === "Black" ? "None" : "Black"; break;
+        case "ToggleIdle": state.overlay = state.overlay === "Idle" ? "None" : "Idle"; break;
         case "ClearAll": state.live = null; state.overlay = "None"; break;
       }
       pushLive();
@@ -344,7 +457,7 @@ function api(req: any): any {
     case "Team": return { type: "Team", data: team() };
     case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
     case "About": return ok;
-    case "Sound": return { type: "Sound", data: { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
+    case "Sound": return { type: "Sound", data: soundOn ? soundView() : { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
   }
   return { type: "Error", data: { message: `mock: unhandled ${area}.${key}` } };
 }
@@ -365,6 +478,7 @@ export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_versio
   state.paired = [{ device: "bb", fingerprint: "a1b2 c3d4", name: "Office PC", address: "192.168.1.30:7340", connected: true, problem: null, presenting: false }];
   emit({ type: "SyncStatus", data: { sync: { state: "Synced", paired: 1, connected: 1, reason: null, last_in_ms: null, last_out_ms: null } } });
 };
+(window as any).__soundOn = () => { soundOn = true; sunday.items.i3.backing = BACKING; };
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {

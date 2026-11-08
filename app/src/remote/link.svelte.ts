@@ -5,7 +5,7 @@
 // drops, so the page never shows something old as if it were on screen now.
 
 import type { Event, LoadedService, Request, Response, SoundView } from "../lib/api";
-import { backoff, type LiveState } from "../lib/remote.ts";
+import { backoff, type LiveState, type PairedAs } from "../lib/remote.ts";
 
 export type LinkState = "connecting" | "online" | "offline" | "unpaired" | "revoked";
 
@@ -21,6 +21,8 @@ class Link {
   state: LinkState = $state("connecting");
   /** The phone's name, as paired. */
   name = $state("");
+  /** What the phone is paired for: running the service, or a speaker's slides. */
+  kind: PairedAs = $state({ kind: "Operator" });
   loaded: LoadedService | null = $state(null);
   live: LiveState | null = $state(null);
   sound: SoundView | null = $state(null);
@@ -145,7 +147,7 @@ class Link {
   }
 
   private receive(text: string) {
-    let message: { hello?: { name: string }; event?: Event; id?: number; response?: Response; beat?: number };
+    let message: { hello?: { name: string; kind?: PairedAs }; event?: Event; id?: number; response?: Response; beat?: number };
     try {
       message = JSON.parse(text);
     } catch {
@@ -153,6 +155,8 @@ class Link {
     }
     if (message.hello) {
       this.name = message.hello.name;
+      this.kind = message.hello.kind ?? { kind: "Operator" };
+
       this.state = "online";
       this.attempts = 0;
     } else if (message.event) {

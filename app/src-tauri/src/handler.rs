@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 use lampstand_api::{
     BrowserSourceStatus, Event, ItemEstimate, ItemSoundView, LibraryRequest, LoadedItemView,
-    LoadedService, OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary,
-    SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
+    LoadedService, OutputRequest, ReadyView, Request, Response, SectionView, ServiceRequest,
+    ServiceSummary, SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
@@ -50,7 +50,7 @@ use lampstand_core::scripture::{
     find_translation, parse_reference_versioned, unrecognised_version_message,
 };
 use lampstand_core::service::{
-    CountdownTarget, ItemId, ItemKind, Service, ServiceId, ServiceItem, Sound,
+    CountdownTarget, ItemId, ItemKind, ReadySource, Service, ServiceId, ServiceItem, Sound,
 };
 use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
@@ -78,6 +78,7 @@ use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
 use crate::training;
+use crate::training_videos::{self, TrainingVideos};
 pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
 use church::ChurchSync;
 pub use church::{AudioRemote, SyncLink};
@@ -149,7 +150,16 @@ type LiveState = (
     bool,
     Overlay,
     Option<Cursor>,
+    bool,
+    Option<Cursor>,
+    bool,
 );
+
+/// Something is live but its words were cleared (Clear text, Clear all):
+/// `Event::Live::cleared`, so a speaker's phone waits too.
+fn cleared(live: &LiveEngine) -> bool {
+    live.live().is_some() && live.program().content.is_none()
+}
 
 /// The whole seconds a countdown shows now, rounded up as it is drawn.
 fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
@@ -199,6 +209,10 @@ pub struct App {
     /// The computer was last told to stay awake (`Machine::set_awake`).
     awake: bool,
     emit: EventSink,
+    /// Told when the service is ended (`Command::EndService`) while it stays
+    /// open, so speakers' phones stop (`crate::remote`). Closing it says
+    /// `Event::Unloaded` instead.
+    service_ended: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Where each open output window was asked to go. A window is opened
     /// again only when this changes, never because its real size differs.
     placed: HashMap<OutputId, Placement>,
@@ -247,6 +261,12 @@ pub struct App {
     /// The displays the windows were last placed against, so a display that
     /// appears after that, even before the shell's first look, is noticed.
     seen_displays: Vec<DisplayInfo>,
+    /// The training videos, downloaded the first time a training service
+    /// is opened (#190).
+    training_videos: TrainingVideos,
+    /// The open service has a video item saying it is downloading, so it
+    /// is loaded again when the download ends, however it went.
+    shows_downloading: bool,
 }
 
 /// Why a training service refuses a change (#190).
@@ -281,7 +301,14 @@ impl App {
         let key = device_key(data_dir).map_err(err)?;
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
-        if let Err(e) = training::install(&library) {
+        // Reads only what an earlier run saved: nothing downloads at start.
+        let training_videos = TrainingVideos::open(
+            data_dir.join("training-videos"),
+            Some(training_videos::SOURCE.to_string()),
+            library.clone(),
+            emit.clone(),
+        );
+        if let Err(e) = training::install(&library, &training_videos.manifest()) {
             eprintln!("lampstand: the training services could not be added: {e}");
         }
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
@@ -307,6 +334,7 @@ impl App {
             machine: Box::new(NoMachine),
             awake: false,
             emit,
+            service_ended: None,
             placed: HashMap::new(),
             sizes: HashMap::new(),
             streams: HashMap::new(),
@@ -327,6 +355,8 @@ impl App {
             quiet_cues: false,
             presenting: true,
             seen_displays: Vec::new(),
+            training_videos,
+            shows_downloading: false,
         };
         app.place_windows();
         app.restore();
@@ -433,6 +463,52 @@ impl App {
         self.server = Some(address);
     }
 
+    /// The service open now (restored after a crash, at start), if any.
+    pub fn open_service(&self) -> Option<ServiceId> {
+        self.loaded.as_ref().map(|l| l.view.service)
+    }
+
+    /// The open service and the title of its item `item`, if it has one
+    /// with slides: what a speaker's phone may be paired for.
+    pub fn speaker_item(&self, item: ItemId) -> Option<(ServiceId, String)> {
+        let view = &self.loaded.as_ref()?.view;
+        view.items
+            .iter()
+            .find(|i| i.id == item && !i.slides.is_empty())
+            .map(|i| (view.service, i.title.clone()))
+    }
+
+    /// What to call when the service is ended but stays open: the shell ends
+    /// the speakers' phones paired for it.
+    pub fn on_service_ended(&mut self, ended: Arc<dyn Fn() + Send + Sync>) {
+        self.service_ended = Some(ended);
+    }
+
+    /// A speaker's Next, Back or Blank (decision 0006, amended for 0.9.1),
+    /// for the item `own`: checked against the live engine and carried out
+    /// in one step by `gate::speaker_apply`, under the one `&mut App`, so
+    /// the operator cannot move the service between the check and the
+    /// change.
+    pub fn speaker_live(&mut self, own: ItemId, command: Command) -> Response {
+        if !self.presenting {
+            return Response::Error {
+                message: PLANNING_ONLY.into(),
+            };
+        }
+        match crate::gate::speaker_apply(own, command, &mut self.live) {
+            Ok(events) => {
+                self.after_live(events);
+                Response::Ok
+            }
+            Err(why) => {
+                eprintln!("lampstand: refused a speaker's {command:?}: {why}");
+                Response::Error {
+                    message: why.into(),
+                }
+            }
+        }
+    }
+
     pub fn handle(&mut self, request: Request) -> Response {
         let result = match request {
             Request::Library(r) => self.library_request(r),
@@ -446,6 +522,11 @@ impl App {
                 }
                 let events = self.live.apply(command);
                 self.after_live(events);
+                if command == Command::EndService {
+                    if let Some(ended) = &self.service_ended {
+                        ended();
+                    }
+                }
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
@@ -643,7 +724,12 @@ impl App {
     fn check_training(&self, request: &ServiceRequest) -> Result<()> {
         let (service, practice) = match request {
             ServiceRequest::InsertItem { service, .. }
-            | ServiceRequest::RemoveItem { service, .. } => (*service, true),
+            | ServiceRequest::RemoveItem { service, .. }
+            | ServiceRequest::PinReady { service, .. }
+            | ServiceRequest::AddReady { service, .. }
+            | ServiceRequest::AddReadySlide { service, .. }
+            | ServiceRequest::RemoveReady { service, .. }
+            | ServiceRequest::MoveReady { service, .. } => (*service, true),
             ServiceRequest::Duplicate { service, .. }
             | ServiceRequest::Reschedule { service, .. }
             | ServiceRequest::Rename { service, .. }
@@ -693,7 +779,12 @@ impl App {
                     damaged: scan.damaged,
                 })
             }
-            ServiceRequest::Get(id) => Response::Service(get(id)?),
+            ServiceRequest::Get(id) => {
+                let service = get(id)?;
+                self.fetch_training_videos(id);
+                Response::Service(service)
+            }
+            ServiceRequest::TrainingVideos => Response::TrainingVideos(self.training_videos.view()),
             ServiceRequest::Create {
                 title,
                 starts_at,
@@ -774,6 +865,8 @@ impl App {
             }
             ServiceRequest::ResetTraining => {
                 lib.reset_training();
+                // And a new look for new training videos.
+                self.training_videos.ensure(true);
                 if let Some(open) = self.loaded.as_ref().map(|l| l.view.service) {
                     self.reload_if_open(open)?;
                 }
@@ -810,6 +903,74 @@ impl App {
             ServiceRequest::RemoveItem { service, item } => {
                 let mut s = get(service)?;
                 if s.remove(item).is_none() {
+                    return Err("no such item".into());
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::PinReady {
+                service,
+                item,
+                ready,
+            } => {
+                let mut s = get(service)?;
+                if ready {
+                    if !s.pin_ready(item) {
+                        return Err(match s.items.get(&item) {
+                            Some(_) => {
+                                "A header has nothing to show, so it cannot be kept ready.".into()
+                            }
+                            None => "no such item".into(),
+                        });
+                    }
+                } else {
+                    s.unready(item);
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::AddReady { service, kind } => {
+                if !matches!(kind, ItemKind::Deck { .. } | ItemKind::Media { .. }) {
+                    return Err("Only decks and media from the Library can be kept ready on their own. Pin an item of the order to keep it ready.".into());
+                }
+                let mut s = get(service)?;
+                s.add_ready(kind);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::AddReadySlide {
+                service,
+                deck,
+                slide,
+            } => {
+                if lib.deck(deck).map_err(err)?.is_none() {
+                    return Err("no such deck".into());
+                }
+                let mut s = get(service)?;
+                s.add_ready_slide(deck, slide);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::RemoveReady { service, item } => {
+                let mut s = get(service)?;
+                if !s.unready(item) {
+                    return Err("no such item".into());
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::MoveReady {
+                service,
+                item,
+                index,
+            } => {
+                let mut s = get(service)?;
+                if !s.move_ready(item, index) {
                     return Err("no such item".into());
                 }
                 lib.put_service(&s).map_err(err)?;
@@ -907,6 +1068,7 @@ impl App {
                 if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
                     self.loop_overrides.clear();
                 }
+                self.fetch_training_videos(id);
                 Response::Loaded(self.load_service(id)?)
             }
             ServiceRequest::SetMediaLooped {
@@ -1175,6 +1337,7 @@ impl App {
         self.loop_overrides.clear();
         let events = self.live.apply(Command::EndService);
         self.live.load(Vec::new());
+        self.live.set_ready(Vec::new());
         self.after_live(events);
         (self.emit)(Event::Unloaded);
     }
@@ -1194,6 +1357,8 @@ impl App {
             .service(id)
             .map_err(err)?
             .ok_or("no such service")?;
+        let training = self.library.is_training(id);
+        self.shows_downloading = false;
         let primary = self.primary_output();
         let theme = self.pagination_theme(service.theme, &primary);
         let mut items = Vec::new();
@@ -1231,6 +1396,22 @@ impl App {
                 obs_scenes.insert(item_id, scene.clone());
             }
             let mut loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            // A training video not downloaded yet says so instead, and the
+            // rest of the service runs. It is loaded again when it arrives.
+            if let (true, ItemKind::Media { blob, .. }) = (training, &item.kind) {
+                if self.library.repo().blobs().path(blob).is_none() {
+                    let message = self.training_videos.missing_message(blob);
+                    self.shows_downloading |= message == training_videos::DOWNLOADING;
+                    loaded.slides = text_slides(message, None)
+                        .into_iter()
+                        .map(|slide| LoadedSlide {
+                            content: Content::Text { slide },
+                            steps: 0,
+                            dwell_ms: None,
+                        })
+                        .collect();
+                }
+            }
             if !matches!(item.kind, ItemKind::Header { .. }) {
                 if let Some(open) = sections.last_mut() {
                     open.items.push(item_id);
@@ -1285,11 +1466,114 @@ impl App {
                 ..loaded
             });
         }
+        // What is kept ready: a pin shows its item of the order; something
+        // kept only in Ready is loaded beside the order, where `Next` never
+        // reaches it.
+        let mut ready = Vec::new();
+        let mut ready_items = Vec::new();
+        for (ready_id, entry) in service.ready_ordered() {
+            match &entry.source {
+                ReadySource::Order => {
+                    if let Some(view) = views.iter().find(|v| v.id == ready_id) {
+                        ready.push(ReadyView {
+                            item: view.clone(),
+                            in_order: true,
+                        });
+                    }
+                }
+                ReadySource::Slide { deck, slide } => {
+                    // One slide of a deck, on its own: its builds play by
+                    // themselves. Left out if the deck has no such slide.
+                    let Some(d) = self.library.deck(*deck).ok().flatten() else {
+                        continue;
+                    };
+                    let Ok(parsed) = self.parsed_deck(&d) else {
+                        continue;
+                    };
+                    let Some(one) = parsed.slides.get(*slide as usize) else {
+                        continue;
+                    };
+                    let loaded_slide = LoadedSlide {
+                        content: Content::DeckSlide {
+                            deck: *deck,
+                            index: one.index,
+                            step: 0,
+                            scene: one.scenes[0].clone(),
+                            notes: one.notes.clone(),
+                        },
+                        steps: one.builds.len(),
+                        dwell_ms: None,
+                    };
+                    if !one.builds.is_empty() {
+                        builds.insert((ready_id, 0), one.builds.clone());
+                    }
+                    scenes.insert((ready_id, 0), one.scenes.clone());
+                    decks.push(*deck);
+                    blobs.push(d.current.blob);
+                    parsed_decks.insert(*deck, parsed.clone());
+                    let title = format!("{} · slide {}", d.title, slide + 1);
+                    ready.push(ReadyView {
+                        item: LoadedItemView {
+                            id: ready_id,
+                            title: title.clone(),
+                            slides: vec![slide_view(&loaded_slide)],
+                            sounds: Vec::new(),
+                        },
+                        in_order: false,
+                    });
+                    ready_items.push(LoadedItem {
+                        id: ready_id,
+                        title,
+                        slides: vec![loaded_slide],
+                        background: None,
+                        theme: service.theme,
+                        song: None,
+                        auto_advance_ms: None,
+                        loop_group: None,
+                        sound_only: false,
+                        auto_builds_ms: autoplay_waits(&one.entry, &one.builds),
+                    });
+                }
+                ReadySource::Own { kind } => {
+                    let loaded = self.load_item(ready_id, kind, &theme, &primary)?;
+                    if let ItemKind::Deck { deck } = kind {
+                        decks.push(*deck);
+                        let parsed = self.library.deck(*deck).ok().flatten().and_then(|d| {
+                            self.parsed.get(&d.current.blob).cloned().map(|p| (d, p))
+                        });
+                        if let Some((d, parsed)) = parsed {
+                            blobs.push(d.current.blob);
+                            for (i, slide) in parsed.slides.iter().enumerate() {
+                                if !slide.builds.is_empty() {
+                                    builds.insert((ready_id, i), slide.builds.clone());
+                                }
+                                scenes.insert((ready_id, i), slide.scenes.clone());
+                            }
+                            parsed_decks.insert(*deck, parsed);
+                        }
+                    }
+                    ready.push(ReadyView {
+                        item: LoadedItemView {
+                            id: ready_id,
+                            title: loaded.title.clone(),
+                            slides: loaded.slides.iter().map(slide_view).collect(),
+                            sounds: Vec::new(),
+                        },
+                        in_order: false,
+                    });
+                    ready_items.push(LoadedItem {
+                        theme: service.theme,
+                        ..loaded
+                    });
+                }
+            }
+        }
         let view = LoadedService {
             service: id,
             title: service.title.clone(),
             items: views,
             sections,
+            ready,
         };
         // Parsed decks no service uses any more are let go.
         self.parsed.retain(|blob, _| blobs.contains(blob));
@@ -1302,7 +1586,8 @@ impl App {
             slides: parsed_decks,
             obs_scenes,
         });
-        let events = self.live.load(items);
+        let mut events = self.live.load(items);
+        events.extend(self.live.set_ready(ready_items));
         (self.emit)(Event::Loaded(view.clone()));
         self.after_live(events);
         Ok(view)
@@ -1325,6 +1610,7 @@ impl App {
             auto_advance_ms: None,
             loop_group: None,
             sound_only: false,
+            auto_builds_ms: Vec::new(),
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -1529,6 +1815,9 @@ impl App {
                 self.live.is_idle(),
                 self.live.program().overlay,
                 self.live.shown(),
+                cleared(&self.live),
+                self.live.returns_to(),
+                self.live.on_detour(),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
@@ -1537,6 +1826,9 @@ impl App {
                     preview: state.1,
                     idle: state.2,
                     overlay: state.3,
+                    cleared: state.5,
+                    returns_to: state.6,
+                    on_ready: state.7,
                 });
             }
             self.told_ui = Some(state);
@@ -1586,9 +1878,10 @@ impl App {
                 continue;
             };
             let theme = self.resolve_theme(config.theme.or(program.theme).or(service_theme));
-            // Nothing on air: an audience screen shows its idle screen.
-            // Black and Logo are overlays, so `is_idle` is false under
-            // them and they cover it. Stage and stream never show it.
+            // Nothing on air, or the Idle overlay: an audience screen shows
+            // its idle screen. Black is an overlay, so `is_idle` is false
+            // under it and it covers the idle screen. Stage and stream
+            // never show it.
             let mut shown_program = program.clone();
             shown_program.logo = logo.clone();
             // Only audience and stream outputs carry the logo bug.
@@ -1597,7 +1890,9 @@ impl App {
                     l.bug = None;
                 }
             }
-            if idle && matches!(config.role, OutputRole::Audience { .. }) {
+            if (idle || program.overlay == Overlay::Idle)
+                && matches!(config.role, OutputRole::Audience { .. })
+            {
                 shown_program.idle = self.idle_content(&config);
             }
             let sent = Sent {
@@ -1724,7 +2019,7 @@ impl App {
         self.loaded.as_ref()?.slides.get(deck)?.slide(*index)
     }
 
-    /// The logo screen from the church's brand, if it has set one.
+    /// The logo bug from the church's brand, if it has set one.
     fn logo(&mut self) -> Option<Logo> {
         let brand = self.church().brand?;
         let bug = match brand.logo {
@@ -1737,12 +2032,7 @@ impl App {
             }),
             _ => None,
         };
-        Some(Logo {
-            image: brand.logo,
-            background: brand.primary,
-            accent: brand.accent,
-            bug,
-        })
+        Some(Logo { bug })
     }
 
     /// The logo's width over its height, read once. `None` when the
@@ -2227,6 +2517,65 @@ impl App {
         self.church_tick();
         self.sound_tick(now);
         self.audio_tick();
+        self.training_videos_tick();
+    }
+
+    /// Where the training videos come from: `None` never downloads them.
+    /// The website, unless a test says otherwise.
+    pub fn set_training_source(&mut self, source: Option<String>) {
+        self.training_videos.set_source(source);
+    }
+
+    /// Waits for a training video download to finish and applies it, as
+    /// the next tick would (tests).
+    pub fn wait_for_training_videos(&mut self) {
+        self.training_videos.wait();
+        self.training_videos_tick();
+    }
+
+    /// Opening a training service with videos (in Plan or Present) is when
+    /// they download, if they are missing or a day has passed. Never for
+    /// any other service.
+    fn fetch_training_videos(&self, service: ServiceId) {
+        let videos = self
+            .library
+            .is_training(service)
+            .then(|| self.library.service(service).ok().flatten())
+            .flatten()
+            .is_some_and(|s| training::has_video(&s));
+        if videos {
+            self.training_videos.ensure(false);
+        }
+    }
+
+    /// Points the training services at the videos that arrived or changed,
+    /// and loads an open one again, so its video items play.
+    /// Only when something changed: a download that changed nothing
+    /// reloads nothing (the download itself tells Present how it went), so
+    /// a missing video never sets off another look.
+    fn training_videos_tick(&mut self) {
+        let Some(changes) = self.training_videos.take_changes() else {
+            return;
+        };
+        let changed = changes.any();
+        for (from, to) in changes.moved {
+            self.library.replace_training_media(from, to);
+        }
+        // An item saying "downloading" should now say how it went.
+        if changed || self.shows_downloading {
+            let open = self.loaded.as_ref().map(|l| l.view.service);
+            if let Some(open) = open.filter(|id| self.library.is_training(*id)) {
+                if let Err(e) = self.reload_if_open(open) {
+                    eprintln!("lampstand: the training service was not loaded again: {e}");
+                }
+            }
+        }
+        if changed {
+            (self.emit)(Event::Changed {
+                kind: "service".into(),
+                id: String::new(),
+            });
+        }
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -2260,7 +2609,12 @@ impl App {
     fn restore(&mut self) {
         let record = self.journal.recover(now());
         let loaded = match record.as_ref().and_then(|r| r.service) {
-            Some(service) => self.load_service(service).map(|_| ()),
+            Some(service) => {
+                // A training service back in Present: its videos download
+                // on their own thread, so the start is not held up.
+                self.fetch_training_videos(service);
+                self.load_service(service).map(|_| ())
+            }
             None => Ok(()),
         };
         self.restoring = false;
@@ -2287,7 +2641,7 @@ impl App {
         }
         match record.overlay {
             Overlay::Black => commands.push(Command::ToggleBlack),
-            Overlay::Logo => commands.push(Command::ToggleLogo),
+            Overlay::Idle => commands.push(Command::ToggleIdle),
             Overlay::None => {}
         }
         if !record.text {
@@ -2339,6 +2693,9 @@ impl App {
             preview: self.live.preview(),
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
+            cleared: cleared(&self.live),
+            returns_to: self.live.returns_to(),
+            on_ready: self.live.on_detour(),
         });
     }
 
@@ -2500,6 +2857,26 @@ fn item_sounds(item: &ServiceItem) -> Vec<ItemSoundView> {
         .collect()
 }
 
+/// How long a slide kept ready on its own waits before each of its builds
+/// plays by itself (`LoadedItem::auto_builds_ms`): until what played before
+/// it has finished (what plays as the slide arrives, then each build), and
+/// a short pause to read it.
+fn autoplay_waits(entry: &[Animation], builds: &[Vec<Animation>]) -> Vec<u32> {
+    const PAUSE_MS: u32 = 800;
+    let length = |anims: &[Animation]| {
+        anims
+            .iter()
+            .map(|a| a.delay_ms.saturating_add(a.duration_ms))
+            .max()
+            .unwrap_or(0)
+    };
+    std::iter::once(entry)
+        .chain(builds.iter().map(Vec::as_slice))
+        .take(builds.len())
+        .map(|played| length(played).saturating_add(PAUSE_MS))
+        .collect()
+}
+
 fn slide_view(slide: &LoadedSlide) -> SlideView {
     let (label, lines, footer) = match &slide.content {
         Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => (
@@ -2565,7 +2942,7 @@ fn fresh_key() -> String {
 }
 
 /// The services as the list shows them, in order.
-/// The training services, Training 0 first, listed after the church's own.
+/// The training services, Training Session 0 first, listed after the church's own.
 fn training_summaries(library: &Library) -> Vec<ServiceSummary> {
     library
         .training_services()

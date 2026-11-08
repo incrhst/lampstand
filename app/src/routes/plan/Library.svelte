@@ -40,6 +40,7 @@
   import { chooseTranslation } from "../../lib/bibles";
   import { loadDefaultTranslation, saveDefaultTranslation } from "../../lib/bibleSetting";
   import Button from "../../lib/kit/Button.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
@@ -60,6 +61,7 @@
     ondecks,
     ontranslations,
     onhide,
+    onback,
   }: {
     /** The service rows are added to, if one is selected. */
     service: Service | null;
@@ -77,8 +79,10 @@
     onsongs: (hits: SongHit[]) => void;
     ondecks: () => Promise<void>;
     ontranslations: () => Promise<void>;
-    /** Hides the library; Plan shows a strip to bring it back. */
+    /** Hides Library & controls, the sidebar the library is a page of. */
     onhide?: () => void;
+    /** Back to the front page of Library & controls. With it, the head is the sidebar's: Back / Library and Hide. */
+    onback?: () => void;
   } = $props();
 
   // Device-local preferences and history. Storage can be missing or full
@@ -342,7 +346,7 @@
     }
     if (!entry.item) return;
     if (!service) {
-      live.status = "Pick a service on the left first";
+      live.status = "Pick a service first, under Services";
       return;
     }
     if (await onadd(entry.item)) flash(entry);
@@ -370,7 +374,7 @@
   async function addSoundLink(url: string) {
     if (busy) return;
     if (!service) {
-      live.status = "Pick a service on the left first";
+      live.status = "Pick a service first, under Services";
       return;
     }
     busy = true;
@@ -762,8 +766,13 @@
 
 <aside class="pane pane-side library" aria-label="Library" bind:this={panel} ondragover={ondropover} {ondrop}>
   <header class="head">
-    <div class="title-row">
-      <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+    {#if onback && onhide}
+      <SideHead title={libraryCount > 0 ? `Library · ${libraryCount}` : "Library"} {onback} {onhide} />
+    {/if}
+    <div class="title-row" class:tools-only={!!onback}>
+      {#if !onback}
+        <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+      {/if}
       <div class="add">
         <Button
           size="small"
@@ -779,7 +788,7 @@
           Add files
         </Button>
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
-        {#if onhide}
+        {#if onhide && !onback}
           <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
         {/if}
       </div>
@@ -892,7 +901,7 @@
     {#if service}
       Click or <kbd>Enter</kbd> adds to <span class="target">{service.title}</span> · drag to place
     {:else}
-      Pick a service on the left to start adding
+      Pick a service under Services to start adding
     {/if}
   </footer>
 
@@ -927,6 +936,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+  /* Inside Library & controls the sidebar's head names it; this row keeps the add buttons. */
+  .title-row.tools-only {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .count {
     margin-left: 0.5rem;

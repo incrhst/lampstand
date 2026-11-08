@@ -1,9 +1,13 @@
-<!-- Service planning: services down the left, the selected service's
-     order in the middle, the song, scripture, deck and media library on the right.
+<!-- Service planning: the selected service's order, with one sidebar on
+     the right, Library & controls, the same as Present's. Its front page
+     has the Library (search, browse, Services) on top and the controls
+     (Screens) under it; the Library and Services open as pages inside it,
+     with Back. F or its Hide button hides it, and every launch starts
+     with it open.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
   import PresentAction from "../../lib/kit/PresentAction.svelte";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
     request,
@@ -21,10 +25,13 @@
     type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
+  import { isPicture } from "../../lib/obs";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
+  import SideRow from "../../lib/kit/SideRow.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
@@ -52,59 +59,41 @@
   import { splitText, textTitle } from "../../lib/textSlides";
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
+  import ReadyAdd from "./ReadyAdd.svelte";
+  import { isPinned } from "../../lib/ready";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
   import { WELCOME_TITLE } from "../../lib/getStarted";
 
-  let { onopened }: { onopened: () => void } = $props();
+  let { onopened, onscreens }: { onopened: () => void; onscreens?: () => void } = $props();
 
-  // The side columns hide on a narrow window so the running order keeps
-  // its room: below these widths they start hidden. Showing or hiding one
-  // by hand is remembered on this device and wins over the width. Below
-  // DRAWERS_BELOW they are drawers over the running order instead, one at
-  // a time and not remembered, so the order is never squeezed to nothing.
-  const SERVICES_FROM = 1100;
-  const LIBRARY_FROM = 1280;
+  // Below this width Library & controls is a drawer over the running
+  // order rather than a column that squeezes it.
   const DRAWERS_BELOW = 900;
-  const choice = (key: string): boolean | null => {
-    try {
-      const v = localStorage.getItem(key);
-      return v === null ? null : v === "1";
-    } catch {
-      return null;
-    }
-  };
-  const remember = (key: string, shown: boolean) => {
-    try {
-      localStorage.setItem(key, shown ? "1" : "0");
-    } catch {
-      // Not remembered this time.
-    }
-  };
   let width = $state(typeof window === "undefined" ? 1440 : window.innerWidth);
-  let servicesChoice = $state(choice("lampstand.plan.services"));
-  let libraryChoice = $state(choice("lampstand.plan.library"));
   let narrow = $derived(width < DRAWERS_BELOW);
-  let drawer: "services" | "library" | null = $state(null);
-  let showServices = $derived(narrow ? drawer === "services" : (servicesChoice ?? width >= SERVICES_FROM));
-  let showLibrary = $derived(narrow ? drawer === "library" : (libraryChoice ?? width >= LIBRARY_FROM));
-  function setServices(shown: boolean) {
-    if (narrow) {
-      drawer = shown ? "services" : null;
-      return;
-    }
-    servicesChoice = shown;
-    remember("lampstand.plan.services", shown);
+  // live.focus is true while Library & controls is hidden (F, Hide, or the
+  // menu bar's button). It is never remembered: every launch starts open.
+  let focus = $derived(live.focus);
+  /** Which page of Library & controls shows: its front page, or one inside it. */
+  type SidePage = "front" | "library" | "services";
+  let page: SidePage = $state("front");
+  function openPage(to: SidePage) {
+    page = to;
+    live.focus = false;
+    // The search box on the front page opens the Library ready to type.
+    if (to === "library") tick().then(() => document.querySelector<HTMLInputElement>('.library-slot input[aria-label="Search the library"]')?.focus());
   }
-  function setLibrary(shown: boolean) {
-    if (narrow) {
-      drawer = shown ? "library" : null;
-      return;
-    }
-    libraryChoice = shown;
-    remember("lampstand.plan.library", shown);
+  const hideSide = () => (live.focus = true);
+  const back = () => (page = "front");
+  function sideKeys(e: KeyboardEvent) {
+    if (e.key !== "Escape" || focus || page === "front" || e.defaultPrevented) return;
+    if (document.querySelector('[aria-modal="true"]')) return;
+    e.preventDefault();
+    back();
   }
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled && !isPicture(o)).length);
 
   let services: ServiceSummary[] = $state([]);
   let selected: Service | null = $state(null);
@@ -361,8 +350,8 @@
 
   async function select(id: string) {
     editWhen = null;
-    // A drawer has done its job once a service is picked.
-    if (narrow && drawer === "services") drawer = null;
+    // On a narrow window the drawer has done its job once a service is picked.
+    if (narrow) live.focus = true;
     try {
       selected = await request({ area: "Service", request: { Get: id } }, "Service");
       live.planning = id;
@@ -646,6 +635,53 @@
         { area: "Service", request: { RemoveItem: { service: selected.id, item } } },
         "Service",
       );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // Ready (Present's Ready card): what the operator keeps one tap away. A
+  // pin keeps an item of the order there; a deck or media can be kept there
+  // without going in the order.
+  let readyAddOpen = $state(false);
+  let readyRows = $derived.by(() => {
+    if (!selected) return [];
+    const s = selected;
+    return Object.entries(s.ready ?? {})
+      .filter(([id, e]) => e.source !== "Order" || id in s.items)
+      .sort(([a, x], [b, y]) => (x.position < y.position ? -1 : x.position > y.position ? 1 : a < b ? -1 : 1))
+      .map(([id, e]) => {
+        if (e.source === "Order") return { id, inOrder: true, title: itemTitle(s.items[id]), icon: kindIcon[kindName(s.items[id].kind)] };
+        if ("Slide" in e.source) {
+          const { deck, slide } = e.source.Slide;
+          return { id, inOrder: false, title: `${deckById[deck]?.title ?? "Deck"} · slide ${slide + 1}`, icon: kindIcon.Deck };
+        }
+        const k = e.source.Own.kind;
+        const title = "Media" in k ? k.Media.name : "Deck" in k ? (deckById[k.Deck.deck]?.title ?? "Deck") : "Item";
+        return { id, inOrder: false, title, icon: kindIcon[kindName(k)] };
+      });
+  });
+  async function setPinned(item: string, ready: boolean) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { PinReady: { service: selected.id, item, ready } } }, "Service");
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function removeReady(item: string) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { RemoveReady: { service: selected.id, item } } }, "Service");
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function readyAdded() {
+    readyAddOpen = false;
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { Get: selected.id } }, "Service");
     } catch (e) {
       report(e);
     }
@@ -1027,111 +1063,9 @@
   </select>
 {/snippet}
 
-<svelte:window bind:innerWidth={width} onkeydown={(e) => narrow && drawer && e.key === "Escape" && (drawer = null)} />
+<svelte:window bind:innerWidth={width} onkeydown={sideKeys} />
 
-<div class="plan" class:narrow class:no-services={!showServices} class:no-library={!showLibrary}>
-  {#if !showServices || narrow}
-    <button
-      type="button"
-      class="rail rail-left"
-      class:open={showServices}
-      title={showServices ? "Hide the services" : "Show the services"}
-      aria-expanded={showServices}
-      onclick={() => setServices(!showServices)}
-    >
-      <Icon name="panelLeft" size={16} />
-      <span class="rail-label">Services</span>
-    </button>
-  {/if}
-  <!-- Hidden, not removed: what it holds (a half-typed new service) stays. -->
-  <aside class="pane pane-side services" aria-label="Services" hidden={!showServices}>
-    <div class="pane-head">
-      <span class="head-start">
-        <Button size="small" variant="ghost" icon="panelLeft" label="Hide the services" title="Hide the services" onclick={() => setServices(false)} />
-        <h2>Services</h2>
-      </span>
-      <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
-    </div>
-    {#if creating}
-      <form
-        class="create"
-        onsubmit={(e) => {
-          e.preventDefault();
-          create();
-        }}
-      >
-        <!-- svelte-ignore a11y_autofocus -->
-        <input aria-label="New service title" bind:value={newTitle} onkeydown={onKeys(create)} autofocus />
-        <div class="when">
-          <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
-          <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
-        </div>
-        {@render zonePicker(newWhen)}
-        <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
-          <option value="">Start empty</option>
-          <option value={SAMPLE}>Start from the sample service (songs, a verse and music)</option>
-          {#each ownServices as s (s.id)}
-            <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
-          {/each}
-        </select>
-        <Button variant="primary" size="small" onclick={create}>Create</Button>
-      </form>
-    {/if}
-    <ul class="plain pane-body">
-      {#each shown as s (s.id)}
-        <ListRow
-          title={s.title}
-          subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`}
-          active={selected?.id === s.id}
-          onclick={() => select(s.id)}
-        >
-          {#snippet details()}
-            {#if live.loaded?.service === s.id}
-              <span class="row-status"><span class="live-dot"></span>Open for live</span>
-            {/if}
-          {/snippet}
-        </ListRow>
-      {:else}
-        <li class="empty muted">No services yet.</li>
-      {/each}
-      {#if olderCount > 0 || showOlder}
-        <li class="older">
-          <Button variant="ghost" size="small" onclick={() => (showOlder = !showOlder)}>
-            {showOlder ? "Hide older services" : `Show ${olderCount} older`}
-          </Button>
-        </li>
-      {/if}
-      {#if trainingServices.length > 0}
-        <li class="group-head" id="training-head">Training</li>
-        {#each trainingServices as s (s.id)}
-          <ListRow
-            title={s.title}
-            subtitle={`${s.items} ${s.items === 1 ? "item" : "items"} · Practise in Present`}
-            active={selected?.id === s.id}
-            onclick={() => select(s.id)}
-          >
-            {#snippet details()}
-              {#if live.loaded?.service === s.id}
-                <span class="row-status"><span class="live-dot"></span>Open for live</span>
-              {/if}
-            {/snippet}
-          </ListRow>
-        {/each}
-      {/if}
-    </ul>
-    {#if newer > 0}
-      <Banner tone="warn">
-        {newer === 1 ? "1 service was" : `${newer} services were`} saved by a newer Lampstand and can't be opened here. Update Lampstand to see {newer === 1 ? "it" : "them"}.
-      </Banner>
-    {/if}
-    {#each damaged as id (id)}
-      <Banner tone="warn">
-        A service file is damaged and can't be shown.
-        <Button variant="ghost" size="small" icon="trash" onclick={() => removeDamaged(id)}>Delete it</Button>
-      </Banner>
-    {/each}
-  </aside>
-
+<div class="plan" class:narrow class:focus>
   <section class="pane order" aria-labelledby="service-title">
     {#if selected}
       <div class="order-head">
@@ -1353,6 +1287,7 @@
                       {/if}
                       {#if loops}<span class="tag">Loops {item.loop_seconds} s</span>{/if}
                       {#if item.obs_scene}<span class="tag">OBS: {item.obs_scene}</span>{/if}
+                      {#if isPinned(selected, id)}<span class="tag"><Icon name="star" size={11} /> Ready</span>{/if}
                       <button
                         type="button"
                         class="chevron"
@@ -1443,6 +1378,11 @@
                               onchange={(scene) => setObsScene(id, scene)}
                             />
                           {/if}
+                          {#if !readOnly}
+                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="One tap away in Present's Ready card, without losing the place in the service">
+                              {isPinned(selected, id) ? "Kept ready" : "Keep ready in Present"}
+                            </Button>
+                          {/if}
                           <span class="spacer"></span>
                           <Button variant="ghost" size="small" icon="trash" onclick={() => remove(id)}>Remove from service</Button>
                         </div>
@@ -1463,138 +1403,254 @@
             {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true">{#if dragHint}<span class="drop-hint">{dragHint}</span>{/if}</li>{/if}
           </ol>
         {/if}
+        {#if selected && (!readOnly || readyRows.length > 0)}
+          <!-- Ready: Present's Ready card, prepared here. Not part of the
+               order: Next never lands on these. -->
+          <section class="ready" aria-labelledby="plan-ready">
+            <h3 class="eyebrow" id="plan-ready">Ready in Present</h3>
+            <p class="muted ready-note">One tap away during the service, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
+            {#if readyRows.length > 0}
+              <ul class="plain ready-list">
+                {#each readyRows as r (r.id)}
+                  <li class="ready-row">
+                    <Icon name={r.icon} size={14} />
+                    <span class="ready-title">{r.title}</span>
+                    <span class="muted ready-where">{r.inOrder ? "In the order" : "Only in Ready"}</span>
+                    {#if !readOnly}
+                      <Button variant="ghost" size="small" icon="x" label="Take {r.title} out of Ready" onclick={() => (r.inOrder ? setPinned(r.id, false) : removeReady(r.id))} />
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            {#if !readOnly}
+              <div class="ready-actions">
+                <Button size="small" icon="plus" onclick={() => (readyAddOpen = true)}>Add a deck or media</Button>
+                <span class="muted ready-note">or open an item and choose Keep ready in Present.</span>
+              </div>
+            {/if}
+          </section>
+          {#if readyAddOpen}
+            <ReadyAdd service={selected.id} ready={selected.ready ?? {}} onclose={() => (readyAddOpen = false)} onadded={readyAdded} />
+          {/if}
+        {/if}
       </div>
     {:else}
       <div class="no-service">
         <Icon name="calendar" size={24} />
-        <p class="muted">Pick a service on the left, or create a new one.</p>
+        <p class="muted">Open Services in Library &amp; controls, on the right, to pick a service or make a new one.</p>
       </div>
     {/if}
   </section>
 
-  <!-- Hidden, not removed: the library keeps its search and a SongSelect
-       watch running while it is out of the way. -->
-  <div class="library-slot" hidden={!showLibrary}>
-  <Library
-    service={readOnly ? null : selected}
-    {items}
-    {decks}
-    {translations}
-    onadd={(kind) => addItem(kind)}
-    ondragover={carryOver}
-    ondragend={carryEnd}
-    onsongs={songsFound}
-    ondecks={loadDecks}
-    ontranslations={loadTranslations}
-    onhide={() => setLibrary(false)}
-  />
-  </div>
-  {#if !showLibrary || narrow}
-    <button
-      type="button"
-      class="rail rail-right"
-      class:open={showLibrary}
-      title={showLibrary ? "Hide the library" : "Show the library"}
-      aria-expanded={showLibrary}
-      onclick={() => setLibrary(!showLibrary)}
-    >
-      <Icon name="panelRight" size={16} />
-      <span class="rail-label">Library</span>
-    </button>
-  {/if}
+  <!-- Library & controls. Its pages are hidden, not removed, so a
+       half-typed new service and the library's search stay put. -->
+  <aside id="library-and-controls" class="pane pane-side side" aria-label="Library and controls" hidden={focus}>
+    <div class="side-front" hidden={page !== "front"}>
+      <SideHead onhide={hideSide} />
+      <h3 class="side-zone-head">Library</h3>
+      <button type="button" class="side-find" onclick={() => openPage("library")}>
+        <Icon name="search" size={15} />Find a song, reading or video to add
+      </button>
+      <SideRow icon="song" label="Browse the library" onclick={() => openPage("library")} />
+      <SideRow icon="calendar" label="Services" summary={`${ownServices.length} planned`} onclick={() => openPage("services")} />
+      <h3 class="side-zone-head">Controls</h3>
+      <SideRow icon="monitor" label="Screens" summary={screensOn === 0 ? "None on" : `${screensOn} on`} title="Open Setup › Screens" onclick={() => onscreens?.()} />
+      {#if shown.length > 0}
+        <h3 class="side-zone-head quiet">Next services</h3>
+        <ul class="plain">
+          {#each shown.slice(0, 3) as s (s.id)}
+            <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)} />
+          {/each}
+        </ul>
+      {/if}
+    </div>
+
+    <div class="side-page services" hidden={page !== "services"}>
+      <div class="pane-head">
+        <SideHead title="Services" onback={back} onhide={hideSide} />
+      </div>
+      <div class="new-service">
+        <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
+      </div>
+      {#if creating}
+        <form
+          class="create"
+          onsubmit={(e) => {
+            e.preventDefault();
+            create();
+          }}
+        >
+          <!-- svelte-ignore a11y_autofocus -->
+          <input aria-label="New service title" bind:value={newTitle} onkeydown={onKeys(create)} autofocus />
+          <div class="when">
+            <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
+            <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
+          </div>
+          {@render zonePicker(newWhen)}
+          <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
+            <option value="">Start empty</option>
+            <option value={SAMPLE}>Start from the sample service (songs, a verse and music)</option>
+            {#each ownServices as s (s.id)}
+              <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
+            {/each}
+          </select>
+          <Button variant="primary" size="small" onclick={create}>Create</Button>
+        </form>
+      {/if}
+      <ul class="plain pane-body">
+        {#each shown as s (s.id)}
+          <ListRow
+            title={s.title}
+            subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`}
+            active={selected?.id === s.id}
+            onclick={() => select(s.id)}
+          >
+            {#snippet details()}
+              {#if live.loaded?.service === s.id}
+                <span class="row-status"><span class="live-dot"></span>Open for live</span>
+              {/if}
+            {/snippet}
+          </ListRow>
+        {:else}
+          <li class="empty muted">No services yet.</li>
+        {/each}
+        {#if olderCount > 0 || showOlder}
+          <li class="older">
+            <Button variant="ghost" size="small" onclick={() => (showOlder = !showOlder)}>
+              {showOlder ? "Hide older services" : `Show ${olderCount} older`}
+            </Button>
+          </li>
+        {/if}
+        {#if trainingServices.length > 0}
+          <li class="group-head" id="training-head">Training</li>
+          {#each trainingServices as s (s.id)}
+            <ListRow
+              title={s.title}
+              subtitle={`${s.items} ${s.items === 1 ? "item" : "items"} · Practise in Present`}
+              active={selected?.id === s.id}
+              onclick={() => select(s.id)}
+            >
+              {#snippet details()}
+                {#if live.loaded?.service === s.id}
+                  <span class="row-status"><span class="live-dot"></span>Open for live</span>
+                {/if}
+              {/snippet}
+            </ListRow>
+          {/each}
+        {/if}
+      </ul>
+      {#if newer > 0}
+        <Banner tone="warn">
+          {newer === 1 ? "1 service was" : `${newer} services were`} saved by a newer Lampstand and can't be opened here. Update Lampstand to see {newer === 1 ? "it" : "them"}.
+        </Banner>
+      {/if}
+      {#each damaged as id (id)}
+        <Banner tone="warn">
+          A service file is damaged and can't be shown.
+          <Button variant="ghost" size="small" icon="trash" onclick={() => removeDamaged(id)}>Delete it</Button>
+        </Banner>
+      {/each}
+    </div>
+
+    <div class="library-slot" hidden={page !== "library"}>
+    <Library
+      service={readOnly ? null : selected}
+      {items}
+      {decks}
+      {translations}
+      onadd={(kind) => addItem(kind)}
+      ondragover={carryOver}
+      ondragend={carryEnd}
+      onsongs={songsFound}
+      ondecks={loadDecks}
+      ontranslations={loadTranslations}
+      onback={back}
+      onhide={hideSide}
+    />
+    </div>
+  </aside>
 </div>
 
 <style>
   .plan {
-    --services: 248px;
-    --library: 340px;
+    --side: 340px;
     display: grid;
-    grid-template-columns: var(--services) minmax(0, 1fr) var(--library);
+    grid-template-columns: minmax(0, 1fr) var(--side);
     height: 100%;
   }
-  .plan.no-services,
-  .plan.narrow {
-    --services: 2.5rem;
+  .plan.focus {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .plan.no-library,
-  .plan.narrow {
-    --library: 2.5rem;
+  .plan.focus > .order {
+    width: min(56rem, 100%);
+    justify-self: center;
   }
-  /* On a narrow window an open side column is a drawer over the running
-     order, beside its strip, instead of a column that squeezes it. */
-  .plan.narrow {
-    position: relative;
-  }
-  .plan.narrow > .services:not([hidden]),
-  .plan.narrow > .library-slot:not([hidden]) {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 5;
-    width: min(340px, calc(100% - 5rem));
-    background: var(--panel);
-    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.45);
-  }
-  .plan.narrow > .services {
-    left: 2.5rem;
-  }
-  .plan.narrow > .library-slot {
-    right: 2.5rem;
-  }
-  .rail.open {
-    color: var(--text);
-    background: var(--raised);
-  }
-  .plan > [hidden] {
+  .plan > [hidden],
+  .side > [hidden] {
     display: none;
   }
-  .library-slot:not([hidden]) {
+  /* Library & controls: one column on the right, as in Present. */
+  .side {
+    border-left: 1px solid var(--line);
+  }
+  .side-front {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.85rem 0.75rem 1rem;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .side-front > :global(.side-head),
+  .side-front > .side-zone-head,
+  .side-front > .side-find {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    width: auto;
+  }
+  .side-zone-head.quiet {
+    color: var(--muted);
+    font-weight: 500;
+    margin-top: 0.9rem;
+  }
+  .side-page,
+  .library-slot {
     display: flex;
     flex-direction: column;
     min-height: 0;
     min-width: 0;
+    flex: 1;
+  }
+  .side-page > .pane-head {
+    padding-bottom: 0.25rem;
+  }
+  .side-page > .pane-head > :global(.side-head) {
+    flex: 1;
+  }
+  .new-service {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 1rem 0.75rem;
   }
   .library-slot > :global(*) {
     flex: 1;
   }
-  .head-start {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: -0.4rem;
+  /* A narrow window: a drawer over the running order, not a column that
+     squeezes it. */
+  .plan.narrow {
+    grid-template-columns: minmax(0, 1fr);
+    position: relative;
   }
-  /* A hidden side column leaves a strip at the edge to bring it back. */
-  .rail {
-    font: inherit;
-    color: var(--muted);
-    background: color-mix(in srgb, var(--panel) 60%, transparent);
-    border: none;
-    padding: 1.25rem 0 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.6rem;
-    cursor: pointer;
-    min-height: 0;
-  }
-  .rail:hover {
-    color: var(--text);
-    background: var(--raised);
-  }
-  .rail-left {
-    border-right: 1px solid var(--line);
-  }
-  .rail-right {
-    border-left: 1px solid var(--line);
-  }
-  .rail-label {
-    writing-mode: vertical-rl;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
-  .services {
-    border-right: 1px solid var(--line);
+  .plan.narrow > .side:not([hidden]) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(var(--side), calc(100% - 3rem));
+    background: var(--panel);
+    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.45);
   }
   .create {
     display: flex;
@@ -1860,6 +1916,53 @@
   }
   .spacer {
     flex: 1;
+  }
+  .ready {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+  }
+  .ready-note {
+    font-size: 0.8125rem;
+  }
+  .ready-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ready-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.25rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .ready-row :global(.icon) {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .ready-title {
+    min-width: 0;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ready-where {
+    margin-left: auto;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .ready-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
   }
   .eyebrow {
     font-size: 0.7rem;

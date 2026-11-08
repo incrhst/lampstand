@@ -10,10 +10,16 @@
 //! cannot deadlock on full socket buffers. Blob chunks go through a small
 //! bounded queue behind sync frames, so a video transfer never delays a
 //! lyric fix by more than one chunk.
+//!
+//! A blob arriving is written to its own temp file in `incoming/`, named
+//! for the hash and a random suffix, so two devices sending the same blob
+//! at once (each over its own session) never write into one file. It is
+//! dropped, and the file deleted, once it grows past the node's cap
+//! ([`super::MAX_BLOB`]).
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -38,9 +44,19 @@ const BEAT: Duration = crate::roles::HEARTBEAT;
 /// device is gone even if the socket has not noticed.
 const SILENCE: Duration = Duration::from_secs(30);
 
+/// A blob being received: its temp file and how much has arrived.
 struct Incoming {
     path: PathBuf,
     file: std::fs::File,
+    received: u64,
+    /// The node's cap when the transfer started.
+    limit: u64,
+}
+
+/// Deletes partly received blobs left by a run that stopped mid-transfer.
+/// Each transfer has its own file, so nothing else would replace them.
+pub(crate) fn clear_incoming(dir: &Path) {
+    let _ = std::fs::remove_dir_all(dir.join("incoming"));
 }
 
 pub(crate) async fn run(
@@ -381,17 +397,22 @@ impl State {
             return;
         }
         if !self.incoming.contains_key(&hash) {
-            let dir = self.node.dir.join("incoming");
-            let path = dir.join(format!("{hash}.part"));
-            let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(&path));
-            match file {
-                Ok(file) => {
-                    self.incoming.insert(hash, Incoming { path, file });
+            match self.start_incoming(&hash) {
+                Ok(f) => {
+                    self.incoming.insert(hash, f);
                 }
                 Err(e) => return self.finish(hash, Err(e.into())),
             }
         }
         let f = self.incoming.get_mut(&hash).expect("just inserted");
+        f.received = f.received.saturating_add(data.len() as u64);
+        if f.received > f.limit {
+            let limit = f.limit;
+            eprintln!("lampstand: the file {hash} is larger than {limit} bytes: dropped");
+            self.node.blob_too_big(hash, limit);
+            // Later chunks of it find no want and are ignored.
+            return self.finish(hash, Err(SyncNode::too_big_error(&hash, limit)));
+        }
         if let Err(e) = f.file.write_all(data) {
             return self.finish(hash, Err(e.into()));
         }
@@ -416,6 +437,25 @@ impl State {
         .await
         .unwrap_or(Err(NetError::Closed));
         self.finish(hash, result);
+    }
+
+    /// A new temp file for one transfer of `hash`, never shared with
+    /// another session or an earlier transfer.
+    fn start_incoming(&self, hash: &BlobHash) -> std::io::Result<Incoming> {
+        let dir = self.node.dir.join("incoming");
+        std::fs::create_dir_all(&dir)?;
+        let suffix = u64::from_le_bytes(crate::repo::random_bytes::<8>());
+        let path = dir.join(format!("{hash}-{suffix:016x}.part"));
+        let file = std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        Ok(Incoming {
+            path,
+            file,
+            received: 0,
+            limit: self.node.max_blob(),
+        })
     }
 
     fn finish(&mut self, hash: BlobHash, result: Result<(), NetError>) {
@@ -451,4 +491,128 @@ fn read_full(file: &mut std::fs::File, buf: &mut [u8]) -> std::io::Result<usize>
         }
     }
     Ok(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::NodeConfig;
+    use crate::team::DeviceKeypair;
+    use crate::Repo;
+
+    fn node(dir: &Path) -> Arc<SyncNode> {
+        let key = DeviceKeypair::generate();
+        let repo = Arc::new(
+            Repo::open(
+                dir.join("repo"),
+                DeviceKeypair::from_secret_bytes(key.secret_bytes()),
+            )
+            .unwrap(),
+        );
+        SyncNode::new(
+            repo,
+            key,
+            NodeConfig {
+                name: "Sanctuary".into(),
+                dir: dir.join("sync"),
+            },
+        )
+        .unwrap()
+    }
+
+    /// A session with a peer, as `run` makes it, minus the socket.
+    fn session(node: &Arc<SyncNode>, peer: u8) -> State {
+        let (out, _) = mpsc::unbounded_channel();
+        let (blob_out, _) = mpsc::channel(4);
+        State {
+            node: node.clone(),
+            peer: DeviceKey([peer; 32]),
+            out,
+            blob_out,
+            wants: HashMap::new(),
+            incoming: HashMap::new(),
+        }
+    }
+
+    fn want(s: &mut State, hash: BlobHash) -> oneshot::Receiver<Result<(), NetError>> {
+        let (tx, rx) = oneshot::channel();
+        s.want(hash, tx);
+        rx
+    }
+
+    fn leftovers(node: &SyncNode) -> Vec<PathBuf> {
+        match std::fs::read_dir(node.dir.join("incoming")) {
+            Ok(dir) => dir.map(|e| e.unwrap().path()).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_blob_past_the_cap_is_dropped_and_its_file_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let node = node(dir.path());
+        node.set_max_blob(10);
+        let mut s = session(&node, 1);
+        let bytes = [7u8; 16];
+        let hash = BlobHash::of(&bytes);
+        let mut rx = want(&mut s, hash);
+
+        s.chunk(hash, &bytes[..8], false).await;
+        assert!(rx.try_recv().is_err(), "8 bytes is under the cap");
+        assert_eq!(leftovers(&node).len(), 1);
+        s.chunk(hash, &bytes[8..], false).await;
+        let err = rx.try_recv().unwrap().unwrap_err().to_string();
+        assert!(err.contains("10-byte limit"), "{err}");
+        assert!(leftovers(&node).is_empty(), "the part file is deleted");
+        // The rest of the stream is ignored, and nothing is stored.
+        s.chunk(hash, &[], true).await;
+        assert!(leftovers(&node).is_empty());
+        assert!(node.repo.blobs().path(&hash).is_none());
+
+        // A blob exactly at the cap is taken.
+        let small = [3u8; 10];
+        let small_hash = BlobHash::of(&small);
+        let mut rx = want(&mut s, small_hash);
+        s.chunk(small_hash, &small, true).await;
+        rx.try_recv().unwrap().unwrap();
+        assert!(node.repo.blobs().path(&small_hash).is_some());
+    }
+
+    #[tokio::test]
+    async fn two_peers_sending_the_same_blob_at_once_do_not_mix_their_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let node = node(dir.path());
+        let mut a = session(&node, 1);
+        let mut b = session(&node, 2);
+        let bytes: Vec<u8> = (0..300u32).map(|i| (i % 251) as u8).collect();
+        let hash = BlobHash::of(&bytes);
+        let parts: Vec<&[u8]> = bytes.chunks(100).collect();
+        let mut rx_a = want(&mut a, hash);
+        let mut rx_b = want(&mut b, hash);
+
+        // A is two chunks in when B starts; A finishes while B is midway.
+        a.chunk(hash, parts[0], false).await;
+        a.chunk(hash, parts[1], false).await;
+        b.chunk(hash, parts[0], false).await;
+        assert_eq!(leftovers(&node).len(), 2, "a file per transfer");
+        a.chunk(hash, parts[2], true).await;
+        rx_a.try_recv().unwrap().unwrap();
+        b.chunk(hash, parts[1], false).await;
+        b.chunk(hash, parts[2], true).await;
+        rx_b.try_recv().unwrap().unwrap();
+
+        let path = node.repo.blobs().path(&hash).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+        assert!(leftovers(&node).is_empty());
+    }
+
+    #[test]
+    fn a_new_node_clears_partly_received_blobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let incoming = dir.path().join("sync").join("incoming");
+        std::fs::create_dir_all(&incoming).unwrap();
+        std::fs::write(incoming.join("abc-0123.part"), b"half").unwrap();
+        let _node = node(dir.path());
+        assert!(!incoming.join("abc-0123.part").exists());
+    }
 }

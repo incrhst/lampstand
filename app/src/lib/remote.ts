@@ -5,6 +5,7 @@
 
 import type { Cursor, LoadedItemView, LoadedService, Overlay, SlideView, SoundStart } from "./api";
 import { nextClick } from "./cursor.ts";
+import { loadedItem } from "./ready.ts";
 import { REMOTE_NAME } from "./product.ts";
 import { lengthLabel } from "./sound.ts";
 
@@ -15,7 +16,7 @@ export const words = {
   nameLabel: "Name this phone or tablet",
   pair: "Connect",
   pairing: "Connecting…",
-  pairScope: "It will be able to change the slides and the sound. Nothing else.",
+  pairScope: "It will do only what was chosen on the laptop: run the slides and the sound, or page through one speaker's slides.",
   revoked: "This remote was disconnected on the laptop. Ask for a new PIN to connect again.",
   online: "Connected",
   connecting: "Connecting…",
@@ -23,20 +24,7 @@ export const words = {
   offlineLong:
     "Lost the laptop. Nothing here is up to date until it is back. Check it is on the same Wi-Fi as the laptop.",
   nothingLoaded: "No service is open on the laptop.",
-  nothingOnScreen: "Nothing on screen yet. Next shows the first slide.",
-  onScreen: "On screen",
-  next: "Next",
-  back: "Back",
-  upNext: "Up next",
-  nextBuild: "The next part of this slide",
-  end: "End of the service",
-  black: "Black",
-  logo: "Logo",
-  clear: "Clear",
   clearHint: "Take the words off the screen. The background stays.",
-  screenBlack: "The screen is black",
-  screenLogo: "The screen shows the logo",
-  noAnswer: "The laptop did not answer. Try again.",
 };
 
 /** How long to wait before reconnecting after `attempt` failures: 0.5 s doubling to 10 s, with up to a fifth more at random so phones do not all knock at once. */
@@ -60,7 +48,11 @@ export function pinDigits(typed: string): string {
   return typed.replace(/\D/g, "").slice(0, 6);
 }
 
+/** What a phone is paired for, as the laptop says in its hello (0.9.1). A phone paired before 0.9.1 is an operator's. */
+export type PairedAs = { kind: "Operator" } | { kind: "Speaker"; service: string; item: string; title: string };
+
 /** What the laptop says is live, as the remote shows it. */
+
 export type LiveState = {
   live: Cursor | null;
   /** The slide the screens show: `live`, or the slide before a music-only item that is live. */
@@ -68,6 +60,10 @@ export type LiveState = {
   preview: Cursor | null;
   idle: boolean;
   overlay: Overlay;
+  /** The operator cleared the words of what is live (0.9.1; absent from an older laptop). */
+  cleared?: boolean;
+  /** On a side-trip to a ready item, where Next goes back to (absent from an older laptop). */
+  returns_to?: Cursor | null;
 };
 
 export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };
@@ -76,7 +72,7 @@ export type Shown = { item: LoadedItemView; slide: SlideView; cursor: Cursor };
 export function onScreen(loaded: LoadedService | null, live: LiveState | null): Shown | null {
   const cursor = live?.shown !== undefined ? live.shown : live?.live;
   if (!loaded || !cursor) return null;
-  const item = loaded.items.find((i) => i.id === cursor.item);
+  const item = loadedItem(loaded, cursor.item);
   const slide = item?.slides[cursor.slide];
   return item && slide ? { item, slide, cursor } : null;
 }
@@ -86,7 +82,7 @@ export type Coming = { title: string; slide: SlideView; cursor: Cursor; build: b
 /** What Next puts on screen: the next build step of the slide, the next slide, or nothing at the end. */
 export function upNext(loaded: LoadedService | null, live: LiveState | null): Coming | null {
   if (!loaded) return null;
-  const next = nextClick(loaded, live?.live ?? null);
+  const next = nextClick(loaded, live?.live ?? null, live?.returns_to ?? null);
   return next ? { title: next.title, slide: next.slide, cursor: next.cursor, build: next.build } : null;
 }
 
