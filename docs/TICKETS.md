@@ -479,12 +479,12 @@ Only say this when the service has a stream output or items with an OBS scene, s
 | T103 | Plan contract types | S | — | PL-4 | `core/src/plan.rs` | Done |
 | T104 | Notion client | S | — | PL-4 | `connectors/src/notion.rs`, `connectors/Cargo.toml` | Done (pages and blocks; see 0007 revision) |
 | T105 | Notion page to plan | S | T103, T104 | PL-4 | `connectors/src/notion/page.rs`, `connectors/tests/notion.rs` | Done (reads the chapel's pages, not databases) |
-| T106 | Song and passage resolver | **O** | T103, T15 | PL-4 | `library/src/plan_match.rs` | Not started |
-| T107 | Service remembers its source | S | — | PL-4 | `core/src/service.rs` | Not started |
-| T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
+| T106 | Song and passage resolver | **O** | T103, T15 | PL-4 | `library/src/plan_match.rs` | Done |
+| T107 | Service remembers its source | S | — | PL-4 | `core/src/service.rs` | Done |
+| T108 | Draft and create from a plan | S | T103, T105, T106, T107 | PL-4 | `api/src/`, `app/src-tauri/src/plan.rs` | Done (link only; `NotionServices` waits for a parent-page listing) |
 | T109 | Update a service from its plan | **O** | T107, T108 | PL-4 | `library/src/plan_update.rs`, `api/src/`, `app/src-tauri/src/plan.rs` | Not started |
 | T110 | Setup › Connections: Notion | S | T104 | PL-4 | `app/src/routes/setup/`, `app/src-tauri/src/notion.rs` | Not started |
-| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/` | In review (#194) |
+| T111 | Plan › From Notion: review and create | S | T108, T110 | PL-4 | `app/src/routes/plan/FromNotion.svelte` | Done except the Playwright test (the app has no Playwright setup yet) and Update (T109) |
 | T112 | Real responses and the church's plans | S | T105, T106 | PL-4 | `connectors/tests/fixtures/notion/`, `library/tests/` | Not started |
 
 **Revised 2026-11-08:** the chapel's plans are free-form pages, so T104 reads a page's blocks and T105 reads the page template instead of three databases ([decision 0007, revision](decisions/0007-plans-from-notion.md#revision-reading-the-chapels-pages-2026-11-08)). T108's `DraftFromNotion` takes a page link, not a Services row, reads it with `notion::public` first and the token client only for a private page, and `NotionServices` waits for a parent-page listing. T110 (the token) is needed only for private pages. T103, T104 and T107 can start together. T105 and T106 follow. T108 joins everything; T110 can run beside T105 to T108.

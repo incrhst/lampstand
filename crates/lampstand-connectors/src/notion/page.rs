@@ -302,7 +302,6 @@ struct Reader {
 }
 
 struct Section {
-    title: String,
     songs: bool,
     readings: bool,
 }
@@ -368,7 +367,6 @@ impl Reader {
             readings: ["scripture", "reading", "passage"]
                 .iter()
                 .any(|w| key.contains(w)),
-            title,
         });
         if let Some(value) = value {
             self.content(
@@ -407,8 +405,10 @@ impl Reader {
             // "Leader: TBD" and the like are about people and are skipped.
             let title = match label {
                 Some(l) if is_song || is_reading => l.to_string(),
-                None if section.songs => format!("{}: song", section.title),
-                None if section.readings => format!("{}: reading", section.title),
+                // The section's header comes just before, so "Song" or
+                // "Reading" says enough.
+                None if section.songs => "Song".to_string(),
+                None if section.readings => "Reading".to_string(),
                 _ => return,
             };
             let mut entry = PlanEntry::new(self.id(id), 0.0, EntryType::Other, title);

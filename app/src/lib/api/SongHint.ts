@@ -3,4 +3,4 @@
 /**
  * What the planner knows about a song. Used only for matching.
  */
-export type SongHint = { title: string, author?: string | null, ccli?: bigint | null, key?: string | null, };
+export type SongHint = { title: string, author?: string | null, ccli?: number | null, key?: string | null, };

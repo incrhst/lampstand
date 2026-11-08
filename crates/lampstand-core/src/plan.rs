@@ -125,7 +125,7 @@ pub struct SongHint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ccli: Option<u64>,
+    pub ccli: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
 }
@@ -170,7 +170,7 @@ pub enum Outcome {
         /// What the plan said about the song, for "create a blank song".
         hint_title: String,
         hint_author: Option<String>,
-        hint_ccli: Option<u64>,
+        hint_ccli: Option<u32>,
         hint_key: Option<String>,
         /// The key for remembering the person's choice.
         remember_as: String,

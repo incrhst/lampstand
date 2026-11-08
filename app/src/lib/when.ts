@@ -74,6 +74,11 @@ function offsetAt(at: number, zone: string): number {
   return asUtc - Math.floor(at / 1000) * 1000;
 }
 
+/** How far `zone` is ahead of UTC at instant `at`, in whole minutes (-300 for Jamaica). */
+export function offsetMinutes(at: number, zone: string): number {
+  return Math.round(offsetAt(at, zone) / 60_000);
+}
+
 /**
  * The instant a wall-clock time in `zone` happens. A time skipped by a
  * daylight-saving change moves forward by the gap; a repeated one picks

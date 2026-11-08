@@ -249,3 +249,33 @@ fn describe(app: &mut App, service: &Service) -> Vec<String> {
         })
         .collect()
 }
+
+/// The chapel's real 8 November page, read live and matched against a
+/// small library, printed as the draft the review screen gets. Needs the
+/// network: `cargo test -p lampstand-app --test plan -- --ignored --nocapture`.
+#[test]
+#[ignore = "reads the live page from notion.so"]
+fn drafts_the_live_november_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = open(dir.path());
+    for title in [
+        "Come Thou Almighty King",
+        "Indescribable",
+        "I Stand in Awe",
+        "I Exalt Thee",
+        "Holy, Holy, Holy",
+    ] {
+        put_song(&mut app, title);
+    }
+    let link = "https://app.notion.com/p/Service-Plan-November-8-2026-Daniel-Fokum-4127e73ae67c813c933eeddf604829ae";
+    let (plan, warnings) = tauri::async_runtime::block_on(lampstand_app::plan::read_notion(
+        link,
+        Some("America/Jamaica".into()),
+        Some(-300),
+    ))
+    .unwrap();
+    let mut d = draft(&mut app, plan);
+    d.warnings.splice(0..0, warnings);
+    assert_eq!(d.plan.title, "Service Plan – November 8, 2026");
+    println!("DRAFT {}", serde_json::to_string(&d).unwrap());
+}

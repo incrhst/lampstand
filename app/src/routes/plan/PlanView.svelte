@@ -60,6 +60,7 @@
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
   import ReadyAdd from "./ReadyAdd.svelte";
+  import FromNotion from "./FromNotion.svelte";
   import { isPinned } from "../../lib/ready";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
@@ -98,6 +99,8 @@
   let services: ServiceSummary[] = $state([]);
   let selected: Service | null = $state(null);
   let creating = $state(false);
+  /** The New service from Notion dialog (T111). */
+  let fromNotion = $state(false);
   let newTitle = $state("Sunday service");
   /** The service the New service form copies its items from, `SAMPLE` for the sample service, or "" for an empty one. */
   let copyFrom = $state("");
@@ -1472,7 +1475,19 @@
       </div>
       <div class="new-service">
         <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
+        <Button size="small" icon="download" onclick={() => (fromNotion = true)} title="Make a service from a plan in Notion">From Notion</Button>
       </div>
+      {#if fromNotion}
+        <FromNotion
+          onclose={() => (fromNotion = false)}
+          oncreated={async (service) => {
+            fromNotion = false;
+            selected = service;
+            live.planning = service.id;
+            await refresh();
+          }}
+        />
+      {/if}
       {#if creating}
         <form
           class="create"
@@ -1631,6 +1646,7 @@
   .new-service {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     padding: 0 1rem 0.75rem;
   }
   .library-slot > :global(*) {

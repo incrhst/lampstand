@@ -10,7 +10,7 @@ arrangement: Array<string> | null,
 /**
  * What the plan said about the song, for "create a blank song".
  */
-hint_title: string, hint_author: string | null, hint_ccli: bigint | null, hint_key: string | null, 
+hint_title: string, hint_author: string | null, hint_ccli: number | null, hint_key: string | null, 
 /**
  * The key for remembering the person's choice.
  */

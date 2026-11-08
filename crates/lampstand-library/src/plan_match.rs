@@ -198,7 +198,7 @@ fn resolve_entry(
 fn match_song(
     title: &str,
     author: Option<&str>,
-    ccli: Option<u64>,
+    ccli: Option<u32>,
     remember_as: &str,
     catalog: &Catalog,
     context: &Context,
@@ -214,7 +214,7 @@ fn match_song(
         let by_number: Vec<&Song> = catalog
             .songs
             .iter()
-            .filter(|s| s.ccli_number.map(u64::from) == Some(ccli))
+            .filter(|s| s.ccli_number == Some(ccli))
             .collect();
         match by_number.as_slice() {
             [one] => return found(one, MatchedBy::Ccli),
@@ -606,7 +606,7 @@ fn item_for(
                 (Choice::CreateBlank, _) => {
                     let mut song = Song::new(hint_title.clone());
                     song.author = hint_author.clone();
-                    song.ccli_number = hint_ccli.and_then(|n| u32::try_from(n).ok());
+                    song.ccli_number = *hint_ccli;
                     song.key = hint_key.clone();
                     let id = song.id;
                     built.new_songs.push(song);

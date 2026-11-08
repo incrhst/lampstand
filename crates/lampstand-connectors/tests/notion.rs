@@ -177,7 +177,7 @@ fn reads_the_november_plan() {
             (Other, "Congregational Song"),
             (Header, "Opening Prayer"),
             (Header, "First Scripture Reading"),
-            (Other, "First Scripture Reading: reading"),
+            (Other, "Reading"),
             (Header, "Praise and Worship"),
             (Song, "Indescribable"),
             (Song, "I Stand in Awe of You"),
@@ -199,7 +199,7 @@ fn reads_the_november_plan() {
             (Scripture, "Romans 8:22–25"),
             (Slides, "Sermon"),
             (Header, "Call for Response and closing song"),
-            (Other, "Call for Response and closing song: song"),
+            (Other, "Song"),
         ]
     );
 
@@ -295,7 +295,7 @@ fn reads_the_august_plan() {
         [
             "Welcome and Opening Prayer",
             "First Scripture Reading",
-            "First Scripture Reading: reading",
+            "Reading",
             "Opening Songs",
             "All Hail the Power of Jesus' Name",
             "Lord I Lift Your Name on High",
@@ -566,9 +566,6 @@ async fn reads_the_live_november_page() {
         .entries
         .iter()
         .any(|e| e.title == "Come Thou Almighty King"));
-    assert!(plan
-        .entries
-        .iter()
-        .any(|e| e.title == "Call for Response and closing song: song"));
+    assert!(plan.entries.iter().any(|e| e.title == "Song"));
     assert!(!plan.to_json().contains("Fokum"));
 }
