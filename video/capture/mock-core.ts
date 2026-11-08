@@ -138,7 +138,9 @@ if (state.scene === "ready-few") (sunday as any).ready = {
   i2: { position: "5000", source: "Order" },
   rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
 };
-if (state.scene === "ready") (sunday as any).ready = {
+// "ready-video": the Ready card with a looping video as the idle screen.
+if (state.scene === "ready-video") settings = { ...settings, idle: { Video: { blob: "vidle", name: "Worship background.mp4" } } };
+if (state.scene === "ready" || state.scene === "ready-video") (sunday as any).ready = {
   i2: { position: "5000", source: "Order" },
   rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } },
   i4: { position: "5002", source: "Order" },
@@ -294,7 +296,9 @@ function api(req: any): any {
         case "ListDecks": return { type: "Decks", data: state.scene === "empty" ? [] : decks.filter((d) => !trainingDecks.includes(d)) };
         case "ListTrainingDecks": return { type: "Decks", data: trainingDecks };
         case "ListMedia": return { type: "MediaFiles", data: [] };
-        case "DeckThumbnail": case "MediaThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        case "DeckThumbnail": return { type: "Thumbnail", data: svgThumb("Slides") };
+        // A video's still: a soft gradient with its name, as a stand-in for its first frame.
+        case "MediaThumbnail": return { type: "Thumbnail", data: "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#1d2b64'/><stop offset='1' stop-color='#6b3fa0'/></linearGradient></defs><rect width='320' height='180' fill='url(#g)'/><text x='160' y='96' fill='#f5f1e8' font-family='sans-serif' font-size='16' text-anchor='middle'>${String(arg.name).replace(/\.mp4$/, "")}</text></svg>`) };
         // With a logo, the default idle screen is the logo, small and centred.
         case "IdlePreview": return { type: "Thumbnail", data: logoThumb };
       }

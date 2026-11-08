@@ -879,6 +879,7 @@
                     {showGuide}
                     size="small"
                     idle={live.idle || live.overlay === "Idle" ? look.idle : null}
+                    idleVideo={look.idleInfo.video}
                     brand={look.brand}
                     empty="Nothing on air"
                   />
@@ -933,9 +934,20 @@
                  up what the service keeps one tap away (a pinned item, or a
                  deck or media kept only here) without losing the place. -->
             <SideCard title="Ready" key="lampstand.present.ready" summary={ready.length > 0 ? `${ready.length}` : undefined}>
+              <!-- Blank and Idle as pictures of what the screens will show; a
+                   looping video idle screen says so, since its picture is a still. -->
               <div class="ready-screens">
-                <Button variant="danger" icon="eyeOff" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} title="Black screens, until you tap again (.)">Blank</Button>
-                <Button icon="image" onclick={() => command("ToggleIdle")} pressed={live.overlay === "Idle"} title="The idle screen, without ending the service, until you tap again or show a slide">Idle</Button>
+                <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
+                  <SlidePreview overlay="Black" size="small" />
+                  <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
+                </button>
+                <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide">
+                  <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
+                  <span class="screen-caption">
+                    <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
+                    <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
+                  </span>
+                </button>
               </div>
               {#if ready.length > 0}
                 <ul class="plain ready-tiles" aria-label="Kept ready">
@@ -1568,9 +1580,60 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.4rem;
   }
-  .ready-screens :global(button) {
-    height: 2.75rem;
-    justify-content: center;
+  .screen-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    padding: 0.2rem;
+    font: inherit;
+    font-size: 0.8rem;
+    text-align: left;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .screen-pick:hover {
+    border-color: var(--gold-hover);
+  }
+  .screen-pick.on {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+  }
+  .screen-pick.blank.on {
+    border-color: var(--live);
+    box-shadow: 0 0 0 1px var(--live);
+  }
+  .screen-caption {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0 0.15rem;
+  }
+  .screen-caption :global(.icon) {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .screen-caption kbd {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.7em;
+    padding: 0 0.3rem;
+    color: var(--muted);
+    border: 1px solid currentColor;
+    border-radius: 3px;
+  }
+  .screen-what {
+    margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--muted);
   }
   .ready-tiles {
     display: grid;
