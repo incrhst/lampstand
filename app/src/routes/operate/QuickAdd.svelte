@@ -13,6 +13,7 @@
   import { entryAction, insertionIndex, newItemId } from "../../lib/quickAdd";
   import { report } from "../../lib/state.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import { modal } from "../../lib/modal";
 
   let {
     service,
@@ -66,8 +67,6 @@
         translation = chooseTranslation(translations, preferred, translation);
       })
       .catch(report);
-    const previous = document.activeElement as HTMLElement | null;
-    return () => previous?.focus?.({ preventScroll: true });
   });
 
   // Each search is numbered so a slow answer to an old query never replaces
@@ -180,7 +179,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onclose}>
-  <div class="palette" role="dialog" aria-modal="true" aria-label="Quick add" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Quick add" tabindex="-1" use:modal onclick={(e) => e.stopPropagation()}>
     <div class="search">
       <Icon name="search" size={16} />
       <input

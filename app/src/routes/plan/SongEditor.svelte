@@ -10,6 +10,7 @@
   import Button from "../../lib/kit/Button.svelte";
   import SongOrder from "./SongOrder.svelte";
   import { sectionTone } from "../../lib/sections";
+  import { modal } from "../../lib/modal";
 
   let { song: id, onclose }: { song: string; onclose: () => void } = $props();
 
@@ -62,7 +63,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-label="Edit song">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Edit song" tabindex="-1" use:modal={"self"}>
     {#if draft}
       <header>
         <h2>Edit song</h2>
@@ -191,7 +192,7 @@
     font-size: 0.875rem;
     color: var(--text);
     background: var(--canvas);
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     border-radius: var(--radius);
     padding: 0.4rem 0.6rem;
   }
@@ -202,6 +203,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     line-height: 1.4;
   }
+  input:focus,
   textarea:focus {
     outline: none;
     border-color: var(--gold);
