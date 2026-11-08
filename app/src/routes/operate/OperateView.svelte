@@ -322,25 +322,22 @@
     if (showNow && id) show({ item: id, slide: 0, step: 0 });
   }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
-  /** Ready's tray, at the bottom right: open unless the operator closed it, remembered on this device. */
-  let readyOpen = $state(
-    (() => {
-      try {
-        return localStorage.getItem("lampstand.present.readyOpen") !== "0";
-      } catch {
-        return true;
-      }
-    })(),
-  );
+  /**
+   * Ready's tray, at the bottom right: open whenever a service is opened for
+   * live, so its tiles are one tap away from the start. Closing it lasts
+   * until the next service is opened; nothing is remembered between them.
+   */
+  let readyOpen = $state(true);
+  let readyFor: string | null = null;
+  $effect(() => {
+    const service = live.loaded?.service ?? null;
+    if (service && service !== readyFor) readyOpen = true;
+    readyFor = service;
+  });
   /** How wide Library & controls is while shown, so Ready's tray opens beside it and never covers On air. */
   let sideWidth = $state(0);
   function setReadyOpen(open: boolean) {
     readyOpen = open;
-    try {
-      localStorage.setItem("lampstand.present.readyOpen", open ? "1" : "0");
-    } catch {
-      // Not remembered: it opens again next time.
-    }
   }
   /** "Close service" asks first when something is on air. */
   let confirmClose = $state(false);
