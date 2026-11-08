@@ -1567,6 +1567,8 @@
       ontranslations={loadTranslations}
       onback={back}
       onhide={hideSide}
+      onservices={() => openPage("services")}
+      training={readOnly}
     />
     </div>
   </aside>
