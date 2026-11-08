@@ -26,7 +26,7 @@
   <h1>{words.setupTitle}</h1>
   <Panel title={words.setupPanel}>
     <Switch
-      checked={live.settings?.use_sound ?? false}
+      checked={live.settings?.use_sound ?? true}
       label={words.setupSwitch}
       disabled={live.settings === null}
       onchange={(on) => saveSettings({ use_sound: on })}

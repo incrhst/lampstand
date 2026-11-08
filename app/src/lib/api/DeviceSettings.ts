@@ -12,10 +12,11 @@ export type DeviceSettings = {
 clicker_mode: boolean, 
 /**
  * Settings › Sound › "Use sound in services": this device offers music-only
- * items and backing tracks in Plan. Off by default. A service that
- * already has sound shows it whatever this says. Kept on this device
- * (not in the synced church settings): a service with sound turns the
- * controls on for every device that has it anyway.
+ * items and backing tracks in Plan. On by default, and on when a saved
+ * file has no value for it; a device where someone turned it off keeps
+ * it off. A service that already has sound shows it whatever this says.
+ * Kept on this device (not in the synced church settings): a service
+ * with sound turns the controls on for every device that has it anyway.
  */
 use_sound: boolean, 
 /**
