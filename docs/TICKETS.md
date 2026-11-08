@@ -543,32 +543,50 @@ These sit on the critical path, but no session can do them:
 
 ## 1.0.0
 
-1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a church-ready cut of Phase 1, plus recording the sermon and adding a song from a link. It is not every P0 in the PRD: the parts that need a server or an outside approval move to 1.x (below).
+1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a slim, church-ready cut of Phase 1: what is already built, made safe, signed and checked on real hardware. It is not every P0 in the PRD: new features wait for 1.1.0 and 1.5.0, and the parts that need a server or an outside approval wait for 1.x (below).
 
-**How it ships.** The GitHub milestone "1.0.0" holds everything 1.0.0 needs. We get there through 0.9.x releases: each new 0.9.x takes a few tickets out of the 1.0.0 milestone into its own milestone, and ships them. 1.0.0 is tagged when the 1.0.0 milestone is empty and the release checks below pass. "Send sound to the stream" (#125, #137, milestone 0.10.0) is part of 1.0.0 too.
+**How it ships.** The GitHub milestone "1.0.0" holds everything 1.0.0 needs. We get there through 0.9.x releases: each new 0.9.x takes a few tickets out of the 1.0.0 milestone into its own milestone, and ships them. 1.0.0 is tagged when the 1.0.0 milestone is empty and the release checks below pass. Where "Send sound to the stream" (#125, #137, milestone 0.10.0) lands is still to be decided.
 
-**The order.** Safety first, because every later release carries it. Then what a church needs on its first Sunday: readiness, CCLI reporting, the migration wizard and service packages. Recording comes alongside: T117 and T119 can start at once. A song from a link (T125) follows Paste lyrics (T114) and the ChordPro importer (T68). Windows signing, accessibility and performance come last, because they check the finished screens.
+**Slimmed on 2026-11-08.** Sermon recording (T117 to T124) moved to 1.5.0, with the readiness check (T36, so it can check the recording input and OBS too), the full performance ticket (T61) and the full WCAG audit (T60), since both are measured with recording running. A song from a link (T125), the ChordPro importer (T68), CCLI reporting (T38), the migration wizard (T55), service packages (T37) and Flathub (part of T95) moved to 1.1.0.
 
-### In 1.0.0, already ticketed
+**The order.** Merge the finished work first (#261 Library & controls, #260 Setup, #91 update status), because the later checks look at those screens. Safety next, because every later release carries it: T77 and T78 share `sync/src/repo/mod.rs` and T80 and T81 share `connectors/src/links.rs`, so each pair goes one after the other; the rest run in parallel. Then the short accessibility pass, Windows signing, the wording in docs and training, and the release checks last.
 
-These tickets are described above. Each gets a 1.0.0 issue.
+### In 1.0.0
 
 | ID | Title | Why it is in 1.0.0 |
 | --- | --- | --- |
+| — | Merge #261 (Library & controls), #260 (Setup: font list, grouped sidebar, "Logo and colours"), #91 (update status) | Finished work the release checks look at. |
 | T65, T76, T77, T78, T79, T80, T81 | Sync, file and download safety ([#217](https://github.com/incrhst/lampstand/issues/217), [#218](https://github.com/incrhst/lampstand/issues/218), [#219](https://github.com/incrhst/lampstand/issues/219), [#220](https://github.com/incrhst/lampstand/issues/220), [#221](https://github.com/incrhst/lampstand/issues/221), [#222](https://github.com/incrhst/lampstand/issues/222), [#223](https://github.com/incrhst/lampstand/issues/223)) | A Sunday must not lose a document, fill a disk or trust a bad file. |
-| T36 | Readiness check and pre-service caching ([#224](https://github.com/incrhst/lampstand/issues/224)) | One green or red answer before the service (CD-10). It also checks recording (T122). |
-| T38 | CCLI usage log and report ([#225](https://github.com/incrhst/lampstand/issues/225)) | Churches have to report what they show (RP-1), more so now that songs come in by paste. |
-| T55 | Migration wizard ([#226](https://github.com/incrhst/lampstand/issues/226)) | Moving from another tool in under an hour (goal 4). |
-| T37 | Service packages ([#227](https://github.com/incrhst/lampstand/issues/227)) | A laptop that can't join the team still gets the service (CD-8). |
-| T95 | Windows signing and Flathub ([#228](https://github.com/incrhst/lampstand/issues/228)) | Most projection laptops run Windows; SmartScreen warnings stop at 1.0.0. |
-| T60 | Accessibility pass ([#229](https://github.com/incrhst/lampstand/issues/229)) | WCAG 2.2 AA (NFR), checked on the finished screens. |
-| T61 | Performance on a 2019 laptop ([#230](https://github.com/incrhst/lampstand/issues/230)) | The NFR budget, measured with OBS and recording running beside it. |
+| T95 | Windows signing ([#228](https://github.com/incrhst/lampstand/issues/228)) | Most projection laptops run Windows; SmartScreen warnings stop at 1.0.0. |
+| T60 | Accessibility, the short pass: keyboard, contrast, labels ([#229](https://github.com/incrhst/lampstand/issues/229)) | Checked on the finished screens, after #261 and #260. |
+| — | Docs and training wording ([#265](https://github.com/incrhst/lampstand/issues/265)) | "Focus" is now "Library & controls" and "Church look" is now "Logo and colours". |
+
+### 1.1.0
+
+| ID | Title |
+| --- | --- |
+| T125 | Add a song from a link ([#244](https://github.com/incrhst/lampstand/issues/244)); needs T114 and T68 |
+| T68 | ChordPro file importer ([#245](https://github.com/incrhst/lampstand/issues/245)) |
+| T38 | CCLI usage log and report ([#225](https://github.com/incrhst/lampstand/issues/225)) |
+| T55 | Migration wizard ([#226](https://github.com/incrhst/lampstand/issues/226)) |
+| T37 | Service packages ([#227](https://github.com/incrhst/lampstand/issues/227)) |
+| T95 | Flathub ([#264](https://github.com/incrhst/lampstand/issues/264)) |
+
+### 1.5.0
+
+| ID | Title |
+| --- | --- |
+| T117 to T124 | Recording the sermon (below; [#209](https://github.com/incrhst/lampstand/issues/209) to [#216](https://github.com/incrhst/lampstand/issues/216)) |
+| T36 | Readiness check and pre-service caching ([#224](https://github.com/incrhst/lampstand/issues/224)); it also checks recording (T122) |
+| T61 | Performance on a 2019 laptop ([#230](https://github.com/incrhst/lampstand/issues/230)), measured with OBS and recording running |
+| T60 | The full WCAG 2.2 AA audit, recording screens included ([#263](https://github.com/incrhst/lampstand/issues/263)) |
+| — | Release checks for recording ([#262](https://github.com/incrhst/lampstand/issues/262)) |
 
 ### After 1.0.0 (1.x)
 
-Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload links (T19, T44, T64), Google Slides and linked deck updates (T40, T41, the rest of T53), the fidelity report and the deck corpus (the rest of T31, T32), Teams permissions (the rest of T18, T54), and the P1 and P2 tickets (T63, T66, T67, T69 to T74, T82, T83, T85, T92, T94, T96). Plans from Notion (T103 to T112), Paste lyrics and the library MCP server (T114 to T116) keep their own order and may ship in any 0.9.x; T125 needs T114 first.
+Not rejected, but no release waits for them yet: the sync relay and guest upload links (T19, T44, T64), Google Slides and linked deck updates (T40, T41, the rest of T53), the fidelity report and the deck corpus (the rest of T31, T32), Teams permissions (the rest of T18, T54), and the P1 and P2 tickets (T63, T66, T67, T69 to T74, T82, T83, T85, T92, T94, T96). Plans from Notion (T103 to T112), Paste lyrics and the library MCP server (T114 to T116) keep their own order and may ship in any 0.9.x; T125 needs T114 first.
 
-### Recording the sermon
+### Recording the sermon (1.5.0)
 
 [Decision 0012](decisions/0012-recording-the-sermon.md): Lampstand records the sermon's audio from one input on the computer that runs the stream, and starts and stops OBS's own video recording if the church wants that. An item marked "Record this" starts and stops it, and so do buttons in Present. Recordings stay on that computer, where they are trimmed and exported as MP3. Read the decision first: the details marked **proposed** there need the owner's approval in the pull request that builds them.
 
@@ -599,7 +617,7 @@ Not rejected, but 1.0.0 does not wait for them: the sync relay and guest upload 
 
 **T124. Documentation for recording.** In `roles.md`: Stream also records the sermon, the changed sentence about room sound (decision 0012, "What this changes"), and the hand-over prompt while recording. In ARCHITECTURE.md: a "Recording the sermon" section, the protocol 10 frames, and what syncs (nothing about recordings beyond `RecordNow`). In RELEASING.md: a real-hardware recording check (a USB interface on a Mac and on Windows, recording while OBS and Zoom read the same input, a power-cut recording repaired, an export played on a phone). On the website: a Recording page for volunteers, in the house style. Done when every **proposed** detail in decision 0012 is either approved or changed in the decision.
 
-### A song from a link
+### A song from a link (1.1.0)
 
 [Decision 0013](decisions/0013-song-from-a-link.md): paste a link to the church's own shared document or song file, or to a public-domain hymn, and Lampstand reads it as a song for the person to check. Lyric sites and SongSelect links are refused before any request, with the way that works. Read the decision first.
 
@@ -622,10 +640,11 @@ Done when tests (wiremock, as `links` has) cover a Google Doc, a Dropbox ChordPr
 
 Tracked in [#231](https://github.com/incrhst/lampstand/issues/231).
 
-- The real-hardware recording check in RELEASING.md (T124), on a Mac and a Windows computer, with the interface a church would use.
-- A full mock service on the 2019-class laptop (T61), with three outputs, OBS streaming and the sermon recording.
-- The 0.9.0 checks again (#186 sound, #179 phones and tablets) on the 1.0.0 build.
+- A full mock service on the 2019-class laptop, with three outputs and OBS streaming, fixing what it turns up (the full T61 is in 1.5.0).
+- The 0.9.0 checks again (#186 sound, #179 phones and tablets) on the 1.0.0 build, on a Mac and on Windows.
 - Windows signing in place (T95), and the "Not code" items above that 1.0.0 still needs.
+
+The recording checks (the real-hardware check from T124, and the mock service with the sermon recording) moved to 1.5.0 in [#262](https://github.com/incrhst/lampstand/issues/262).
 
 ## Parallelism at a glance
 
