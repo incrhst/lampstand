@@ -11,7 +11,7 @@ export interface TipFacts {
   liveItem: string | null;
   /** How many slides the item on air has. */
   liveSlides?: number;
-  /** The church has set a logo (Setup › Church look). */
+  /** The church has set a logo (Setup › Logo and colours). */
   hasLogo?: boolean;
   /** Devices paired with this one; undefined until sync has been asked. */
   paired?: number;
@@ -69,7 +69,7 @@ export const TIPS: Tip[] = [
     clip: "tips/loop-progress.mp4",
     area: "Present",
     title: "See the time left on a slide",
-    body: "While a group loops, a thin bar along the bottom of the live screen fills as the slide's time runs out.",
+    body: "While a group loops, a thin gold bar along the bottom of the LIVE card and the On air picture fills as the slide's time runs out.",
     relevant: (f) => sections(f).some((s) => s.seconds !== null && f.liveItem !== null && s.items.includes(f.liveItem)),
     used: () => false,
   },
@@ -113,7 +113,7 @@ export const TIPS: Tip[] = [
     id: "logo-bug",
     area: "Present",
     title: "Put your logo in a corner",
-    body: "Switch on Logo bug in the Screen card, beside the wall, to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Church look.",
+    body: "Switch on Logo bug in the Screen card, beside the wall, to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Logo and colours.",
     relevant: (f) => onAir(f) && f.hasLogo === true,
     used: never,
   },

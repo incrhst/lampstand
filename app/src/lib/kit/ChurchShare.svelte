@@ -1,5 +1,5 @@
 <!-- The note on pages whose settings follow the church to its other devices
-     (Church look, the idle screen): "Shared with your other devices" or
+     (Logo and colours, the idle screen): "Shared with your other devices" or
      "This device only", the files still to arrive, and, once, the choice
      between two looks that were made apart. -->
 <script lang="ts">

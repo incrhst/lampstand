@@ -209,7 +209,7 @@ export function themeFor(
 }
 
 /**
- * The theme a brand makes, for the sketch beside the Church look form. The
+ * The theme a brand makes, for the sketch beside the Logo and colours form. The
  * core makes the real one (`lampstand_library::theme_from_brand`) the same
  * way: the Starter theme with the brand's colours and font.
  */
