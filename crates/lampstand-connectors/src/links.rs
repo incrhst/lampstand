@@ -236,22 +236,51 @@ fn filename_from_disposition(value: &str) -> Option<String> {
     if let Some(v) = param("filename*") {
         // RFC 5987: charset'lang'percent-encoded
         let encoded = v.rsplit('\'').next().unwrap_or(&v);
-        let decoded = percent_decode(encoded);
-        if !decoded.is_empty() {
-            return Some(decoded);
+        if let Some(name) = safe_file_name(&percent_decode(encoded)) {
+            return Some(name);
         }
     }
-    param("filename").filter(|n| !n.is_empty())
+    param("filename").and_then(|n| safe_file_name(&n))
 }
 
+/// A name from a server or a link, made safe to use as a file name: only
+/// its last path part (either slash), without control characters,
+/// characters Windows refuses, or leading dots and spaces (so it can't be
+/// hidden or be `..`). `None` when nothing is left.
+fn safe_file_name(name: &str) -> Option<String> {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let cleaned: String = last
+        .chars()
+        .filter(|c| !c.is_control())
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+            c => c,
+        })
+        .collect();
+    // Windows also drops trailing dots and spaces.
+    let cleaned = cleaned
+        .trim_start_matches(['.', ' '])
+        .trim_end_matches(['.', ' ']);
+    (!cleaned.is_empty()).then(|| cleaned.to_string())
+}
+
+/// Decodes `%XX` escapes. Works on bytes, so a `%` before a multi-byte
+/// character is left as it is (never a slice through the character), and
+/// only two hex digits count as an escape.
 fn percent_decode(s: &str) -> String {
+    fn hex(b: u8) -> Option<u8> {
+        (b as char).to_digit(16).map(|d| d as u8)
+    }
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(b);
+        if bytes[i] == b'%' {
+            if let (Some(hi), Some(lo)) = (
+                bytes.get(i + 1).copied().and_then(hex),
+                bytes.get(i + 2).copied().and_then(hex),
+            ) {
+                out.push(hi << 4 | lo);
                 i += 3;
                 continue;
             }
@@ -449,14 +478,9 @@ async fn fetch_sound_limited(
         .get(CONTENT_DISPOSITION)
         .and_then(|v| v.to_str().ok())
         .and_then(filename_from_disposition)
-        .unwrap_or_else(|| link.fallback_name.clone());
-    // Only the last part of a name: it must not point outside `dir`.
-    let name = Path::new(&name.replace('\\', "/"))
-        .file_name()
-        .and_then(|n| n.to_str())
-        .filter(|n| !n.is_empty() && *n != "..")
-        .unwrap_or("Track")
-        .to_string();
+        // The link's own name was percent-decoded, so it can hold a `/` too.
+        .or_else(|| safe_file_name(&link.fallback_name))
+        .unwrap_or_else(|| "Track".into());
 
     let io = |e: std::io::Error| SoundFetchError::Disk(e.to_string());
     let path = dir.join(&name);
@@ -577,6 +601,85 @@ mod tests {
             Some("Café.pptx")
         );
         assert_eq!(filename_from_disposition("inline"), None);
+    }
+
+    #[test]
+    fn percent_decode_edges() {
+        // A trailing escape is decoded.
+        assert_eq!(percent_decode("a%20"), "a ");
+        assert_eq!(percent_decode("%20"), " ");
+        // A `%` before a multi-byte character is kept, not sliced through.
+        assert_eq!(percent_decode("%é"), "%é");
+        assert_eq!(percent_decode("%2é"), "%2é");
+        assert_eq!(percent_decode("a%€b"), "a%€b");
+        // Incomplete or non-hex escapes stay as they are.
+        assert_eq!(percent_decode("50%"), "50%");
+        assert_eq!(percent_decode("%2"), "%2");
+        assert_eq!(percent_decode("%zz"), "%zz");
+        // `from_str_radix` would take "+1" as a number; an escape is two hex digits.
+        assert_eq!(percent_decode("%+1"), "%+1");
+        assert_eq!(percent_decode("Caf%C3%A9"), "Café");
+    }
+
+    #[test]
+    fn content_disposition_names_are_safe_file_names() {
+        let name = |v: &str| filename_from_disposition(v);
+        assert_eq!(
+            name("attachment; filename=\"../../evil.pptx\"").as_deref(),
+            Some("evil.pptx")
+        );
+        assert_eq!(
+            name("attachment; filename=\"..\\\\..\\\\evil.pptx\"").as_deref(),
+            Some("evil.pptx")
+        );
+        assert_eq!(
+            name("attachment; filename*=UTF-8''..%2F..%2Fetc%2Fevil.pptx").as_deref(),
+            Some("evil.pptx")
+        );
+        assert_eq!(
+            name("attachment; filename*=UTF-8''%2Fabs%5Cevil.pptx").as_deref(),
+            Some("evil.pptx")
+        );
+        // Control characters go, hidden names are not hidden.
+        assert_eq!(
+            name("attachment; filename*=UTF-8''Sun%00da%0Ay.pptx").as_deref(),
+            Some("Sunday.pptx")
+        );
+        assert_eq!(
+            name("attachment; filename=\".hidden.pptx\"").as_deref(),
+            Some("hidden.pptx")
+        );
+        assert_eq!(
+            name("attachment; filename=\"C:deck?.pptx\"").as_deref(),
+            Some("C_deck_.pptx")
+        );
+        // Nothing left: the caller's fallback is used.
+        assert_eq!(name("attachment; filename=\"..\""), None);
+        assert_eq!(name("attachment; filename=\"../\""), None);
+        assert_eq!(name("attachment; filename*=UTF-8''%2E%2E"), None);
+    }
+
+    #[tokio::test]
+    async fn fetch_sanitises_the_deck_name() {
+        let (_s, url) = serve(
+            ResponseTemplate::new(200)
+                .insert_header(
+                    "content-disposition",
+                    "attachment; filename=\"../../Sunday.pptx\"",
+                )
+                .set_body_bytes(PPTX),
+        )
+        .await;
+        let got = fetch_url(&url, "f.pptx", None).await.unwrap().unwrap();
+        assert_eq!(got.name, "Sunday.pptx");
+        let (_s, url) = serve(
+            ResponseTemplate::new(200)
+                .insert_header("content-disposition", "attachment; filename=\"..\"")
+                .set_body_bytes(PPTX),
+        )
+        .await;
+        let got = fetch_url(&url, "f.pptx", None).await.unwrap().unwrap();
+        assert_eq!(got.name, "f.pptx");
     }
 
     #[tokio::test]
@@ -837,6 +940,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(path, dir.path().join("Track"));
+        // A link name that decoded to a path (`..%2F..%2Fx.mp3`).
+        let path = fetch_sound_limited(&sound_link(url.clone(), "../../x.mp3"), dir.path(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(path, dir.path().join("x.mp3"));
         // A name that tries to leave the folder.
         let (_server, url) = serve(
             ResponseTemplate::new(200)
