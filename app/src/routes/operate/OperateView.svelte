@@ -1,7 +1,9 @@
 <!-- Operator panel: the wall. Every item's slides in the order of
      service, the slide on air marked LIVE and the one Next shows marked
-     NEXT. The sidecard beside it holds what is on air with Previous, Next
-     and Blank, the screen, the room (OBS, Quick add, Sound, the group loop),
+     NEXT. The sidebar beside it, Library & controls (the same name as
+     Plan's), starts with the Library: a search box that adds a song or
+     reading next (Quick add). Under Controls come what is on air with
+     Previous, Next and Blank, the screen, the room (OBS, Sound, the group loop),
      and cards that fold away: remotes, clearing and the keys. While a deck
      slide with builds is on air it also shows the next click. Where OBS
      matters, one OBS control (the scene on air and the next item's scene)
@@ -36,7 +38,7 @@
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
   import { steppedDown, windowToDemote } from "../../lib/primary";
   import { isTyping, KEYS as keys, modLabel } from "../../lib/shortcuts";
-  import ModeSwitch from "../../lib/kit/ModeSwitch.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
   import SideCard from "../../lib/kit/SideCard.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import ConnectRemote from "./ConnectRemote.svelte";
@@ -401,7 +403,7 @@
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
   /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
   let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
-  /** Focus: the cards only. F turns it on and off, Esc leaves it; closing the service leaves it too. */
+  /** Library & controls hidden (live.focus): F hides and shows it, Esc brings it back; closing the service brings it back too. */
   function setFocus(on: boolean) {
     live.focus = on;
   }
@@ -671,11 +673,10 @@
            so any slide is a click away. The LIVE and NEXT marks on the
            cards say what is on air and what Next shows. The sidecard beside
            it holds the screen, the controls and the room, as cards that
-           fold; Focus (F) hides it and the menu bar. -->
+           fold; F or its Hide button hides it, leaving a pill with the panic controls. -->
       <section class="pane wall-pane" aria-label="The whole service">
         {#if live.focus}
-          <div class="focus-pill" role="group" aria-label="Focus">
-            <ModeSwitch current="operate" {mod} {onplan} />
+          <div class="focus-pill" role="group" aria-label="Library and controls are hidden">
             <span class="state" role="status"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
             {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
             <!-- Labelled controls, so Focus never relies on keys alone; the
@@ -684,7 +685,7 @@
             <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
             <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
             <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
-            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the menu bar and the sidecard again (F or Esc)">Exit focus</Button>
+            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the Library and the controls again (F or Esc)">Show<span class="side-what"> library &amp; controls</span></Button>
           </div>
         {/if}
         <div class="wall-body">
@@ -762,7 +763,7 @@
              Narrow, On air stands on its own beside a column of the rest
              (Sound first) that scrolls, so Previous, Next, Blank and Stop
              the sound now always stay in view. -->
-        <aside class="sidecard" aria-label="On air and the room">
+        <aside id="library-and-controls" class="sidecard" aria-label="Library and controls">
           <div class="side-onair">
             <SideCard title="On air">
               <figure class="monitor">
@@ -812,6 +813,15 @@
           </div>
 
           <div class="side-rest">
+            <!-- Library on top, then Controls, as in Plan. -->
+            <div class="side-top">
+              <SideHead onhide={() => setFocus(true)} />
+              <h3 class="side-zone-head">Library</h3>
+              <button type="button" class="side-find" title="Add a song or scripture after what is on air (/)" onclick={() => { quickAddOpen = true; used("quick-add"); }}>
+                <Icon name="search" size={15} /><span>Find a song or reading to add next</span><kbd>/</kbd>
+              </button>
+              <h3 class="side-zone-head">Controls</h3>
+            </div>
             {#if screensOn === 0}<div class="no-screen side-notice">{@render noScreen()}</div>{/if}
             {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice side-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
             {#if loadedTraining && trainingLine}
@@ -856,7 +866,6 @@
                   <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
                 </button>
               {/if}
-              <button type="button" class="side-row" title="Quick add a song or scripture after what is on air" onclick={() => { quickAddOpen = true; used("quick-add"); }}><Icon name="plus" size={14} />Quick add<kbd>/</kbd></button>
             </SideCard>
 
             {#if live.loaded && liveSection}
@@ -882,7 +891,7 @@
                   <dd>{what}</dd>
                 {/each}
                 <dt>F</dt>
-                <dd>Focus: the cards only</dd>
+                <dd>Hide or show Library &amp; controls</dd>
                 {#if pill}
                   <dt>O</dt>
                   <dd>Control OBS</dd>
@@ -1317,6 +1326,24 @@
   .side-notice {
     order: -1;
   }
+  /* The head and the Library come before everything, notices included. */
+  .side-top {
+    order: -3;
+    display: flex;
+    flex-direction: column;
+  }
+  .side-top .side-zone-head:first-of-type {
+    margin-top: 0.25rem;
+  }
+  .side-find kbd {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.72em;
+    padding: 0 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    opacity: 0.8;
+  }
   .sidecard :global(.sound) {
     margin: 0;
     background: var(--panel);
@@ -1366,17 +1393,9 @@
   .side-row.quiet:hover {
     color: var(--text);
   }
-  .side-hint,
-  .side-row kbd {
+  .side-hint {
     margin-left: auto;
     color: var(--muted);
-  }
-  .side-row kbd {
-    font: inherit;
-    font-size: 0.72em;
-    padding: 0 0.3rem;
-    border: 1px solid currentColor;
-    border-radius: 3px;
   }
   .clear {
     display: grid;
@@ -1449,7 +1468,7 @@
       max-width: 12rem;
     }
   }
-  /* Focus: the cards only, with what is on air and the way out in a pill. */
+  /* Library & controls hidden: what is on air, the panic controls and the way back in a pill. */
   .focus-pill {
     position: absolute;
     top: 0.75rem;
@@ -1464,6 +1483,18 @@
     border-radius: 999px;
     background: var(--panel);
     font-size: 0.75rem;
+  }
+  /* Smaller windows: the pill's button says just Show; screen readers
+     still hear the rest. */
+  @media (max-width: 1100px) {
+    .focus-pill .side-what {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
   /* The smallest windows: the buttons keep their words, the key hints go. */
   @media (max-width: 780px) {
