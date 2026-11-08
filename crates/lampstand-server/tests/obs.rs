@@ -250,6 +250,8 @@ async fn the_page_is_transparent_and_loads_its_script_and_fonts() {
     assert_eq!(status, 200);
     let css = String::from_utf8(css).unwrap();
     for family in [
+        "Literata",
+        "Source Sans 3",
         "Noto Sans",
         "Noto Serif",
         "Carlito",

@@ -26,19 +26,19 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 10,
-     "y": 20,
-     "label": "Your services"
-    },
-    {
      "x": 46,
      "y": 62,
      "label": "The order of service"
     },
     {
-     "x": 86,
-     "y": 45,
-     "label": "Songs, verses, slides"
+     "x": 82,
+     "y": 40,
+     "label": "Your services, in Library & controls"
+    },
+    {
+     "x": 77,
+     "y": 11,
+     "label": "Back: songs, readings, slides"
     }
    ],
    "say": "Plan is where the service is built during the week. Put songs, Bible readings and slides in order. Anyone on the team can help, from their own computer.",
@@ -53,22 +53,22 @@
    "callouts": [
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "What the room sees"
     },
     {
      "x": 45,
-     "y": 72,
+     "y": 64,
      "label": "LIVE: on air now"
     },
     {
      "x": 87.5,
-     "y": 45.5,
+     "y": 62.5,
      "label": "Space moves on"
     },
     {
-     "x": 11.5,
-     "y": 70,
+     "x": 10.5,
+     "y": 69,
      "label": "Notes only you see"
     }
    ],

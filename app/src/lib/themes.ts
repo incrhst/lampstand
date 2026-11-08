@@ -13,8 +13,10 @@ export const STARTER_THEME_ID = "01920000-0000-7000-8000-6c616d707374";
  * machine. A church can type any other font installed on this computer.
  */
 export const bundledFonts = [
-  { family: "Noto Sans", note: "Clean, modern" },
-  { family: "Noto Serif", note: "Traditional" },
+  { family: "Literata", note: "Serif, the default" },
+  { family: "Source Sans 3", note: "Sans-serif" },
+  { family: "Noto Serif", note: "Serif, many alphabets" },
+  { family: "Noto Sans", note: "Sans-serif, many alphabets" },
   { family: "Arimo", note: "Like Arial" },
   { family: "Tinos", note: "Like Times New Roman" },
   { family: "Carlito", note: "Like Calibri" },

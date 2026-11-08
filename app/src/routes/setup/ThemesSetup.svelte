@@ -387,7 +387,7 @@
                   {#if pictures[s.id] && !previewFailed}
                     <img src={pictures[s.id]} alt="{s.label} sample" />
                   {:else}
-                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} />
+                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} song={s.id === "Lyrics"} />
                   {/if}
                 </div>
                 <figcaption class="muted">{s.label}</figcaption>
@@ -416,7 +416,7 @@
                 oninput={changed}
                 onpick={changed}
                 spellcheck="false"
-                placeholder="Noto Sans"
+                placeholder="Literata"
               />
             </label>
             <label>

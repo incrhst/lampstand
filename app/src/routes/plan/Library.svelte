@@ -345,7 +345,7 @@
     }
     if (!entry.item) return;
     if (!service) {
-      live.status = "Pick a service on the left first";
+      live.status = "Pick a service first, under Services";
       return;
     }
     if (await onadd(entry.item)) flash(entry);
@@ -373,7 +373,7 @@
   async function addSoundLink(url: string) {
     if (busy) return;
     if (!service) {
-      live.status = "Pick a service on the left first";
+      live.status = "Pick a service first, under Services";
       return;
     }
     busy = true;
@@ -872,7 +872,7 @@
     {#if service}
       Click or <kbd>Enter</kbd> adds to <span class="target">{service.title}</span> · drag to place
     {:else}
-      Pick a service on the left to start adding
+      Pick a service under Services to start adding
     {/if}
   </footer>
 
