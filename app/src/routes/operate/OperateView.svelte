@@ -685,7 +685,7 @@
             <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
             <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
             <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
-            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the Library and the controls again (F or Esc)">Show library &amp; controls</Button>
+            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the Library and the controls again (F or Esc)">Show<span class="side-what"> library &amp; controls</span></Button>
           </div>
         {/if}
         <div class="wall-body">
@@ -1483,6 +1483,18 @@
     border-radius: 999px;
     background: var(--panel);
     font-size: 0.75rem;
+  }
+  /* Smaller windows: the pill's button says just Show; screen readers
+     still hear the rest. */
+  @media (max-width: 1100px) {
+    .focus-pill .side-what {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
   /* The smallest windows: the buttons keep their words, the key hints go. */
   @media (max-width: 780px) {

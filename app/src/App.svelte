@@ -274,7 +274,8 @@
         <!-- One name in Plan and Present, so it means the same thing next month. -->
         <button class="setup focus-on" aria-pressed={!focused} aria-controls="library-and-controls" title="{focused ? "Show" : "Hide"} the Library and the controls (F)" onclick={() => (live.focus = !live.focus)}>
           <Icon name="panelRight" size={16} />
-          <span class="setup-word">{focused ? "Show" : "Hide"} library &amp; controls</span>
+          <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
+          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what"> library &amp; controls</span></span>
           <kbd>F</kbd>
         </button>
       {/if}
@@ -479,6 +480,17 @@
       display: none;
     }
   }
+  /* Smaller windows: the button says just Show or Hide. */
+  @media (max-width: 1100px) {
+    .side-what {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
   @media (max-width: 560px) {
     .onair {
       display: none;
@@ -487,8 +499,9 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. */
-    .setup-word {
+    /* Help and Setup as their icons; the title still names them. Show or
+       Hide keeps its word, since an icon alone would not say which. */
+    .setup-word:not(.side-word) {
       position: absolute;
       width: 1px;
       height: 1px;
