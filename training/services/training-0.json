@@ -8,9 +8,9 @@
    "notes": "A short video. It plays with sound on the projector screen. When it ends, press Space to move on."},
   {"deck": {"file": "t0-plan-and-present.pptx", "title": "Plan and Present"},
    "notes": "The trainer's script for each slide is in the slide's own notes."},
-  {"text": {"title": "Try it now", "body": "Try it now:\npress Ctrl+\\ (⌘\\ on a Mac) to go to Plan.\nFind this service under Training.\nPress it again to come back here."},
+  {"text": {"title": "Try it now", "body": "Try it now:\npress Ctrl+\\ (⌘\\ on a Mac) to go to Plan.\nIn Library & controls on the right, choose Services\nand find this service under Training.\nPress Ctrl+\\ again to come back here."},
    "notes": "Let the trainee switch to Plan and back. The service stays open for live while they look."},
   {"header": {"title": "Done. Next: Training Session 1, Run a service"},
-   "notes": "Close the service with Close service, bottom right, or open Training Session 1 straight away."}
+   "notes": "Close the service with Close service, at the bottom of Library & controls, or open Training Session 1 straight away."}
  ]
 }

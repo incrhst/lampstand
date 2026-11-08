@@ -287,7 +287,7 @@
         >
           <Icon name="panelRight" size={16} />
           <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
-          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what"> library &amp; controls</span></span>
+          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what">&nbsp;library &amp; controls</span></span>
           <kbd>F</kbd>
         </button>
       {/if}
