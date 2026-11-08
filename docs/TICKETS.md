@@ -349,7 +349,7 @@ Port the tests `chapter_labels_when_crossing_chapters` and `long_verse_splits_be
 | ID | Title | Model | Needs | PRD | Files | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | T75 | Encrypted, authenticated sync sessions | **O** | — | CD-2, CD-3 | `sync/src/net/` | Done ([#16](https://github.com/incrhst/lampstand/pull/16)) |
-| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | Not started |
+| T76 | Blob transfers: size cap and per-session temp files | S | — | CD-2 | `sync/src/net/session.rs` | In review ([#268](https://github.com/incrhst/lampstand/pull/268)) |
 | T77 | Bound documents created by unknown sync messages | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
 | T78 | Don't advance sync state before changes are durable | **O** | — | CD-1 | `sync/src/repo/mod.rs` | Not started |
 | T79 | `device.key` permissions and one atomic-write helper | S | — | NFR Security | `app/src-tauri/src/config.rs`, `sync/src/repo/fsutil.rs` | Not started |
