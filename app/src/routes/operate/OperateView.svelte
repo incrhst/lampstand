@@ -939,6 +939,14 @@
                         <h3>{item.title}</h3>
                         <p class="muted wall-count">
                           {item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
+                          {#if kind === "Sound" && item.slides.length === 0}
+                            <!-- Music only has no slide to click: its Play is right here, as in the Sound box. -->
+                            {#if live.sound?.playing?.item === item.id}
+                              <button type="button" class="wall-play" onclick={() => sound("Stop").catch(report)} title="Fade {item.title} out">Fade out</button>
+                            {:else}
+                              <button type="button" class="wall-play" onclick={() => sound({ Play: { item: item.id, backing: false } }).catch(report)} title="Play {item.title} now"><Icon name="play" size={12} />Play</button>
+                            {/if}
+                          {/if}
                           {#if item.slides.length > 0}
                             <button
                               type="button"
@@ -2170,6 +2178,24 @@
     font-size: 0.8rem;
     line-height: 1.45;
     white-space: pre-wrap;
+  }
+  .wall-play {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: 0.4rem;
+    padding: 0.2rem 0.65rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .wall-play:hover {
+    background: var(--gold-soft);
   }
   .wall-body {
     flex: 1;
