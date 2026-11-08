@@ -14,7 +14,7 @@ export interface Facts {
   services: { id: string; title: string; items: number }[];
   /** The operator has opened a service for live at least once. */
   triedService: boolean;
-  /** The church has saved its name, logo, colours and font (Setup › Logo and colours). */
+  /** The church has saved its name, logo, colours and font (Settings › Logo and colours). */
   brandSet?: boolean;
 }
 

@@ -60,7 +60,7 @@ pub enum NotionError {
 impl std::fmt::Display for NotionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unauthorized => write!(f, "Notion did not accept the integration token. Check it in Setup › Connections."),
+            Self::Unauthorized => write!(f, "Notion did not accept the integration token. Check it in Settings › Connections."),
             Self::NotShared => write!(
                 f,
                 "Notion could not find that page for this integration. In Notion, open the page, choose ••• › Connections, and add the Lampstand integration."
@@ -74,7 +74,7 @@ impl std::fmt::Display for NotionError {
             Self::NotAPageLink => write!(f, "That is not a link to a Notion page."),
             Self::NotPublic => write!(
                 f,
-                "Lampstand could not read that page from its link. In Notion, open the page, choose Share › Publish, and turn on \"Publish to web\". Or connect a Notion integration in Setup › Connections."
+                "Lampstand could not read that page from its link. In Notion, open the page, choose Share › Publish, and turn on \"Publish to web\". Or connect a Notion integration in Settings › Connections."
             ),
         }
     }

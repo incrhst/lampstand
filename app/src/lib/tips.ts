@@ -11,7 +11,7 @@ export interface TipFacts {
   liveItem: string | null;
   /** How many slides the item on air has. */
   liveSlides?: number;
-  /** The church has set a logo (Setup › Logo and colours). */
+  /** The church has set a logo (Settings › Logo and colours). */
   hasLogo?: boolean;
   /** Devices paired with this one; undefined until sync has been asked. */
   paired?: number;
@@ -113,7 +113,7 @@ export const TIPS: Tip[] = [
     id: "logo-bug",
     area: "Present",
     title: "Put your logo in a corner",
-    body: "Switch on Logo bug in the Screen card, under Controls in Library & controls (press F if it's hidden), to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Logo and colours.",
+    body: "Switch on Logo bug in the Screen card, under Controls in Library & controls (press F if it's hidden), to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Settings › Logo and colours.",
     relevant: (f) => onAir(f) && f.hasLogo === true,
     used: never,
   },

@@ -1,4 +1,4 @@
-<!-- Setup › Logo and colours: the quick start. A church says its name, adds its
+<!-- Settings › Logo and colours: the quick start. A church says its name, adds its
      logo, picks two or three colours and a font, and Lampstand makes a
      matching theme and uses it everywhere that doesn't choose its own. The
      logo, small and centred on its colour, is also the default idle screen,

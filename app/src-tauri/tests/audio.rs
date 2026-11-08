@@ -846,7 +846,7 @@ fn the_operator_is_told_why_a_sound_cannot_play_on_the_audio_holder() {
         (
             SoundReason::OutputMissing,
             "Walk-in music isn't playing. The sound output chosen on Sound desk isn't connected. \
-             Plug it in, or choose another in Setup \u{203a} Sound.",
+             Plug it in, or choose another in Settings \u{203a} Sound.",
         ),
         (
             SoundReason::NoOutput,
@@ -899,7 +899,7 @@ fn a_problem_with_no_sound_named_reads_as_one_sentence_and_names_no_path() {
     assert_eq!(
         problem_words(&p, None),
         "The sound output on this computer isn't working. Check it is plugged in and \
-         switched on, or choose another in Setup \u{203a} Sound."
+         switched on, or choose another in Settings \u{203a} Sound."
     );
 }
 
@@ -922,7 +922,7 @@ fn a_dead_output_on_a_one_device_church_is_said_once_and_goes_when_it_comes_back
         v.problem.as_deref(),
         Some(
             "Walk-in music isn't playing. The sound output on this computer isn't working. \
-             Check it is plugged in and switched on, or choose another in Setup \u{203a} Sound."
+             Check it is plugged in and switched on, or choose another in Settings \u{203a} Sound."
         )
     );
     assert_eq!(v.problem_item, Some(item.to_string()));

@@ -32,6 +32,7 @@
   import Icon from "../../lib/kit/Icon.svelte";
   import SideHead from "../../lib/kit/SideHead.svelte";
   import SideRow from "../../lib/kit/SideRow.svelte";
+  import PulseBadge from "../../lib/kit/PulseBadge.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
@@ -166,6 +167,56 @@
   let trainingServices = $derived(services.filter((s) => s.training));
   let readOnly = $derived(selected != null && trainingServices.some((s) => s.id === selected?.id));
 
+  // A new church is shown where to start: "Start here" pulses beside New
+  // service until it has made a service of its own. The Welcome and training
+  // services don't count. Remembered on this device once done.
+  const MADE_KEY = "lampstand.plan.madeService";
+  let madeService = $state(
+    (() => {
+      try {
+        return localStorage.getItem(MADE_KEY) === "1";
+      } catch {
+        return false;
+      }
+    })(),
+  );
+  let guideNew = $derived(!madeService && ownServices.every((s) => s.title === WELCOME_TITLE));
+  function markMade() {
+    madeService = true;
+    try {
+      localStorage.setItem(MADE_KEY, "1");
+    } catch {
+      // Not remembered: the guide may show again next time, until a service exists.
+    }
+  }
+
+  /**
+   * One click: makes "Sunday service" for the coming Sunday at 10:00, opens
+   * it and puts its name ready to type over. The date and time are changed
+   * at the top of the service, like any other.
+   */
+  async function newService() {
+    if (busy) return;
+    busy = true;
+    const when = defaultWhen();
+    try {
+      selected = await request(
+        { area: "Service", request: { Create: { title: "Sunday service", starts_at: at(when), time_zone: when.zone } } },
+        "Service",
+      );
+      live.planning = selected.id;
+      creating = false;
+      markMade();
+      await refresh();
+      live.status = "New service made. Type its name, or press Enter to keep Sunday service.";
+      startRename(selected);
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function resetTraining() {
     try {
       await request({ area: "Service", request: "ResetTraining" }, "Ok");
@@ -282,6 +333,7 @@
       );
       live.planning = selected.id;
       creating = false;
+      markMade();
       await refresh();
     } catch (e) {
       report(e);
@@ -1055,6 +1107,8 @@
   </li>
 {/snippet}
 
+{#snippet newBadge()}<PulseBadge />{/snippet}
+
 {#snippet zonePicker(when: When)}
   <select class="zone" aria-label="Time zone" title="The time zone this service's time is in" bind:value={when.zone}>
     {#each timeZones(when.zone, deviceZone()) as zone (zone)}
@@ -1078,6 +1132,7 @@
               bind:value={renameTitle}
               onkeydown={onKeys(saveRename, () => (renaming = null))}
               onblur={saveRename}
+              onfocus={(e) => e.currentTarget.select()}
               autofocus
             />
           {:else}
@@ -1379,8 +1434,8 @@
                             />
                           {/if}
                           {#if !readOnly}
-                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="One tap away in Present's Ready card, without losing the place in the service">
-                              {isPinned(selected, id) ? "Kept ready" : "Keep ready in Present"}
+                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="Optional: puts this in Ready, the button at the bottom right of Present, one tap away during the service without losing your place. Most items don't need it.">
+                              {isPinned(selected, id) ? "In Ready" : "Add to Ready"}
                             </Button>
                           {/if}
                           <span class="spacer"></span>
@@ -1408,7 +1463,7 @@
                order: Next never lands on these. -->
           <section class="ready" aria-labelledby="plan-ready">
             <h3 class="eyebrow" id="plan-ready">Ready in Present</h3>
-            <p class="muted ready-note">One tap away during the service, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
+            <p class="muted ready-note">In Present, the Ready button at the bottom right keeps these one tap away, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
             {#if readyRows.length > 0}
               <ul class="plain ready-list">
                 {#each readyRows as r (r.id)}
@@ -1426,7 +1481,7 @@
             {#if !readOnly}
               <div class="ready-actions">
                 <Button size="small" icon="plus" onclick={() => (readyAddOpen = true)}>Add a deck or media</Button>
-                <span class="muted ready-note">or open an item and choose Keep ready in Present.</span>
+                <span class="muted ready-note">or open an item in the order and choose Add to Ready. Most services need nothing here.</span>
               </div>
             {/if}
           </section>
@@ -1437,8 +1492,13 @@
       </div>
     {:else}
       <div class="no-service">
-        <Icon name="calendar" size={24} />
-        <p class="muted">Open Services in Library &amp; controls, on the right, to pick a service or make a new one.</p>
+        <Icon name="calendar" size={28} />
+        <p class="no-service-say">Plan a service</p>
+        <div class="no-service-go">
+          <Button variant="primary" icon="plus" onclick={newService} disabled={busy}>New service</Button>
+          {#if guideNew}<PulseBadge />{/if}
+        </div>
+        <p class="muted">Makes one for the coming Sunday. Or <button type="button" class="link" onclick={() => openPage("services")}>open one you've planned</button>.</p>
       </div>
     {/if}
   </section>
@@ -1453,9 +1513,10 @@
         <Icon name="search" size={15} />Find a song, reading or video to add
       </button>
       <SideRow icon="song" label="Browse the library" onclick={() => openPage("library")} />
+      <SideRow icon="plus" label="New service" summary={guideNew ? newBadge : undefined} title="Make a service for the coming Sunday" onclick={newService} />
       <SideRow icon="calendar" label="Services" summary={`${ownServices.length} planned`} onclick={() => openPage("services")} />
       <h3 class="side-zone-head">Controls</h3>
-      <SideRow icon="monitor" label="Screens" summary={screensOn === 0 ? "None on" : `${screensOn} on`} title="Open Setup › Screens" onclick={() => onscreens?.()} />
+      <SideRow icon="monitor" label="Screens" summary={screensOn === 0 ? "None on" : `${screensOn} on`} title="Open Settings › Screens" onclick={() => onscreens?.()} />
       {#if shown.length > 0}
         <h3 class="side-zone-head quiet">Next services</h3>
         <ul class="plain">
@@ -1471,7 +1532,8 @@
         <SideHead title="Services" onback={back} onhide={hideSide} />
       </div>
       <div class="new-service">
-        <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
+        <Button size="small" variant="primary" icon="plus" onclick={newService} disabled={busy}>New service</Button>
+        <Button size="small" variant="ghost" onclick={toggleCreate} pressed={creating} title="Choose the name and date first, or start from the sample or an earlier service">More ways to start</Button>
       </div>
       {#if creating}
         <form
@@ -1632,6 +1694,7 @@
   }
   .new-service {
     display: flex;
+    gap: 0.5rem;
     justify-content: flex-end;
     padding: 0 1rem 0.75rem;
   }
@@ -2205,5 +2268,24 @@
     gap: 0.75rem;
     color: var(--faint);
     font-size: 0.875rem;
+  }
+  .no-service-say {
+    margin: 0;
+    font-size: 1.125rem;
+    color: var(--text);
+  }
+  .no-service-go {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .no-service .link {
+    font: inherit;
+    color: var(--gold);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
   }
 </style>

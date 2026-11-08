@@ -145,7 +145,7 @@
       {:else if ready.length > 1}
         <p class="ready">{ready.length} computers nearby are showing a code. Type the one you want to pair with.</p>
       {:else}
-        <p class="muted">On the other computer, open Setup › Devices and choose Pair a device. Then type the code it shows here.</p>
+        <p class="muted">On the other computer, open Settings › Devices and choose Pair a device. Then type the code it shows here.</p>
       {/if}
       <label>
         Pairing code

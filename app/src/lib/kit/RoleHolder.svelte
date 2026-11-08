@@ -1,4 +1,4 @@
-<!-- Who has a role, for its row in Setup › Devices › Who runs what: the
+<!-- Who has a role, for its row in Settings › Devices › Who runs what: the
      holder's name with its role bar, and, when this device could not check
      the role's newest record (#184), that it can't, and what to do. -->
 <script lang="ts">

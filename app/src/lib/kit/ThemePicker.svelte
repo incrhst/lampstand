@@ -28,7 +28,7 @@
   aria-label={label}
   value={current}
   onchange={(e) => onchange(e.currentTarget.value || null)}
-  title="Themes are made in Setup › Themes"
+  title="Themes are made in Settings › Themes"
 >
   <option value="">{inherit}{inherit === "Default theme" && fallback ? ` (${fallback.name})` : ""}</option>
   {#each live.themes as t (t.id)}

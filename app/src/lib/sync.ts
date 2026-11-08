@@ -21,7 +21,7 @@ export function syncPill(sync: SyncSummary | null): SyncPill {
     return {
       tone: "neutral",
       text: "This device only",
-      title: "Nothing is paired, so changes stay on this device. Open Setup › Devices to pair another",
+      title: "Nothing is paired, so changes stay on this device. Open Settings › Devices to pair another",
     };
   }
   switch (sync.state) {

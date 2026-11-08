@@ -1,4 +1,4 @@
-<!-- Setup › This computer: the two switches that reach past Lampstand's own
+<!-- Settings › This computer: the two switches that reach past Lampstand's own
      windows. Both are off by default and belong to this computer, so they are
      not shared with the church's other devices. -->
 <script lang="ts">

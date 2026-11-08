@@ -110,9 +110,9 @@
   <ul bind:this={list} class="plain slides" role="listbox" aria-label="Slides of {title}">
     {#each Array.from({ length: count }, (_, i) => i) as i}
       <li role="option" id="{uid}-{i}" aria-selected={i === highlight}>
-        <button type="button" class="slide" class:kept={kept.has(i)} class:active={i === highlight} onmouseenter={() => (highlight = i)} onclick={(e) => onpick(i, e.shiftKey)} title={kept.has(i) ? `Slide ${i + 1} is already kept ready` : `Keep slide ${i + 1} ready`}>
+        <button type="button" class="slide" class:kept={kept.has(i)} class:active={i === highlight} onmouseenter={() => (highlight = i)} onclick={(e) => onpick(i, e.shiftKey)} title={kept.has(i) ? `Slide ${i + 1} is already in Ready` : `Add slide ${i + 1} to Ready`}>
           {#if pictures[i]}<img src={pictures[i]} alt="" />{:else}<span class="blank"></span>{/if}
-          <span class="num">{i + 1}{#if kept.has(i)} · ready{/if}</span>
+          <span class="num">{i + 1}{#if kept.has(i)} · in Ready{/if}</span>
         </button>
       </li>
     {/each}

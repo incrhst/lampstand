@@ -261,10 +261,10 @@
         bind:value={query}
         {onkeydown}
         type="text"
-        placeholder={forReady ? "A deck, picture or video to keep ready" : "Song, reference like Rom 8:28, deck or media"}
+        placeholder={forReady ? "A deck, picture or video to add to Ready" : "Song, reference like Rom 8:28, deck or media"}
         autocomplete="off"
         spellcheck="false"
-        aria-label={forReady ? "Deck or media to keep ready" : "Song, scripture, deck or media to add"}
+        aria-label={forReady ? "Deck or media to add to Ready" : "Song, scripture, deck or media to add"}
         aria-controls="quick-add-results"
         aria-activedescendant={slidesOf ? picker?.activeId() : undefined}
       />
@@ -274,7 +274,7 @@
     {#if slidesOf}
       <div class="slides-head">
         <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
-        <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
+        <span>One slide of <strong>{slidesOf.title}</strong> to add to Ready; its builds play by themselves</span>
       </div>
       <DeckSlidePicker bind:this={picker} deck={slidesOf.deck} title={slidesOf.title} kept={new Set(keptSlides[slidesOf.deck] ?? [])} onpick={keepSlide} />
     {:else}
@@ -300,11 +300,11 @@
 
     <p class="keys faint">
       {#if slidesOf}
-        Arrows choose a slide · <kbd>Enter</kbd> keep it ready · <kbd>⇧ Enter</kbd> and show now · <kbd>Esc</kbd> back
+        Arrows choose a slide · <kbd>Enter</kbd> add it to Ready · <kbd>⇧ Enter</kbd> and show now · <kbd>Esc</kbd> back
       {:else if rows[highlight]?.kind === "deck"}
-        <kbd>Enter</kbd> keep the deck ready · <kbd>⇧ Enter</kbd> and show now · <kbd>→</kbd> one slide · <kbd>Esc</kbd> close
+        <kbd>Enter</kbd> add the deck to Ready · <kbd>⇧ Enter</kbd> and show now · <kbd>→</kbd> one slide · <kbd>Esc</kbd> close
       {:else if rows[highlight]?.kind === "media"}
-        <kbd>Enter</kbd> keep ready · <kbd>⇧ Enter</kbd> keep ready and show now · decks and media go to Ready, not the order · <kbd>Esc</kbd> close
+        <kbd>Enter</kbd> add to Ready · <kbd>⇧ Enter</kbd> add to Ready and show now · decks and media go to Ready, not the order · <kbd>Esc</kbd> close
       {:else}
         <kbd>Enter</kbd> add next · <kbd>⇧ Enter</kbd> add and show now · <kbd>⌃/⌘ Enter</kbd> add at end{#if translations.length > 1} · <kbd>Tab</kbd> Bible{/if} · <kbd>Esc</kbd> close
       {/if}

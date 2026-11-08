@@ -1,5 +1,5 @@
 // The Audio role on screen: the sound panel in Present and the output
-// chooser in Setup › Sound (decision 0010).
+// chooser in Settings › Sound (decision 0010).
 //
 // The words marked "spec" come from docs/roles.md and decision 0010. The
 // ones marked "proposed" are not in the spec and wait for the owner. The
@@ -55,7 +55,7 @@ export const words = {
   playing: "Playing",
   /** proposed: said on the item a problem belongs to, before the core's sentence, for a screen reader. */
   problemOn: (name: string) => `Problem with ${name}`,
-  /** proposed: Setup › Sound › Output. */
+  /** proposed: Settings › Sound › Output. */
   outputPanel: "Where the sound comes out",
   outputLabel: "Sound output",
   outputDefault: (name: string | null) => (name ? `This computer's default (${name})` : "This computer's default"),
@@ -253,7 +253,7 @@ export function isPlayingEntry(entry: SoundEntry, p: SoundPlaying | null): boole
   return p != null && p.item === entry.item;
 }
 
-/** The output chosen in Setup, as the list should select it: a name that is no longer on this computer reads as the default. */
+/** The output chosen in Settings, as the list should select it: a name that is no longer on this computer reads as the default. */
 export function selectedOutput(chosen: string | null, devices: string[]): string {
   return chosen != null && devices.includes(chosen) ? chosen : "";
 }

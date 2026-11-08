@@ -1,4 +1,4 @@
-// What a screen shows when nothing is on air (Setup › Screens): a picture,
+// What a screen shows when nothing is on air (Settings › Screens): a picture,
 // a looping video or a slide of a deck, set per screen or for every screen.
 // Until one is chosen, a screen shows the default: the church's logo and name,
 // else the Lampstand lamp.
@@ -36,7 +36,7 @@ export function describeDefaultIdle(brand: Pick<Brand, "name" | "logo"> | null):
     const name = brand.name.trim();
     return name ? `Your logo and name (${name}) on your colour` : "Your logo on your colour";
   }
-  return "The Lampstand lamp. Add your logo under Setup › Logo and colours to show yours instead.";
+  return "The Lampstand lamp. Add your logo under Settings › Logo and colours to show yours instead.";
 }
 
 /** The idle setting that applies to a screen: its own, else the default for all screens, else the default idle screen. `null` is the theme's plain background. */

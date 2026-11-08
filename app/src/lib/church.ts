@@ -6,7 +6,7 @@ import type { ChurchStatus, WaitingFile } from "./api";
 
 /** The small note under a page: "Shared with your other devices" once paired, else "This device only". */
 export function sharingNote(pairedDevices: number, status: Pick<ChurchStatus, "shared"> | null): string {
-  if (pairedDevices === 0) return "This device only. Pair another device in Setup › Devices to share this.";
+  if (pairedDevices === 0) return "This device only. Pair another device in Settings › Devices to share this.";
   return status?.shared === false
     ? "Shared with your other devices once this device has met one of them."
     : "Shared with your other devices.";

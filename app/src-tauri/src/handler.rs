@@ -107,7 +107,7 @@ pub trait WindowHost: Send {
 }
 
 /// The two things Lampstand can ask of this computer itself, both only when
-/// the operator switched them on in Setup (`DeviceSettings::start_at_login`
+/// the operator switched them on in Settings (`DeviceSettings::start_at_login`
 /// and `keep_awake`). The Tauri implementation lives in `shell`; with none
 /// set, or in tests, nothing on the computer changes.
 pub trait Machine: Send {
@@ -914,7 +914,7 @@ impl App {
                     if !s.pin_ready(item) {
                         return Err(match s.items.get(&item) {
                             Some(_) => {
-                                "A header has nothing to show, so it cannot be kept ready.".into()
+                                "A header has nothing to show, so it can't be added to Ready.".into()
                             }
                             None => "no such item".into(),
                         });
@@ -928,7 +928,7 @@ impl App {
             }
             ServiceRequest::AddReady { service, kind } => {
                 if !matches!(kind, ItemKind::Deck { .. } | ItemKind::Media { .. }) {
-                    return Err("Only decks and media from the Library can be kept ready on their own. Pin an item of the order to keep it ready.".into());
+                    return Err("Only decks and media from the Library can be added to Ready on their own. For an item in the order, choose Add to Ready on it.".into());
                 }
                 let mut s = get(service)?;
                 s.add_ready(kind);
@@ -2257,7 +2257,7 @@ impl App {
     /// brand yet has nothing to put it on.
     fn set_logo_bug(&mut self, bug: lampstand_core::brand::LogoBug) -> Result<Response> {
         if self.church().brand.is_none() {
-            return Err(err("Add your church's logo in Setup first."));
+            return Err(err("Add your church's logo in Settings first."));
         }
         self.save_church(|church| {
             if let Some(brand) = church.brand.as_mut() {
