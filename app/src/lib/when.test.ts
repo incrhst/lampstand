@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { comingSunday, formatWhen, fromInputs, toInputs, zonedTime } from "./when.ts";
+import { comingSunday, formatWhen, fromInputs, rezone, toInputs, zonedTime } from "./when.ts";
 
 const LONDON = "Europe/London";
 const KINGSTON = "America/Jamaica";
@@ -106,4 +106,18 @@ test("an empty or bad date reads as no date, an empty time as 10:00", () => {
   assert.equal(fromInputs("25/10/2026", "10:00", LONDON), null);
   assert.equal(fromInputs("2026-13-01", "10:00", LONDON), null);
   assert.equal(wall(fromInputs("2026-10-25", "", LONDON)!, LONDON), "2026-10-25 10:00");
+});
+
+test("a plan's start keeps its wall-clock time in the zone picked", () => {
+  // Read in Kingston: 10:00 there.
+  const kingston = rezone("2026-11-08T10:00:00-05:00", KINGSTON)!;
+  assert.equal(kingston.startsAt, "2026-11-08T10:00:00-05:00");
+  assert.equal(wall(kingston.at, KINGSTON), "2026-11-08 10:00");
+  // The same plan for London is 10:00 in London, in winter time.
+  const london = rezone("2026-11-08T10:00:00-05:00", LONDON)!;
+  assert.equal(london.startsAt, "2026-11-08T10:00:00+00:00");
+  // Read in October, the service is in summer time: the offset is the service day's.
+  assert.equal(rezone("2026-07-05T10:00:00-05:00", LONDON)!.startsAt, "2026-07-05T10:00:00+01:00");
+  assert.equal(rezone(null, LONDON), null);
+  assert.equal(rezone("2026-11-08", LONDON), null);
 });

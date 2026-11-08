@@ -18,7 +18,7 @@
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import { formatPassage } from "../../lib/passage";
-  import { deviceZone, offsetMinutes } from "../../lib/when";
+  import { deviceZone, formatWhen, isZone, offsetMinutes, rezone, timeZones } from "../../lib/when";
 
   let {
     onclose,
@@ -42,6 +42,19 @@
   /** Titles of songs picked from a search, by song ID, for the row's label. */
   let picked: Record<string, string> = $state({});
   let input: HTMLInputElement | undefined = $state();
+  /** The zone the plan's times are in. A Notion page does not say, so the
+      person confirms it; it starts as this device's. */
+  let zone = $state(deviceZone());
+  /** The start as an instant in `zone`, for showing. */
+  let startAt = $derived(draft ? (rezone(draft.plan.starts_at, zone)?.at ?? null) : null);
+
+  /** Puts the plan's wall-clock start in `zone`, with that zone's offset on the service date. */
+  function applyZone() {
+    if (!draft) return;
+    const placed = rezone(draft.plan.starts_at, zone);
+    if (placed) draft.plan.starts_at = placed.startsAt;
+    draft.plan.time_zone = zone;
+  }
 
   onMount(() => {
     input?.focus();
@@ -54,7 +67,6 @@
     reading = true;
     error = "";
     try {
-      const zone = deviceZone();
       draft = await request(
         {
           area: "Plan",
@@ -65,6 +77,8 @@
         "PlanDraft",
       );
       choices = {};
+      if (draft.plan.time_zone && isZone(draft.plan.time_zone)) zone = draft.plan.time_zone;
+      applyZone();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -188,6 +202,18 @@
         <div class="summary">
           <strong>{draft.plan.title}</strong>
           {#if draft.plan.status === "draft"}<span class="tag">Draft in Notion</span>{/if}
+        </div>
+        <div class="when">
+          <span class="muted">Starts</span>
+          <strong>{startAt == null ? "No start time in the plan" : formatWhen(startAt, zone)}</strong>
+          <label class="zone">
+            <span class="muted">Time zone</span>
+            <select bind:value={zone} onchange={applyZone} title="The time zone the plan's times are in">
+              {#each timeZones(zone, deviceZone()) as z (z)}
+                <option value={z}>{z.replaceAll("_", " ")}{z === deviceZone() ? " (this device)" : ""}</option>
+              {/each}
+            </select>
+          </label>
         </div>
         {#if draft.existing}
           <p class="warn"><Icon name="info" size={14} />This plan was already imported as “{draft.existing.title}”. Delete that service to import it again.</p>
@@ -369,6 +395,20 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
+  }
+  .when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.6rem;
+    padding: 0 1rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  .zone {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
   }
   .tag {
     padding: 0 0.4rem;

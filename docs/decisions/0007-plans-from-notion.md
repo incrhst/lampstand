@@ -97,7 +97,7 @@ The page order is kept even when a time is earlier than the one before it (the 2
 
 **Private pages.** With an internal integration token saved once in Setup, `NotionClient` reads the same page through the official API: `GET /v1/pages/{id}` and `GET /v1/blocks/{id}/children` (paged, nested blocks followed except inside quotes and child pages), Notion-Version `2025-09-03`. No data-source queries are needed.
 
-Either way, Plan › New service › From Notion asks for the page's link. Listing a week's pages to pick from needs the parent page and is a follow-up. A callout is a note for the chairperson and is not read, except one that says only "TBD" or "TBA" (the template's 🔶 marker), which is a placeholder.
+Either way, Plan › New service › From Notion asks for the page's link. A page's times carry no time zone, so the review shows when the service starts and a time-zone picker, set to this device's zone, for the person to confirm or change; the page's 10:00 stays 10:00 in the zone picked, with that zone's offset on the service date. Listing a week's pages to pick from needs the parent page and is a follow-up. A callout is a note for the chairperson and is not read, except one that says only "TBD" or "TBA" (the template's 🔶 marker), which is a placeholder.
 
 ## How it works
 

@@ -154,6 +154,25 @@ export function fromInputs(date: string, time: string, zone: string = deviceZone
 }
 
 /**
+ * A plan's start time (RFC 3339, "2026-11-08T10:00:00-05:00") read as the
+ * wall-clock time it says, placed in `zone` on that date: the same 10:00,
+ * with `zone`'s offset on that day, daylight saving included. Null for
+ * anything without a date and time.
+ */
+export function rezone(startsAt: string | null | undefined, zone: string): { startsAt: string; at: Timestamp } | null {
+  const m = /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2})/.exec(startsAt ?? "");
+  if (!m) return null;
+  const at = fromInputs(m[1], m[2], zone);
+  if (at == null) return null;
+  const offset = offsetMinutes(at, zone);
+  const sign = offset < 0 ? "-" : "+";
+  const abs = Math.abs(offset);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return { startsAt: `${m[1]}T${m[2]}:00${sign}${hh}:${mm}`, at };
+}
+
+/**
  * "Sun 25 Oct · 10:30" in the service's zone, or "No date set". When that
  * zone's clock differs from the viewer's at that moment, the zone is named
  * ("Sun 25 Oct · 10:30 GMT-5") so nobody mistakes it for their own time.
