@@ -166,6 +166,25 @@ pub fn content_id(song: &Song) -> SongId {
     SongId::from_uuid(uuid::Uuid::new_v5(&NAMESPACE, key.as_bytes()))
 }
 
+/// `LibraryRequest::AddSongFromLink`, once the shell has the page: reads the
+/// song on it and adds it to the library. A song with the same words, or
+/// the same CCLI number, is already there, and that song is the answer.
+pub fn add_song_page(library: &Library, html: &str) -> Result<Song, String> {
+    let mut song = lampstand_import::songs::web::parse_page(html)?;
+    song.id = content_id(&song);
+    if let Some(existing) = library.song(song.id).map_err(|e| e.to_string())? {
+        return Ok(existing);
+    }
+    if let Some(n) = song.ccli_number {
+        let all = library.songs().map_err(|e| e.to_string())?;
+        if let Some(existing) = all.into_iter().find(|s| s.ccli_number == Some(n)) {
+            return Ok(existing);
+        }
+    }
+    library.put_song(&song).map_err(|e| e.to_string())?;
+    Ok(song)
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Summary {
     pub songs: usize,
@@ -563,6 +582,35 @@ mod tests {
         import_path(&library, &first, &mut summary, &|_, _| {});
         import_path(&library, &second, &mut summary, &|_, _| {});
         assert_eq!((summary.songs, summary.existing), (1, 1));
+    }
+
+    #[test]
+    fn a_song_page_added_twice_is_one_song() {
+        let data = tempfile::tempdir().unwrap();
+        let key = lampstand_sync::team::DeviceKeypair::generate();
+        let library = Library::open(data.path(), key).unwrap();
+        let page = |line: &str| {
+            format!(
+                "<html><head><title>Page Song | Site</title></head><body>
+                 <h3>Lyrics</h3><p>VERSE 1<br>{line}<br>Second line</p>
+                 <p>CCLI Song # 1234567</p></body></html>"
+            )
+        };
+        let first = add_song_page(&library, &page("First line")).unwrap();
+        assert_eq!(first.title, "Page Song");
+        assert_eq!(
+            add_song_page(&library, &page("First line")).unwrap().id,
+            first.id
+        );
+        // A corrected line is still the song with that CCLI number.
+        assert_eq!(
+            add_song_page(&library, &page("First line, fixed"))
+                .unwrap()
+                .id,
+            first.id
+        );
+        assert_eq!(library.songs().unwrap().len(), 1);
+        assert!(add_song_page(&library, "<html><body>No song</body></html>").is_err());
     }
 
     /// A song downloaded again from SongSelect with a line corrected puts the

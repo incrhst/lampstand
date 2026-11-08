@@ -34,10 +34,10 @@
   } = $props();
 
   /** A pasted link's row that fetches something; the streaming row only says why not. */
-  const fetchable = (e: Entry) => e.key === "link" || e.key === "link:sound";
+  const fetchable = (e: Entry) => e.key === "link" || e.key === "link:sound" || e.key === "link:song";
 
   const icon = (e: Entry): IconName =>
-    e.key === "link" ? "deck" : e.key.startsWith("link:") ? "sound" : e.kind === "media" ? (isVideo(e.title) ? "media" : "announcements") : e.kind === "song" ? "song" : e.kind;
+    e.key === "link" ? "deck" : e.key === "link:song" ? "song" : e.key.startsWith("link:") ? "sound" : e.kind === "media" ? (isVideo(e.title) ? "media" : "announcements") : e.kind === "song" ? "song" : e.kind;
 </script>
 
 <li class="item">

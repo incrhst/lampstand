@@ -565,6 +565,14 @@ pub enum LibraryRequest {
     AddDeckFromLink {
         url: String,
     },
+    /// A pasted link to a song's web page (a publisher's song page,
+    /// Genius, WorshipOnline): the page is fetched, its lyrics, title,
+    /// credits and CCLI number read, and the song added to the library
+    /// unless it is there already (same words, or the same CCLI number).
+    /// Answers `Response::Song` with the song in the library.
+    AddSongFromLink {
+        url: String,
+    },
     AcceptDeckUpdate(DeckId),
     /// An image or video picked from disk, copied into the blob store for
     /// a `Media` item. Answers `Response::Media` with the blob and the

@@ -117,11 +117,12 @@ test("the Setup switch turns the offer on for any service", () => {
   assert.equal(offerSound(null, true), true);
 });
 
-test("a pasted link is read as a deck, a sound, or a streaming page to refuse", () => {
-  const sound = { deck: false, sound: true, streaming: false };
-  const deck = { deck: true, sound: false, streaming: false };
-  const either = { deck: true, sound: true, streaming: false };
-  const streaming = { deck: false, sound: false, streaming: true };
+test("a pasted link is read as a deck, a sound, a song page, or a streaming page to refuse", () => {
+  const sound = { deck: false, sound: true, streaming: false, song: false };
+  const deck = { deck: true, sound: false, streaming: false, song: false };
+  const either = { deck: true, sound: true, streaming: false, song: false };
+  const streaming = { deck: false, sound: false, streaming: true, song: false };
+  const song = { deck: false, sound: false, streaming: false, song: true };
   assert.deepEqual(linkOffers("https://drive.google.com/file/d/abc/view"), either);
   assert.deepEqual(linkOffers("https://1drv.ms/u/s!AbC"), either);
   assert.deepEqual(linkOffers("https://www.dropbox.com/scl/fi/x/Walk%20in.mp3?dl=0"), sound);
@@ -139,5 +140,14 @@ test("a pasted link is read as a deck, a sound, or a streaming page to refuse", 
     assert.deepEqual(linkOffers(url), streaming, url);
   }
   assert.deepEqual(linkOffers("https://notyoutube.com/a.mp3"), sound);
+  for (const url of [
+    "https://sovereigngracemusic.com/music/songs/christians-daily-prayer/",
+    "https://genius.com/Matt-redman-blessed-be-your-name-lyrics",
+    "https://integrityworship.com/songs/blessed-be-your-name-matt-redman/",
+    "https://app.worshiponline.com/songs/414-matt-redman--blessed-be-your-name",
+    "https://example.org/hymns/be-thou.html",
+  ]) {
+    assert.deepEqual(linkOffers(url), song, url);
+  }
   assert.match(streamingRefusal, /licensed to use/);
 });

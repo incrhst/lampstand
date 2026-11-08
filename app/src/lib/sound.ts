@@ -38,13 +38,18 @@ const streamingHosts = ["youtube.com", "youtu.be", "youtube-nocookie.com", "spot
 
 /** What a pasted link could be added as. */
 export interface LinkOffers {
-  /** A presentation: Google Slides, OneDrive, a Drive file, or any link that is not a sound. */
+  /** A presentation: Google Slides, OneDrive, a Drive file, or a link to some other file. */
   deck: boolean;
   /** A sound file: Drive, OneDrive, Dropbox, or a link to a file that ends like one. */
   sound: boolean;
   /** YouTube, Spotify, Apple Music or SoundCloud: refused. */
   streaming: boolean;
+  /** A web page, not a file: a song's page, read for its lyrics. */
+  song: boolean;
 }
+
+/** The end of a page's address, as opposed to a file's. */
+const pageExtensions = ["", "html", "htm", "php", "asp", "aspx", "jsp"];
 
 /** Reads what a pasted link points at from its address alone; the core checks it again. */
 export function linkOffers(link: string): LinkOffers {
@@ -52,19 +57,20 @@ export function linkOffers(link: string): LinkOffers {
   try {
     url = new URL(link.trim().includes("://") ? link.trim() : `https://${link.trim()}`);
   } catch {
-    return { deck: true, sound: false, streaming: false };
+    return { deck: true, sound: false, streaming: false, song: false };
   }
   const host = url.hostname.toLowerCase();
   const on = (h: string) => host === h || host.endsWith(`.${h}`);
-  if (streamingHosts.some(on)) return { deck: false, sound: false, streaming: true };
+  const none = { deck: false, sound: false, streaming: false, song: false };
+  if (streamingHosts.some(on)) return { ...none, streaming: true };
   const last = url.pathname.split("/").filter(Boolean).pop() ?? "";
-  const soundName = isAudio(last);
-  if (on("dropbox.com")) return { deck: false, sound: true, streaming: false };
-  if (host === "docs.google.com") return { deck: true, sound: false, streaming: false };
+  if (on("dropbox.com")) return { ...none, sound: true };
+  if (host === "docs.google.com") return { ...none, deck: true };
   if (host === "drive.google.com" || on("1drv.ms") || on("onedrive.live.com") || on("sharepoint.com")) {
-    return { deck: true, sound: true, streaming: false };
+    return { ...none, deck: true, sound: true };
   }
-  return soundName ? { deck: false, sound: true, streaming: false } : { deck: true, sound: false, streaming: false };
+  if (isAudio(last)) return { ...none, sound: true };
+  return pageExtensions.includes(extension(last)) ? { ...none, song: true } : { ...none, deck: true };
 }
 
 export const words = {
