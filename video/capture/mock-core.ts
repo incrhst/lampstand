@@ -132,6 +132,8 @@ const themeThumb = (t: any, sample: string, w: number, h: number) => {
 const state: any = { services: String((window as any).__scene).startsWith("tips") ? [tipsService] : String((window as any).__scene).startsWith("training") ? [welcome, sunday, ...training] : [welcome, sunday], outputs: [], loaded: null, loopOverrides: {} as Record<string, number | null>, live: null, preview: null, overlay: "None", obs: null, scene: (window as any).__scene ?? "default" };
 if (state.scene !== "fresh") state.outputs.push({ id: "out1", name: "Sanctuary projector", role: { Audience: { primary: true } }, target: { Window: { width: 1920, height: 1080 } }, safe_area: { top: 0.03, right: 0.03, bottom: 0.03, left: 0.03 }, background: "Bleed", theme: null, idle: null, enabled: true });
 (window as any).__mock = state;
+// The Ready card: the announcements deck pinned from the order, and a welcome video kept only in Ready.
+if (state.scene === "ready") (sunday as any).ready = { i2: { position: "5000", source: "Order" }, rw: { position: "5001", source: { Own: { kind: { Media: { blob: "vw", name: "Welcome loop.mp4", looped: true } } } } } };
 
 const ID = (n: string) => n;
 const sorted = (s: any) => Object.entries(s.items).sort((a: any, b: any) => a[1].position.localeCompare(b[1].position));
@@ -178,14 +180,22 @@ function load(id: string) {
       sections.push({ header: iid, title: it.kind.Header.title, seconds, items: [] });
     } else if (sections.length) sections[sections.length - 1].items.push(iid);
   }
-  return { service: s.id, title: s.title, items: sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind) })), sections };
+  const items = sorted(s).map(([iid, it]: any) => ({ id: iid, title: titleFor(it.kind), slides: slidesFor(it.kind), sounds: [] }));
+  // Ready: pins show their item of the order; a deck or media kept only in Ready is loaded beside it.
+  const ready = Object.entries(s.ready ?? {}).sort((a: any, b: any) => a[1].position.localeCompare(b[1].position)).flatMap(([rid, e]: any) => {
+    if (e.source === "Order") { const v = items.find((i: any) => i.id === rid); return v ? [{ item: v, in_order: true }] : []; }
+    return [{ item: { id: rid, title: titleFor(e.source.Own.kind), slides: slidesFor(e.source.Own.kind), sounds: [] }, in_order: false }];
+  });
+  return { service: s.id, title: s.title, items, sections, ready };
 }
+const reload = (s: any) => { if (state.loaded?.service === s.id) { state.loaded = load(s.id); emit({ type: "Loaded", data: state.loaded }); } return { type: "Service", data: s }; };
+const readyEnd = (s: any) => String(5000 + Object.keys(s.ready ?? {}).length);
 let liveKey = "";
 let liveSince = 0;
 function pushLive() {
   const key = state.live ? `${state.live.item}:${state.live.slide}` : "";
   if (key !== liveKey) { liveKey = key; liveSince = Date.now(); }
-  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay, cleared: false } });
+  emit({ type: "Live", data: { live: state.live, preview: state.preview, idle: !state.live && state.overlay === "None", overlay: state.overlay, cleared: false, returns_to: state.detour?.back ?? null, on_ready: !!state.detour } });
   if (soundOn) emit({ type: "Sound", data: soundView() });
 }
 // Sound (window.__soundOn): Amazing Grace has a backing track that starts on its own when the song
@@ -304,7 +314,14 @@ function api(req: any): any {
           order.forEach((k: string, n: number) => (s.items[k].position = String(2000 + n).padStart(5, "0")));
           return { type: "Service", data: s };
         }
-        case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; return { type: "Service", data: s }; }
+        case "RemoveItem": { const s = state.services.find((x: any) => x.id === arg.service); delete s.items[arg.item]; if (s.ready?.[arg.item]?.source === "Order") delete s.ready[arg.item]; return reload(s); }
+        case "PinReady": {
+          const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {};
+          if (arg.ready) s.ready[arg.item] ??= { position: readyEnd(s), source: "Order" }; else delete s.ready[arg.item];
+          return reload(s);
+        }
+        case "AddReady": { const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {}; s.ready["r" + Date.now() + (seq++)] = { position: readyEnd(s), source: { Own: { kind: arg.kind } } }; return reload(s); }
+        case "RemoveReady": { const s = state.services.find((x: any) => x.id === arg.service); delete s.ready?.[arg.item]; return reload(s); }
         case "SetItemText": {
           const s = state.services.find((x: any) => x.id === arg.service);
           const k = s.items[arg.item].kind.Text;
@@ -344,8 +361,24 @@ function api(req: any): any {
       break;
     case "Live":
       // As the engine: a move that takes a slide live leaves the idle screen.
-      if (state.overlay === "Idle" && ["Next", "Previous", "NextItem", "PreviousItem", "GoLive", "Show"].includes(typeof r === "string" ? r : Object.keys(r)[0])) state.overlay = "None";
+      if (state.overlay === "Idle" && ["Next", "Previous", "NextItem", "PreviousItem", "GoLive", "Show", "ShowReady"].includes(typeof r === "string" ? r : Object.keys(r)[0])) state.overlay = "None";
+      // A side-trip to a ready item: Next past its end, or Previous before its start, goes back.
+      if (state.detour && state.live?.item === state.detour.item && (r === "Next" || r === "Previous")) {
+        const ri = state.loaded.ready.find((x: any) => x.item.id === state.detour.item)?.item;
+        const slide = state.live.slide + (r === "Next" ? 1 : -1);
+        if (ri && slide >= 0 && slide < ri.slides.length) state.live = state.preview = { item: ri.id, slide, step: 0 };
+        else if (state.detour.back) { state.live = state.preview = state.detour.back; state.detour = null; }
+        pushLive();
+        return ok;
+      }
+      if (typeof r !== "string" && !r.ShowReady) state.detour = null;
       switch (typeof r === "string" ? r : Object.keys(r)[0]) {
+        case "ShowReady": {
+          const back = state.detour ? state.detour.back : state.live && state.live.item !== r.ShowReady ? state.live : null;
+          state.detour = { item: r.ShowReady, back };
+          state.live = state.preview = { item: r.ShowReady, slide: 0, step: 0 };
+          break;
+        }
         case "Next": move(1); state.live = state.preview; break;
         case "Previous": move(-1); state.live = state.preview; break;
         case "NextItem": move(1, true); break;

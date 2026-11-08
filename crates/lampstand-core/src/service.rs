@@ -22,10 +22,9 @@ pub type ItemId = Id<ServiceItem>;
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(
-    feature = "automerge",
-    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
-)]
+// `Reconcile` is written by hand below, so that a service with nothing
+// kept ready writes no `ready` key.
+#[cfg_attr(feature = "automerge", derive(autosurgeon::Hydrate))]
 pub struct Service {
     pub id: ServiceId,
     pub title: String,
@@ -44,6 +43,89 @@ pub struct Service {
         autosurgeon(with = "autosurgeon::map_with_parseable_keys")
     )]
     pub items: BTreeMap<ItemId, ServiceItem>,
+    /// What the operator keeps ready (Present's Ready card): one tap puts
+    /// it on air as a side-trip, and the order of service is not touched.
+    /// Keyed by item ID: for [`ReadySource::Order`] the ID of the item in
+    /// `items` it points at, for [`ReadySource::Own`] an ID of its own.
+    /// Services saved before Ready existed lack the key and read as empty;
+    /// an empty map writes no key at all, so such a service is the document
+    /// it was.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "ts",
+        ts(as = "Option<BTreeMap<ItemId, ReadyEntry>>", optional)
+    )]
+    #[cfg_attr(
+        feature = "automerge",
+        autosurgeon(
+            with = "autosurgeon::map_with_parseable_keys",
+            missing = "BTreeMap::new"
+        )
+    )]
+    pub ready: BTreeMap<ItemId, ReadyEntry>,
+}
+
+/// One thing kept ready, at its place in the Ready list.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
+pub struct ReadyEntry {
+    /// Its place in the Ready list, ordered as the order of service is.
+    pub position: Position,
+    pub source: ReadySource,
+}
+
+/// Where a ready thing comes from.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "automerge",
+    derive(autosurgeon::Hydrate, autosurgeon::Reconcile)
+)]
+pub enum ReadySource {
+    /// An item in the order of service, pinned: the entry's key is its ID.
+    /// It stays in the order as well. Deleting the item from the order
+    /// takes the pin with it.
+    Order,
+    /// Something kept only in Ready, not in the order: a deck or media
+    /// from the Library. `Next` never lands on it.
+    Own { kind: ItemKind },
+}
+
+/// Writes the service field by field as the derive does, except `ready`:
+/// a service with nothing kept ready leaves the key out, and drops it when
+/// the last entry goes.
+#[cfg(feature = "automerge")]
+impl autosurgeon::Reconcile for Service {
+    type Key<'a> = autosurgeon::reconcile::NoKey;
+
+    fn reconcile<R: autosurgeon::Reconciler>(&self, mut reconciler: R) -> Result<(), R::Error> {
+        use autosurgeon::reconcile::MapReconciler;
+        /// A map keyed by ID, written as the derive's `with` adaptor does.
+        struct Keyed<'a, V>(&'a BTreeMap<ItemId, V>);
+        impl<V: autosurgeon::Reconcile> autosurgeon::Reconcile for Keyed<'_, V> {
+            type Key<'b> = autosurgeon::reconcile::NoKey;
+            fn reconcile<R: autosurgeon::Reconciler>(&self, reconciler: R) -> Result<(), R::Error> {
+                autosurgeon::map_with_parseable_keys::reconcile(self.0, reconciler)
+            }
+        }
+        let mut m = reconciler.map()?;
+        m.put("id", self.id)?;
+        m.put("title", &self.title)?;
+        m.put("starts_at", self.starts_at)?;
+        m.put("time_zone", &self.time_zone)?;
+        m.put("theme", self.theme)?;
+        m.put("items", Keyed(&self.items))?;
+        if !self.ready.is_empty() {
+            m.put("ready", Keyed(&self.ready))?;
+        } else if m.entry("ready").is_some() {
+            m.delete("ready")?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -314,6 +396,7 @@ impl Service {
             time_zone: None,
             theme: None,
             items: BTreeMap::new(),
+            ready: BTreeMap::new(),
         }
     }
 
@@ -390,22 +473,133 @@ impl Service {
         self.items.values().any(|i| i.sounds().next().is_some())
     }
 
+    /// Takes an item out of the order, and its pin out of Ready.
     pub fn remove(&mut self, id: ItemId) -> Option<ServiceItem> {
+        if matches!(
+            self.ready.get(&id),
+            Some(ReadyEntry {
+                source: ReadySource::Order,
+                ..
+            })
+        ) {
+            self.ready.remove(&id);
+        }
         self.items.remove(&id)
+    }
+
+    /// What is kept ready, in the Ready list's order. A pin whose item is no
+    /// longer in the order (a planner deleted it on another device while
+    /// this one pinned it) is left out.
+    pub fn ready_ordered(&self) -> Vec<(ItemId, &ReadyEntry)> {
+        let mut ready: Vec<_> = self
+            .ready
+            .iter()
+            .filter(|(id, entry)| match entry.source {
+                ReadySource::Order => self.items.contains_key(id),
+                ReadySource::Own { .. } => true,
+            })
+            .map(|(id, entry)| (*id, entry))
+            .collect();
+        ready.sort_by(|(a_id, a), (b_id, b)| a.position.cmp(&b.position).then(a_id.cmp(b_id)));
+        ready
+    }
+
+    /// The position at the end of the Ready list.
+    fn ready_end(&self) -> Position {
+        let last = self.ready_ordered().last().map(|(_, e)| e.position.clone());
+        Position::between(last.as_ref(), None)
+    }
+
+    /// Pins an item of the order to the end of Ready. False if there is no
+    /// such item, or it is a header (which has nothing to show). Pinning an
+    /// item that is already pinned leaves it where it is.
+    pub fn pin_ready(&mut self, id: ItemId) -> bool {
+        match self.items.get(&id) {
+            None
+            | Some(ServiceItem {
+                kind: ItemKind::Header { .. },
+                ..
+            }) => return false,
+            Some(_) => {}
+        }
+        if !self.ready.contains_key(&id) {
+            let position = self.ready_end();
+            self.ready.insert(
+                id,
+                ReadyEntry {
+                    position,
+                    source: ReadySource::Order,
+                },
+            );
+        }
+        true
+    }
+
+    /// Keeps something ready that is not in the order, at the end of Ready.
+    pub fn add_ready(&mut self, kind: ItemKind) -> ItemId {
+        let id = ItemId::generate();
+        let position = self.ready_end();
+        self.ready.insert(
+            id,
+            ReadyEntry {
+                position,
+                source: ReadySource::Own { kind },
+            },
+        );
+        id
+    }
+
+    /// Takes an entry out of Ready: a pin (the item stays in the order) or
+    /// something kept only there. False if there is no such entry.
+    pub fn unready(&mut self, id: ItemId) -> bool {
+        self.ready.remove(&id).is_some()
+    }
+
+    /// Moves an entry to `index` in the Ready list. False if there is none.
+    pub fn move_ready(&mut self, id: ItemId, index: usize) -> bool {
+        if !self.ready.contains_key(&id) {
+            return false;
+        }
+        let others: Vec<Position> = self
+            .ready_ordered()
+            .into_iter()
+            .filter(|(other, _)| *other != id)
+            .map(|(_, e)| e.position.clone())
+            .collect();
+        let index = index.min(others.len());
+        let before = index.checked_sub(1).map(|i| &others[i]);
+        let position = Position::between(before, others.get(index));
+        if let Some(entry) = self.ready.get_mut(&id) {
+            entry.position = position;
+        }
+        true
     }
 
     /// A new service started from this one: the same items in the same
     /// order, each with its notes, OBS scene, loop and arrangement, under
     /// `title` and a fresh ID. Every item gets a fresh ID too, so changing
     /// or deleting one in the copy never touches the original. Positions
-    /// carry over, which keeps the order. The schedule is not copied.
+    /// carry over, which keeps the order. What is kept ready comes too,
+    /// each pin on its item's new ID. The schedule is not copied.
     pub fn duplicate(&self, title: impl Into<String>) -> Service {
         let mut copy = Service::new(title);
         copy.theme = self.theme;
+        let fresh: BTreeMap<ItemId, ItemId> = self
+            .items
+            .keys()
+            .chain(self.ready.keys())
+            .map(|id| (*id, ItemId::generate()))
+            .collect();
         copy.items = self
             .items
-            .values()
-            .map(|item| (ItemId::generate(), item.clone()))
+            .iter()
+            .map(|(id, item)| (fresh[id], item.clone()))
+            .collect();
+        // Ready comes too: a pin follows its item to the item's new ID.
+        copy.ready = self
+            .ready_ordered()
+            .into_iter()
+            .map(|(id, entry)| (fresh[&id], entry.clone()))
             .collect();
         copy
     }
@@ -660,6 +854,91 @@ mod tests {
         });
         let read: ServiceItem = serde_json::from_value(old).unwrap();
         assert_eq!(read, s.items[&id]);
+    }
+
+    #[test]
+    fn ready_pins_order_items_and_keeps_its_own() {
+        let mut s = Service::new("Sunday");
+        let welcome = s.insert(0, header("Welcome"));
+        let song = s.insert(
+            1,
+            ItemKind::Countdown {
+                target: CountdownTarget::At(Timestamp(0)),
+                label: "Soon".into(),
+            },
+        );
+        assert!(!s.pin_ready(welcome), "a header has nothing to show");
+        assert!(s.pin_ready(song));
+        let deck = s.add_ready(ItemKind::Deck {
+            deck: DeckId::generate(),
+        });
+        assert!(s.pin_ready(song), "pinning again is fine");
+        let ids: Vec<ItemId> = s.ready_ordered().iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [song, deck]);
+        // Ready is not the order: the deck is not in it.
+        assert_eq!(s.ordered().len(), 2);
+
+        assert!(s.move_ready(deck, 0));
+        let ids: Vec<ItemId> = s.ready_ordered().iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [deck, song]);
+
+        // Deleting the item from the order takes its pin; unready keeps the item.
+        s.remove(song);
+        assert_eq!(s.ready.len(), 1);
+        assert!(s.unready(deck));
+        assert!(!s.unready(deck));
+        assert!(s.ready.is_empty());
+    }
+
+    #[test]
+    fn a_pin_whose_item_went_is_left_out() {
+        let mut s = Service::new("Sunday");
+        let item = s.insert(
+            0,
+            ItemKind::Countdown {
+                target: CountdownTarget::At(Timestamp(0)),
+                label: "Soon".into(),
+            },
+        );
+        s.pin_ready(item);
+        // As a merge from another device would leave it.
+        s.items.remove(&item);
+        assert!(s.ready_ordered().is_empty());
+    }
+
+    #[test]
+    fn duplicate_carries_ready_onto_the_new_ids() {
+        let mut s = Service::new("Sunday");
+        let item = s.insert(
+            0,
+            ItemKind::Countdown {
+                target: CountdownTarget::At(Timestamp(0)),
+                label: "Soon".into(),
+            },
+        );
+        s.pin_ready(item);
+        s.add_ready(ItemKind::Deck {
+            deck: DeckId::generate(),
+        });
+        let copy = s.duplicate("Copy");
+        let ready = copy.ready_ordered();
+        assert_eq!(ready.len(), 2);
+        let (pin, entry) = ready[0];
+        assert_eq!(entry.source, ReadySource::Order);
+        assert!(copy.items.contains_key(&pin));
+        assert!(!s.items.contains_key(&pin));
+        assert!(!s.ready.contains_key(&ready[1].0));
+    }
+
+    /// Nothing kept ready writes no `ready` key, and JSON from before Ready
+    /// existed reads back.
+    #[test]
+    fn a_service_with_nothing_ready_serialises_as_before() {
+        let s = Service::new("Sunday");
+        let json = serde_json::to_value(&s).unwrap();
+        assert!(json.get("ready").is_none(), "{json}");
+        let read: Service = serde_json::from_value(json).unwrap();
+        assert_eq!(read, s);
     }
 
     #[test]

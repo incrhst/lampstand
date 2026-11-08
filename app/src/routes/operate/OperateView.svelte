@@ -1,7 +1,8 @@
 <!-- Operator panel: the wall. Every item's slides in the order of
      service, the slide on air marked LIVE and the one Next shows marked
      NEXT. The sidecard beside it holds what is on air with Previous, Next
-     and Blank, the screen, the room (OBS, Quick add, Sound, the group loop),
+     and Blank, Ready (Blank, Idle and what the service keeps one tap away,
+     lib/ready.ts), the screen, the room (OBS, Quick add, Sound, the group loop),
      and cards that fold away: remotes, clearing and the keys. While a deck
      slide with builds is on air it also shows the next click. Where OBS
      matters, one OBS control (the scene on air and the next item's scene)
@@ -28,6 +29,8 @@
   import { musicLine, words } from "../../lib/audio";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
+  import ReadyAdd from "./ReadyAdd.svelte";
+  import { loadedItem, readyList, returnLine } from "../../lib/ready";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
   import ObsNotice from "./ObsNotice.svelte";
   import { isConnected, isScreen, obsPill, upcomingScene } from "../../lib/obs";
@@ -194,7 +197,7 @@
     if (isTyping(target)) return;
     // A dialog over the service (Connect a phone or tablet, Quick add) has
     // its own keys; none of them may move the screen.
-    if (connectOpen || quickAddOpen || target?.closest?.('[aria-modal="true"]')) return;
+    if (connectOpen || quickAddOpen || readyAddOpen || target?.closest?.('[aria-modal="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
@@ -294,6 +297,8 @@
   // Quick add (/): a song or passage into the service on air, after what is
   // on air, without going back to Plan.
   let quickAddOpen = $state(false);
+  /** Add to Ready: a deck or media from the Library, kept one tap away. */
+  let readyAddOpen = $state(false);
   /** The "Connect a phone or tablet" dialog (T101). */
   let connectOpen = $state(false);
   function quickAdded(id: string | null, showNow: boolean, title: string) {
@@ -379,7 +384,8 @@
       report(e);
     }
   }
-  let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : null);
+  // A ready item kept out of the order is on air too, on a side-trip.
+  let liveItem = $derived(liveIndex >= 0 ? items[liveIndex] : live.live ? (loadedItem(live.loaded, live.live.item) ?? null) : null);
   let tip = $derived(
     nextTip(
       { loaded: live.loaded ?? null, liveItem: live.live?.item ?? null, liveSlides: liveItem?.slides.length ?? 0, hasLogo: !!live.settings?.brand?.logo, paired: live.team?.paired.length, realUse: live.realUse },
@@ -388,7 +394,7 @@
       snoozedTips,
     ),
   );
-  let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live) : null);
+  let upcoming = $derived(live.loaded ? nextSlide(live.loaded, live.live, live.returnsTo) : null);
   // The row on air scrolls into view when the service moves to
   // another item, so Next never leaves the operator looking elsewhere.
   $effect(() => {
@@ -398,7 +404,7 @@
   });
   // A deck on air gets the presenter view, whose Next is the next click.
   let presenting = $derived(!!(liveItem && live.live && live.liveSlide && isDeckSlide(live.liveSlide)));
-  let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live) : null);
+  let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live, live.returnsTo) : null);
   /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
   let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
   /** Focus: the cards only. F turns it on and off, Esc leaves it; closing the service leaves it too. */
@@ -523,7 +529,40 @@
 
   function kindOf(id: string) {
     const item = service?.items[id];
-    return item ? kindName(item.kind) : null;
+    if (item) return kindName(item.kind);
+    const own = service?.ready?.[id]?.source;
+    return own && own !== "Order" ? kindName(own.Own.kind) : null;
+  }
+
+  // Ready: Blank and Idle first, then what the service keeps one tap away.
+  // Tapping one is a side-trip; Next past its end goes back to the service.
+  let ready = $derived(readyList(live.loaded));
+  let pinned = $derived(new Set((live.loaded?.ready ?? []).filter((r) => r.in_order).map((r) => r.item.id)));
+  let backLine = $derived(live.onReady ? returnLine(live.loaded, live.returnsTo) : null);
+  function showReady(id: string) {
+    used("ready");
+    command({ ShowReady: id });
+  }
+  async function setPinned(item: string, on: boolean, title: string) {
+    const loaded = live.loaded;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { PinReady: { service: loaded.service, item, ready: on } } }, "Service");
+      live.status = on ? `${title} is ready` : `${title} is no longer ready`;
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function takeOffReady(id: string, inOrder: boolean, title: string) {
+    if (inOrder) return setPinned(id, false, title);
+    const loaded = live.loaded;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { RemoveReady: { service: loaded.service, item: id } } }, "Service");
+      live.status = `${title} is no longer ready`;
+    } catch (e) {
+      report(e);
+    }
   }
 
   let notes = $derived(liveItem ? (service?.items[liveItem.id]?.notes ?? "") : "");
@@ -664,6 +703,16 @@
           onadded={quickAdded}
         />
       {/if}
+      {#if readyAddOpen && live.loaded}
+        <ReadyAdd
+          service={live.loaded.service}
+          onclose={() => (readyAddOpen = false)}
+          onadded={(title) => {
+            readyAddOpen = false;
+            live.status = `${title} is ready`;
+          }}
+        />
+      {/if}
       {#if obsOpen}
         <ObsDrawer view={live.obs} onclose={() => setObsOpen(false)} onsetup={onobs} />
       {/if}
@@ -683,6 +732,7 @@
             <Button size="small" icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
             <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
             <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+            <Button size="small" onclick={() => command("ToggleIdle")} pressed={live.overlay === "Idle"} title="The idle screen, until you tap again or show a slide">Idle</Button>
             <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
             <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the menu bar and the sidecard again (F or Esc)">Exit focus</Button>
           </div>
@@ -732,8 +782,18 @@
                       </span>
                       <div class="wall-title">
                         <h3>{item.title}</h3>
-                        <p class="muted">
+                        <p class="muted wall-count">
                           {item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
+                          {#if item.slides.length > 0}
+                            <button
+                              type="button"
+                              class="pin"
+                              class:on={pinned.has(item.id)}
+                              aria-pressed={pinned.has(item.id)}
+                              title={pinned.has(item.id) ? `Kept ready. Click to stop keeping ${item.title} ready` : `Keep ${item.title} ready, one tap away in Ready`}
+                              onclick={() => setPinned(item.id, !pinned.has(item.id), item.title)}
+                            ><Icon name="star" size={12} />{pinned.has(item.id) ? "Ready" : "Keep ready"}</button>
+                          {/if}
                         </p>
                         {#if i === liveIndex}
                           <p class="on-air-tag"><Dot tone="live" size={6} />On air</p>
@@ -788,6 +848,7 @@
                     {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
                   {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
                 </span>
+                {#if backLine && live.overlay !== "Idle"}<span class="muted wall-back"><Icon name="prev" size={12} />{backLine}</span>{/if}
               </div>
               <div class="transport">
                 <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
@@ -823,6 +884,37 @@
             <!-- Straight after On air, so Stop the sound now is never below
                  the fold; it stays shown even with the Sound box folded. -->
             <SoundPanel {items} {service} />
+
+            <!-- Ready: the easy way to Blank or the idle screen, and to put
+                 up what the service keeps one tap away (a pinned item, or a
+                 deck or media kept only here) without losing the place. -->
+            <SideCard title="Ready" key="lampstand.present.ready" summary={ready.length > 0 ? `${ready.length}` : undefined}>
+              <div class="ready-screens">
+                <Button variant="danger" icon="eyeOff" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} title="Black screens, until you tap again (.)">Blank</Button>
+                <Button icon="image" onclick={() => command("ToggleIdle")} pressed={live.overlay === "Idle"} title="The idle screen, without ending the service, until you tap again or show a slide">Idle</Button>
+              </div>
+              {#if ready.length > 0}
+                <ul class="plain ready-list" aria-label="Kept ready">
+                  {#each ready as r (r.item.id)}
+                    {@const kind = kindOf(r.item.id)}
+                    {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
+                    <li class="ready-row" class:on-air={onAir}>
+                      <button type="button" class="ready-show" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+                        <Icon name={kind ? kindIcon[kind] : "file"} size={14} />
+                        <span class="ready-title">{r.item.title}</span>
+                        {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{:else if !r.in_order}<span class="side-hint">Only here</span>{/if}
+                      </button>
+                      <button type="button" class="ready-remove" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
+                        <Icon name="x" size={12} />
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {:else}
+                <p class="side-line muted ready-empty">Tap <Icon name="star" size={12} /> on an item to keep it here.</p>
+              {/if}
+              <button type="button" class="side-row" onclick={() => (readyAddOpen = true)}><Icon name="plus" size={14} />Add from the Library</button>
+            </SideCard>
 
             <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
               <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
@@ -1377,6 +1469,124 @@
     padding: 0 0.3rem;
     border: 1px solid currentColor;
     border-radius: 3px;
+  }
+  .ready-screens {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .ready-screens :global(button) {
+    height: 2.75rem;
+    justify-content: center;
+  }
+  .ready-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ready-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius);
+  }
+  .ready-row.on-air {
+    background: var(--hover, rgb(255 255 255 / 0.07));
+  }
+  .ready-show {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 0.4rem;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    color: var(--text);
+    background: none;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .ready-show:hover {
+    color: var(--gold-hover);
+  }
+  .ready-show :global(.icon) {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .ready-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ready-show .side-hint {
+    font-size: 0.75rem;
+  }
+  .ready-remove {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .ready-remove:hover {
+    color: var(--text);
+  }
+  .ready-empty {
+    gap: 0.3rem;
+  }
+  .wall-back {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+  }
+  .wall-count {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .pin {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.05rem 0.4rem;
+    font: inherit;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .pin:hover {
+    color: var(--text);
+  }
+  .pin.on {
+    color: var(--gold-hover);
+    border-color: currentColor;
+  }
+  /* With a mouse, "Keep ready" waits for the row to be pointed at, so the
+     wall stays quiet; a kept one always shows. */
+  @media (hover: hover) {
+    .pin:not(.on) {
+      opacity: 0;
+    }
+    .wall-row:hover .pin,
+    .pin:focus-visible {
+      opacity: 1;
+    }
   }
   .clear {
     display: grid;
