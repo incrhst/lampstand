@@ -69,7 +69,7 @@ export const TIPS: Tip[] = [
     clip: "tips/loop-progress.mp4",
     area: "Present",
     title: "See the time left on a slide",
-    body: "While a group loops, a thin bar along the bottom of the live screen fills as the slide's time runs out.",
+    body: "While a group loops, a thin gold bar along the bottom of the LIVE card and the On air picture fills as the slide's time runs out.",
     relevant: (f) => sections(f).some((s) => s.seconds !== null && f.liveItem !== null && s.items.includes(f.liveItem)),
     used: () => false,
   },
