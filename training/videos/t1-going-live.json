@@ -23,23 +23,23 @@
     },
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "The main screen"
     },
     {
      "x": 87.5,
-     "y": 45.5,
+     "y": 62.5,
      "label": "Next: Space or →"
     },
     {
      "x": 79,
-     "y": 45.5,
+     "y": 62.5,
      "label": "Previous: ←"
     }
    ],
-   "say": "The card marked LIVE, in red, is on air. The picture at the top right shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "say": "The card marked LIVE, in red, is on air. The picture in the On air box, on the right, shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
    "narration": "narration/t1-going-live/02.mp3",
-   "durationSec": 17
+   "durationSec": 20.5
   },
   {
    "type": "screenshot",
@@ -80,7 +80,7 @@
     },
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "Still on air"
     },
     {
@@ -101,17 +101,17 @@
    "callouts": [
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "On screen now"
     },
     {
-     "x": 86.5,
-     "y": 50,
+     "x": 80.5,
+     "y": 67,
      "label": "Clicks left on this slide"
     },
     {
      "x": 86.5,
-     "y": 66,
+     "y": 79.5,
      "label": "What the next click shows"
     }
    ],
@@ -135,34 +135,34 @@
   },
   {
    "type": "screenshot",
-   "src": "shots/training/focus.png",
-   "heading": "Focus: only the slides",
+   "src": "shots/training/hidden.png",
+   "heading": "Hide Library & controls",
    "tone": "screen",
    "callouts": [
     {
-     "x": 55,
-     "y": 4,
-     "label": "Plan or Present"
-    },
-    {
-     "x": 65,
-     "y": 4,
+     "x": 45,
+     "y": 10.4,
      "label": "What is on air"
     },
     {
-     "x": 76,
-     "y": 4,
+     "x": 70,
+     "y": 10.4,
      "label": "Blank, always in reach"
     },
     {
-     "x": 94,
-     "y": 4,
-     "label": "F or Esc comes back"
+     "x": 78.5,
+     "y": 10.4,
+     "label": "Stop the sound now"
+    },
+    {
+     "x": 91,
+     "y": 10.4,
+     "label": "Show, F or Esc brings it back"
     }
    ],
-   "say": "Press F, or the Focus button at the top right, for Focus. The bar along the top and the controls on the right hide, so you see only the slides. Blank, and Stop the sound now, stay in the small bar at the top, with Plan and Present. Press F again, or Escape, to bring everything back.",
+   "say": "Press F, or Hide at the top of Library and controls, to hide the sidebar and see only the slides. The bar along the top stays. Previous, Next, Blank, and Stop the sound now, stay in the small bar above the slides. Press F again, or Escape, or Show, to bring it back.",
    "narration": "narration/t1-going-live/07.mp3",
-   "durationSec": 24
+   "durationSec": 22
   },
   {
    "type": "cta",
