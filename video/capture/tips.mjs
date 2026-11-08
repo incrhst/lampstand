@@ -1,7 +1,8 @@
 // Records the quick-tip clips under ../app/public/tips from the real UI with
 // the fake bridge. Needs a capture server (npx vite --config capture/vite.config.ts
 // --port N) and Chrome; set APP to its address (default port 1431) and
-// CHROME to Chrome's path. Needs ffmpeg for the crop and trim.
+// CHROME to Chrome's path. Needs ffmpeg for the crop and trim. Name clips
+// to record only those (`node capture/tips.mjs quick-add safe-area`).
 import { chromium } from "playwright-core";
 import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -22,9 +23,12 @@ const W = 1280, H = 800;
 // Playwright's own video recorder needs a downloaded ffmpeg, so frames are
 // screenshotted at about 12 per second and encoded with the system ffmpeg.
 const FPS = 12;
-const crops = { narrow: "400:620:0:110", wide: "1000:620:0:110", full: "1280:690:0:110", top: "1280:690:0:0" };
+// The wall is the left 940 pixels; Library & controls is to its right.
+const crops = { narrow: "400:620:0:110", wall: "940:620:0:110", wide: "1000:620:0:110", full: "1280:690:0:110", top: "1280:690:0:0" };
+const only = process.argv.slice(2);
 
 async function clip(name, scene, crop, script, { open = "Pre-service and service" } = {}) {
+  if (only.length && !only.includes(name)) return;
   const dir = `${RAW}${name}/`;
   mkdirSync(dir, { recursive: true });
   const ctx = await browser.newContext({ viewport: { width: W, height: H } });
@@ -38,7 +42,9 @@ async function clip(name, scene, crop, script, { open = "Pre-service and service
   await p.goto(APP);
   await p.waitForTimeout(500);
   if (open) {
-    await p.getByText(open).first().click();
+    // Plan's services list is a page inside Library & controls.
+    await openServices(p);
+    await p.getByText(open).locator("visible=true").first().click();
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(700);
   }
@@ -64,12 +70,20 @@ async function clip(name, scene, crop, script, { open = "Pre-service and service
 }
 
 const wait = (p, ms) => p.waitForTimeout(ms);
+const openServices = async (p) => {
+  await p.locator("#library-and-controls").getByRole("button", { name: /^Services/ }).first().click();
+  await wait(p, 300);
+  // The mock's Sunday service has a fixed date, so it may be among the older ones.
+  const older = p.getByRole("button", { name: /^Show \d+ older/ }).locator("visible=true");
+  if (await older.count()) await older.first().click();
+  await wait(p, 200);
+};
 const startItem = async (p) => {
   await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
   await wait(p, 250); await p.keyboard.press(" ");
 };
 
-await clip("loop-group", "tips", crops.narrow, async (p) => {
+await clip("loop-group", "tips", crops.wall, async (p) => {
   await wait(p, 900);
   await p.getByRole("button", { name: /^Loop$/ }).first().click();
   await wait(p, 2200);
@@ -112,16 +126,22 @@ await clip("blank-screen", "tips", crops.full, async (p) => {
 await clip("safe-area", "tips", crops.top, async (p) => {
   await startItem(p);
   await wait(p, 1000);
-  await p.getByRole("button", { name: /more/i }).first().click();
-  await wait(p, 900);
-  await p.getByText(/safe area/i).first().click();
+  // The switch is in the Screen card, under Controls in Library & controls.
+  const guide = p.getByRole("switch", { name: /Safe area guide/ }).first();
+  const label = p.getByText("Safe area guide").first();
+  if (await guide.isChecked()) {
+    await label.click();
+    await wait(p, 900);
+  }
+  await label.click();
   await wait(p, 1500);
 });
 
 // Clips for the website docs only: the basic jobs, from the default demo service.
 await clip("plan-to-present", "default", crops.full, async (p) => {
   await wait(p, 600);
-  await p.getByText("Sunday service").first().click();
+  await openServices(p);
+  await p.getByText("Sunday service").locator("visible=true").first().click();
   await wait(p, 1500);
   await p.getByRole("button", { name: /Open for live/ }).click();
   await wait(p, 1500);
