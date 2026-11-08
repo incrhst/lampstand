@@ -18,7 +18,7 @@ use lampstand_core::service::{
 use lampstand_core::song::{Section, Song};
 use lampstand_core::theme::{Background, TextStyle, Theme, ThemeId};
 use lampstand_sync::team::DeviceKeypair;
-use lampstand_sync::{actor_device, Doc, DocChanged, DocKind, Repo, SyncError};
+use lampstand_sync::{actor_device, Doc, DocChanged, DocKind, Repo, SyncError, SyncMessage};
 use uuid::Uuid;
 
 fn open(dir: &Path) -> Repo {
@@ -846,6 +846,107 @@ fn a_first_message_without_changes_fixes_no_kind() {
     drop(b);
     let b = open(db.path());
     assert_eq!(b.get::<Song>(id).unwrap(), Some(song));
+}
+
+/// T77: the bound on offers of documents a device does not have still lets
+/// a new device take a 25,000-document library in one connection. The peer
+/// is played by plain Automerge documents, as the session does it: every
+/// document offered at once on connect, then the changes in batches.
+#[test]
+fn a_first_sync_of_a_large_library_completes_in_one_connection() {
+    use automerge::sync::{self, SyncDoc};
+    use automerge::Automerge;
+    const LIBRARY: usize = 25_000;
+    const BATCH: usize = 1_000;
+    let db = tempfile::tempdir().unwrap();
+    let b = open(db.path());
+    let a = DeviceKeypair::generate().public();
+    // autosurgeon is slow in a debug build: reconcile one song, then give
+    // each copy its own title with a plain write.
+    let mut template = Automerge::new();
+    template
+        .transact::<_, _, autosurgeon::ReconcileError>(|tx| {
+            autosurgeon::reconcile(tx, Song::new("Song"))
+        })
+        .unwrap();
+    let mut library: Vec<(Uuid, Automerge, sync::State)> = (0..LIBRARY)
+        .map(|n| {
+            let mut doc = template.fork();
+            doc.transact::<_, _, automerge::AutomergeError>(|tx| {
+                automerge::transaction::Transactable::put(
+                    tx,
+                    automerge::ROOT,
+                    "title",
+                    format!("Song {n}"),
+                )
+                .map(|_| ())
+            })
+            .unwrap();
+            (Uuid::now_v7(), doc, sync::State::new())
+        })
+        .collect();
+    let mut outgoing: Vec<SyncMessage> = library
+        .iter_mut()
+        .filter_map(|(id, doc, state)| {
+            let m = doc.generate_sync_message(state)?;
+            Some(SyncMessage {
+                kind: DocKind::Song,
+                id: *id,
+                data: m.encode(),
+            })
+        })
+        .collect();
+    assert_eq!(outgoing.len(), LIBRARY);
+    // The whole sweep arrives as one batch: every offer waits at once.
+    let mut first = true;
+    for _ in 0..10 {
+        if outgoing.is_empty() {
+            break;
+        }
+        let size = if first { LIBRARY } else { BATCH };
+        first = false;
+        let mut replies = Vec::new();
+        while !outgoing.is_empty() {
+            let batch: Vec<SyncMessage> = outgoing.drain(..size.min(outgoing.len())).collect();
+            let ids: Vec<Uuid> = batch.iter().map(|m| m.id).collect();
+            for (id, result) in b.receive_sync_messages(a, batch) {
+                assert!(result.is_ok(), "{id}: {result:?}");
+            }
+            replies.extend(
+                ids.into_iter()
+                    .filter_map(|id| b.generate_sync_message(a, id)),
+            );
+        }
+        let index: std::collections::HashMap<Uuid, usize> = library
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _, _))| (*id, i))
+            .collect();
+        for reply in replies {
+            let (_, doc, state) = &mut library[index[&reply.id]];
+            doc.receive_sync_message(state, sync::Message::decode(&reply.data).unwrap())
+                .unwrap();
+            if let Some(m) = doc.generate_sync_message(state) {
+                outgoing.push(SyncMessage {
+                    kind: DocKind::Song,
+                    id: reply.id,
+                    data: m.encode(),
+                });
+            }
+        }
+    }
+    assert!(outgoing.is_empty(), "did not finish in one connection");
+    let held = b
+        .documents()
+        .into_iter()
+        .filter(|(kind, _)| *kind == DocKind::Song)
+        .count();
+    assert_eq!(held, LIBRARY);
+    let (id, _, _) = &library[LIBRARY - 1];
+    assert_eq!(
+        b.get::<Song>(*id).unwrap().map(|s| s.title),
+        Some(format!("Song {}", LIBRARY - 1))
+    );
 }
 
 #[test]

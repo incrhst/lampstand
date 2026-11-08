@@ -38,14 +38,26 @@ const COMPACT_AFTER: usize = 32;
 const ACTOR_TAIL: usize = 8;
 
 /// Documents one peer may have offered that this device has not got yet
-/// (see [`Unknown`]). A first sync offers the whole library at once, so this
-/// is well above any church's library; a flood past it is refused.
-pub const MAX_UNKNOWN_DOCS: usize = 10_000;
+/// (see [`Unknown`]). The first sync offers the whole library at once, and
+/// the peer's changes start arriving only after this device has answered
+/// the lot, so every offer of a new device's first sync waits at the same
+/// time. A church library can pass 25,000 documents (5,000 songs, a whole
+/// song database downloaded, services, decks); this leaves room for more
+/// than twice that. A flood past it is refused.
+pub const MAX_UNKNOWN_DOCS: usize = 60_000;
 
-/// Bytes of sync messages about those documents one peer may have this
-/// device hold at once: their sync state grows with the message (its heads
-/// and bloom filter), so a count alone would not bound the memory.
-pub const MAX_UNKNOWN_BYTES: usize = 16 * 1024 * 1024;
+/// Memory those offers from one peer may take, counted as each message's
+/// size plus [`UNKNOWN_OFFER_OVERHEAD`]: the sync state kept grows with the
+/// message (its heads and bloom filter), so a count alone would not bound
+/// it. A typical offer is charged about 1 KiB, so this binds at about the
+/// same place as [`MAX_UNKNOWN_DOCS`], and earlier for larger messages.
+pub const MAX_UNKNOWN_BYTES: usize = 64 * 1024 * 1024;
+
+/// What a waiting offer is charged beyond its message's size: its sync
+/// state and map entries. Measured at 800 to 910 bytes for a song's
+/// opening message of 49 bytes (`tests/offer_memory.rs`, which checks
+/// that this covers it).
+pub const UNKNOWN_OFFER_OVERHEAD: usize = 1024;
 
 /// One Automerge sync message for one document. On the wire (T17) the kind
 /// travels with it, so a peer can create a document it has not seen with
@@ -484,7 +496,11 @@ impl Repo {
             );
             return Ok(true);
         }
-        if !unknown.entry(peer).or_default().claim(id, kind, data.len()) {
+        if !unknown
+            .entry(peer)
+            .or_default()
+            .claim(id, kind, data.len() + UNKNOWN_OFFER_OVERHEAD)
+        {
             peers.remove(&(peer, id));
             return Err(SyncError::Corrupt(format!(
                 "sync message for {id}: the peer has offered more documents this device \
@@ -712,7 +728,10 @@ mod tests {
         assert_eq!(fs_entries(&dir.path().join("docs")), 1);
         assert_eq!(
             unknown(&repo, peer),
-            (MAX_UNKNOWN_DOCS, MAX_UNKNOWN_DOCS * data.len())
+            (
+                MAX_UNKNOWN_DOCS,
+                MAX_UNKNOWN_DOCS * (data.len() + UNKNOWN_OFFER_OVERHEAD)
+            )
         );
         assert_eq!(repo.lock().peers.len(), MAX_UNKNOWN_DOCS);
         // Each accepted one is answered, so a real offer still syncs.
