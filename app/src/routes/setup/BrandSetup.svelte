@@ -1,4 +1,4 @@
-<!-- Setup › Church look: the quick start. A church says its name, adds its
+<!-- Setup › Logo and colours: the quick start. A church says its name, adds its
      logo, picks two or three colours and a font, and Lampstand makes a
      matching theme and uses it everywhere that doesn't choose its own. The
      logo, small and centred on its colour, is also the default idle screen,
@@ -20,6 +20,9 @@
   import Switch from "../../lib/kit/Switch.svelte";
   import BrandFile from "../../lib/kit/BrandFile.svelte";
   import ChurchShare from "../../lib/kit/ChurchShare.svelte";
+  import Suggest from "../../lib/kit/Suggest.svelte";
+
+  const fontOptions = bundledFonts.map((f) => ({ value: f.family, note: f.note }));
 
   let { onthemes }: { onthemes?: () => void } = $props();
 
@@ -125,7 +128,7 @@
 </script>
 
 <div class="page">
-  <h1>Church look</h1>
+  <h1>Logo and colours</h1>
   <p class="muted intro">
     Tell Lampstand who you are and it makes a theme in your colours and font, and puts your logo on the default idle screen. You can change
     anything later in Themes.
@@ -212,10 +215,15 @@
         </div>
         <label class="field">
           <span>Font</span>
-          <input list="brand-fonts" bind:value={brand.font_family} oninput={() => (done = false)} spellcheck="false" placeholder="Noto Sans" />
-          <datalist id="brand-fonts">
-            {#each bundledFonts as f (f.family)}<option value={f.family}>{f.note}</option>{/each}
-          </datalist>
+          <Suggest
+            bind:value={brand.font_family}
+            options={fontOptions}
+            fontPreview
+            oninput={() => (done = false)}
+            onpick={() => (done = false)}
+            spellcheck="false"
+            placeholder="Noto Sans"
+          />
           <span class="faint small">Any font installed on this computer works. Noto Sans and Noto Serif come with Lampstand.</span>
         </label>
       </Panel>

@@ -505,7 +505,7 @@
     }
   }
 
-  // The logo bug follows the logo set in Setup › Church look; this flips it
+  // The logo bug follows the logo set in Setup › Logo and colours; this flips it
   // on or off during a service and keeps the corner, size and opacity.
   let bugReady = $derived(!!live.settings?.brand?.logo);
   let bugOn = $derived(bugReady && !!live.settings?.brand?.bug.enabled);
