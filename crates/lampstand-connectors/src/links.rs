@@ -128,10 +128,25 @@ pub async fn fetch(
     fetch_url(&download_url(link), &default_name(link), previous_version).await
 }
 
+/// The most a deck link downloads: 512 MB. The deck budget (T87) charges
+/// every zip entry's inflated bytes twice against 1 GiB, so a larger
+/// download could not be imported anyway. Guest uploads (T44) use the same
+/// limit.
+pub const MAX_DECK_BYTES: u64 = 512 * 1024 * 1024;
+
 async fn fetch_url(
     url: &str,
     fallback_name: &str,
     previous_version: Option<&str>,
+) -> Result<Option<Fetched>, FetchError> {
+    fetch_url_limited(url, fallback_name, previous_version, MAX_DECK_BYTES).await
+}
+
+async fn fetch_url_limited(
+    url: &str,
+    fallback_name: &str,
+    previous_version: Option<&str>,
+    max_bytes: u64,
 ) -> Result<Option<Fetched>, FetchError> {
     let client = reqwest::Client::builder()
         .user_agent(concat!("lampstand/", env!("CARGO_PKG_VERSION")))
@@ -141,7 +156,7 @@ async fn fetch_url(
     if let Some(v) = previous_version {
         request = request.header(IF_NONE_MATCH, v);
     }
-    let response = request
+    let mut response = request
         .send()
         .await
         .map_err(|e| FetchError::Network(e.to_string()))?;
@@ -176,11 +191,21 @@ async fn fetch_url(
     {
         return Err(FetchError::NotADeck(content_type));
     }
-    let bytes = response
-        .bytes()
+    if response.content_length().is_some_and(|n| n > max_bytes) {
+        return Err(FetchError::TooLarge);
+    }
+    // The length header can be missing or wrong, so the body is counted too.
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
         .map_err(|e| FetchError::Network(e.to_string()))?
-        .to_vec();
+    {
+        if (bytes.len() + chunk.len()) as u64 > max_bytes {
+            return Err(FetchError::TooLarge);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     // PPTX and PPT-in-OOXML are zip containers.
     if !bytes.starts_with(b"PK") {
         return Err(FetchError::NotADeck(content_type));
@@ -659,6 +684,56 @@ mod tests {
             fetch_url(&url, "f.pptx", None).await,
             Err(FetchError::NotADeck(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn fetch_stops_at_the_deck_limit() {
+        let mut big = PPTX.to_vec();
+        big.resize(5000, 0);
+        let (_s, url) = serve(ResponseTemplate::new(200).set_body_bytes(big.clone())).await;
+        assert!(matches!(
+            fetch_url_limited(&url, "f.pptx", None, 4096).await,
+            Err(FetchError::TooLarge)
+        ));
+        // Exactly at the limit is fine.
+        big.truncate(4096);
+        let (_s, url) = serve(ResponseTemplate::new(200).set_body_bytes(big)).await;
+        let got = fetch_url_limited(&url, "f.pptx", None, 4096)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.bytes.len(), 4096);
+    }
+
+    /// No `Content-Length` (a chunked body): the download is counted as it
+    /// arrives and stops past the limit.
+    #[tokio::test]
+    async fn fetch_counts_a_body_without_a_length() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/deck", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+            );
+            let chunk = [b'P'; 1024];
+            for _ in 0..8 {
+                let _ = stream.write_all(b"400\r\n");
+                let _ = stream.write_all(&chunk);
+                if stream.write_all(b"\r\n").is_err() {
+                    return;
+                }
+            }
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        assert!(matches!(
+            fetch_url_limited(&url, "f.pptx", None, 4096).await,
+            Err(FetchError::TooLarge)
+        ));
+        server.join().unwrap();
     }
 
     #[test]
