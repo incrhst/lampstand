@@ -59,6 +59,8 @@
   import { splitText, textTitle } from "../../lib/textSlides";
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
+  import ReadyAdd from "./ReadyAdd.svelte";
+  import { isPinned } from "../../lib/ready";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
@@ -633,6 +635,53 @@
         { area: "Service", request: { RemoveItem: { service: selected.id, item } } },
         "Service",
       );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // Ready (Present's Ready card): what the operator keeps one tap away. A
+  // pin keeps an item of the order there; a deck or media can be kept there
+  // without going in the order.
+  let readyAddOpen = $state(false);
+  let readyRows = $derived.by(() => {
+    if (!selected) return [];
+    const s = selected;
+    return Object.entries(s.ready ?? {})
+      .filter(([id, e]) => e.source !== "Order" || id in s.items)
+      .sort(([a, x], [b, y]) => (x.position < y.position ? -1 : x.position > y.position ? 1 : a < b ? -1 : 1))
+      .map(([id, e]) => {
+        if (e.source === "Order") return { id, inOrder: true, title: itemTitle(s.items[id]), icon: kindIcon[kindName(s.items[id].kind)] };
+        if ("Slide" in e.source) {
+          const { deck, slide } = e.source.Slide;
+          return { id, inOrder: false, title: `${deckById[deck]?.title ?? "Deck"} · slide ${slide + 1}`, icon: kindIcon.Deck };
+        }
+        const k = e.source.Own.kind;
+        const title = "Media" in k ? k.Media.name : "Deck" in k ? (deckById[k.Deck.deck]?.title ?? "Deck") : "Item";
+        return { id, inOrder: false, title, icon: kindIcon[kindName(k)] };
+      });
+  });
+  async function setPinned(item: string, ready: boolean) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { PinReady: { service: selected.id, item, ready } } }, "Service");
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function removeReady(item: string) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { RemoveReady: { service: selected.id, item } } }, "Service");
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function readyAdded() {
+    readyAddOpen = false;
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { Get: selected.id } }, "Service");
     } catch (e) {
       report(e);
     }
@@ -1238,6 +1287,7 @@
                       {/if}
                       {#if loops}<span class="tag">Loops {item.loop_seconds} s</span>{/if}
                       {#if item.obs_scene}<span class="tag">OBS: {item.obs_scene}</span>{/if}
+                      {#if isPinned(selected, id)}<span class="tag"><Icon name="star" size={11} /> Ready</span>{/if}
                       <button
                         type="button"
                         class="chevron"
@@ -1328,6 +1378,11 @@
                               onchange={(scene) => setObsScene(id, scene)}
                             />
                           {/if}
+                          {#if !readOnly}
+                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="One tap away in Present's Ready card, without losing the place in the service">
+                              {isPinned(selected, id) ? "Kept ready" : "Keep ready in Present"}
+                            </Button>
+                          {/if}
                           <span class="spacer"></span>
                           <Button variant="ghost" size="small" icon="trash" onclick={() => remove(id)}>Remove from service</Button>
                         </div>
@@ -1347,6 +1402,37 @@
             {/if}
             {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true">{#if dragHint}<span class="drop-hint">{dragHint}</span>{/if}</li>{/if}
           </ol>
+        {/if}
+        {#if selected && (!readOnly || readyRows.length > 0)}
+          <!-- Ready: Present's Ready card, prepared here. Not part of the
+               order: Next never lands on these. -->
+          <section class="ready" aria-labelledby="plan-ready">
+            <h3 class="eyebrow" id="plan-ready">Ready in Present</h3>
+            <p class="muted ready-note">One tap away during the service, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
+            {#if readyRows.length > 0}
+              <ul class="plain ready-list">
+                {#each readyRows as r (r.id)}
+                  <li class="ready-row">
+                    <Icon name={r.icon} size={14} />
+                    <span class="ready-title">{r.title}</span>
+                    <span class="muted ready-where">{r.inOrder ? "In the order" : "Only in Ready"}</span>
+                    {#if !readOnly}
+                      <Button variant="ghost" size="small" icon="x" label="Take {r.title} out of Ready" onclick={() => (r.inOrder ? setPinned(r.id, false) : removeReady(r.id))} />
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            {#if !readOnly}
+              <div class="ready-actions">
+                <Button size="small" icon="plus" onclick={() => (readyAddOpen = true)}>Add a deck or media</Button>
+                <span class="muted ready-note">or open an item and choose Keep ready in Present.</span>
+              </div>
+            {/if}
+          </section>
+          {#if readyAddOpen}
+            <ReadyAdd service={selected.id} ready={selected.ready ?? {}} onclose={() => (readyAddOpen = false)} onadded={readyAdded} />
+          {/if}
         {/if}
       </div>
     {:else}
@@ -1830,6 +1916,53 @@
   }
   .spacer {
     flex: 1;
+  }
+  .ready {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+  }
+  .ready-note {
+    font-size: 0.8125rem;
+  }
+  .ready-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ready-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.25rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .ready-row :global(.icon) {
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+  .ready-title {
+    min-width: 0;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ready-where {
+    margin-left: auto;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .ready-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
   }
   .eyebrow {
     font-size: 0.7rem;

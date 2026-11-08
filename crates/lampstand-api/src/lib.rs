@@ -731,6 +731,42 @@ pub enum ServiceRequest {
         service: ServiceId,
         item: ItemId,
     },
+    /// Pins an item of the order to Ready (`ready: true`), or takes the pin
+    /// off (`false`); the item stays in the order either way. A header
+    /// cannot be pinned. Answers `Response::Service`.
+    PinReady {
+        service: ServiceId,
+        item: ItemId,
+        ready: bool,
+    },
+    /// Keeps a deck or media from the Library ready, without putting it in
+    /// the order. Other kinds are refused. Answers `Response::Service`.
+    AddReady {
+        service: ServiceId,
+        kind: ItemKind,
+    },
+    /// Keeps one slide of a deck ready, on its own (`slide` from 0, hidden
+    /// slides left out, as the deck is shown). Its builds play by
+    /// themselves when it is shown. Keeping the same slide twice keeps it
+    /// once. Answers `Response::Service`.
+    AddReadySlide {
+        service: ServiceId,
+        deck: DeckId,
+        slide: u32,
+    },
+    /// Takes an entry out of Ready: a pin, or something kept only there.
+    /// Answers `Response::Service`.
+    RemoveReady {
+        service: ServiceId,
+        item: ItemId,
+    },
+    /// Moves an entry to `index` in the Ready list. Answers
+    /// `Response::Service`.
+    MoveReady {
+        service: ServiceId,
+        item: ItemId,
+        index: usize,
+    },
     /// The OBS scene an item switches to when it goes live (T90); `None`
     /// (or blank) leaves OBS as it is. Answers `Response::Service`.
     SetObsScene {
@@ -1591,6 +1627,22 @@ pub struct LoadedService {
     /// Every header and the items under it, with the loop each has now
     /// (a change made on air included).
     pub sections: Vec<SectionView>,
+    /// What is kept ready, in the Ready list's order: `Command::ShowReady`
+    /// puts one on air. Absent from an older device's message: empty.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(as = "Option<Vec<ReadyView>>", optional))]
+    pub ready: Vec<ReadyView>,
+}
+
+/// One thing kept ready in the loaded service.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReadyView {
+    /// The item and its slides. For a pin, the same as its entry in
+    /// `LoadedService::items`.
+    pub item: LoadedItemView,
+    /// A pinned item of the order; false for something kept only in Ready.
+    pub in_order: bool,
 }
 
 /// A header and the items up to the next header.
@@ -1722,6 +1774,15 @@ pub enum Event {
         /// older device's message: false.
         #[serde(default)]
         cleared: bool,
+        /// On a side-trip to a ready item (`Command::ShowReady`), the slide
+        /// the service goes back to after it. Absent from an older device's
+        /// message: none.
+        #[serde(default)]
+        returns_to: Option<Cursor>,
+        /// A side-trip to a ready item is under way. Absent from an older
+        /// device's message: false.
+        #[serde(default)]
+        on_ready: bool,
     },
     /// A service was loaded or reloaded (an edit synced in mid-service):
     /// the operator view should show these slides.
