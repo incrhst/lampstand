@@ -431,6 +431,7 @@ async fn api(
                         FetchError::Forbidden => "the site refused the download".into(),
                         FetchError::NotFound => format!("there is no {code} song database"),
                         FetchError::NotADeck(why) => why,
+                        FetchError::TooLarge => "the download is too large".into(),
                     };
                     return Ok(Response::Error {
                         message: format!("Download failed: {why}"),

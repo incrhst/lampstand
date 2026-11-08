@@ -36,7 +36,7 @@ export function describeDefaultIdle(brand: Pick<Brand, "name" | "logo"> | null):
     const name = brand.name.trim();
     return name ? `Your logo and name (${name}) on your colour` : "Your logo on your colour";
   }
-  return "The Lampstand lamp. Add your logo under Setup › Church look to show yours instead.";
+  return "The Lampstand lamp. Add your logo under Setup › Logo and colours to show yours instead.";
 }
 
 /** The idle setting that applies to a screen: its own, else the default for all screens, else the default idle screen. `null` is the theme's plain background. */
