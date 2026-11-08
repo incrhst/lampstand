@@ -48,6 +48,8 @@ const SCRIPTS: &[(&str, &str)] = &[
 
 /// File prefix in `assets/fonts` and the family name the scene uses.
 const FAMILIES: &[(&str, &str)] = &[
+    ("Literata", "Literata"),
+    ("SourceSans3", "Source Sans 3"),
     ("NotoSans", "Noto Sans"),
     ("NotoSerif", "Noto Serif"),
     ("Carlito", "Carlito"),

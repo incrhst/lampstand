@@ -119,7 +119,8 @@ How T57 built the journal (`app/src-tauri/src/journal.rs`):
 
 `layout` measures with cosmic-text, and `render` draws with glyphon on the same `FontSystem` and the same font files. A line that fits in layout therefore fits on screen. The bundled fonts are:
 
-- Noto Sans and Noto Serif
+- Literata, the default serif, and Source Sans 3, the default sans-serif
+- Noto Serif and Noto Sans, for alphabets the defaults don't cover
 - Metric-compatible stand-ins for the usual PowerPoint fonts: Carlito (Calibri), Caladea (Cambria), Arimo (Arial), Tinos (Times New Roman) and Cousine (Courier New)
 
 A missing font in a deck uses its stand-in where one exists, and the fidelity report says so (PS-4).

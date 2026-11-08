@@ -29,7 +29,7 @@
     primary: { r: 27, g: 42, b: 92, a: 255 },
     text: null,
     accent: { r: 240, g: 190, b: 60, a: 255 },
-    font_family: "Noto Sans",
+    font_family: "Literata",
     bug: { enabled: false, corner: "LowerRight", size: "Small", opacity: 80 },
   };
 
@@ -212,11 +212,11 @@
         </div>
         <label class="field">
           <span>Font</span>
-          <input list="brand-fonts" bind:value={brand.font_family} oninput={() => (done = false)} spellcheck="false" placeholder="Noto Sans" />
+          <input list="brand-fonts" bind:value={brand.font_family} oninput={() => (done = false)} spellcheck="false" placeholder="Literata" />
           <datalist id="brand-fonts">
             {#each bundledFonts as f (f.family)}<option value={f.family}>{f.note}</option>{/each}
           </datalist>
-          <span class="faint small">Any font installed on this computer works. Noto Sans and Noto Serif come with Lampstand.</span>
+          <span class="faint small">Any font installed on this computer works. Literata, Source Sans 3, Noto Serif and Noto Sans come with Lampstand.</span>
         </label>
       </Panel>
 
@@ -242,7 +242,7 @@
       <h2 class="title">Preview</h2>
       {#if theme}
         <figure>
-          <ThemeSketch {theme} lines={["Amazing grace! How sweet the sound", "That saved a wretch like me!"]} footer="John Newton · Public domain" />
+          <ThemeSketch {theme} lines={["Amazing grace! How sweet the sound", "That saved a wretch like me!"]} footer="John Newton · Public domain" song />
           <figcaption class="muted">Songs and scripture</figcaption>
         </figure>
       {/if}

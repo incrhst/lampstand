@@ -384,7 +384,7 @@
                   {#if pictures[s.id] && !previewFailed}
                     <img src={pictures[s.id]} alt="{s.label} sample" />
                   {:else}
-                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} />
+                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} song={s.id === "Lyrics"} />
                   {/if}
                 </div>
                 <figcaption class="muted">{s.label}</figcaption>
@@ -411,7 +411,7 @@
                 bind:value={draft.text.font_family}
                 oninput={changed}
                 spellcheck="false"
-                placeholder="Noto Sans"
+                placeholder="Literata"
               />
               <datalist id="theme-fonts">
                 {#each bundledFonts as f (f.family)}<option value={f.family}>{f.note}</option>{/each}

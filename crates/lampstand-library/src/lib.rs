@@ -451,7 +451,7 @@ pub fn theme_from_brand(brand: &Brand, id: ThemeId) -> Theme {
     theme
 }
 
-/// White Noto Sans on black, full screen, four lines a slide. A fresh
+/// White Literata on black, full screen, four lines a slide. A fresh
 /// library gets it as a document; the app also falls back to it when every
 /// theme has been deleted (deletes sync, so that can happen mid-service).
 pub fn starter_theme() -> Theme {
@@ -459,7 +459,7 @@ pub fn starter_theme() -> Theme {
         id: ThemeId::from_uuid(STARTER_THEME_ID),
         name: "Starter".into(),
         text: TextStyle {
-            font_family: "Noto Sans".into(),
+            font_family: "Literata".into(),
             size: 72.0,
             min_size: 36.0,
             weight: 400,
@@ -764,7 +764,7 @@ mod tests {
             let themes = lib.themes().unwrap();
             assert_eq!(themes.len(), 1);
             let t = &themes[0];
-            assert_eq!(t.text.font_family, "Noto Sans");
+            assert_eq!(t.text.font_family, "Literata");
             assert_eq!(t.text.color, Color::WHITE);
             assert_eq!(t.background, Background::Color(Color::BLACK));
             assert_eq!(t.max_lines, 4);
