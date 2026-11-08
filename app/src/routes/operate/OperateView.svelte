@@ -26,6 +26,7 @@
   import TipCard from "../../lib/kit/TipCard.svelte";
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
   import LiveLoop from "./LiveLoop.svelte";
+  import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import SoundPanel from "./SoundPanel.svelte";
   import { musicLine, words } from "../../lib/audio";
   import ObsDrawer from "./ObsDrawer.svelte";
@@ -324,6 +325,10 @@
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   /** The section on air, if the live item sits under a header. */
   let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
+  /** While the group on air loops and the slide is showing: how long each slide stays up, else null. */
+  let loopSeconds = $derived(live.live && live.overlay === "None" ? (liveSection?.seconds ?? null) : null);
+  /** Changes whenever a new slide or build goes up, so the bar starts again. */
+  let loopKey = $derived(live.live ? `${live.live.item}:${live.live.slide}:${live.live.step}` : "");
   /** Headers whose sections are folded away in the service order. */
   let collapsed: Set<string> = $state(new Set());
   function toggleSection(header: string) {
@@ -571,6 +576,7 @@
       <SectionTag label={slide.label ?? String(i + 1)} />
       {#if slide.steps > 0}<span class="faint steps">{slide.steps} {slide.steps === 1 ? "step" : "steps"}</span>{/if}
     </span>
+    {#if mark === "live" && loopSeconds}<LoopProgress seconds={loopSeconds} slideKey={loopKey} />{/if}
   </button>
 {/snippet}
 
@@ -780,6 +786,7 @@
                     brand={look.brand}
                     empty="Nothing on air"
                   />
+                  {#if loopSeconds}<LoopProgress seconds={loopSeconds} slideKey={loopKey} />{/if}
                 </div>
               </figure>
               <div class="wall-now">
@@ -1215,6 +1222,7 @@
     gap: 0.75rem;
   }
   .slide {
+    position: relative;
     font: inherit;
     color: inherit;
     width: 100%;
@@ -1288,6 +1296,7 @@
     margin: 0;
   }
   .monitor-screen {
+    position: relative;
     border-radius: var(--radius);
     overflow: hidden;
     box-shadow: 0 0 0 2px var(--line);
