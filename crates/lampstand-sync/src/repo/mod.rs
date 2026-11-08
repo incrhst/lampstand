@@ -37,6 +37,16 @@ const COMPACT_AFTER: usize = 32;
 /// Bytes of randomness after the device key in an actor ID.
 const ACTOR_TAIL: usize = 8;
 
+/// Documents one peer may have offered that this device has not got yet
+/// (see [`Unknown`]). A first sync offers the whole library at once, so this
+/// is well above any church's library; a flood past it is refused.
+pub const MAX_UNKNOWN_DOCS: usize = 10_000;
+
+/// Bytes of sync messages about those documents one peer may have this
+/// device hold at once: their sync state grows with the message (its heads
+/// and bloom filter), so a count alone would not bound the memory.
+pub const MAX_UNKNOWN_BYTES: usize = 16 * 1024 * 1024;
+
 /// One Automerge sync message for one document. On the wire (T17) the kind
 /// travels with it, so a peer can create a document it has not seen with
 /// the right kind and check the sender may write that kind.
@@ -69,6 +79,41 @@ pub struct Repo {
 struct State {
     docs: HashMap<Uuid, Loaded>,
     peers: HashMap<(DeviceKey, Uuid), sync::State>,
+    unknown: HashMap<DeviceKey, Unknown>,
+}
+
+/// The documents a peer has offered that this device does not have: only
+/// the kind the peer claims, so the reply can carry it. No document exists
+/// for them, in memory or on disk, and nothing fixes their kind, until a
+/// message brings a change. Bounded per peer, and dropped with the peer's
+/// sync state ([`Repo::forget_peer`]).
+#[derive(Default)]
+struct Unknown {
+    /// Each ID's claimed kind and the size of the last message about it.
+    docs: HashMap<Uuid, (DocKind, usize)>,
+    bytes: usize,
+}
+
+impl Unknown {
+    fn remove(&mut self, id: Uuid) {
+        if let Some((_, size)) = self.docs.remove(&id) {
+            self.bytes -= size;
+        }
+    }
+
+    /// Records (or updates) the claim, unless that would pass the bounds.
+    fn claim(&mut self, id: Uuid, kind: DocKind, size: usize) -> bool {
+        let (count, bytes) = match self.docs.get(&id) {
+            Some((_, old)) => (self.docs.len(), self.bytes - old),
+            None => (self.docs.len() + 1, self.bytes),
+        };
+        if count > MAX_UNKNOWN_DOCS || bytes + size > MAX_UNKNOWN_BYTES {
+            return false;
+        }
+        self.bytes = bytes + size;
+        self.docs.insert(id, (kind, size));
+        true
+    }
 }
 
 /// A document in memory, and how much of it is on disk.
@@ -262,46 +307,45 @@ impl Repo {
 
     /// The next sync message for `peer` about document `id`, or `None` when
     /// there is nothing to say until the peer replies. Unknown IDs give
-    /// `None`.
+    /// `None`, unless `peer` offered them: then the reply asks for them.
     pub fn generate_sync_message(&self, peer: DeviceKey, id: Uuid) -> Option<SyncMessage> {
         let mut st = self.lock();
-        let State { docs, peers } = &mut *st;
-        let loaded = self.load(docs, id, None).ok()??;
-        let state = peers.entry((peer, id)).or_default();
-        loaded
-            .doc
-            .generate_sync_message(state)
-            .map(|m| SyncMessage {
-                kind: loaded.kind,
-                id,
-                data: m.encode(),
-            })
+        let State {
+            docs,
+            peers,
+            unknown,
+        } = &mut *st;
+        let (kind, message) = match self.load(docs, id, None).ok()? {
+            Some(loaded) => {
+                let state = peers.entry((peer, id)).or_default();
+                (loaded.kind, loaded.doc.generate_sync_message(state))
+            }
+            None => {
+                let (kind, _) = *unknown.get(&peer)?.docs.get(&id)?;
+                let state = peers.entry((peer, id)).or_default();
+                (kind, Automerge::new().generate_sync_message(state))
+            }
+        };
+        message.map(|m| SyncMessage {
+            kind,
+            id,
+            data: m.encode(),
+        })
     }
 
-    /// Applies a sync message from `peer`, creating the document if this
-    /// device has not seen it.
+    /// Applies a sync message from `peer`. A document this device has not
+    /// seen is created only once a message brings a change (see
+    /// [`MAX_UNKNOWN_DOCS`]).
     pub fn receive_sync_message(
         &self,
         peer: DeviceKey,
         message: SyncMessage,
     ) -> Result<(), SyncError> {
-        let SyncMessage { kind, id, data } = message;
-        let decoded = sync::Message::decode(&data)
-            .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
+        let (kind, id) = (message.kind, message.id);
         let mut st = self.lock();
-        let State { docs, peers } = &mut *st;
-        let loaded = self
-            .load(docs, id, Some(kind))?
-            .expect("created when missing");
-        check_kind(id, loaded.kind, kind)?;
-        // T18: drop changes whose author's role may not write `kind`.
-        let before = loaded.doc.get_heads();
-        loaded
-            .doc
-            .receive_sync_message(peers.entry((peer, id)).or_default(), decoded)
-            .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
-        let changed = loaded.doc.get_heads() != before;
+        let changed = self.apply(&mut st, peer, message)?;
         if changed {
+            let loaded = st.docs.get_mut(&id).expect("applied above");
             let mut durable = Durable::default();
             self.persist(id, loaded, &mut durable)?;
             durable.finish()?;
@@ -325,32 +369,19 @@ impl Repo {
         let mut results = Vec::with_capacity(messages.len());
         let mut changed: Vec<(DocKind, Uuid)> = Vec::new();
         let mut st = self.lock();
-        let State { docs, peers } = &mut *st;
-        for SyncMessage { kind, id, data } in messages {
-            let result = (|| {
-                let decoded = sync::Message::decode(&data)
-                    .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
-                let loaded = self
-                    .load(docs, id, Some(kind))?
-                    .expect("created when missing");
-                check_kind(id, loaded.kind, kind)?;
-                // T18: drop changes whose author's role may not write `kind`.
-                let before = loaded.doc.get_heads();
-                loaded
-                    .doc
-                    .receive_sync_message(peers.entry((peer, id)).or_default(), decoded)
-                    .map_err(|e| SyncError::Corrupt(format!("sync message for {id}: {e}")))?;
-                if loaded.doc.get_heads() != before && !changed.contains(&(kind, id)) {
+        for message in messages {
+            let (kind, id) = (message.kind, message.id);
+            let result = self.apply(&mut st, peer, message).map(|applied| {
+                if applied && !changed.contains(&(kind, id)) {
                     changed.push((kind, id));
                 }
-                Ok(())
-            })();
+            });
             results.push((id, result));
         }
         let mut persisted = Vec::with_capacity(changed.len());
         let mut durable = Durable::default();
         for (kind, id) in changed {
-            let loaded = docs.get_mut(&id).expect("loaded above");
+            let loaded = st.docs.get_mut(&id).expect("applied above");
             match self.persist(id, loaded, &mut durable) {
                 Ok(()) => persisted.push((kind, id)),
                 Err(e) => {
@@ -383,10 +414,85 @@ impl Repo {
         TEAM_DOC
     }
 
-    /// Drops the sync state kept for `peer`, when its connection closes.
-    /// The next connection starts the sync handshake afresh.
+    /// Drops the sync state kept for `peer`, when its connection closes,
+    /// with the documents it offered that this device never got. The next
+    /// connection starts the sync handshake afresh.
     pub fn forget_peer(&self, peer: DeviceKey) {
-        self.lock().peers.retain(|(p, _), _| *p != peer);
+        let mut st = self.lock();
+        st.peers.retain(|(p, _), _| *p != peer);
+        st.unknown.remove(&peer);
+    }
+
+    /// Applies one sync message from `peer` in memory. Returns whether the
+    /// document changed, and so needs writing.
+    ///
+    /// A message about a document this device has not got creates nothing
+    /// unless it brings a change: until then only the peer's sync state and
+    /// claimed kind are kept, within [`MAX_UNKNOWN_DOCS`] and
+    /// [`MAX_UNKNOWN_BYTES`], so a peer can neither fill memory with empty
+    /// documents nor fix a document's kind with a message that has no
+    /// changes.
+    fn apply(
+        &self,
+        st: &mut State,
+        peer: DeviceKey,
+        message: SyncMessage,
+    ) -> Result<bool, SyncError> {
+        let SyncMessage { kind, id, data } = message;
+        let corrupt =
+            |e: &dyn std::fmt::Display| SyncError::Corrupt(format!("sync message for {id}: {e}"));
+        let decoded = sync::Message::decode(&data).map_err(|e| corrupt(&e))?;
+        let State {
+            docs,
+            peers,
+            unknown,
+        } = st;
+        if let Some(loaded) = self.load(docs, id, None)? {
+            if let Some(offered) = unknown.get_mut(&peer) {
+                offered.remove(id);
+            }
+            check_kind(id, loaded.kind, kind)?;
+            // T18: drop changes whose author's role may not write `kind`.
+            let before = loaded.doc.get_heads();
+            loaded
+                .doc
+                .receive_sync_message(peers.entry((peer, id)).or_default(), decoded)
+                .map_err(|e| corrupt(&e))?;
+            return Ok(loaded.doc.get_heads() != before);
+        }
+        // Not here: try the message on an empty document and a copy of the
+        // peer's sync state, and keep them only if it brought a change or
+        // the peer is within its bounds.
+        let mut doc = Automerge::new().with_actor(self.actor.clone());
+        let mut state = peers.get(&(peer, id)).cloned().unwrap_or_default();
+        // T18: drop changes whose author's role may not write `kind`.
+        doc.receive_sync_message(&mut state, decoded)
+            .map_err(|e| corrupt(&e))?;
+        if !doc.get_heads().is_empty() {
+            for offered in unknown.values_mut() {
+                offered.remove(id);
+            }
+            peers.insert((peer, id), state);
+            docs.insert(
+                id,
+                Loaded {
+                    kind,
+                    doc,
+                    saved: Vec::new(),
+                    chunks: 0,
+                },
+            );
+            return Ok(true);
+        }
+        if !unknown.entry(peer).or_default().claim(id, kind, data.len()) {
+            peers.remove(&(peer, id));
+            return Err(SyncError::Corrupt(format!(
+                "sync message for {id}: the peer has offered more documents this device \
+                 does not have than it holds at once"
+            )));
+        }
+        peers.insert((peer, id), state);
+        Ok(false)
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -554,5 +660,101 @@ fn map_at_or_put(tx: &mut impl Transactable, key: &str) -> Result<ObjId, Automer
     match map_at(tx, key) {
         Some(id) => Ok(id),
         None => tx.put_object(ROOT, key, ObjType::Map),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open(dir: &std::path::Path) -> Repo {
+        Repo::open(dir.to_path_buf(), DeviceKeypair::generate()).unwrap()
+    }
+
+    /// A peer's opening message about a document with one change: its heads
+    /// and a bloom filter, no changes.
+    fn opening_message() -> Vec<u8> {
+        let mut doc = Automerge::new();
+        doc.transact::<_, _, AutomergeError>(|tx| tx.put(ROOT, "title", "x").map(|_| ()))
+            .unwrap();
+        doc.generate_sync_message(&mut sync::State::new())
+            .unwrap()
+            .encode()
+    }
+
+    fn unknown(repo: &Repo, peer: DeviceKey) -> (usize, usize) {
+        let st = repo.lock();
+        st.unknown
+            .get(&peer)
+            .map_or((0, 0), |u| (u.docs.len(), u.bytes))
+    }
+
+    #[test]
+    fn a_flood_of_unknown_ids_creates_no_documents_and_is_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = open(dir.path());
+        let peer = DeviceKeypair::generate().public();
+        let data = opening_message();
+        let flood: Vec<SyncMessage> = (0..MAX_UNKNOWN_DOCS + 50)
+            .map(|_| SyncMessage {
+                kind: DocKind::Song,
+                id: Uuid::now_v7(),
+                data: data.clone(),
+            })
+            .collect();
+        let results = repo.receive_sync_messages(peer, flood);
+        let refused = results.iter().filter(|(_, r)| r.is_err()).count();
+        assert_eq!(refused, 50);
+        assert!(results[..MAX_UNKNOWN_DOCS].iter().all(|(_, r)| r.is_ok()));
+        // Nothing but the team document, in memory or on disk.
+        assert_eq!(repo.lock().docs.len(), 1);
+        assert_eq!(repo.documents(), vec![(DocKind::Team, TEAM_DOC)]);
+        assert_eq!(fs_entries(&dir.path().join("docs")), 1);
+        assert_eq!(
+            unknown(&repo, peer),
+            (MAX_UNKNOWN_DOCS, MAX_UNKNOWN_DOCS * data.len())
+        );
+        assert_eq!(repo.lock().peers.len(), MAX_UNKNOWN_DOCS);
+        // Each accepted one is answered, so a real offer still syncs.
+        let (_, first) = &results[0];
+        assert!(first.is_ok());
+        let id = results[0].0;
+        assert!(repo.generate_sync_message(peer, id).is_some());
+        // A refused one is not.
+        let refused_id = results.last().unwrap().0;
+        assert!(repo.generate_sync_message(peer, refused_id).is_none());
+        // Another peer has bounds of its own.
+        let other = DeviceKeypair::generate().public();
+        repo.receive_sync_message(
+            other,
+            SyncMessage {
+                kind: DocKind::Song,
+                id: refused_id,
+                data: data.clone(),
+            },
+        )
+        .unwrap();
+        // Disconnecting frees them.
+        repo.forget_peer(peer);
+        assert_eq!(unknown(&repo, peer), (0, 0));
+        assert_eq!(repo.lock().peers.len(), 1);
+    }
+
+    #[test]
+    fn unknown_documents_are_bounded_by_bytes_too() {
+        let mut u = Unknown::default();
+        let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+        assert!(u.claim(a, DocKind::Song, MAX_UNKNOWN_BYTES - 10));
+        assert!(!u.claim(b, DocKind::Song, 11));
+        assert!(u.claim(b, DocKind::Song, 10));
+        // Restating a claim replaces its size rather than adding to it.
+        assert!(u.claim(a, DocKind::Song, MAX_UNKNOWN_BYTES - 10));
+        assert_eq!(u.bytes, MAX_UNKNOWN_BYTES);
+        u.remove(a);
+        assert_eq!((u.docs.len(), u.bytes), (1, 10));
+    }
+
+    fn fs_entries(dir: &std::path::Path) -> usize {
+        std::fs::read_dir(dir).unwrap().count()
     }
 }

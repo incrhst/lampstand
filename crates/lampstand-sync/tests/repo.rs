@@ -812,6 +812,43 @@ fn wrong_kind_in_a_sync_message_is_refused() {
 }
 
 #[test]
+fn a_first_message_without_changes_fixes_no_kind() {
+    let (da, db, dc) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (a, b, c) = (open(da.path()), open(db.path()), open(dc.path()));
+    let song = hymn();
+    let id = song.id.uuid();
+    a.put(&song).unwrap();
+    // Another peer offers the same ID first, calling it a service, with no
+    // changes: b keeps no document and no kind for it.
+    let mut opening = a.generate_sync_message(c.device(), id).unwrap();
+    opening.kind = DocKind::Service;
+    b.receive_sync_message(c.device(), opening.clone()).unwrap();
+    assert!(!b.documents().iter().any(|(_, d)| *d == id));
+    assert!(!db.path().join("docs").join(id.to_string()).exists());
+    // It is still answered under the kind it was offered as.
+    assert_eq!(
+        b.generate_sync_message(c.device(), id).map(|m| m.kind),
+        Some(DocKind::Service)
+    );
+    // The song, with its changes, arrives as a song.
+    sync(&a, &b);
+    assert_eq!(b.get::<Song>(id).unwrap(), Some(song.clone()));
+    assert_eq!(b.get::<Service>(id).unwrap(), None);
+    // From now on the kind is fixed: the other peer's claim is refused.
+    assert!(matches!(
+        b.receive_sync_message(c.device(), opening),
+        Err(SyncError::Corrupt(_))
+    ));
+    drop(b);
+    let b = open(db.path());
+    assert_eq!(b.get::<Song>(id).unwrap(), Some(song));
+}
+
+#[test]
 fn blobs_are_content_addressed_and_verified() {
     let dir = tempfile::tempdir().unwrap();
     let repo = open(dir.path());

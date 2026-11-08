@@ -34,7 +34,7 @@ use lampstand_core::song::Song;
 use lampstand_core::theme::Theme;
 use uuid::Uuid;
 
-pub use repo::{actor_device, BlobStore, Repo, SyncMessage};
+pub use repo::{actor_device, BlobStore, Repo, SyncMessage, MAX_UNKNOWN_BYTES, MAX_UNKNOWN_DOCS};
 
 /// The kinds of synced document. Each has its own write permission
 /// ([`team::Role::can_write`]).
