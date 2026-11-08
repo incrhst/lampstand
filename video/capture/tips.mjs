@@ -88,7 +88,7 @@ await clip("loop-group", "tips", crops.wall, async (p) => {
   await p.getByRole("button", { name: /^Loop$/ }).first().click();
   await wait(p, 2200);
 });
-await clip("loop-progress", "tips-loop", crops.wide, async (p) => {
+await clip("loop-progress", "tips-loop", crops.full, async (p) => {
   await startItem(p);
   await wait(p, 7000);
 });
