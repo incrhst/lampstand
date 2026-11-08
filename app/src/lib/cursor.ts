@@ -2,17 +2,25 @@
 // the live cursor, slide by slide (build steps stay on their slide), as
 // `LiveEngine::step_forward` in lampstand-live moves. With nothing live,
 // the first slide of the service. `nextClick` is what the next click
-// shows, build steps included, for the presenter view.
+// shows, build steps included, for the presenter view. On a side-trip to
+// a ready item (`back` is where the service was), Next past the item's end
+// goes back there.
 
 import type { Cursor, LoadedService, SlideView } from "./api";
+import { loadedItem } from "./ready.ts";
 
 export type Upcoming = { cursor: Cursor; slide: SlideView; title: string };
 
-export function nextSlide(loaded: LoadedService, live: Cursor | null): Upcoming | null {
+export function nextSlide(loaded: LoadedService, live: Cursor | null, back: Cursor | null = null): Upcoming | null {
   const at = live ? loaded.items.findIndex((i) => i.id === live.item) : -1;
-  if (live && at >= 0 && live.slide + 1 < loaded.items[at].slides.length) {
-    const item = loaded.items[at];
-    return { cursor: { item: item.id, slide: live.slide + 1, step: 0 }, slide: item.slides[live.slide + 1], title: item.title };
+  const current = live ? loadedItem(loaded, live.item) : undefined;
+  if (live && current && live.slide + 1 < current.slides.length) {
+    return { cursor: { item: current.id, slide: live.slide + 1, step: 0 }, slide: current.slides[live.slide + 1], title: current.title };
+  }
+  if (live && back) {
+    const item = loadedItem(loaded, back.item);
+    const slide = item?.slides[back.slide];
+    if (item && slide) return { cursor: back, slide, title: item.title };
   }
   const from = live && at < 0 ? 0 : at + 1;
   const item = loaded.items.slice(from).find((i) => i.slides.length > 0);
@@ -24,13 +32,13 @@ export type NextClick = Upcoming & {
   build: boolean;
 };
 
-export function nextClick(loaded: LoadedService, live: Cursor | null): NextClick | null {
-  const item = live ? loaded.items.find((i) => i.id === live.item) : undefined;
+export function nextClick(loaded: LoadedService, live: Cursor | null, back: Cursor | null = null): NextClick | null {
+  const item = live ? loadedItem(loaded, live.item) : undefined;
   const slide = live ? item?.slides[live.slide] : undefined;
   if (live && item && slide && live.step < slide.steps) {
     return { cursor: { ...live, step: live.step + 1 }, slide, title: item.title, build: true };
   }
-  const next = nextSlide(loaded, live);
+  const next = nextSlide(loaded, live, back);
   return next ? { ...next, build: false } : null;
 }
 

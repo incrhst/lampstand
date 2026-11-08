@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { IdleScreen } from "./api/index.ts";
-import { describeDefaultIdle, describeIdle, effectiveIdle, idleKind, stepSlide } from "./idle.ts";
+import { describeDefaultIdle, describeIdle, effectiveIdle, idleKind, idleSummary, stepSlide } from "./idle.ts";
 
 const picture: IdleScreen = { Image: { blob: "a", name: "Welcome.png" } };
 const video: IdleScreen = { Video: { blob: "b", name: "Loop.mp4" } };
@@ -52,4 +52,12 @@ test("stepping through a deck stops at both ends", () => {
   assert.equal(stepSlide(3, 1, 5), 4);
   assert.equal(stepSlide(4, 1, 5), 4);
   assert.equal(stepSlide(0, 1, 0), 0);
+});
+
+test("the idle screen in a word, and whether it is a looping video", () => {
+  assert.deepEqual(idleSummary({ Video: { blob: "b", name: "Waves.mp4" } }), { label: "Waves.mp4", video: true });
+  assert.deepEqual(idleSummary({ Image: { blob: "b", name: "Welcome.png" } }), { label: "Welcome.png", video: false });
+  assert.deepEqual(idleSummary("Default"), { label: "Logo", video: false });
+  assert.deepEqual(idleSummary(null), { label: "Plain background", video: false });
+  assert.deepEqual(idleSummary({ DeckSlide: { deck: "d", slide: 2 } }), { label: "Deck slide 3", video: false });
 });

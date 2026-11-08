@@ -74,6 +74,26 @@
 //!   sound can start. What the screens show does not change: the slide
 //!   before it stays up, with its background, and `shown` still names it. `Previous`, `PreviousItem`,
 //!   loops and the stage display's "next" pass over it, as over a header.
+//! - Ready (`ShowReady`) is a side-trip. It takes the first slide of a
+//!   ready item live (an item of the order that was pinned, or one kept only
+//!   in Ready, loaded with `set_ready`), and remembers the slide the service
+//!   was on. `Next` and `Previous` step through the ready item as usual;
+//!   past its last slide `Next` goes back to the remembered slide, and so
+//!   does `Previous` before its first, so the service carries on where it
+//!   was. With nothing remembered (nothing was live, or the operator was
+//!   already on that item), `Next` and `Previous` move on through the
+//!   order as from any slide of the item, and from an item not in the
+//!   order `Next` starts the service and `Previous` stays. `NextItem` and `PreviousItem`
+//!   count from the remembered slide. Taking any other item live ends the
+//!   side-trip. A ready item that is not in the order is never reached by
+//!   `Next`, loops or the stage display's "next" from the order.
+//! - A slide whose item has `auto_builds_ms` (a deck slide kept ready on its
+//!   own) plays its builds by itself: each step moves on to the next when
+//!   its time has passed, counted from the first tick after the step came
+//!   up, until the slide is fully built. `Next` still steps at once, and
+//!   past the last build goes back from the side-trip. Black and Idle cover
+//!   the builds but they go on underneath; `ClearText` and `ClearAll` stop
+//!   them until something goes live again.
 
 use lampstand_core::id::Timestamp;
 use lampstand_core::program::{Content, Overlay, Program};
@@ -102,6 +122,11 @@ pub struct LoadedItem {
     /// A music-only item: no slides, but `Next` stops on it (see the module
     /// rules).
     pub sound_only: bool,
+    /// Builds that play by themselves (a slide kept ready on its own): while
+    /// the item is live, step `k` of its slide moves on to `k + 1` this many
+    /// milliseconds after step `k` came up (`auto_builds_ms[k]`). Empty: each
+    /// build waits for a click, as usual.
+    pub auto_builds_ms: Vec<u32>,
 }
 
 /// A looping section of the running order (a header with a loop set, and
@@ -163,6 +188,9 @@ pub enum Command {
     /// Take the service off air: a clean screen and no live item, so the
     /// engine is idle again and an update may install.
     EndService,
+    /// A ready item's first slide on air as a side-trip: `Next` past its
+    /// end goes back to where the service was (see the module rules).
+    ShowReady(ItemId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -206,6 +234,21 @@ pub struct LiveEngine {
     /// Whole seconds left on the live and "next" countdowns as last
     /// reported, to tell when the display would change.
     countdown_shown: Option<CountdownKey>,
+    /// Items kept only in Ready (not in the order): `ShowReady` and `Show`
+    /// reach them, navigation through the order never does.
+    ready: Vec<LoadedItem>,
+    /// The side-trip under way, if any (see the module rules).
+    detour: Option<Detour>,
+    /// When the live step of a slide whose builds play by themselves came
+    /// up, from the first tick after. `None` until then.
+    build_anchor: Option<Timestamp>,
+}
+
+/// A side-trip to a ready item: the item, and where the service was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Detour {
+    item: ItemId,
+    back: Option<Cursor>,
 }
 
 /// Seconds shown by the live slide and by the stage display's next slide.
@@ -220,7 +263,9 @@ impl LiveEngine {
     /// to the live and preview cursors.
     pub fn load(&mut self, items: Vec<LoadedItem>) -> Vec<Event> {
         if let Some(live) = self.live {
-            self.orphan_slot = if items.iter().any(|i| i.id == live.item) {
+            let away = self.detour.is_some_and(|d| d.item == live.item)
+                && self.item_index(live.item).is_none();
+            self.orphan_slot = if away || items.iter().any(|i| i.id == live.item) {
                 None
             } else {
                 // How many surviving items stood before the live one.
@@ -256,6 +301,33 @@ impl LiveEngine {
         events
     }
 
+    /// Loads the items kept only in Ready (not in the order). Like `load`,
+    /// it never changes what is on air: a ready item that is live keeps the
+    /// slides it was loaded with until the operator leaves it.
+    pub fn set_ready(&mut self, ready: Vec<LoadedItem>) -> Vec<Event> {
+        self.ready = ready;
+        let mut events = Vec::new();
+        if let Some(preview) = self.preview {
+            if self.resolve(preview).is_none() {
+                self.preview = None;
+                events.push(Event::PreviewChanged);
+            }
+        }
+        events
+    }
+
+    /// Where the service will carry on after the side-trip under way: the
+    /// slide `Next` goes back to past the ready item's end. `None` when
+    /// there is no side-trip, or nothing was live before it.
+    pub fn returns_to(&self) -> Option<Cursor> {
+        self.detour.and_then(|d| d.back)
+    }
+
+    /// Whether a side-trip to a ready item is under way.
+    pub fn on_detour(&self) -> bool {
+        self.detour.is_some()
+    }
+
     pub fn apply(&mut self, command: Command) -> Vec<Event> {
         let mut events = Vec::new();
         match command {
@@ -271,6 +343,25 @@ impl LiveEngine {
                 }
             }
             Command::Show(cursor) => self.take_live(cursor, &mut events),
+            Command::ShowReady(item) => {
+                let target = Cursor {
+                    item,
+                    slide: 0,
+                    step: 0,
+                };
+                if self.resolve(target).is_some() {
+                    // A second side-trip from the first keeps the slide the
+                    // service was on.
+                    let back = match self.detour {
+                        Some(d) => d.back,
+                        None => self.live.filter(|l| l.item != item),
+                    };
+                    self.take_live(target, &mut events);
+                    self.detour = Some(Detour { item, back });
+                    // The stage display's "next" may be the way back.
+                    self.program.next = self.live.and_then(|l| self.next_content(l));
+                }
+            }
             Command::Next => {
                 if let Some(target) = self.next_target() {
                     self.take_live(target, &mut events);
@@ -282,7 +373,7 @@ impl LiveEngine {
                 }
             }
             Command::NextItem => {
-                let target = match self.live {
+                let target = match self.order_place() {
                     Some(live) => self
                         .slot_of(live.item)
                         .and_then(|(_, after)| self.first_stop_from(after)),
@@ -293,7 +384,7 @@ impl LiveEngine {
                 }
             }
             Command::PreviousItem => {
-                let target = self.live.and_then(|live| {
+                let target = self.order_place().and_then(|live| {
                     let (before, _) = self.slot_of(live.item)?;
                     self.items[..before]
                         .iter()
@@ -336,6 +427,7 @@ impl LiveEngine {
             }
             Command::EndService => {
                 let on_air = !self.is_idle();
+                self.detour = None;
                 self.live = None;
                 self.shown = None;
                 self.live_item = None;
@@ -361,8 +453,44 @@ impl LiveEngine {
         self.last_now = Some(now);
         let mut events = Vec::new();
         self.tick_loop(now, &mut events);
+        self.tick_builds(now, &mut events);
         self.tick_countdown(now, &mut events);
         events
+    }
+
+    /// Plays the builds of a slide that plays them by itself (see the
+    /// module rules): one step each time its time has passed.
+    fn tick_builds(&mut self, now: Timestamp, events: &mut Vec<Event>) {
+        let (Some(live), false) = (self.live, self.loop_halted) else {
+            return;
+        };
+        let Some(wait) = self
+            .live_item
+            .as_ref()
+            .and_then(|item| item.auto_builds_ms.get(live.step).copied())
+        else {
+            return;
+        };
+        if live.step >= self.steps_at(live.item, live.slide) {
+            return;
+        }
+        let anchor = match self.build_anchor {
+            Some(anchor) if anchor <= now => anchor,
+            _ => {
+                self.build_anchor = Some(now);
+                return;
+            }
+        };
+        if now.0 - anchor.0 < i64::from(wait) {
+            return;
+        }
+        self.go_live(
+            Cursor {
+                step: live.step + 1,
+                ..live
+            },
+            events,
+        );
     }
 
     fn tick_loop(&mut self, now: Timestamp, events: &mut Vec<Event>) {
@@ -496,6 +624,18 @@ impl LiveEngine {
     /// Next only when this stays in its item (`gate` in the app).
     pub fn next_target(&self) -> Option<Cursor> {
         match self.live {
+            Some(live) if self.detour_on(live) => {
+                self.step_within(live)
+                    .or_else(|| match self.detour.and_then(|d| d.back) {
+                        Some(back) => self.resolve(back),
+                        // Nothing to go back to: the order carries on from the
+                        // item, or starts, if the item is not in it.
+                        None => match self.slot_of(live.item) {
+                            Some((_, after)) => self.first_stop_from(after),
+                            None => self.first_stop_from(0),
+                        },
+                    })
+            }
             Some(live) => self.step_forward(live),
             None => self
                 .preview
@@ -507,7 +647,13 @@ impl LiveEngine {
     /// Where `Command::Previous` would put the live cursor now, without
     /// moving it: `None` at the start or with nothing live.
     pub fn previous_target(&self) -> Option<Cursor> {
-        self.live.and_then(|live| self.step_back(live))
+        let live = self.live?;
+        match self.detour.and_then(|d| d.back) {
+            Some(back) if self.detour_on(live) => {
+                self.step_back_within(live).or_else(|| self.resolve(back))
+            }
+            _ => self.step_back(live),
+        }
     }
 
     /// The slide the screens show (see `shown`): the live one, or the one
@@ -536,7 +682,29 @@ impl LiveEngine {
     fn item_for(&self, id: ItemId) -> Option<&LoadedItem> {
         match (&self.live_item, self.live) {
             (Some(item), Some(live)) if live.item == id => Some(item),
-            _ => self.items.iter().find(|i| i.id == id),
+            _ => self
+                .items
+                .iter()
+                .find(|i| i.id == id)
+                .or_else(|| self.ready.iter().find(|i| i.id == id)),
+        }
+    }
+
+    /// Whether `live` is the ready item of the side-trip under way.
+    fn detour_on(&self, live: Cursor) -> bool {
+        self.detour.is_some_and(|d| d.item == live.item)
+    }
+
+    /// Where the operator stands in the order: the live slide, or on a
+    /// side-trip to an item not in the order, the slide it left.
+    fn order_place(&self) -> Option<Cursor> {
+        match (self.live, self.detour) {
+            (Some(live), Some(d))
+                if d.item == live.item && self.item_index(live.item).is_none() =>
+            {
+                d.back
+            }
+            (live, _) => live,
         }
     }
 
@@ -615,6 +783,12 @@ impl LiveEngine {
 
     /// The cursor `Next` would move to from `from`, or `None` at the end.
     fn step_forward(&self, from: Cursor) -> Option<Cursor> {
+        self.step_within(from)
+            .or_else(|| self.first_stop_from(self.slot_of(from.item)?.1))
+    }
+
+    /// The next build step or slide of the same item, or `None` at its end.
+    fn step_within(&self, from: Cursor) -> Option<Cursor> {
         let item = self.item_for(from.item)?;
         if from.step < self.steps_at(from.item, from.slide) {
             return Some(Cursor {
@@ -629,25 +803,31 @@ impl LiveEngine {
                 ..from
             });
         }
-        self.first_stop_from(self.slot_of(from.item)?.1)
+        None
     }
 
-    /// The cursor `Previous` would move to from `from`, at the final step
-    /// of the slide it lands on.
-    fn step_back(&self, from: Cursor) -> Option<Cursor> {
+    /// The previous build step or slide of the same item, at the final step
+    /// of a slide it lands on; `None` at its first.
+    fn step_back_within(&self, from: Cursor) -> Option<Cursor> {
         if from.step > 0 {
             return Some(Cursor {
                 step: from.step - 1,
                 ..from
             });
         }
-        if from.slide > 0 {
-            let slide = from.slide - 1;
-            return Some(Cursor {
-                slide,
-                step: self.steps_at(from.item, slide),
-                ..from
-            });
+        let slide = from.slide.checked_sub(1)?;
+        Some(Cursor {
+            slide,
+            step: self.steps_at(from.item, slide),
+            ..from
+        })
+    }
+
+    /// The cursor `Previous` would move to from `from`, at the final step
+    /// of the slide it lands on.
+    fn step_back(&self, from: Cursor) -> Option<Cursor> {
+        if let Some(cursor) = self.step_back_within(from) {
+            return Some(cursor);
         }
         let (index, _) = self.slot_of(from.item)?;
         let prev = self.items[..index]
@@ -672,6 +852,13 @@ impl LiveEngine {
                 step: 0,
                 ..live
             }
+        } else if self.detour_on(live) {
+            // The end of a side-trip: the service carries on where it was.
+            match (self.detour.and_then(|d| d.back), self.slot_of(live.item)) {
+                (Some(back), _) => back,
+                (None, Some((_, after))) => self.first_slide_from(after)?,
+                (None, None) => self.first_slide_from(0)?,
+            }
         } else {
             self.first_slide_from(self.slot_of(live.item)?.1)?
         };
@@ -687,11 +874,20 @@ impl LiveEngine {
         let content = self.content_at(cursor);
 
         if !same_item {
-            let item = self.items.iter().find(|i| i.id == cursor.item).cloned();
+            let item = self
+                .items
+                .iter()
+                .chain(&self.ready)
+                .find(|i| i.id == cursor.item)
+                .cloned();
             // `resolve` found the item, and it was not the live one, so it
-            // is in `items`.
+            // is in `items` or `ready`.
             self.live_item = item;
             self.orphan_slot = None;
+        }
+        // Taking another item live ends a side-trip.
+        if self.detour.is_some_and(|d| d.item != cursor.item) {
+            self.detour = None;
         }
         let Some(item) = &self.live_item else { return };
         let song = item.song;
@@ -707,6 +903,7 @@ impl LiveEngine {
 
         // A fresh slide gets a full interval and a countdown baseline.
         self.loop_anchor = None;
+        self.build_anchor = None;
         self.loop_halted = false;
         self.countdown_shown = self.last_now.map(|now| self.countdown_key(now));
 
@@ -799,6 +996,7 @@ mod tests {
             auto_advance_ms: None,
             loop_group: None,
             sound_only: false,
+            auto_builds_ms: Vec::new(),
         }
     }
 
@@ -1725,6 +1923,7 @@ mod tests {
     fn music(title: &str) -> LoadedItem {
         LoadedItem {
             sound_only: true,
+            auto_builds_ms: Vec::new(),
             background: None,
             ..item(title, vec![])
         }
@@ -1867,5 +2066,264 @@ mod tests {
                 step: 0
             })
         );
+    }
+
+    /// The order "a1 a2 | b1 b2" and a deck kept only in Ready, "r1 r2".
+    fn with_ready() -> (LiveEngine, ItemId, ItemId, ItemId) {
+        let a = item("A", vec![text("a1"), text("a2")]);
+        let b = item("B", vec![text("b1"), text("b2")]);
+        let r = item("Ready deck", vec![text("r1"), text("r2")]);
+        let (a_id, b_id, r_id) = (a.id, b.id, r.id);
+        let mut e = LiveEngine::new();
+        e.load(vec![a, b]);
+        e.set_ready(vec![r]);
+        (e, a_id, b_id, r_id)
+    }
+
+    #[test]
+    fn a_ready_item_is_a_side_trip_and_next_goes_back() {
+        let (mut e, a, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+        let events = e.apply(Command::ShowReady(r));
+        assert!(events.contains(&Event::ItemLive { item: r }));
+        assert_eq!(on_air(&e).as_deref(), Some("r1"));
+        assert_eq!(
+            e.returns_to(),
+            Some(Cursor {
+                item: a,
+                slide: 1,
+                step: 0
+            })
+        );
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("r2"));
+        // The stage display's next is the way back.
+        assert_eq!(next_line(&e).as_deref(), Some("a2"));
+        e.apply(Command::Next);
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("a2"),
+            "back where the service was"
+        );
+        assert!(!e.on_detour());
+        e.apply(Command::Next);
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("b1"),
+            "and on through the order"
+        );
+    }
+
+    #[test]
+    fn previous_before_a_ready_items_first_slide_goes_back() {
+        let (mut e, _, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        e.apply(Command::Next);
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("r1"));
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+        assert!(!e.on_detour());
+    }
+
+    #[test]
+    fn next_never_reaches_a_ready_item_from_the_order() {
+        let (mut e, _, _, r) = with_ready();
+        let mut seen = Vec::new();
+        for _ in 0..6 {
+            e.apply(Command::Next);
+            seen.push(e.live().map(|c| c.item));
+        }
+        assert!(!seen.contains(&Some(r)));
+        assert_eq!(on_air(&e).as_deref(), Some("b2"));
+    }
+
+    #[test]
+    fn a_side_trip_from_a_side_trip_still_goes_back_to_the_service() {
+        let (mut e, a, b, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        // B is pinned too: a second side-trip.
+        e.apply(Command::ShowReady(b));
+        assert_eq!(
+            e.returns_to(),
+            Some(Cursor {
+                item: a,
+                slide: 0,
+                step: 0
+            })
+        );
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn showing_another_slide_ends_the_side_trip() {
+        let (mut e, _, b, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        e.apply(Command::Show(Cursor {
+            item: b,
+            slide: 1,
+            step: 0,
+        }));
+        assert!(!e.on_detour());
+        assert_eq!(e.returns_to(), None);
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn a_side_trip_with_nothing_live_before_starts_the_service_after() {
+        let (mut e, _, _, r) = with_ready();
+        e.apply(Command::ShowReady(r));
+        assert_eq!(e.returns_to(), None);
+        assert!(
+            e.apply(Command::Previous).is_empty(),
+            "nowhere to go back to"
+        );
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn next_item_on_a_side_trip_counts_from_where_the_service_was() {
+        let (mut e, _, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn a_ready_item_lifts_idle_and_keeps_blank() {
+        let (mut e, _, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::ShowReady(r));
+        assert_eq!(e.program().overlay, Overlay::None);
+        e.apply(Command::ToggleBlack);
+        e.apply(Command::Next);
+        assert_eq!(e.program().overlay, Overlay::Black);
+    }
+
+    #[test]
+    fn a_reload_keeps_a_live_ready_item_on_air_and_the_way_back() {
+        let (mut e, a, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        let mut a_again = item("A", vec![text("a1"), text("a2")]);
+        a_again.id = a;
+        e.load(vec![a_again, item("B", vec![text("b1")])]);
+        assert_eq!(on_air(&e).as_deref(), Some("r1"));
+        // Ready itself was emptied on another device.
+        e.set_ready(Vec::new());
+        assert_eq!(on_air(&e).as_deref(), Some("r1"));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("r2"));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn showing_a_ready_item_that_is_not_there_does_nothing() {
+        let (mut e, _, _, _) = with_ready();
+        e.apply(Command::Next);
+        assert!(e.apply(Command::ShowReady(ItemId::generate())).is_empty());
+        assert!(!e.on_detour());
+    }
+
+    #[test]
+    fn end_service_ends_a_side_trip() {
+        let (mut e, _, _, r) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(r));
+        e.apply(Command::EndService);
+        assert!(!e.on_detour());
+        assert!(e.is_idle());
+    }
+
+    #[test]
+    fn a_pinned_item_shown_from_itself_carries_on_through_the_order() {
+        let (mut e, a, _, _) = with_ready();
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(a));
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+        assert_eq!(e.returns_to(), None);
+        e.apply(Command::Next);
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn a_ready_slide_plays_its_builds_by_itself_then_next_goes_back() {
+        let (mut e, a, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![500, 1000];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(id));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 0"));
+        assert!(
+            e.tick(Timestamp(0)).is_empty(),
+            "the first tick starts the wait"
+        );
+        assert!(e.tick(Timestamp(400)).is_empty());
+        let events = e.tick(Timestamp(500));
+        assert!(events
+            .iter()
+            .any(|ev| matches!(ev, Event::BuildStep { cursor } if cursor.step == 1)));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 1"));
+        e.tick(Timestamp(600));
+        assert!(
+            e.tick(Timestamp(1500)).is_empty(),
+            "the second waits its own time"
+        );
+        e.tick(Timestamp(1600));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 2"));
+        assert!(e.tick(Timestamp(9000)).is_empty(), "fully built: it stays");
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"), "back to the service");
+        assert_eq!(e.live().map(|c| c.item), Some(a));
+    }
+
+    #[test]
+    fn next_skips_ahead_through_builds_that_play_by_themselves() {
+        let (mut e, _, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![5000, 5000];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(id));
+        e.tick(Timestamp(0));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 1"));
+        // The step Next took gets its own full wait.
+        e.tick(Timestamp(100));
+        assert!(e.tick(Timestamp(4000)).is_empty());
+        e.tick(Timestamp(5100));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 2"));
+    }
+
+    #[test]
+    fn clearing_stops_builds_that_play_by_themselves() {
+        let (mut e, _, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![100, 100];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::ShowReady(id));
+        e.tick(Timestamp(0));
+        e.apply(Command::ClearText);
+        assert!(e.tick(Timestamp(5000)).is_empty());
+        assert_eq!(e.live().map(|c| c.step), Some(0));
     }
 }
