@@ -29,7 +29,6 @@
   import { musicLine, words } from "../../lib/audio";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
-  import ReadyAdd from "./ReadyAdd.svelte";
   import { loadedItem, readyList, returnLine } from "../../lib/ready";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
   import ObsNotice from "./ObsNotice.svelte";
@@ -197,11 +196,12 @@
     if (isTyping(target)) return;
     // A dialog over the service (Connect a phone or tablet, Quick add) has
     // its own keys; none of them may move the screen.
-    if (connectOpen || quickAddOpen || readyAddOpen || target?.closest?.('[aria-modal="true"]')) return;
+    if (connectOpen || quickAddOpen || target?.closest?.('[aria-modal="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
     if (live.loaded && e.key === "/") {
       e.preventDefault();
+      quickAddReady = false;
       quickAddOpen = true;
       used("quick-add");
       return;
@@ -297,8 +297,19 @@
   // Quick add (/): a song or passage into the service on air, after what is
   // on air, without going back to Plan.
   let quickAddOpen = $state(false);
-  /** Add to Ready: a deck or media from the Library, kept one tap away. */
-  let readyAddOpen = $state(false);
+  /** Quick add opened from the Ready card: the Library's decks and media first, for Ready. */
+  let quickAddReady = $state(false);
+  function openQuickAdd(forReady: boolean) {
+    quickAddReady = forReady;
+    quickAddOpen = true;
+    used("quick-add");
+  }
+  /** A deck or media from Quick add went to Ready; Shift+Enter shows it now, as a side-trip. */
+  function readied(id: string | null, showNow: boolean, title: string) {
+    quickAddOpen = false;
+    live.status = `${title} is ready`;
+    if (showNow && id) showReady(id);
+  }
   /** The "Connect a phone or tablet" dialog (T101). */
   let connectOpen = $state(false);
   function quickAdded(id: string | null, showNow: boolean, title: string) {
@@ -414,9 +425,36 @@
   $effect(() => {
     if (!live.loaded) live.focus = false;
   });
+  // The picture of what is on air, top right: small (the default), large
+  // (the sidecard widens on a wide window, so the picture is big) or off.
+  // Remembered per computer, as the cards' folds are.
+  const PREVIEW_KEY = "lampstand.present.preview";
+  type PreviewSize = "small" | "large" | "off";
+  const previewSizes = [
+    { id: "off", label: "Off" },
+    { id: "small", label: "Small" },
+    { id: "large", label: "Large" },
+  ] as const;
+  function loadPreviewSize(): PreviewSize {
+    try {
+      const v = globalThis.localStorage?.getItem(PREVIEW_KEY);
+      return v === "large" || v === "off" ? v : "small";
+    } catch {
+      return "small";
+    }
+  }
+  let previewSize: PreviewSize = $state(loadPreviewSize());
+  function setPreviewSize(size: PreviewSize) {
+    previewSize = size;
+    try {
+      globalThis.localStorage?.setItem(PREVIEW_KEY, size);
+    } catch {
+      // Not remembered: it still applies until Present is left.
+    }
+  }
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
-  let liveWidth = $derived(presenting || mediaOf(live.shown?.item) ? 1280 : 480);
+  let liveWidth = $derived(presenting || previewSize === "large" || mediaOf(live.shown?.item) ? 1280 : 480);
 
   // Deck slides have no lines to draw, so the core renders a picture of
   // each at a build step, fetched once per loaded service as slides come
@@ -430,7 +468,8 @@
 
   /** The file an image or video item shows, if this is one. */
   function mediaOf(item: string | undefined) {
-    const kind = item ? service?.items[item]?.kind : undefined;
+    const own = item ? service?.ready?.[item]?.source : undefined;
+    const kind = item ? (service?.items[item]?.kind ?? (own && own !== "Order" ? own.Own.kind : undefined)) : undefined;
     return kind && "Media" in kind ? kind.Media : null;
   }
   /** A slide with a picture to ask for: a deck's slide, or a media item's file. */
@@ -478,6 +517,11 @@
       want.push([clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH]);
     }
     if (upcoming && hasPicture(upcoming.cursor.item, upcoming.slide)) want.push([upcoming.cursor.item, upcoming.cursor.slide, upcoming.slide.steps, THUMB_WIDTH]);
+    // The Ready card shows a picture of the first few ready items.
+    for (const r of readyTiles) {
+      const first = r.item.slides[0];
+      if (first && hasPicture(r.item.id, first)) want.push([r.item.id, 0, first.steps, THUMB_WIDTH]);
+    }
     if (viewed) viewed.slides.forEach((s, i) => hasPicture(viewed.id, s) && want.push([viewed.id, i, s.steps, THUMB_WIDTH]));
     // The wall shows every item's slides, so every picture is wanted, after
     // the ones above.
@@ -489,6 +533,7 @@
   let output = $derived(mainOutput(live.outputs));
   const look = useLiveLook(() => output);
   let showGuide = $state(true);
+
 
   // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
   // Down, B (Black) and full stop work whichever window has focus. It is
@@ -537,6 +582,10 @@
   // Ready: Blank and Idle first, then what the service keeps one tap away.
   // Tapping one is a side-trip; Next past its end goes back to the service.
   let ready = $derived(readyList(live.loaded));
+  /** The first few show as pictures, the rest as rows. */
+  const READY_TILES = 4;
+  let readyTiles = $derived(ready.slice(0, READY_TILES));
+  let readyRows = $derived(ready.slice(READY_TILES));
   let pinned = $derived(new Set((live.loaded?.ready ?? []).filter((r) => r.in_order).map((r) => r.item.id)));
   let backLine = $derived(live.onReady ? returnLine(live.loaded, live.returnsTo) : null);
   function showReady(id: string) {
@@ -699,18 +748,11 @@
           service={live.loaded.service}
           order={items.map((i) => i.id)}
           liveItem={live.live?.item ?? null}
+          readyIds={(live.loaded.ready ?? []).map((r) => r.item.id)}
+          forReady={quickAddReady}
           onclose={() => (quickAddOpen = false)}
           onadded={quickAdded}
-        />
-      {/if}
-      {#if readyAddOpen && live.loaded}
-        <ReadyAdd
-          service={live.loaded.service}
-          onclose={() => (readyAddOpen = false)}
-          onadded={(title) => {
-            readyAddOpen = false;
-            live.status = `${title} is ready`;
-          }}
+          onreadied={readied}
         />
       {/if}
       {#if obsOpen}
@@ -822,9 +864,10 @@
              Narrow, On air stands on its own beside a column of the rest
              (Sound first) that scrolls, so Previous, Next, Blank and Stop
              the sound now always stay in view. -->
-        <aside class="sidecard" aria-label="On air and the room">
+        <aside class="sidecard" class:large-preview={previewSize === "large"} aria-label="On air and the room">
           <div class="side-onair">
             <SideCard title="On air">
+              {#if previewSize !== "off"}
               <figure class="monitor">
                 <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
                   <SlidePreview
@@ -841,6 +884,7 @@
                   />
                 </div>
               </figure>
+              {/if}
               <div class="wall-now">
                 <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
                 <span class="muted wall-where">
@@ -894,30 +938,54 @@
                 <Button icon="image" onclick={() => command("ToggleIdle")} pressed={live.overlay === "Idle"} title="The idle screen, without ending the service, until you tap again or show a slide">Idle</Button>
               </div>
               {#if ready.length > 0}
-                <ul class="plain ready-list" aria-label="Kept ready">
-                  {#each ready as r (r.item.id)}
-                    {@const kind = kindOf(r.item.id)}
+                <ul class="plain ready-tiles" aria-label="Kept ready">
+                  {#each readyTiles as r (r.item.id)}
                     {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
-                    <li class="ready-row" class:on-air={onAir}>
-                      <button type="button" class="ready-show" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
-                        <Icon name={kind ? kindIcon[kind] : "file"} size={14} />
-                        <span class="ready-title">{r.item.title}</span>
-                        {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{:else if !r.in_order}<span class="side-hint">Only here</span>{/if}
+                    {@const first = r.item.slides[0]}
+                    <li class="ready-tile" class:on-air={onAir}>
+                      <button type="button" class="ready-pick" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+                        <SlidePreview lines={first?.lines ?? []} footer={first?.footer ?? null} image={first ? thumbFor(r.item.id, 0, first.steps) : null} size="small" empty={r.item.title} />
+                        <span class="ready-caption">
+                          {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{/if}
+                          <span class="ready-title">{r.item.title}</span>
+                        </span>
                       </button>
-                      <button type="button" class="ready-remove" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
+                      <button type="button" class="ready-remove on-tile" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
                         <Icon name="x" size={12} />
                       </button>
                     </li>
                   {/each}
                 </ul>
+                {#if readyRows.length > 0}
+                  <ul class="plain ready-list" aria-label="Also kept ready">
+                    {#each readyRows as r (r.item.id)}
+                      {@const kind = kindOf(r.item.id)}
+                      {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
+                      <li class="ready-row" class:on-air={onAir}>
+                        <button type="button" class="ready-show" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+                          <Icon name={kind ? kindIcon[kind] : "file"} size={14} />
+                          <span class="ready-title">{r.item.title}</span>
+                          {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{:else if !r.in_order}<span class="side-hint">Only here</span>{/if}
+                        </button>
+                        <button type="button" class="ready-remove" onclick={() => takeOffReady(r.item.id, r.in_order, r.item.title)} title={r.in_order ? `Stop keeping ${r.item.title} ready (it stays in the order)` : `Take ${r.item.title} out of Ready`} aria-label="Take {r.item.title} out of Ready">
+                          <Icon name="x" size={12} />
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               {:else}
                 <p class="side-line muted ready-empty">Tap <Icon name="star" size={12} /> on an item to keep it here.</p>
               {/if}
-              <button type="button" class="side-row" onclick={() => (readyAddOpen = true)}><Icon name="plus" size={14} />Add from the Library</button>
+              <button type="button" class="side-row" title="Quick add, for Ready: a deck, picture or video from the Library" onclick={() => openQuickAdd(true)}><Icon name="plus" size={14} />Add from the Library</button>
             </SideCard>
 
             <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
               <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
+              <div class="preview-size">
+                <span class="muted">Picture of the screen</span>
+                <Segmented options={previewSizes} value={previewSize} onchange={setPreviewSize} label="Picture of the screen, top right" />
+              </div>
               <p class="side-line muted"><Icon name="monitor" size={14} />{output?.name ?? "No screen yet"}</p>
               <Switch checked={showGuide} label="Safe area guide" onchange={() => { showGuide = !showGuide; used("safe-area"); }} />
               <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Setup)"} onchange={toggleBug} />
@@ -948,7 +1016,7 @@
                   <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
                 </button>
               {/if}
-              <button type="button" class="side-row" title="Quick add a song or scripture after what is on air" onclick={() => { quickAddOpen = true; used("quick-add"); }}><Icon name="plus" size={14} />Quick add<kbd>/</kbd></button>
+              <button type="button" class="side-row" title="Quick add: a song or scripture after what is on air, or a deck or media to Ready" onclick={() => openQuickAdd(false)}><Icon name="plus" size={14} />Quick add<kbd>/</kbd></button>
             </SideCard>
 
             {#if live.loaded && liveSection}
@@ -1398,6 +1466,31 @@
     flex-direction: column;
     gap: 0.6rem;
   }
+  /* Large picture of the screen: on a wide window the sidecard widens, so
+     On air, top right, shows the screen big. */
+  @media (min-width: 1200px) {
+    .sidecard.large-preview {
+      flex-basis: 32rem;
+    }
+    /* It stays at the top right while the cards below it scroll. */
+    .sidecard.large-preview .side-onair {
+      display: block;
+      position: sticky;
+      top: -0.75rem;
+      z-index: 2;
+      padding-top: 0.75rem;
+      margin-top: -0.75rem;
+      background: var(--canvas);
+    }
+  }
+  .preview-size {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+  }
   .sidecard .no-screen {
     margin-bottom: 0;
   }
@@ -1478,6 +1571,62 @@
   .ready-screens :global(button) {
     height: 2.75rem;
     justify-content: center;
+  }
+  .ready-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .ready-tile {
+    position: relative;
+    min-width: 0;
+  }
+  .ready-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 0.2rem;
+    font: inherit;
+    font-size: 0.78rem;
+    text-align: left;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .ready-pick:hover {
+    border-color: var(--gold-hover);
+  }
+  .ready-tile.on-air .ready-pick {
+    border-color: var(--live);
+  }
+  .ready-caption {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0 0.15rem;
+  }
+  .ready-remove.on-tile {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    background: rgb(0 0 0 / 0.6);
+    color: var(--text);
+    opacity: 0;
+  }
+  .ready-tile:hover .ready-remove.on-tile,
+  .ready-remove.on-tile:focus-visible {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .ready-remove.on-tile {
+      opacity: 1;
+    }
   }
   .ready-list {
     display: flex;

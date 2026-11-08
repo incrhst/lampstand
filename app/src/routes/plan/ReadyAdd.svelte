@@ -1,7 +1,8 @@
-<!-- Add to Ready (Present and Plan): a deck or media file from the Library,
+<!-- Add to Ready (Plan): a deck or media file from the Library,
      kept one tap away in the service's Ready list without going in the
      order. Type to filter; Enter adds the highlighted one; Esc closes.
-     Items already in the order are pinned from the order instead. -->
+     Items already in the order are pinned from the order instead. In
+     Present, Quick add does this for decks and media. -->
 <script lang="ts">
   import { onMount } from "svelte";
   import { request, type Deck, type ItemKind, type MediaFile } from "../../lib/api";

@@ -52,7 +52,7 @@
   import { splitText, textTitle } from "../../lib/textSlides";
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
-  import ReadyAdd from "../operate/ReadyAdd.svelte";
+  import ReadyAdd from "./ReadyAdd.svelte";
   import { isPinned } from "../../lib/ready";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
