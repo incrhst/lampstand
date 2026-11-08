@@ -218,8 +218,8 @@ Say: nothing you do in Plan reaches the screen in the room."""},
     ], "notes": """
 Trainer: Present is the operator's screen. One service is open at a time, and every slide
 of it is laid out as cards. The card marked LIVE, in red, is what the room sees, and so is the
-picture at the top right. Everything else is only for you.
-This training service is open in Present right now, and it works like any other service."""},
+picture in the On air box, on the right. Everything else is only for you.
+The training service is open in Present right now, and it works like any other service."""},
     {"kind": "bullets", "heading": "Setup: once, then rarely", "fade": True, "items": [
         "Screens: which screen is the projector",
         "Themes: how the words look",
@@ -234,7 +234,8 @@ and it can wait until after the service. Blank the screen and carry on."""},
         ("Ctrl+\\", "Switch between Plan and Present"),
     ], "notes": """
 Trainer: Try it now. Press Ctrl and backslash (Command and backslash on a Mac) to go to
-Plan. Find this service in the list under Training. Then press it again to come back.
+Plan. On the right, under Library, choose Services, and find this service under Training.
+Then press Ctrl and backslash again to come back.
 The service stays open for live while you look at Plan."""},
 ])
 
@@ -251,16 +252,18 @@ and no desktop showing. Point at each part of the screen as we go."""},
         "The wall: every slide of the service",
         "Red LIVE: what the room sees now",
         "Gold NEXT: the next slide",
-        "The right side: the main screen and the buttons",
+        "Library & controls, on the right: the main screen and the buttons",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
 The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
 NEXT card is the next slide. On a slide with builds, Space plays the next build first.
-The notes, where you are reading this, sit beside the item on air. The right side starts with
-On air: a picture of the main screen, then Previous, Next and Blank. Under it, Show, Idle and
-Blank switch the room between the slide, the idle screen and black. Below that are Quick add,
-the sound, and boxes that fold away: Remotes, Clear and Keys. Press F, or Focus at the top
-right, to see only the cards; F or Esc brings the rest back."""},
+The notes, where you are reading this, sit beside the item on air. On the right is the
+sidebar called Library & controls. At the top, the Library's search adds a song or reading next.
+Under Controls is On air: a picture of the main screen, then Previous, Next and Blank. Under it,
+Show, Idle and Blank switch the room between the slide, the idle screen and black. Below that
+are the sound, and boxes that fold away: Remotes, Clear and Keys. Press F, or the Hide button,
+to hide the sidebar and see only the slides; Blank and Stop the sound now stay in the small bar.
+F, Esc or Show brings it back."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
 Trainer: Choosing an item with Shift and Down only marks it for you. The room sees nothing new. It goes on air when you
@@ -322,7 +325,7 @@ Trainer: Well done. Ask the trainee: what would you do if the wrong slide went u
         "During: Space to move on, full stop to blank",
         "After: Close service, bottom right",
     ], "notes": """
-Trainer: Walk through a real Sunday. Point out Close service at the bottom of the right side.
+Trainer: Walk through a real Sunday. Point out Close service at the bottom of Library & controls.
 Give them the printed key sheet to keep by the computer.
 Next: Training Session 2, Confident operator, practises the five surprises that happen on a real Sunday."""},
 ])

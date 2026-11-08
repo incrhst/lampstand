@@ -27,6 +27,32 @@ use lampstand_core::song::{Section, Song};
 
 use crate::{ImportError, Skipped, SongImport};
 
+/// The largest song file read, in a folder or a backup: 5 MB. A real
+/// OpenSong song is a few KB, so anything bigger is not one, and a zip
+/// entry that inflates past this is refused before it fills memory.
+pub const MAX_SONG_BYTES: u64 = 5 * 1024 * 1024;
+
+fn too_large() -> String {
+    format!(
+        "larger than {} MB, so not a song",
+        MAX_SONG_BYTES / (1024 * 1024)
+    )
+}
+
+/// Reads at most [`MAX_SONG_BYTES`] from `reader`, refusing anything longer.
+fn read_song(reader: impl std::io::Read) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_SONG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_SONG_BYTES {
+        return Err(too_large());
+    }
+    Ok(bytes)
+}
+
 pub fn import(path: &Path) -> Result<SongImport, ImportError> {
     let meta = fs::metadata(path)?;
     if meta.is_file() && is_zip(path)? {
@@ -45,10 +71,12 @@ pub fn import(path: &Path) -> Result<SongImport, ImportError> {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        match fs::read(&file).map_err(|e| e.to_string()).and_then(|b| {
-            let text = String::from_utf8(b).map_err(|_| "not valid UTF-8".to_string())?;
-            parse_song(&text, &name)
-        }) {
+        let parsed = fs::File::open(&file)
+            .map_err(|e| e.to_string())
+            .and_then(read_song)
+            .and_then(|b| String::from_utf8(b).map_err(|_| "not valid UTF-8".to_string()))
+            .and_then(|text| parse_song(&text, &name));
+        match parsed {
             Ok(song) => out.songs.push(song),
             Err(reason) => out.skipped.push(Skipped {
                 source: name,
@@ -69,7 +97,6 @@ fn is_zip(path: &Path) -> Result<bool, ImportError> {
 /// An OpenSongApp backup: every file in the zip that is not a folder or a
 /// hidden file is a song. Entry names are the songs' file names.
 fn import_backup(path: &Path) -> Result<SongImport, ImportError> {
-    use std::io::Read;
     let mut zip = zip::ZipArchive::new(fs::File::open(path)?)
         .map_err(|e| ImportError::Unreadable(format!("not a readable zip: {e}")))?;
     let mut out = SongImport::default();
@@ -92,12 +119,15 @@ fn import_backup(path: &Path) -> Result<SongImport, ImportError> {
         if entry.is_dir() || name.is_empty() || name.starts_with('.') {
             continue;
         }
-        let mut bytes = Vec::new();
-        let parsed = entry
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())
-            .and_then(|_| String::from_utf8(bytes).map_err(|_| "not valid UTF-8".to_string()))
-            .and_then(|text| parse_song(&text, &name));
+        // The size in the zip's header can lie, so the read itself also
+        // stops at the cap.
+        let parsed = if entry.size() > MAX_SONG_BYTES {
+            Err(too_large())
+        } else {
+            read_song(&mut entry)
+        }
+        .and_then(|b| String::from_utf8(b).map_err(|_| "not valid UTF-8".to_string()))
+        .and_then(|text| parse_song(&text, &name));
         match parsed {
             Ok(song) => out.songs.push(song),
             Err(reason) => out.skipped.push(Skipped {
@@ -414,4 +444,63 @@ fn merge_chords(lyric: &str, chords: &[(usize, String)]) -> String {
     }
     out.extend(chars.iter().skip(pos));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    const SONG: &str = "<song><title>Small</title><lyrics>[V1]\n Hello</lyrics></song>";
+
+    /// A backup holding one real song and one entry that inflates past the
+    /// cap (spaces compress to almost nothing, so the zip itself is small).
+    #[test]
+    fn oversized_backup_entry_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("backup.osb");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("Small", opts).unwrap();
+        zip.write_all(SONG.as_bytes()).unwrap();
+        zip.start_file("Huge", opts).unwrap();
+        let spaces = vec![b' '; 1024 * 1024];
+        for _ in 0..=MAX_SONG_BYTES / spaces.len() as u64 {
+            zip.write_all(&spaces).unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(fs::metadata(&path).unwrap().len() < MAX_SONG_BYTES / 10);
+
+        let out = import(&path).unwrap();
+        assert_eq!(out.songs.len(), 1);
+        assert_eq!(out.songs[0].title, "Small");
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].source, "Huge");
+        assert!(out.skipped[0].reason.contains("larger than 5 MB"));
+    }
+
+    #[test]
+    fn oversized_song_file_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Small"), SONG).unwrap();
+        fs::write(
+            dir.path().join("Huge"),
+            vec![b' '; MAX_SONG_BYTES as usize + 1],
+        )
+        .unwrap();
+        let out = import(dir.path()).unwrap();
+        assert_eq!(out.songs.len(), 1);
+        assert_eq!(out.skipped.len(), 1);
+        assert_eq!(out.skipped[0].source, "Huge");
+        assert!(out.skipped[0].reason.contains("larger than 5 MB"));
+    }
+
+    #[test]
+    fn read_song_stops_at_the_cap() {
+        let at = vec![b' '; MAX_SONG_BYTES as usize];
+        assert_eq!(read_song(at.as_slice()).unwrap().len(), at.len());
+        let over = vec![b' '; MAX_SONG_BYTES as usize + 1];
+        assert!(read_song(over.as_slice()).is_err());
+    }
 }

@@ -39,14 +39,14 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 65,
-     "y": 46,
+     "x": 65.3,
+     "y": 64.5,
      "label": "Open it for live"
     }
    ],
-   "say": "On a Sunday, you start by opening the service for live in Present. This training service is already open, so you are ready.",
+   "say": "On a Sunday, you start by opening the service for live in Present. The training service is already open, so you are ready.",
    "narration": "narration/t1-welcome/04.mp3",
-   "durationSec": 10.5
+   "durationSec": 13
   },
   {
    "type": "cta",

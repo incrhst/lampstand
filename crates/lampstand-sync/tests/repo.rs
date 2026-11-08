@@ -426,6 +426,47 @@ fn a_service_without_sound_is_the_document_it_was() {
     );
 }
 
+/// Ready lives in the service document. A service with nothing kept ready
+/// has no `ready` key (so one saved before Ready existed re-saves
+/// unchanged), entries round-trip, and taking the last one off drops the key.
+#[test]
+fn ready_round_trips_and_an_empty_one_writes_no_key() {
+    use automerge::ReadDoc;
+    let mut service = Service::new("Sunday");
+    let song = service.insert(
+        0,
+        ItemKind::Song {
+            song: Song::new("x").id,
+            arrangement: None,
+        },
+    );
+    let mut doc = automerge::AutoCommit::new();
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    assert!(doc.get(automerge::ROOT, "ready").unwrap().is_none());
+    let heads = doc.get_heads();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+    autosurgeon::reconcile(&mut doc, &read).unwrap();
+    assert_eq!(doc.get_heads(), heads, "re-saving wrote something");
+
+    service.pin_ready(song);
+    let deck = service.add_ready(ItemKind::Deck {
+        deck: lampstand_core::deck::DeckId::generate(),
+    });
+    let slide = service.add_ready_slide(lampstand_core::deck::DeckId::generate(), 4);
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+
+    service.unready(song);
+    service.unready(deck);
+    service.unready(slide);
+    autosurgeon::reconcile(&mut doc, &service).unwrap();
+    assert!(doc.get(automerge::ROOT, "ready").unwrap().is_none());
+    let read: Service = autosurgeon::hydrate(&doc).unwrap();
+    assert_eq!(read, service);
+}
+
 /// What an older version does with sound. A backing track on a song is an
 /// extra key the old reader does not know: it reads the song as before, can
 /// edit it, and the track is still there afterwards. A music-only item is a
@@ -849,14 +890,30 @@ fn a_first_message_without_changes_fixes_no_kind() {
 }
 
 /// T77: the bound on offers of documents a device does not have still lets
-/// a new device take a 25,000-document library in one connection. The peer
-/// is played by plain Automerge documents, as the session does it: every
-/// document offered at once on connect, then the changes in batches.
+/// a new device take a large library in one connection, past the first
+/// bound of 10,000. Kept to 12,000 so `cargo test` stays quick on CI's
+/// slowest disk; the full-size run is below.
 #[test]
 fn a_first_sync_of_a_large_library_completes_in_one_connection() {
+    first_sync_in_one_connection(12_000);
+}
+
+/// The same with the 25,000 documents a church library can reach. Ignored
+/// by default because writing 25,000 documents takes minutes on a slow or
+/// busy disk; run it with `cargo test -p lampstand-sync --test repo --
+/// --ignored first_sync`.
+#[test]
+#[ignore = "slow: writes 25,000 documents"]
+fn a_first_sync_of_a_25_000_document_library_completes_in_one_connection() {
+    first_sync_in_one_connection(25_000);
+}
+
+/// The peer is played by plain Automerge documents, as the session does it:
+/// every document offered at once on connect, then the changes in batches.
+fn first_sync_in_one_connection(library_size: usize) {
     use automerge::sync::{self, SyncDoc};
     use automerge::Automerge;
-    const LIBRARY: usize = 25_000;
+    let started = std::time::Instant::now();
     const BATCH: usize = 1_000;
     let db = tempfile::tempdir().unwrap();
     let b = open(db.path());
@@ -869,7 +926,7 @@ fn a_first_sync_of_a_large_library_completes_in_one_connection() {
             autosurgeon::reconcile(tx, Song::new("Song"))
         })
         .unwrap();
-    let mut library: Vec<(Uuid, Automerge, sync::State)> = (0..LIBRARY)
+    let mut library: Vec<(Uuid, Automerge, sync::State)> = (0..library_size)
         .map(|n| {
             let mut doc = template.fork();
             doc.transact::<_, _, automerge::AutomergeError>(|tx| {
@@ -896,14 +953,14 @@ fn a_first_sync_of_a_large_library_completes_in_one_connection() {
             })
         })
         .collect();
-    assert_eq!(outgoing.len(), LIBRARY);
+    assert_eq!(outgoing.len(), library_size);
     // The whole sweep arrives as one batch: every offer waits at once.
     let mut first = true;
     for _ in 0..10 {
         if outgoing.is_empty() {
             break;
         }
-        let size = if first { LIBRARY } else { BATCH };
+        let size = if first { library_size } else { BATCH };
         first = false;
         let mut replies = Vec::new();
         while !outgoing.is_empty() {
@@ -941,11 +998,15 @@ fn a_first_sync_of_a_large_library_completes_in_one_connection() {
         .into_iter()
         .filter(|(kind, _)| *kind == DocKind::Song)
         .count();
-    assert_eq!(held, LIBRARY);
-    let (id, _, _) = &library[LIBRARY - 1];
+    assert_eq!(held, library_size);
+    let (id, _, _) = &library[library_size - 1];
     assert_eq!(
         b.get::<Song>(*id).unwrap().map(|s| s.title),
-        Some(format!("Song {}", LIBRARY - 1))
+        Some(format!("Song {}", library_size - 1))
+    );
+    eprintln!(
+        "first sync of {library_size} documents: {:?}",
+        started.elapsed()
     );
 }
 

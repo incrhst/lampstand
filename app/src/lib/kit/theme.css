@@ -147,3 +147,33 @@ h2.title {
   margin: 0;
   padding: 0;
 }
+
+/* Library & controls, the one sidebar in Plan and Present: a heading for
+   each part (Library on top, Controls under it, in both modes) and the
+   search box that opens the Library. */
+.side-zone-head {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.side-find {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--faint);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  margin: 0.15rem 0 0.2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  text-align: left;
+  cursor: text;
+}
+.side-find:hover {
+  border-color: var(--gold);
+  color: var(--muted);
+}

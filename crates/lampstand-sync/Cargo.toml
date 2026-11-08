@@ -50,6 +50,15 @@ zeroize = { workspace = true, optional = true }
 # flushes the whole drive cache; batched writes do that once per batch.
 libc.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# Owner-only DACLs for secrets written with `write_private`.
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 lampstand-sync = { path = ".", features = ["net"] }
 tempfile.workspace = true

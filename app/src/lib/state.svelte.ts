@@ -24,6 +24,7 @@ import {
 import { loadSettings, updateSettings } from "./settings";
 import { sortThemes } from "./themes";
 import { syncFailed } from "./sync";
+import { loadedItem } from "./ready";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
@@ -32,6 +33,10 @@ class LiveState {
   shown: Cursor | null = $state(null);
   preview: Cursor | null = $state(null);
   overlay: Overlay = $state("None");
+  /** On a side-trip to a ready item, the slide Next goes back to after it. */
+  returnsTo: Cursor | null = $state(null);
+  /** A side-trip to a ready item is under way. */
+  onReady: boolean = $state(false);
   /** Last import message, error or notice, for the status bar. */
   status: string = $state("");
   /** A running import, for the status bar's progress bar. */
@@ -88,7 +93,7 @@ class LiveState {
 
 function slideAt(loaded: LoadedService | null, cursor: Cursor | null): SlideView | null {
   if (!loaded || !cursor) return null;
-  const item = loaded.items.find((i) => i.id === cursor.item);
+  const item = loadedItem(loaded, cursor.item);
   return item?.slides[cursor.slide] ?? null;
 }
 
@@ -106,6 +111,8 @@ onEvent((event) => {
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;
       live.idle = event.data.idle;
+      live.returnsTo = event.data.returns_to ?? null;
+      live.onReady = event.data.on_ready ?? false;
       break;
     case "Loaded":
       live.loaded = event.data;
