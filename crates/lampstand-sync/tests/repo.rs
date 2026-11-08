@@ -1010,6 +1010,56 @@ fn first_sync_in_one_connection(library_size: usize) {
     );
 }
 
+/// T78: a received change whose write fails is not counted as received, so
+/// it comes again once the disk can take it and the peer reconnects.
+#[cfg(unix)]
+#[test]
+fn a_change_the_disk_refused_arrives_again_on_the_next_connect() {
+    use std::os::unix::fs::PermissionsExt;
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (a, b) = (open(da.path()), open(db.path()));
+    let mut song = hymn();
+    let id = song.id.uuid();
+    a.put(&song).unwrap();
+    sync(&a, &b);
+    let doc_dir = db.path().join("docs").join(id.to_string());
+    fs::set_permissions(&doc_dir, fs::Permissions::from_mode(0o555)).unwrap();
+    if fs::write(doc_dir.join("probe"), b"").is_ok() {
+        // Running as root: permissions cannot make the write fail.
+        fs::set_permissions(&doc_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
+
+    song.title = "Amazing Grace (My Chains Are Gone)".into();
+    a.put(&song).unwrap();
+    let mut refused = 0;
+    for _ in 0..20 {
+        let mut quiet = true;
+        for doc in [b.team_doc(), id] {
+            if let Some(m) = a.generate_sync_message(b.device(), doc) {
+                refused += usize::from(b.receive_sync_message(a.device(), m).is_err());
+                quiet = false;
+            }
+            if let Some(m) = b.generate_sync_message(a.device(), doc) {
+                a.receive_sync_message(b.device(), m).unwrap();
+                quiet = false;
+            }
+        }
+        if quiet {
+            break;
+        }
+    }
+    assert_eq!(refused, 1);
+    assert_eq!(b.get::<Song>(id).unwrap().unwrap().title, "Amazing Grace");
+
+    fs::set_permissions(&doc_dir, fs::Permissions::from_mode(0o755)).unwrap();
+    a.forget_peer(b.device());
+    b.forget_peer(a.device());
+    sync(&a, &b);
+    drop(b);
+    assert_eq!(open(db.path()).get::<Song>(id).unwrap(), Some(song));
+}
+
 #[test]
 fn blobs_are_content_addressed_and_verified() {
     let dir = tempfile::tempdir().unwrap();
