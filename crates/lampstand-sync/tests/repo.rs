@@ -453,12 +453,14 @@ fn ready_round_trips_and_an_empty_one_writes_no_key() {
     let deck = service.add_ready(ItemKind::Deck {
         deck: lampstand_core::deck::DeckId::generate(),
     });
+    let slide = service.add_ready_slide(lampstand_core::deck::DeckId::generate(), 4);
     autosurgeon::reconcile(&mut doc, &service).unwrap();
     let read: Service = autosurgeon::hydrate(&doc).unwrap();
     assert_eq!(read, service);
 
     service.unready(song);
     service.unready(deck);
+    service.unready(slide);
     autosurgeon::reconcile(&mut doc, &service).unwrap();
     assert!(doc.get(automerge::ROOT, "ready").unwrap().is_none());
     let read: Service = autosurgeon::hydrate(&doc).unwrap();

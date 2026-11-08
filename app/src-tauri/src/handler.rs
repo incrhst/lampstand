@@ -722,6 +722,7 @@ impl App {
             | ServiceRequest::RemoveItem { service, .. }
             | ServiceRequest::PinReady { service, .. }
             | ServiceRequest::AddReady { service, .. }
+            | ServiceRequest::AddReadySlide { service, .. }
             | ServiceRequest::RemoveReady { service, .. }
             | ServiceRequest::MoveReady { service, .. } => (*service, true),
             ServiceRequest::Duplicate { service, .. }
@@ -931,6 +932,20 @@ impl App {
                 }
                 let mut s = get(service)?;
                 s.add_ready(kind);
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::AddReadySlide {
+                service,
+                deck,
+                slide,
+            } => {
+                if lib.deck(deck).map_err(err)?.is_none() {
+                    return Err("no such deck".into());
+                }
+                let mut s = get(service)?;
+                s.add_ready_slide(deck, slide);
                 lib.put_service(&s).map_err(err)?;
                 self.reload_if_open(service)?;
                 Response::Service(s)
@@ -1461,6 +1476,59 @@ impl App {
                         });
                     }
                 }
+                ReadySource::Slide { deck, slide } => {
+                    // One slide of a deck, on its own: its builds play by
+                    // themselves. Left out if the deck has no such slide.
+                    let Some(d) = self.library.deck(*deck).ok().flatten() else {
+                        continue;
+                    };
+                    let Ok(parsed) = self.parsed_deck(&d) else {
+                        continue;
+                    };
+                    let Some(one) = parsed.slides.get(*slide as usize) else {
+                        continue;
+                    };
+                    let loaded_slide = LoadedSlide {
+                        content: Content::DeckSlide {
+                            deck: *deck,
+                            index: one.index,
+                            step: 0,
+                            scene: one.scenes[0].clone(),
+                            notes: one.notes.clone(),
+                        },
+                        steps: one.builds.len(),
+                        dwell_ms: None,
+                    };
+                    if !one.builds.is_empty() {
+                        builds.insert((ready_id, 0), one.builds.clone());
+                    }
+                    scenes.insert((ready_id, 0), one.scenes.clone());
+                    decks.push(*deck);
+                    blobs.push(d.current.blob);
+                    parsed_decks.insert(*deck, parsed.clone());
+                    let title = format!("{} · slide {}", d.title, slide + 1);
+                    ready.push(ReadyView {
+                        item: LoadedItemView {
+                            id: ready_id,
+                            title: title.clone(),
+                            slides: vec![slide_view(&loaded_slide)],
+                            sounds: Vec::new(),
+                        },
+                        in_order: false,
+                    });
+                    ready_items.push(LoadedItem {
+                        id: ready_id,
+                        title,
+                        slides: vec![loaded_slide],
+                        background: None,
+                        theme: service.theme,
+                        song: None,
+                        auto_advance_ms: None,
+                        loop_group: None,
+                        sound_only: false,
+                        auto_builds_ms: autoplay_waits(&one.entry, &one.builds),
+                    });
+                }
                 ReadySource::Own { kind } => {
                     let loaded = self.load_item(ready_id, kind, &theme, &primary)?;
                     if let ItemKind::Deck { deck } = kind {
@@ -1537,6 +1605,7 @@ impl App {
             auto_advance_ms: None,
             loop_group: None,
             sound_only: false,
+            auto_builds_ms: Vec::new(),
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -2780,6 +2849,26 @@ fn item_sounds(item: &ServiceItem) -> Vec<ItemSoundView> {
     };
     own.into_iter()
         .chain(item.backing.as_ref().map(|b| view(b, true)))
+        .collect()
+}
+
+/// How long a slide kept ready on its own waits before each of its builds
+/// plays by itself (`LoadedItem::auto_builds_ms`): until what played before
+/// it has finished (what plays as the slide arrives, then each build), and
+/// a short pause to read it.
+fn autoplay_waits(entry: &[Animation], builds: &[Vec<Animation>]) -> Vec<u32> {
+    const PAUSE_MS: u32 = 800;
+    let length = |anims: &[Animation]| {
+        anims
+            .iter()
+            .map(|a| a.delay_ms.saturating_add(a.duration_ms))
+            .max()
+            .unwrap_or(0)
+    };
+    std::iter::once(entry)
+        .chain(builds.iter().map(Vec::as_slice))
+        .take(builds.len())
+        .map(|played| length(played).saturating_add(PAUSE_MS))
         .collect()
 }
 

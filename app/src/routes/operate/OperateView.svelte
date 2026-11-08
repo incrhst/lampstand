@@ -469,7 +469,7 @@
   /** The file an image or video item shows, if this is one. */
   function mediaOf(item: string | undefined) {
     const own = item ? service?.ready?.[item]?.source : undefined;
-    const kind = item ? (service?.items[item]?.kind ?? (own && own !== "Order" ? own.Own.kind : undefined)) : undefined;
+    const kind = item ? (service?.items[item]?.kind ?? (own && own !== "Order" && "Own" in own ? own.Own.kind : undefined)) : undefined;
     return kind && "Media" in kind ? kind.Media : null;
   }
   /** A slide with a picture to ask for: a deck's slide, or a media item's file. */
@@ -576,7 +576,35 @@
     const item = service?.items[id];
     if (item) return kindName(item.kind);
     const own = service?.ready?.[id]?.source;
-    return own && own !== "Order" ? kindName(own.Own.kind) : null;
+    if (!own || own === "Order") return null;
+    return "Own" in own ? kindName(own.Own.kind) : "Deck";
+  }
+
+  /** The deck an item of the order shows, if it is a deck. */
+  function deckOf(id: string): string | null {
+    const kind = service?.items[id]?.kind;
+    return kind && "Deck" in kind ? kind.Deck.deck : null;
+  }
+  /** Slides kept ready one by one, by deck, with each entry's ID. */
+  let slideEntries = $derived(
+    Object.entries(service?.ready ?? {}).flatMap(([id, e]) => (e.source !== "Order" && "Slide" in e.source ? [{ id, ...e.source.Slide }] : [])),
+  );
+  let keptSlides = $derived(
+    slideEntries.reduce<Record<string, number[]>>((by, e) => ((by[e.deck] ??= []).push(e.slide), by), {}),
+  );
+  /** A slide kept ready on its own is on air: its builds play by themselves. */
+  let autoBuilding = $derived(!!live.live && slideEntries.some((e) => e.id === live.live?.item));
+  async function toggleSlide(deck: string, slide: number, title: string) {
+    const loaded = live.loaded;
+    if (!loaded) return;
+    const entry = slideEntries.find((e) => e.deck === deck && e.slide === slide);
+    try {
+      if (entry) await request({ area: "Service", request: { RemoveReady: { service: loaded.service, item: entry.id } } }, "Service");
+      else await request({ area: "Service", request: { AddReadySlide: { service: loaded.service, deck, slide } } }, "Service");
+      live.status = entry ? `${title} · slide ${slide + 1} is no longer ready` : `${title} · slide ${slide + 1} is ready`;
+    } catch (e) {
+      report(e);
+    }
   }
 
   // Ready: Blank and Idle first, then what the service keeps one tap away.
@@ -750,6 +778,7 @@
           liveItem={live.live?.item ?? null}
           readyIds={(live.loaded.ready ?? []).map((r) => r.item.id)}
           forReady={quickAddReady}
+          {keptSlides}
           onclose={() => (quickAddOpen = false)}
           onadded={quickAdded}
           onreadied={readied}
@@ -847,7 +876,22 @@
                     {#if item.slides.length > 0}
                       <ul class="plain slides wall-slides">
                         {#each item.slides as slide, s}
-                          <li>{@render slideCard(item.id, slide, s, slideMark(item.id, s, live.live, upcoming?.cursor))}</li>
+                          {@const deckId = deckOf(item.id)}
+                          <li class="slide-cell">
+                            {@render slideCard(item.id, slide, s, slideMark(item.id, s, live.live, upcoming?.cursor))}
+                            {#if deckId}
+                              {@const kept = (keptSlides[deckId] ?? []).includes(s)}
+                              <button
+                                type="button"
+                                class="keep-slide"
+                                class:on={kept}
+                                aria-pressed={kept}
+                                title={kept ? `Slide ${s + 1} is kept ready. Click to stop keeping it` : `Keep just this slide ready; its builds play by themselves`}
+                                aria-label={kept ? `Stop keeping slide ${s + 1} of ${item.title} ready` : `Keep slide ${s + 1} of ${item.title} ready`}
+                                onclick={() => toggleSlide(deckId, s, item.title)}
+                              ><Icon name="star" size={11} />{kept ? "Ready" : "Keep slide"}</button>
+                            {/if}
+                          </li>
                         {/each}
                       </ul>
                     {/if}
@@ -903,7 +947,7 @@
               {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
                 {@const left = live.liveSlide.steps - live.live.step}
                 <section class="wall-steps" aria-label="Builds on this slide">
-                  <p class="wall-steps-head muted">{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}</p>
+                  <p class="wall-steps-head muted">{#if autoBuilding}{left === 0 ? "Fully built. Next goes back to the service." : `${left} ${left === 1 ? "build" : "builds"} left, playing by themselves`}{:else}{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}{/if}</p>
                   <figure>
                     {#if clickNext}
                       <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
@@ -1762,6 +1806,38 @@
     align-items: center;
     gap: 0.3rem;
     font-size: 0.8125rem;
+  }
+  .slide-cell {
+    position: relative;
+  }
+  .keep-slide {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.05rem 0.4rem;
+    font: inherit;
+    font-size: 0.7rem;
+    color: #fff;
+    background: rgb(0 0 0 / 0.7);
+    border: 1px solid rgb(255 255 255 / 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .keep-slide.on {
+    color: var(--gold-hover);
+    border-color: currentColor;
+  }
+  @media (hover: hover) {
+    .keep-slide:not(.on) {
+      opacity: 0;
+    }
+    .slide-cell:hover .keep-slide,
+    .keep-slide:focus-visible {
+      opacity: 1;
+    }
   }
   .wall-count {
     display: flex;

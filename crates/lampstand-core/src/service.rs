@@ -93,6 +93,12 @@ pub enum ReadySource {
     /// Something kept only in Ready, not in the order: a deck or media
     /// from the Library. `Next` never lands on it.
     Own { kind: ItemKind },
+    /// One slide of a deck, kept only in Ready: picked from a deck in the
+    /// order or in the Library. `slide` counts from 0 as the deck is shown,
+    /// hidden slides left out. Its builds play by themselves when it is
+    /// shown; after it, `Next` goes back to the service. If the deck changes
+    /// and has no such slide any more, it is not shown.
+    Slide { deck: DeckId, slide: u32 },
 }
 
 /// Writes the service field by field as the derive does, except `ready`:
@@ -496,7 +502,7 @@ impl Service {
             .iter()
             .filter(|(id, entry)| match entry.source {
                 ReadySource::Order => self.items.contains_key(id),
-                ReadySource::Own { .. } => true,
+                ReadySource::Own { .. } | ReadySource::Slide { .. } => true,
             })
             .map(|(id, entry)| (*id, entry))
             .collect();
@@ -544,6 +550,25 @@ impl Service {
             ReadyEntry {
                 position,
                 source: ReadySource::Own { kind },
+            },
+        );
+        id
+    }
+
+    /// Keeps one slide of a deck ready, at the end of Ready. Keeping the same
+    /// slide again leaves the one already there and gives its ID.
+    pub fn add_ready_slide(&mut self, deck: DeckId, slide: u32) -> ItemId {
+        let same = ReadySource::Slide { deck, slide };
+        if let Some((id, _)) = self.ready.iter().find(|(_, e)| e.source == same) {
+            return *id;
+        }
+        let id = ItemId::generate();
+        let position = self.ready_end();
+        self.ready.insert(
+            id,
+            ReadyEntry {
+                position,
+                source: same,
             },
         );
         id
@@ -888,6 +913,23 @@ mod tests {
         assert!(s.unready(deck));
         assert!(!s.unready(deck));
         assert!(s.ready.is_empty());
+    }
+
+    #[test]
+    fn one_slide_of_a_deck_is_kept_once() {
+        let mut s = Service::new("Sunday");
+        let deck = DeckId::generate();
+        let third = s.add_ready_slide(deck, 2);
+        assert_eq!(s.add_ready_slide(deck, 2), third, "the same slide again");
+        let fourth = s.add_ready_slide(deck, 3);
+        let ids: Vec<ItemId> = s.ready_ordered().iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [third, fourth]);
+        assert!(s.ordered().is_empty(), "not in the order");
+        let copy = s.duplicate("Copy");
+        assert!(copy
+            .ready_ordered()
+            .iter()
+            .any(|(_, e)| e.source == ReadySource::Slide { deck, slide: 3 }));
     }
 
     #[test]

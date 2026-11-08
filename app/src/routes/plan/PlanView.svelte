@@ -668,6 +668,10 @@
       .sort(([a, x], [b, y]) => (x.position < y.position ? -1 : x.position > y.position ? 1 : a < b ? -1 : 1))
       .map(([id, e]) => {
         if (e.source === "Order") return { id, inOrder: true, title: itemTitle(s.items[id]), icon: kindIcon[kindName(s.items[id].kind)] };
+        if ("Slide" in e.source) {
+          const { deck, slide } = e.source.Slide;
+          return { id, inOrder: false, title: `${deckById[deck]?.title ?? "Deck"} · slide ${slide + 1}`, icon: kindIcon.Deck };
+        }
         const k = e.source.Own.kind;
         const title = "Media" in k ? k.Media.name : "Deck" in k ? (deckById[k.Deck.deck]?.title ?? "Deck") : "Item";
         return { id, inOrder: false, title, icon: kindIcon[kindName(k)] };
@@ -1522,7 +1526,7 @@
                order: Next never lands on these. -->
           <section class="ready" aria-labelledby="plan-ready">
             <h3 class="eyebrow" id="plan-ready">Ready in Present</h3>
-            <p class="muted ready-note">One tap away during the service, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service.</p>
+            <p class="muted ready-note">One tap away during the service, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
             {#if readyRows.length > 0}
               <ul class="plain ready-list">
                 {#each readyRows as r (r.id)}
@@ -1545,7 +1549,7 @@
             {/if}
           </section>
           {#if readyAddOpen}
-            <ReadyAdd service={selected.id} onclose={() => (readyAddOpen = false)} onadded={readyAdded} />
+            <ReadyAdd service={selected.id} ready={selected.ready ?? {}} onclose={() => (readyAddOpen = false)} onadded={readyAdded} />
           {/if}
         {/if}
       </div>

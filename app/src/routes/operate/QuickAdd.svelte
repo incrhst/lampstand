@@ -4,7 +4,9 @@
      on air; Shift+Enter adds it and puts it on air now; Ctrl or Cmd+Enter
      adds it at the end. A deck or media file from the Library goes to Ready
      instead (lib/ready.ts), never the order: Enter keeps it ready, Shift+Enter
-     keeps it ready and shows it now, as a side-trip. -->
+     keeps it ready and shows it now, as a side-trip. A deck's "One slide"
+     (or the right arrow) shows its slides to keep just one ready; its builds
+     then play by themselves. -->
 <script lang="ts">
   import { onMount } from "svelte";
   import { request, type Deck, type ItemKind, type MediaFile, type SongHit, type Translation } from "../../lib/api";
@@ -15,6 +17,7 @@
   import { entryAction, insertionIndex, newItemId } from "../../lib/quickAdd";
   import { report } from "../../lib/state.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import DeckSlidePicker from "../../lib/kit/DeckSlidePicker.svelte";
 
   let {
     service,
@@ -22,6 +25,7 @@
     liveItem,
     readyIds = [],
     forReady = false,
+    keptSlides = {},
     onclose,
     onadded,
     onreadied,
@@ -36,6 +40,8 @@
     readyIds?: string[];
     /** Opened from the Ready card: the Library's decks and media show before anything is typed. */
     forReady?: boolean;
+    /** Slides already kept ready one by one, by deck. */
+    keptSlides?: Record<string, number[]>;
     onclose: () => void;
     /** An item went in: its ID (null if it could not be found), whether to put it on air, and its title. */
     onadded: (id: string | null, show: boolean, title: string) => void;
@@ -63,6 +69,24 @@
   let passage: Row | null = $state(null);
   /** The Library's decks and media, which go to Ready. */
   let files: Row[] = $state([]);
+  /** A deck whose slides are shown, to keep one of them ready. */
+  let slidesOf: { deck: string; title: string } | null = $state(null);
+  function openSlides(row: Row | undefined) {
+    if (row?.item && "Deck" in row.item) slidesOf = { deck: row.item.Deck.deck, title: row.title };
+  }
+  async function keepSlide(slide: number, show: boolean) {
+    if (!slidesOf || busy) return;
+    busy = true;
+    const title = `${slidesOf.title} · slide ${slide + 1}`;
+    try {
+      const updated = await request({ area: "Service", request: { AddReadySlide: { service, deck: slidesOf.deck, slide } } }, "Service");
+      const id = newItemId(readyIds, Object.keys(updated.ready ?? {})) ?? Object.entries(updated.ready ?? {}).find(([, e]) => e.source !== "Order" && "Slide" in e.source && e.source.Slide.deck === slidesOf?.deck && e.source.Slide.slide === slide)?.[0] ?? null;
+      onreadied(id, show, title);
+    } catch (err) {
+      report(err);
+      busy = false;
+    }
+  }
   let trimmed = $derived(query.trim());
 
   const labelOf = (id: string) => {
@@ -194,9 +218,18 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
+    if (e.key === "Escape" && slidesOf) {
+      e.preventDefault();
+      slidesOf = null;
+    } else if (e.key === "Escape") {
       e.preventDefault();
       onclose();
+    } else if (!slidesOf && e.key === "ArrowRight" && rows[highlight]?.kind === "deck" && input?.selectionStart === query.length) {
+      e.preventDefault();
+      openSlides(rows[highlight]);
+    } else if (slidesOf && ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) {
+      // The slides are picked with a click; the list's keys wait.
+      e.preventDefault();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       highlight = Math.min(highlight + 1, rows.length - 1);
@@ -236,14 +269,24 @@
       {#if translations.length > 0 && passage}<span class="tag" title="Tab changes Bible">{abbreviation}</span>{/if}
     </div>
 
+    {#if slidesOf}
+      <div class="slides-head">
+        <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
+        <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
+      </div>
+      <DeckSlidePicker deck={slidesOf.deck} title={slidesOf.title} kept={new Set(keptSlides[slidesOf.deck] ?? [])} onpick={keepSlide} />
+    {:else}
     <ul id="quick-add-results" class="plain results" role="listbox" aria-label="Results">
       {#each rows as row, i (row.key)}
-        <li role="option" aria-selected={i === highlight}>
-          <button type="button" class="row" class:active={i === highlight} disabled={!row.item} onmouseenter={() => (highlight = i)} onclick={(e) => add(row, e)}>
+        <li role="option" aria-selected={i === highlight} class="result">
+          <button type="button" class="row" class:active={i === highlight} class:has-more={row.kind === "deck"} disabled={!row.item} onmouseenter={() => (highlight = i)} onclick={(e) => add(row, e)}>
             <Icon name={row.kind} size={16} />
             <span class="title">{row.title}</span>
             <span class="sub">{row.subtitle}</span>
           </button>
+          {#if row.kind === "deck"}
+            <button type="button" class="one-slide" onmouseenter={() => (highlight = i)} onclick={() => openSlides(row)} title="Keep just one slide of {row.title} ready (→)">One slide <Icon name="next" size={12} /></button>
+          {/if}
         </li>
       {:else}
         <li class="hint">
@@ -251,9 +294,14 @@
         </li>
       {/each}
     </ul>
+    {/if}
 
     <p class="keys faint">
-      {#if rows[highlight]?.kind === "deck" || rows[highlight]?.kind === "media"}
+      {#if slidesOf}
+        Click a slide to keep it ready · <kbd>⇧</kbd> click keeps it ready and shows it now · <kbd>Esc</kbd> back
+      {:else if rows[highlight]?.kind === "deck"}
+        <kbd>Enter</kbd> keep the deck ready · <kbd>⇧ Enter</kbd> and show now · <kbd>→</kbd> one slide · <kbd>Esc</kbd> close
+      {:else if rows[highlight]?.kind === "media"}
         <kbd>Enter</kbd> keep ready · <kbd>⇧ Enter</kbd> keep ready and show now · decks and media go to Ready, not the order · <kbd>Esc</kbd> close
       {:else}
         <kbd>Enter</kbd> add next · <kbd>⇧ Enter</kbd> add and show now · <kbd>⌃/⌘ Enter</kbd> add at end{#if translations.length > 1} · <kbd>Tab</kbd> Bible{/if} · <kbd>Esc</kbd> close
@@ -320,6 +368,53 @@
     color: var(--text);
     background: transparent;
     border: 0;
+    cursor: pointer;
+  }
+  .result {
+    position: relative;
+  }
+  .row.has-more {
+    padding-right: 7rem;
+  }
+  .one-slide {
+    position: absolute;
+    top: 50%;
+    right: 0.75rem;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .one-slide:hover {
+    color: var(--text);
+    border-color: var(--gold-hover);
+  }
+  .slides-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem 0;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    font: inherit;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     cursor: pointer;
   }
   .row.active {

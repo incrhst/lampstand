@@ -197,6 +197,10 @@ function load(id: string) {
   // Ready: pins show their item of the order; a deck or media kept only in Ready is loaded beside it.
   const ready = Object.entries(s.ready ?? {}).sort((a: any, b: any) => a[1].position.localeCompare(b[1].position)).flatMap(([rid, e]: any) => {
     if (e.source === "Order") { const v = items.find((i: any) => i.id === rid); return v ? [{ item: v, in_order: true }] : []; }
+    if (e.source.Slide) {
+      const { deck, slide } = e.source.Slide; const sl = deckSlides[deck]?.[slide];
+      return sl ? [{ item: { id: rid, title: `${decks.find((d) => d.id === deck)!.title} · slide ${slide + 1}`, slides: [{ ...sl, lines: [] }], sounds: [] }, in_order: false }] : [];
+    }
     return [{ item: { id: rid, title: titleFor(e.source.Own.kind), slides: slidesFor(e.source.Own.kind), sounds: [] }, in_order: false }];
   });
   return { service: s.id, title: s.title, items, sections, ready };
@@ -231,6 +235,15 @@ setInterval(() => {
   pushLive();
 }, 200);
 const flat = () => (state.loaded ? state.loaded.items.flatMap((i: any) => i.slides.map((_: any, n: number) => ({ item: i.id, slide: n, step: 0 }))) : []);
+// As the engine: a slide kept ready on its own plays its builds by itself.
+setInterval(() => {
+  if (!state.detour || !state.live || state.live.item !== state.detour.item) return;
+  const one = state.loaded?.ready?.find((r: any) => r.item.id === state.live.item && !r.in_order)?.item;
+  const steps = one?.slides[0]?.steps ?? 0;
+  if (!one || !/ · slide \d+$/.test(one.title) || state.live.step >= steps) return;
+  state.live = state.preview = { ...state.live, step: state.live.step + 1 };
+  pushLive();
+}, 1400);
 function move(dir: number, byItem = false) {
   const f = flat(); if (!f.length) return;
   // As the engine: Next plays a slide's builds one click at a time before moving on.
@@ -284,7 +297,7 @@ function api(req: any): any {
         case "InspectBrand": return { type: "BrandFile", data: { name: "Grace Chapel", has_logo: true, font_family: "Noto Serif", font_installed: true, missing_fonts: [], themes: ["Grace Chapel"], idle: null, has_brand: true } };
         case "ImportBrand": return { type: "Text", data: "Imported the brand: 1 theme added, 0 replaced." };
         case "ThemePreview": return { type: "Thumbnail", data: themeThumb(arg.theme, arg.sample, arg.thumb_width, Math.round(arg.thumb_width * arg.height / arg.width)) };
-        case "DeckSlidePicture": return { type: "DeckSlide", data: { thumbnail: svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } };
+        case "DeckSlidePicture": { const sl = deckSlides[arg.deck]?.[arg.slide]; return { type: "DeckSlide", data: { thumbnail: sl ? deckThumb(sl, sl.steps) : svgThumb(`Slide ${arg.slide + 1}`), slides: (deckSlides[arg.deck] ?? []).length || 3 } }; }
         case "ListTranslations": return { type: "Translations", data: [{ id: "kjv", name: "King James Version", abbreviation: "KJV", language: "en", licence: "PublicDomain", text: "kjv" }] };
         case "LookupPassage": {
           const typed = arg.reference.toLowerCase();
@@ -336,6 +349,11 @@ function api(req: any): any {
           return reload(s);
         }
         case "AddReady": { const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {}; s.ready["r" + Date.now() + (seq++)] = { position: readyEnd(s), source: { Own: { kind: arg.kind } } }; return reload(s); }
+        case "AddReadySlide": {
+          const s = state.services.find((x: any) => x.id === arg.service); s.ready ??= {};
+          if (!Object.values(s.ready).some((e: any) => e.source.Slide?.deck === arg.deck && e.source.Slide?.slide === arg.slide)) s.ready["rs" + Date.now() + (seq++)] = { position: readyEnd(s), source: { Slide: { deck: arg.deck, slide: arg.slide } } };
+          return reload(s);
+        }
         case "RemoveReady": { const s = state.services.find((x: any) => x.id === arg.service); delete s.ready?.[arg.item]; return reload(s); }
         case "SetItemText": {
           const s = state.services.find((x: any) => x.id === arg.service);
@@ -368,7 +386,9 @@ function api(req: any): any {
         case "Open": { state.loaded = load(arg); emit({ type: "Loaded", data: state.loaded }); return { type: "Loaded", data: state.loaded }; }
         case "SlideThumbnail": {
           const kind = state.services.flatMap((sv: any) => Object.entries(sv.items)).find(([id]: any) => id === arg.item)?.[1]?.kind;
-          const sl = kind?.Deck ? deckSlides[kind.Deck.deck]?.[arg.slide] : null;
+          // A slide kept ready on its own is slide 0 of its entry.
+          const one = state.services.map((sv: any) => sv.ready?.[arg.item]?.source?.Slide).find(Boolean);
+          const sl = one ? deckSlides[one.deck]?.[one.slide] : kind?.Deck ? deckSlides[kind.Deck.deck]?.[arg.slide] : null;
           return { type: "Thumbnail", data: sl ? deckThumb(sl, arg.step) : svgThumb("Slide") };
         }
         case "Readiness": return { type: "Text", data: "ready" };
@@ -380,6 +400,8 @@ function api(req: any): any {
       // A side-trip to a ready item: Next past its end, or Previous before its start, goes back.
       if (state.detour && state.live?.item === state.detour.item && (r === "Next" || r === "Previous")) {
         const ri = state.loaded.ready.find((x: any) => x.item.id === state.detour.item)?.item;
+        const steps = ri?.slides[state.live.slide]?.steps ?? 0;
+        if (r === "Next" && state.live.step < steps) { state.live = state.preview = { ...state.live, step: state.live.step + 1 }; pushLive(); return ok; }
         const slide = state.live.slide + (r === "Next" ? 1 : -1);
         if (ri && slide >= 0 && slide < ri.slides.length) state.live = state.preview = { item: ri.id, slide, step: 0 };
         else if (state.detour.back) { state.live = state.preview = state.detour.back; state.detour = null; }

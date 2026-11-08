@@ -2,19 +2,24 @@
      kept one tap away in the service's Ready list without going in the
      order. Type to filter; Enter adds the highlighted one; Esc closes.
      Items already in the order are pinned from the order instead. In
-     Present, Quick add does this for decks and media. -->
+     Present, Quick add does this for decks and media. A deck's "One slide"
+     shows its slides, to keep just one ready. -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { request, type Deck, type ItemKind, type MediaFile } from "../../lib/api";
+  import { request, type Deck, type ItemKind, type MediaFile, type ReadyEntry } from "../../lib/api";
+  import DeckSlidePicker from "../../lib/kit/DeckSlidePicker.svelte";
   import { report } from "../../lib/state.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
 
   let {
     service,
+    ready = {},
     onclose,
     onadded,
   }: {
     service: string;
+    /** What the service keeps ready now, to mark slides already kept. */
+    ready?: Record<string, ReadyEntry | undefined>;
     onclose: () => void;
     /** It went in: its title. */
     onadded: (title: string) => void;
@@ -33,6 +38,24 @@
   let loading = $state(true);
   let input: HTMLInputElement | undefined = $state();
   let all: Row[] = $state([]);
+  /** A deck whose slides are shown, to keep one of them ready. */
+  let slidesOf: { deck: string; title: string } | null = $state(null);
+  let kept = $derived(
+    new Set(
+      Object.values(ready).flatMap((e) => (e && e.source !== "Order" && "Slide" in e.source && e.source.Slide.deck === slidesOf?.deck ? [e.source.Slide.slide] : [])),
+    ),
+  );
+  async function keepSlide(slide: number) {
+    if (!slidesOf || busy) return;
+    busy = true;
+    try {
+      await request({ area: "Service", request: { AddReadySlide: { service, deck: slidesOf.deck, slide } } }, "Service");
+      onadded(`${slidesOf.title} · slide ${slide + 1}`);
+    } catch (err) {
+      report(err);
+      busy = false;
+    }
+  }
 
   onMount(() => {
     input?.focus();
@@ -71,7 +94,12 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
+    if (e.key === "Escape" && slidesOf) {
+      e.preventDefault();
+      slidesOf = null;
+    } else if (slidesOf) {
+      return;
+    } else if (e.key === "Escape") {
       e.preventDefault();
       onclose();
     } else if (e.key === "ArrowDown") {
@@ -105,14 +133,25 @@
       />
     </div>
 
+    {#if slidesOf}
+      <div class="slides-head">
+        <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
+        <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
+      </div>
+      <DeckSlidePicker deck={slidesOf.deck} title={slidesOf.title} {kept} onpick={keepSlide} />
+    {:else}
     <ul id="ready-add-results" class="plain results" role="listbox" aria-label="Library">
       {#each rows as row, i (row.key)}
-        <li role="option" aria-selected={i === highlight}>
-          <button type="button" class="row" class:active={i === highlight} disabled={busy} onmouseenter={() => (highlight = i)} onclick={() => add(row)}>
+        <li role="option" aria-selected={i === highlight} class="result">
+          <button type="button" class="row" class:active={i === highlight} class:has-more={row.kind === "deck"} disabled={busy} onmouseenter={() => (highlight = i)} onclick={() => add(row)}>
             <Icon name={row.kind} size={16} />
             <span class="title">{row.title}</span>
             <span class="sub">{row.kind === "deck" ? "Deck" : "Media"}</span>
           </button>
+          {#if row.kind === "deck" && "Deck" in row.item}
+            {@const deck = row.item.Deck.deck}
+            <button type="button" class="one-slide" onclick={() => (slidesOf = { deck, title: row.title })} title="Keep just one slide of {row.title} ready">One slide <Icon name="next" size={12} /></button>
+          {/if}
         </li>
       {:else}
         <li class="hint">
@@ -120,6 +159,7 @@
         </li>
       {/each}
     </ul>
+    {/if}
 
     <p class="keys faint">
       For an item already in the order, use <Icon name="star" size={12} /> Keep ready on it · <kbd>Enter</kbd> add · <kbd>Esc</kbd> close
@@ -179,6 +219,53 @@
     color: var(--text);
     background: transparent;
     border: 0;
+    cursor: pointer;
+  }
+  .result {
+    position: relative;
+  }
+  .row.has-more {
+    padding-right: 7rem;
+  }
+  .one-slide {
+    position: absolute;
+    top: 50%;
+    right: 0.75rem;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .one-slide:hover {
+    color: var(--text);
+    border-color: var(--gold-hover);
+  }
+  .slides-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem 0;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.5rem;
+    font: inherit;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     cursor: pointer;
   }
   .row.active {

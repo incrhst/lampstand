@@ -2694,3 +2694,109 @@ fn ready_keeps_a_pin_and_a_video_and_next_comes_back_from_it() {
     };
     assert!(service.ready.is_empty());
 }
+
+/// One slide of a deck kept ready on its own: it comes with the loaded
+/// service as "<deck> · slide N", its builds play by themselves as the
+/// clock runs, and Next past the last goes back to the service.
+#[test]
+fn a_ready_slide_plays_its_builds_by_itself_and_next_comes_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let deck = match ok(h.app.handle(Request::Library(LibraryRequest::AddDeckFile {
+        path: deck_path("11-builds-transitions"),
+    }))) {
+        Response::Deck(d) => d,
+        other => panic!("{other:?}"),
+    };
+    let service = create_service(&mut h, "Sunday");
+    let service = insert(
+        &mut h,
+        &service,
+        ItemKind::Text {
+            title: "Welcome".into(),
+            body: "Welcome".into(),
+            attribution: None,
+        },
+    );
+    let service = insert(&mut h, &service, ItemKind::Deck { deck: deck.id });
+    let loaded = open_service(&mut h, &service);
+    let welcome = loaded.items[0].id;
+    let (slide, steps) = loaded.items[1]
+        .slides
+        .iter()
+        .enumerate()
+        .find(|(_, s)| s.steps > 0)
+        .map(|(i, s)| (i as u32, s.steps))
+        .expect("a slide with builds in the test deck");
+
+    ok(h.app
+        .handle(Request::Service(ServiceRequest::AddReadySlide {
+            service: service.id,
+            deck: deck.id,
+            slide,
+        })));
+    // Twice is kept once.
+    let service = match ok(h
+        .app
+        .handle(Request::Service(ServiceRequest::AddReadySlide {
+            service: service.id,
+            deck: deck.id,
+            slide,
+        }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(service.ready.len(), 1);
+    let loaded = match h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+        Event::Loaded(l) => Some(l.clone()),
+        _ => None,
+    }) {
+        Some(l) => l,
+        None => panic!("no reload"),
+    };
+    assert_eq!(loaded.ready.len(), 1);
+    let ready = &loaded.ready[0].item;
+    assert_eq!(
+        ready.title,
+        format!("11-builds-transitions · slide {}", slide + 1)
+    );
+    assert_eq!(ready.slides.len(), 1);
+    assert_eq!(ready.slides[0].steps, steps);
+
+    let live = |h: &Harness| {
+        h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+            Event::Live { live, .. } => Some(*live),
+            _ => None,
+        })
+    };
+    ok(h.app
+        .handle(Request::Live(Command::Show(lampstand_live::Cursor {
+            item: welcome,
+            slide: 0,
+            step: 0,
+        }))));
+    ok(h.app.handle(Request::Live(Command::ShowReady(ready.id))));
+    assert_eq!(
+        live(&h).flatten().map(|c| (c.item, c.step)),
+        Some((ready.id, 0))
+    );
+    // The builds play by themselves, one at a time, as the clock runs.
+    let mut t = 4_000_000_000_000i64;
+    for _ in 0..(steps * 3 + 3) {
+        h.app.tick_at(Timestamp(t));
+        t += 30_000;
+    }
+    assert_eq!(
+        live(&h).flatten().map(|c| c.step),
+        Some(steps),
+        "fully built"
+    );
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(
+        live(&h).flatten().map(|c| c.item),
+        Some(welcome),
+        "back to the service"
+    );
+}

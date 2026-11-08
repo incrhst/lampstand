@@ -87,6 +87,13 @@
 //!   count from the remembered slide. Taking any other item live ends the
 //!   side-trip. A ready item that is not in the order is never reached by
 //!   `Next`, loops or the stage display's "next" from the order.
+//! - A slide whose item has `auto_builds_ms` (a deck slide kept ready on its
+//!   own) plays its builds by itself: each step moves on to the next when
+//!   its time has passed, counted from the first tick after the step came
+//!   up, until the slide is fully built. `Next` still steps at once, and
+//!   past the last build goes back from the side-trip. Black and Idle cover
+//!   the builds but they go on underneath; `ClearText` and `ClearAll` stop
+//!   them until something goes live again.
 
 use lampstand_core::id::Timestamp;
 use lampstand_core::program::{Content, Overlay, Program};
@@ -115,6 +122,11 @@ pub struct LoadedItem {
     /// A music-only item: no slides, but `Next` stops on it (see the module
     /// rules).
     pub sound_only: bool,
+    /// Builds that play by themselves (a slide kept ready on its own): while
+    /// the item is live, step `k` of its slide moves on to `k + 1` this many
+    /// milliseconds after step `k` came up (`auto_builds_ms[k]`). Empty: each
+    /// build waits for a click, as usual.
+    pub auto_builds_ms: Vec<u32>,
 }
 
 /// A looping section of the running order (a header with a loop set, and
@@ -227,6 +239,9 @@ pub struct LiveEngine {
     ready: Vec<LoadedItem>,
     /// The side-trip under way, if any (see the module rules).
     detour: Option<Detour>,
+    /// When the live step of a slide whose builds play by themselves came
+    /// up, from the first tick after. `None` until then.
+    build_anchor: Option<Timestamp>,
 }
 
 /// A side-trip to a ready item: the item, and where the service was.
@@ -438,8 +453,44 @@ impl LiveEngine {
         self.last_now = Some(now);
         let mut events = Vec::new();
         self.tick_loop(now, &mut events);
+        self.tick_builds(now, &mut events);
         self.tick_countdown(now, &mut events);
         events
+    }
+
+    /// Plays the builds of a slide that plays them by itself (see the
+    /// module rules): one step each time its time has passed.
+    fn tick_builds(&mut self, now: Timestamp, events: &mut Vec<Event>) {
+        let (Some(live), false) = (self.live, self.loop_halted) else {
+            return;
+        };
+        let Some(wait) = self
+            .live_item
+            .as_ref()
+            .and_then(|item| item.auto_builds_ms.get(live.step).copied())
+        else {
+            return;
+        };
+        if live.step >= self.steps_at(live.item, live.slide) {
+            return;
+        }
+        let anchor = match self.build_anchor {
+            Some(anchor) if anchor <= now => anchor,
+            _ => {
+                self.build_anchor = Some(now);
+                return;
+            }
+        };
+        if now.0 - anchor.0 < i64::from(wait) {
+            return;
+        }
+        self.go_live(
+            Cursor {
+                step: live.step + 1,
+                ..live
+            },
+            events,
+        );
     }
 
     fn tick_loop(&mut self, now: Timestamp, events: &mut Vec<Event>) {
@@ -852,6 +903,7 @@ impl LiveEngine {
 
         // A fresh slide gets a full interval and a countdown baseline.
         self.loop_anchor = None;
+        self.build_anchor = None;
         self.loop_halted = false;
         self.countdown_shown = self.last_now.map(|now| self.countdown_key(now));
 
@@ -944,6 +996,7 @@ mod tests {
             auto_advance_ms: None,
             loop_group: None,
             sound_only: false,
+            auto_builds_ms: Vec::new(),
         }
     }
 
@@ -1870,6 +1923,7 @@ mod tests {
     fn music(title: &str) -> LoadedItem {
         LoadedItem {
             sound_only: true,
+            auto_builds_ms: Vec::new(),
             background: None,
             ..item(title, vec![])
         }
@@ -2205,5 +2259,71 @@ mod tests {
         e.apply(Command::Next);
         e.apply(Command::Next);
         assert_eq!(on_air(&e).as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn a_ready_slide_plays_its_builds_by_itself_then_next_goes_back() {
+        let (mut e, a, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![500, 1000];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(id));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 0"));
+        assert!(
+            e.tick(Timestamp(0)).is_empty(),
+            "the first tick starts the wait"
+        );
+        assert!(e.tick(Timestamp(400)).is_empty());
+        let events = e.tick(Timestamp(500));
+        assert!(events
+            .iter()
+            .any(|ev| matches!(ev, Event::BuildStep { cursor } if cursor.step == 1)));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 1"));
+        e.tick(Timestamp(600));
+        assert!(
+            e.tick(Timestamp(1500)).is_empty(),
+            "the second waits its own time"
+        );
+        e.tick(Timestamp(1600));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 2"));
+        assert!(e.tick(Timestamp(9000)).is_empty(), "fully built: it stays");
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"), "back to the service");
+        assert_eq!(e.live().map(|c| c.item), Some(a));
+    }
+
+    #[test]
+    fn next_skips_ahead_through_builds_that_play_by_themselves() {
+        let (mut e, _, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![5000, 5000];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::Next);
+        e.apply(Command::ShowReady(id));
+        e.tick(Timestamp(0));
+        e.apply(Command::Next);
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 1"));
+        // The step Next took gets its own full wait.
+        e.tick(Timestamp(100));
+        assert!(e.tick(Timestamp(4000)).is_empty());
+        e.tick(Timestamp(5100));
+        assert_eq!(on_air(&e).as_deref(), Some("deck step 2"));
+    }
+
+    #[test]
+    fn clearing_stops_builds_that_play_by_themselves() {
+        let (mut e, _, _, _) = with_ready();
+        let mut slide = item("Sermon · slide 3", vec![deck_slide(2)]);
+        slide.auto_builds_ms = vec![100, 100];
+        let id = slide.id;
+        e.set_ready(vec![slide]);
+        e.apply(Command::ShowReady(id));
+        e.tick(Timestamp(0));
+        e.apply(Command::ClearText);
+        assert!(e.tick(Timestamp(5000)).is_empty());
+        assert_eq!(e.live().map(|c| c.step), Some(0));
     }
 }

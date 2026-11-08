@@ -745,6 +745,15 @@ pub enum ServiceRequest {
         service: ServiceId,
         kind: ItemKind,
     },
+    /// Keeps one slide of a deck ready, on its own (`slide` from 0, hidden
+    /// slides left out, as the deck is shown). Its builds play by
+    /// themselves when it is shown. Keeping the same slide twice keeps it
+    /// once. Answers `Response::Service`.
+    AddReadySlide {
+        service: ServiceId,
+        deck: DeckId,
+        slide: u32,
+    },
     /// Takes an entry out of Ready: a pin, or something kept only there.
     /// Answers `Response::Service`.
     RemoveReady {

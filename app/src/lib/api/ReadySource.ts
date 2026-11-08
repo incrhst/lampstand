@@ -4,4 +4,4 @@ import type { ItemKind } from "./ItemKind";
 /**
  * Where a ready thing comes from.
  */
-export type ReadySource = "Order" | { "Own": { kind: ItemKind, } };
+export type ReadySource = "Order" | { "Own": { kind: ItemKind, } } | { "Slide": { deck: string, slide: number, } };
