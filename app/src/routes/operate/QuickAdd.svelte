@@ -5,7 +5,8 @@
      adds it at the end. A deck or media file from the Library goes to Ready
      instead (lib/ready.ts), never the order: Enter keeps it ready, Shift+Enter
      keeps it ready and shows it now, as a side-trip. A deck's "One slide"
-     (or the right arrow) shows its slides to keep just one ready; its builds
+     (or the right arrow) shows its slides to keep just one ready, chosen with
+     the arrow keys and Enter or a click; its builds
      then play by themselves. -->
 <script lang="ts">
   import { onMount } from "svelte";
@@ -70,6 +71,7 @@
   /** The Library's decks and media, which go to Ready. */
   let files: Row[] = $state([]);
   /** A deck whose slides are shown, to keep one of them ready. */
+  let picker: DeckSlidePicker | undefined = $state();
   let slidesOf: { deck: string; title: string } | null = $state(null);
   function openSlides(row: Row | undefined) {
     if (row?.item && "Deck" in row.item) slidesOf = { deck: row.item.Deck.deck, title: row.title };
@@ -227,9 +229,9 @@
     } else if (!slidesOf && e.key === "ArrowRight" && rows[highlight]?.kind === "deck" && input?.selectionStart === query.length) {
       e.preventDefault();
       openSlides(rows[highlight]);
-    } else if (slidesOf && ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) {
-      // The slides are picked with a click; the list's keys wait.
-      e.preventDefault();
+    } else if (slidesOf) {
+      // The arrows choose a slide and Enter keeps it ready; Tab stays put.
+      if (picker?.key(e) || e.key === "Tab") e.preventDefault();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       highlight = Math.min(highlight + 1, rows.length - 1);
@@ -265,6 +267,7 @@
         spellcheck="false"
         aria-label={forReady ? "Deck or media to keep ready" : "Song, scripture, deck or media to add"}
         aria-controls="quick-add-results"
+        aria-activedescendant={slidesOf ? picker?.activeId() : undefined}
       />
       {#if translations.length > 0 && passage}<span class="tag" title="Tab changes Bible">{abbreviation}</span>{/if}
     </div>
@@ -274,7 +277,7 @@
         <button type="button" class="back" onclick={() => (slidesOf = null)}><Icon name="prev" size={14} />Back</button>
         <span>One slide of <strong>{slidesOf.title}</strong> to keep ready; its builds play by themselves</span>
       </div>
-      <DeckSlidePicker deck={slidesOf.deck} title={slidesOf.title} kept={new Set(keptSlides[slidesOf.deck] ?? [])} onpick={keepSlide} />
+      <DeckSlidePicker bind:this={picker} deck={slidesOf.deck} title={slidesOf.title} kept={new Set(keptSlides[slidesOf.deck] ?? [])} onpick={keepSlide} />
     {:else}
     <ul id="quick-add-results" class="plain results" role="listbox" aria-label="Results">
       {#each rows as row, i (row.key)}
@@ -298,7 +301,7 @@
 
     <p class="keys faint">
       {#if slidesOf}
-        Click a slide to keep it ready · <kbd>⇧</kbd> click keeps it ready and shows it now · <kbd>Esc</kbd> back
+        Arrows choose a slide · <kbd>Enter</kbd> keep it ready · <kbd>⇧ Enter</kbd> and show now · <kbd>Esc</kbd> back
       {:else if rows[highlight]?.kind === "deck"}
         <kbd>Enter</kbd> keep the deck ready · <kbd>⇧ Enter</kbd> and show now · <kbd>→</kbd> one slide · <kbd>Esc</kbd> close
       {:else if rows[highlight]?.kind === "media"}
