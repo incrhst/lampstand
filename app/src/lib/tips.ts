@@ -1,6 +1,6 @@
 // Quick tips: short notes on features, shown as a "Did you know?" card only
 // when the thing they describe is in front of the operator, and listed in
-// full under Setup › Tips. Kept free of Svelte and Tauri so node can test it.
+// full under Help › Quick tips. Kept free of Svelte and Tauri so node can test it.
 
 import type { LoadedService } from "./api";
 
@@ -113,7 +113,7 @@ export const TIPS: Tip[] = [
     id: "logo-bug",
     area: "Present",
     title: "Put your logo in a corner",
-    body: "Switch on Logo bug in the Screen card, beside the wall, to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Logo and colours.",
+    body: "Switch on Logo bug in the Screen card, under Controls in Library & controls (press F if it's hidden), to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Logo and colours.",
     relevant: (f) => onAir(f) && f.hasLogo === true,
     used: never,
   },
@@ -122,7 +122,7 @@ export const TIPS: Tip[] = [
     clip: "tips/safe-area.mp4",
     area: "Present",
     title: "Check the safe area",
-    body: "Switch on Safe area guide in the Screen card, beside the wall, to see what a projector might crop. It shows only on your preview, never on the screen.",
+    body: "Switch on Safe area guide in the Screen card, under Controls in Library & controls (press F if it's hidden), to see what a projector might crop. It shows only on your preview, never on the screen.",
     relevant: onAir,
     used: never,
   },

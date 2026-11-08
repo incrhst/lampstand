@@ -1352,7 +1352,7 @@
     {:else}
       <div class="no-service">
         <Icon name="calendar" size={24} />
-        <p class="muted">Pick a service on the left, or create a new one.</p>
+        <p class="muted">Open Services in Library &amp; controls, on the right, to pick a service or make a new one.</p>
       </div>
     {/if}
   </section>
