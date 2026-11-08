@@ -36,7 +36,10 @@ use uuid::Uuid;
 
 /// The one atomic-write helper, for the app's device-local files too.
 pub use repo::fsutil::{restrict_to_owner, write_atomic, write_private};
-pub use repo::{actor_device, BlobStore, Repo, SyncMessage};
+pub use repo::{
+    actor_device, BlobStore, Repo, SyncMessage, MAX_UNKNOWN_BYTES, MAX_UNKNOWN_DOCS,
+    UNKNOWN_OFFER_OVERHEAD,
+};
 
 /// The kinds of synced document. Each has its own write permission
 /// ([`team::Role::can_write`]).
