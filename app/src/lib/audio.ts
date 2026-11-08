@@ -50,7 +50,7 @@ export const words = {
   waiting: "Waiting for Play",
   /** proposed: a music-only item's line in Present's service order. */
   startsFromNext: "Music only · starts when Next reaches it",
-  pressPlay: "Music only · press Play in the Sound box",
+  pressPlay: "Music only · press Play",
   /** proposed: the label on a sound that is playing (was hard-coded in capitals in the panel). */
   playing: "Playing",
   /** proposed: said on the item a problem belongs to, before the core's sentence, for a screen reader. */
