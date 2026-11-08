@@ -314,7 +314,7 @@
     background: var(--live);
   }
   .state.live strong {
-    color: var(--live);
+    color: var(--live-text);
   }
   .status {
     display: flex;

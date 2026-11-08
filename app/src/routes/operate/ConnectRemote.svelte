@@ -13,6 +13,7 @@
   import { defaultSpeakerItem, speakerChoices, speakerWords } from "../../lib/speaker";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import { modal } from "../../lib/modal";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -108,7 +109,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={close}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="connect-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="connect-title" tabindex="-1" use:modal={"self"} onclick={(e) => e.stopPropagation()}>
     <div class="head">
       <h2 id="connect-title"><Icon name="phone" size={16} />{REMOTE_NAME}</h2>
       <Button size="small" variant="ghost" icon="x" label="Close" onclick={close} />

@@ -333,9 +333,15 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
+  }
+  /* The rules above replace the shared ones in theme.css, focus included. */
+  input:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--gold);
   }
   .row {
     display: flex;
@@ -360,7 +366,7 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
   }

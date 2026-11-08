@@ -519,7 +519,7 @@
     background: var(--faint);
   }
   .state.live {
-    color: var(--live);
+    color: var(--live-text);
   }
   .state.live .dot {
     background: var(--live);
@@ -611,7 +611,7 @@
     text-align: right;
   }
   .num.current {
-    color: var(--live);
+    color: var(--live-text);
     font-weight: 700;
   }
   .row-title {
@@ -639,7 +639,7 @@
     gap: 0.3rem;
   }
   .row-title p.on-air-tag {
-    color: var(--live);
+    color: var(--live-text);
     font-weight: 600;
   }
   /* A phone: the cards swipe sideways. */

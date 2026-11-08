@@ -2112,7 +2112,7 @@
     align-items: center;
     gap: 0.35rem;
     font-weight: 600;
-    color: var(--live);
+    color: var(--live-text);
   }
   .wall-slides {
     margin-top: 0;

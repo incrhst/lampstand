@@ -405,7 +405,7 @@
     box-shadow: 0 0 0 1px var(--live);
   }
   .mute.muted .state {
-    color: var(--live);
+    color: var(--live-text);
     font-weight: 600;
   }
 </style>

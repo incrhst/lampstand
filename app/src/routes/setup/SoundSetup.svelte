@@ -77,9 +77,13 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
+  }
+  select:focus {
+    outline: none;
+    border-color: var(--gold);
   }
   .warn {
     color: var(--warn);
