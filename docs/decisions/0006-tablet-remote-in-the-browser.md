@@ -1,6 +1,6 @@
 # 0006. Tablet remote: a browser page over plain HTTP, paired by QR code and PIN
 
-- Status: accepted (T99 to T102)
+- Status: accepted (T99 to T102); amended 2026-10-25 (Lampstand Remote also runs the sound); amended for 0.9.1 (a speaker's phone)
 - Date: 2026-10-20
 
 ## Question
@@ -58,11 +58,88 @@ and leave room to add HTTPS later through a domain Lampstand runs (below).
    session. It also avoids guest client isolation, and keeps congregation
    phones from competing with the remote for airtime.
 
+## Amendment, 2026-10-25: Lampstand Remote (phones and tablets) runs the sound too
+
+T99 to T101 built the remote this decision describes under the name
+Lampstand Remote, for phones and tablets alike; in the desktop app it is
+just "Remote". The owner's design puts a phone first.
+
+The owner's design for helpers' phones: "A helper's phone is a remote: big
+Next and Back, what's on screen now and what's next, and the Sound box. Plan
+stays for laptops." The helper who presses Next is often the one who starts
+the walk-in music and fades it out, so a remote that cannot touch the sound
+sends them back to the laptop for half the job.
+
+So item 4 widens, in the one gate (`app/src-tauri/src/gate.rs`) and nowhere
+else. A remote session may now send:
+
+- `Request::Live`, as before, except `EndService`: closing the service stays
+  with the operator at the laptop;
+- `Request::Sound` with `Play`, `Pause`, `Resume`, `Stop` (fade out) and
+  `Panic` ("Stop the sound now"). These go where Present's Sound box sends
+  them: the device that holds the Audio role plays the sound (decision 0010).
+  `Status` and `Outputs` are not among them: a page learns what plays from
+  `Event::Sound`, and the sound outputs are a setting;
+- `ServiceRequest::SlideThumbnail`, a picture of one slide of the service
+  that is loaded for live, so a deck slide shows on the phone as more than its
+  number. It shows only what the screens show or are about to, which anyone in
+  the room can see.
+
+The page also gets `Event::Sound` and `Event::Unloaded` beside `Event::Live`
+and `Event::Loaded`, and each loaded item lists its sounds
+(`LoadedItemView::sounds`), so the Sound box can offer Play without reading
+the service.
+
+Still nothing that edits, reads settings or the library, touches outputs or
+roles, or pairs anything. What someone who captures a session on the Wi-Fi
+can do grows by one thing: start, pause or stop the music, as they could by
+walking up to the laptop. Revoking the phone still ends it at once.
+
+## Amendment for 0.9.1: a speaker's phone
+
+The owner's design adds a second kind of remote: a speaker pages through
+their own slides from their phone, with their notes and a timer. The
+operator chooses "What is it for?" in the Connect dialog: **Run the
+service** (everything above) or **Speaker**, for one item of the open
+service.
+
+A speaker gets less than an operator's phone, never more, and the limit is
+kept on the laptop, not in the page:
+
+- The PIN carries the kind, and the session keeps it in `remotes.json`
+  (`Operator`, or `Speaker` with the service and item). A session saved
+  before 0.9.1 has no kind and stays an operator's.
+- In the one gate, a speaker may send only `Next`, `Previous` and
+  `ToggleBlack`, and ask for pictures of its own item's slides. Show, Idle,
+  Clear, the sound, `EndService`, and anything about another item are
+  refused and logged.
+- `Next` and `Previous` (and Blank) pass only while the speaker's item is
+  on air and the screens do not show the idle screen. Next and Back also
+  wait while the operator has cleared the words (a speaker must not put
+  them back); Blank stays allowed then, as it never shows words. And only if the
+  result stays inside that item: Next on its last slide, fully built, and
+  Back on its first are refused and do nothing. This is decided against the
+  live engine and applied in the same step, under the app's one lock, so a
+  press that races the operator moving on is checked against where the
+  service is when it is applied, never where it was. A speaker's command is
+  never passed on to another device, where that could not be guaranteed.
+- The session ends, and its page is disconnected at once, when its service
+  is closed or ended, or another service is opened; when Lampstand quits
+  (only a crash restore of the same service keeps it); and, as for any
+  remote, when it is revoked in Setup › Devices. A speaker's PIN that is
+  still shown when its service ends stops working too.
+
+So capturing a speaker's session on the Wi-Fi lets someone page through,
+or blank, one item while it is on the screen, which is less than an
+operator's phone. Pairing is the same PIN, and the socket the same remote
+socket (no sync protocol change).
+
 ## Why this is acceptable on plain HTTP
 
 Someone on the same Wi-Fi can capture the PIN or a session cookie. The
-most they can then do is advance, blank or clear slides until an operator
-revokes that tablet. Today the same person could walk up to the laptop.
+most they can then do is advance, blank or clear slides, and start or stop
+the service's sound (the amendment above), until an operator revokes that
+tablet. Today the same person could walk up to the laptop.
 On a separate AV network (item 7), "the same Wi-Fi" means the AV team,
 not everyone in the building. Lampstand can recommend that network but
 can't require it, so the narrow scope has to hold either way.

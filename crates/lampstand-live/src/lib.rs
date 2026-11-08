@@ -15,8 +15,17 @@
 //!   it, landing on the last slide of the previous item at its final step.
 //! - `Next` with nothing live takes the preview cursor live, or the first
 //!   slide of the service if nothing is previewed.
-//! - Black and Logo are toggles that persist across slide changes. Clear
-//!   text and clear background last until the next slide goes live.
+//! - Black and Idle are toggles, and only one is on at a time: turning one
+//!   on replaces the other. Black (Blank) persists across slide changes.
+//!   Idle puts each audience screen's idle screen on air (what it shows
+//!   when nothing is on air) without ending the service; it lasts until it
+//!   is toggled off or the operator takes a slide live (`Next`,
+//!   `Previous`, `Show`, `GoLive`, `NextItem`, `PreviousItem`), which lifts
+//!   it so the slide is seen. A loop's own advance does not lift it, and
+//!   neither does a music-only item, which changes nothing on the screens.
+//!   Both overlays are on air, so `is_idle` is false under them; `ClearAll`
+//!   and `EndService` turn them off. Clear text and clear background last
+//!   until the next slide goes live.
 //! - Reloading the service (an edit synced in mid-service) never changes
 //!   what is on air: the live item keeps the slides it was loaded with
 //!   until the operator leaves it. Cursors follow items by ID, so a reorder
@@ -44,7 +53,7 @@
 //! - Operator control wins over the loop. `Next`, `Previous`, `Show` and
 //!   `GoLive` move as usual and restart the interval. `Next` at the last
 //!   slide leaves the loop for the next item; only `tick` wraps. Black and
-//!   Logo cover the output but the loop keeps running underneath, so
+//!   Idle cover the output but the loop keeps running underneath, so
 //!   lifting them shows the slide that is current. `ClearText` and
 //!   `ClearAll` stop the loop (the operator asked for an empty screen)
 //!   until something goes live again. `ClearBackground` does not stop it,
@@ -56,10 +65,15 @@
 //!   report `ProgramChanged` whenever the whole seconds on show change, on
 //!   the live slide or in the stage display's "next". At zero it reports
 //!   once, then holds `0:00` with no further events until the operator moves
-//!   on. Under Black it reports nothing; lifting Black recomposes.
+//!   on. Under Black or Idle it reports nothing; lifting them recomposes.
 //! - A running loop or countdown is on air, so `is_idle` is false.
 //! - `SongShown` fires when a song item goes live from another item, once
 //!   per visit, for CCLI reporting.
+//! - A music-only item (`sound_only`) has no slides, but `Next` and
+//!   `NextItem` stop on it, so it goes live (`ItemLive`, at slide 0) and its
+//!   sound can start. What the screens show does not change: the slide
+//!   before it stays up, with its background, and `shown` still names it. `Previous`, `PreviousItem`,
+//!   loops and the stage display's "next" pass over it, as over a header.
 
 use lampstand_core::id::Timestamp;
 use lampstand_core::program::{Content, Overlay, Program};
@@ -73,7 +87,7 @@ use serde::{Deserialize, Serialize};
 pub struct LoadedItem {
     pub id: ItemId,
     pub title: String,
-    /// Empty for headers, which navigation skips.
+    /// Empty for headers, which navigation skips, and for music-only items.
     pub slides: Vec<LoadedSlide>,
     pub background: Option<Background>,
     pub theme: Option<ThemeId>,
@@ -85,6 +99,9 @@ pub struct LoadedItem {
     /// Set when the item is in a section that loops: all of the section's
     /// slides, across its items, advance by themselves in turn and wrap.
     pub loop_group: Option<LoopGroup>,
+    /// A music-only item: no slides, but `Next` stops on it (see the module
+    /// rules).
+    pub sound_only: bool,
 }
 
 /// A looping section of the running order (a header with a loop set, and
@@ -126,14 +143,19 @@ pub enum Command {
     Show(Cursor),
     Next,
     Previous,
-    /// The first slide of the next item that has slides, from wherever the
-    /// live slide is (Shift+Down). With nothing live, the first item.
+    /// The first slide of the next item that has slides (or the next
+    /// music-only item), from wherever the live slide is (Shift+Down). With
+    /// nothing live, the first item.
     NextItem,
     /// The first slide of the previous item that has slides (Shift+Up).
     /// Nothing happens at the start, or with nothing live.
     PreviousItem,
+    /// Blank: the audience screens go black until it is toggled off.
+    /// Slides go on changing underneath.
     ToggleBlack,
-    ToggleLogo,
+    /// The idle screen on air without ending the service, until it is
+    /// toggled off or the operator takes a slide live.
+    ToggleIdle,
     ClearText,
     ClearBackground,
     /// Text, background and overlays off: a clean screen.
@@ -164,6 +186,9 @@ pub enum Event {
 pub struct LiveEngine {
     items: Vec<LoadedItem>,
     live: Option<Cursor>,
+    /// The slide whose content is on the screens: `live`, or while a
+    /// music-only item is live, the slide that went live before it.
+    shown: Option<Cursor>,
     live_item: Option<LoadedItem>,
     preview: Option<Cursor>,
     program: Program,
@@ -242,36 +267,29 @@ impl LiveEngine {
             }
             Command::GoLive => {
                 if let Some(preview) = self.preview {
-                    self.go_live(preview, &mut events);
+                    self.take_live(preview, &mut events);
                 }
             }
-            Command::Show(cursor) => self.go_live(cursor, &mut events),
+            Command::Show(cursor) => self.take_live(cursor, &mut events),
             Command::Next => {
-                let target = match self.live {
-                    Some(live) => self.step_forward(live),
-                    None => self
-                        .preview
-                        .and_then(|p| self.resolve(p))
-                        .or_else(|| self.first_slide_from(0)),
-                };
-                if let Some(target) = target {
-                    self.go_live(target, &mut events);
+                if let Some(target) = self.next_target() {
+                    self.take_live(target, &mut events);
                 }
             }
             Command::Previous => {
-                if let Some(target) = self.live.and_then(|live| self.step_back(live)) {
-                    self.go_live(target, &mut events);
+                if let Some(target) = self.previous_target() {
+                    self.take_live(target, &mut events);
                 }
             }
             Command::NextItem => {
                 let target = match self.live {
                     Some(live) => self
                         .slot_of(live.item)
-                        .and_then(|(_, after)| self.first_slide_from(after)),
-                    None => self.first_slide_from(0),
+                        .and_then(|(_, after)| self.first_stop_from(after)),
+                    None => self.first_stop_from(0),
                 };
                 if let Some(target) = target {
-                    self.go_live(target, &mut events);
+                    self.take_live(target, &mut events);
                 }
             }
             Command::PreviousItem => {
@@ -288,11 +306,11 @@ impl LiveEngine {
                         })
                 });
                 if let Some(target) = target {
-                    self.go_live(target, &mut events);
+                    self.take_live(target, &mut events);
                 }
             }
             Command::ToggleBlack => self.toggle_overlay(Overlay::Black, &mut events),
-            Command::ToggleLogo => self.toggle_overlay(Overlay::Logo, &mut events),
+            Command::ToggleIdle => self.toggle_overlay(Overlay::Idle, &mut events),
             Command::ClearText => {
                 self.loop_halted = true;
                 if self.program.content.take().is_some() {
@@ -319,6 +337,7 @@ impl LiveEngine {
             Command::EndService => {
                 let on_air = !self.is_idle();
                 self.live = None;
+                self.shown = None;
                 self.live_item = None;
                 self.orphan_slot = None;
                 self.loop_anchor = None;
@@ -442,7 +461,7 @@ impl LiveEngine {
     fn tick_countdown(&mut self, now: Timestamp, events: &mut Vec<Event>) {
         let key = self.countdown_key(now);
         let previous = self.countdown_shown.replace(key);
-        if key == (None, None) || previous == Some(key) || self.program.overlay == Overlay::Black {
+        if key == (None, None) || previous == Some(key) || self.program.overlay != Overlay::None {
             return;
         }
         events.push(Event::ProgramChanged);
@@ -472,6 +491,32 @@ impl LiveEngine {
         self.preview
     }
 
+    /// Where `Command::Next` would put the live cursor now, without moving
+    /// it: `None` at the end of the service. A speaker's phone may press
+    /// Next only when this stays in its item (`gate` in the app).
+    pub fn next_target(&self) -> Option<Cursor> {
+        match self.live {
+            Some(live) => self.step_forward(live),
+            None => self
+                .preview
+                .and_then(|p| self.resolve(p))
+                .or_else(|| self.first_stop_from(0)),
+        }
+    }
+
+    /// Where `Command::Previous` would put the live cursor now, without
+    /// moving it: `None` at the start or with nothing live.
+    pub fn previous_target(&self) -> Option<Cursor> {
+        self.live.and_then(|live| self.step_back(live))
+    }
+
+    /// The slide the screens show (see `shown`): the live one, or the one
+    /// before a music-only item that is live. `None` when nothing went live
+    /// before it.
+    pub fn shown(&self) -> Option<Cursor> {
+        self.shown
+    }
+
     /// Nothing on air and no service under way: no item has gone live, and
     /// there is no text, background or overlay on the output. The updater
     /// only installs when this is true (CD-11), so once a service starts it
@@ -496,8 +541,13 @@ impl LiveEngine {
     }
 
     /// Checks a cursor against the slides it points at, clamping the step.
+    /// A music-only item has the one place, slide 0.
     fn resolve(&self, cursor: Cursor) -> Option<Cursor> {
-        let slide = self.item_for(cursor.item)?.slides.get(cursor.slide)?;
+        let item = self.item_for(cursor.item)?;
+        if item.sound_only && item.slides.is_empty() {
+            return (cursor.slide == 0).then_some(Cursor { step: 0, ..cursor });
+        }
+        let slide = item.slides.get(cursor.slide)?;
         Some(Cursor {
             step: cursor.step.min(slide.steps),
             ..cursor
@@ -525,6 +575,20 @@ impl LiveEngine {
             .iter()
             .skip(from)
             .find(|i| !i.slides.is_empty())
+            .map(|i| Cursor {
+                item: i.id,
+                slide: 0,
+                step: 0,
+            })
+    }
+
+    /// Where `Next` lands from `from`: the first slide of the first item at
+    /// or after it that has slides, or a music-only item.
+    fn first_stop_from(&self, from: usize) -> Option<Cursor> {
+        self.items
+            .iter()
+            .skip(from)
+            .find(|i| !i.slides.is_empty() || i.sound_only)
             .map(|i| Cursor {
                 item: i.id,
                 slide: 0,
@@ -565,7 +629,7 @@ impl LiveEngine {
                 ..from
             });
         }
-        self.first_slide_from(self.slot_of(from.item)?.1)
+        self.first_stop_from(self.slot_of(from.item)?.1)
     }
 
     /// The cursor `Previous` would move to from `from`, at the final step
@@ -630,10 +694,14 @@ impl LiveEngine {
             self.orphan_slot = None;
         }
         let Some(item) = &self.live_item else { return };
-        self.program.background = item.background.clone();
-        self.program.theme = item.theme;
         let song = item.song;
-        self.program.content = content;
+        // A music-only item has no picture: the screens keep what they show.
+        if !item.sound_only {
+            self.program.background = item.background.clone();
+            self.program.theme = item.theme;
+            self.program.content = content;
+            self.shown = Some(cursor);
+        }
         self.live = Some(cursor);
         self.program.next = self.next_content(cursor);
 
@@ -652,6 +720,21 @@ impl LiveEngine {
         if same_item && previous.is_some_and(|p| p.slide == cursor.slide && p.step < cursor.step) {
             events.push(Event::BuildStep { cursor });
         }
+    }
+
+    /// An operator move that takes `cursor` live (`Next`, `Previous`,
+    /// `Show`, `GoLive`, `NextItem`, `PreviousItem`): as `go_live`, and it
+    /// lifts Idle so the slide is seen. Black stays. A music-only item
+    /// changes nothing on the screens, so Idle stays over it too.
+    fn take_live(&mut self, cursor: Cursor, events: &mut Vec<Event>) {
+        let shows_a_slide = self
+            .resolve(cursor)
+            .and_then(|c| self.item_for(c.item))
+            .is_some_and(|item| !item.sound_only);
+        if shows_a_slide && self.program.overlay == Overlay::Idle {
+            self.program.overlay = Overlay::None;
+        }
+        self.go_live(cursor, events);
     }
 
     fn toggle_overlay(&mut self, overlay: Overlay, events: &mut Vec<Event>) {
@@ -715,6 +798,7 @@ mod tests {
             song: None,
             auto_advance_ms: None,
             loop_group: None,
+            sound_only: false,
         }
     }
 
@@ -882,7 +966,7 @@ mod tests {
         let (mut e, _) = service();
         assert!(e.is_idle());
         e.apply(Command::Next);
-        e.apply(Command::ToggleLogo);
+        e.apply(Command::ToggleIdle);
         assert!(!e.is_idle());
         e.apply(Command::ClearAll);
         assert_eq!(e.program().content, None);
@@ -895,9 +979,14 @@ mod tests {
     fn end_service_takes_everything_off_air_and_is_idle() {
         let (mut e, _) = service();
         e.apply(Command::Next);
-        e.apply(Command::ToggleLogo);
+        e.apply(Command::ToggleIdle);
         assert!(!e.is_idle());
         let events = e.apply(Command::EndService);
+        assert_eq!(
+            e.program().overlay,
+            Overlay::None,
+            "Idle ends with the service"
+        );
         assert!(events.contains(&Event::ProgramChanged));
         assert!(e.is_idle());
         assert_eq!(e.live(), None);
@@ -916,6 +1005,99 @@ mod tests {
         e.apply(Command::EndService);
         assert!(e.is_idle());
         assert!(e.tick(at(5000)).is_empty());
+    }
+
+    #[test]
+    fn idle_toggles_on_and_off_and_is_on_air() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        let events = e.apply(Command::ToggleIdle);
+        assert_eq!(events, vec![Event::ProgramChanged]);
+        assert_eq!(e.program().overlay, Overlay::Idle);
+        assert!(!e.is_idle(), "Idle is on air: no update mid-service");
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("a1"),
+            "the slide waits underneath"
+        );
+        e.apply(Command::ToggleIdle);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn idle_with_nothing_live_is_still_on_air() {
+        let (mut e, _) = service();
+        e.apply(Command::ToggleIdle);
+        assert!(!e.is_idle());
+        e.apply(Command::ToggleIdle);
+        assert!(e.is_idle());
+    }
+
+    #[test]
+    fn next_previous_and_show_lift_idle_and_go_to_the_slide() {
+        let (mut e, items) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::Next);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::Previous);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert_eq!(on_air(&e).as_deref(), Some("a1"));
+
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::Show(Cursor {
+            item: items[0].id,
+            slide: 1,
+            step: 0,
+        }));
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert_eq!(on_air(&e).as_deref(), Some("a2"));
+    }
+
+    #[test]
+    fn a_move_that_goes_nowhere_leaves_idle_on() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleIdle);
+        // Nothing before the first slide.
+        e.apply(Command::Previous);
+        assert_eq!(e.program().overlay, Overlay::Idle);
+    }
+
+    #[test]
+    fn black_persists_where_idle_is_lifted() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleBlack);
+        e.apply(Command::Next);
+        assert_eq!(e.program().overlay, Overlay::Black);
+    }
+
+    #[test]
+    fn blank_and_idle_are_exclusive() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleBlack);
+        e.apply(Command::ToggleIdle);
+        assert_eq!(e.program().overlay, Overlay::Idle);
+        e.apply(Command::ToggleBlack);
+        assert_eq!(e.program().overlay, Overlay::Black);
+        e.apply(Command::ToggleBlack);
+        assert_eq!(e.program().overlay, Overlay::None);
+    }
+
+    #[test]
+    fn end_service_clears_idle() {
+        let (mut e, _) = service();
+        e.apply(Command::Next);
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::EndService);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert!(e.is_idle());
     }
 
     #[test]
@@ -1156,6 +1338,15 @@ mod tests {
         e.tick(at(15_000));
         assert_eq!(on_air(&e).as_deref(), Some("l1"), "wrapped");
         assert_eq!(e.live().map(|c| c.step), Some(0));
+    }
+
+    #[test]
+    fn a_loop_runs_on_under_idle_and_does_not_lift_it() {
+        let mut e = loop_engine(5000);
+        e.apply(Command::ToggleIdle);
+        e.tick(at(5000));
+        assert_eq!(on_air(&e).as_deref(), Some("l2"));
+        assert_eq!(e.program().overlay, Overlay::Idle);
     }
 
     fn grouped(ms: u32) -> Vec<LoadedItem> {
@@ -1527,5 +1718,154 @@ mod tests {
         assert!(!e.is_idle());
         e.tick(at(5000));
         assert!(!e.is_idle(), "a finished countdown is still on air");
+    }
+
+    // Music-only items (#181).
+
+    fn music(title: &str) -> LoadedItem {
+        LoadedItem {
+            sound_only: true,
+            background: None,
+            ..item(title, vec![])
+        }
+    }
+
+    fn live_item(e: &LiveEngine) -> Option<ItemId> {
+        e.live().map(|c| c.item)
+    }
+
+    fn next_line(e: &LiveEngine) -> Option<String> {
+        match &e.program().next {
+            Some(Content::Text { slide }) => Some(slide.lines[0].clone()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn next_stops_on_a_music_only_item_and_the_screens_keep_what_they_show() {
+        let items = vec![
+            item("Welcome", vec![text("w")]),
+            music("Walk-in music"),
+            item("Song", vec![text("s1")]),
+        ];
+        let (welcome, walk_in, song) = (items[0].id, items[1].id, items[2].id);
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.apply(Command::Next);
+        let background = e.program().background.clone();
+        let events = e.apply(Command::Next);
+        assert!(events.contains(&Event::ItemLive { item: walk_in }));
+        assert_eq!(live_item(&e), Some(walk_in));
+        assert_eq!(
+            on_air(&e).as_deref(),
+            Some("w"),
+            "the slide before stays up"
+        );
+        assert_eq!(e.program().background, background);
+        assert_eq!(e.shown().map(|c| c.item), Some(welcome));
+        // The stage display's next is the slide after the music.
+        assert_eq!(next_line(&e).as_deref(), Some("s1"));
+        e.apply(Command::Next);
+        assert_eq!(live_item(&e), Some(song));
+        assert_eq!(on_air(&e).as_deref(), Some("s1"));
+        assert_eq!(e.shown().map(|c| c.item), Some(song));
+        e.apply(Command::EndService);
+        assert_eq!(e.shown(), None);
+    }
+
+    #[test]
+    fn idle_stays_over_a_music_only_item_and_lifts_at_the_next_slide() {
+        let items = vec![
+            item("Welcome", vec![text("w")]),
+            music("Walk-in music"),
+            item("Song", vec![text("s1")]),
+        ];
+        let walk_in = items[1].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.apply(Command::Next);
+        e.apply(Command::ToggleIdle);
+        e.apply(Command::Next);
+        assert_eq!(live_item(&e), Some(walk_in));
+        assert_eq!(
+            e.program().overlay,
+            Overlay::Idle,
+            "the music changes no screen"
+        );
+        e.apply(Command::Next);
+        assert_eq!(e.program().overlay, Overlay::None);
+        assert_eq!(on_air(&e).as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn a_service_that_starts_with_music_starts_with_the_music() {
+        let items = vec![music("Walk-in music"), item("Welcome", vec![text("w")])];
+        let walk_in = items[0].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        let events = e.apply(Command::Next);
+        assert!(events.contains(&Event::ItemLive { item: walk_in }));
+        assert_eq!(
+            on_air(&e),
+            None,
+            "nothing was on the screens, and nothing is"
+        );
+        assert_eq!(e.shown(), None);
+        assert!(!e.is_idle(), "the service is under way");
+        e.apply(Command::NextItem);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn previous_and_the_stage_display_pass_over_music() {
+        let items = vec![
+            item("Welcome", vec![text("w")]),
+            music("Offering music"),
+            item("Song", vec![text("s1")]),
+        ];
+        let song = items[2].id;
+        let at_song = Cursor {
+            item: song,
+            slide: 0,
+            step: 0,
+        };
+        let mut e = LiveEngine::new();
+        e.load(items);
+        e.apply(Command::Next);
+        assert_eq!(next_line(&e).as_deref(), Some("s1"));
+        e.apply(Command::Show(at_song));
+        e.apply(Command::Previous);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+        e.apply(Command::Show(at_song));
+        e.apply(Command::PreviousItem);
+        assert_eq!(on_air(&e).as_deref(), Some("w"));
+    }
+
+    #[test]
+    fn a_music_only_item_has_one_place_and_no_other() {
+        let items = vec![music("Walk-in music")];
+        let walk_in = items[0].id;
+        let mut e = LiveEngine::new();
+        e.load(items);
+        assert!(e
+            .apply(Command::Show(Cursor {
+                item: walk_in,
+                slide: 1,
+                step: 0,
+            }))
+            .is_empty());
+        e.apply(Command::Show(Cursor {
+            item: walk_in,
+            slide: 0,
+            step: 3,
+        }));
+        assert_eq!(
+            e.live(),
+            Some(Cursor {
+                item: walk_in,
+                slide: 0,
+                step: 0
+            })
+        );
     }
 }

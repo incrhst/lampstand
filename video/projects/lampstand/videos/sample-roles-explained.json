@@ -1,0 +1,25 @@
+{
+  "aspect": "16:9",
+  "scenes": [
+    { "type": "title", "kicker": "Lampstand 0.8", "heading": "Roles explained", "sub": "Who runs what on Sunday morning" },
+    { "type": "bullets", "heading": "A role is a job", "items": ["A role is a job someone is doing right now", "Each job has one holder at a time", "A laptop can hold any mix of jobs", "A laptop with no job can still plan the service"] },
+    { "type": "roles", "heading": "The four jobs" },
+    { "type": "roles", "focus": "projection" },
+    { "type": "roles", "focus": "operator" },
+    { "type": "roles", "focus": "stream" },
+    { "type": "roles", "focus": "audio" },
+    { "type": "devices", "heading": "One computer", "machines": [
+      { "name": "Your one laptop", "caption": "Nothing to set up", "kind": "laptop", "roles": ["projection", "operator", "stream", "audio"] } ] },
+    { "type": "devices", "heading": "Two computers", "link": "linked over your church network", "machines": [
+      { "name": "At the projector", "kind": "projector", "roles": ["projection", "operator", "audio"] },
+      { "name": "Stream desk", "caption": "OBS and Zoom", "kind": "desk", "roles": ["stream"] } ] },
+    { "type": "devices", "heading": "Three computers", "link": "linked over your church network", "machines": [
+      { "name": "At the projector", "kind": "projector", "roles": ["projection", "audio"] },
+      { "name": "Back of the room", "kind": "laptop", "roles": ["operator"] },
+      { "name": "Stream desk", "kind": "desk", "roles": ["stream"] } ] },
+    { "type": "diagram", "src": "diagrams/roles-three-machines.svg", "caption": "The same three computers, drawn out", "durationSec": 6 },
+    { "type": "bullets", "heading": "Handing a job over", "items": ["Press Take on the job you want", "The person holding it chooses Allow or Not now", "If they have been away two minutes, you can take it", "Passing Projection clears the screens first"] },
+    { "type": "quote", "text": "Phones and tablets can help, but they never hold a job.", "attribution": "Roles guide" },
+    { "type": "cta", "heading": "Read the full roles guide", "action": "docs/roles.md", "url": "github.com/incrhst/lampstand" }
+  ]
+}

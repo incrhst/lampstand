@@ -45,6 +45,8 @@ export type Line = {
   clickSlides: number;
   /** A video that plays through: its length. */
   videoMs: number | null;
+  /** A music-only item. It is not part of the loop: nothing plays it yet. */
+  sound: boolean;
   /** A video that repeats itself, so the loop never moves on. */
   selfLoop: boolean;
   /** No fixed length (a countdown). */
@@ -82,6 +84,7 @@ export function estimatePass(
       stills: e.stills,
       clickSlides: e.click_slides,
       videoMs: e.video_ms,
+      sound: e.sound,
       selfLoop: e.self_loop,
       openEnded: e.open_ended,
       ms: open ? 0 : e.stills * seconds * 1000 + video,
@@ -109,6 +112,7 @@ export function passLabel(pass: PassEstimate): string {
 
 /** What one line of a pass says about itself. */
 export function describeLine(line: Line, seconds: number): string {
+  if (line.sound) return "Music, not part of the loop";
   if (line.selfLoop) return "Repeats by itself, so the loop never moves on";
   if (line.openEnded) return "No fixed length";
   const parts: string[] = [];

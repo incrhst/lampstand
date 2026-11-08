@@ -1,0 +1,176 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training Session 1",
+   "heading": "Going live",
+   "sub": "Space, the arrows, and choosing an item",
+   "say": "Going live, and moving through the slides.",
+   "narration": "narration/t1-going-live/01.mp3",
+   "durationSec": 4.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/song.png",
+   "heading": "Space moves on",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 45,
+     "y": 84,
+     "label": "LIVE: on air now"
+    },
+    {
+     "x": 86.5,
+     "y": 25,
+     "label": "The main screen"
+    },
+    {
+     "x": 87.5,
+     "y": 45.5,
+     "label": "Next: Space or →"
+    },
+    {
+     "x": 79,
+     "y": 45.5,
+     "label": "Previous: ←"
+    }
+   ],
+   "say": "The card marked LIVE, in red, is on air. The picture at the top right shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "narration": "narration/t1-going-live/02.mp3",
+   "durationSec": 17
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/song.png",
+   "heading": "Look ahead",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 63,
+     "y": 85,
+     "label": "NEXT: the next slide"
+    },
+    {
+     "x": 11.5,
+     "y": 88,
+     "label": "Notes for you"
+    },
+    {
+     "x": 27,
+     "y": 57,
+     "label": "Every slide of the service"
+    }
+   ],
+   "say": "The gold card marked NEXT is the next slide. The notes beside the item on air are for you, never for the room. And the whole service is laid out on the wall, every slide of every item.",
+   "narration": "narration/t1-going-live/03.mp3",
+   "durationSec": 15.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/choose.png",
+   "heading": "Choose another item",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 27,
+     "y": 69,
+     "label": "Shift+↓ chooses"
+    },
+    {
+     "x": 86.5,
+     "y": 25,
+     "label": "Still on air"
+    },
+    {
+     "x": 45,
+     "y": 69,
+     "label": "Click a card to show it now"
+    }
+   ],
+   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any card to show it at once.",
+   "narration": "narration/t1-going-live/04.mp3",
+   "durationSec": 17.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/deck.png",
+   "heading": "Slides with builds",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 86.5,
+     "y": 25,
+     "label": "On screen now"
+    },
+    {
+     "x": 86.5,
+     "y": 50,
+     "label": "Clicks left on this slide"
+    },
+    {
+     "x": 86.5,
+     "y": 66,
+     "label": "What the next click shows"
+    }
+   ],
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, the On air box on the right shows what the next click brings, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "narration": "narration/t1-going-live/05.mp3",
+   "durationSec": 23
+  },
+  {
+   "type": "bullets",
+   "heading": "Song keys",
+   "tone": "table",
+   "items": [
+    "1 to 9 jump to that verse",
+    "C jumps to the chorus",
+    "Verses are blue, choruses teal",
+    "Or click the card you want"
+   ],
+   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. Each part of a song has its own colour, verses blue and choruses teal, so you can find them at a glance. Or click the card you want.",
+   "narration": "narration/t1-going-live/06.mp3",
+   "durationSec": 18
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/focus.png",
+   "heading": "Focus: only the slides",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 55,
+     "y": 4,
+     "label": "Plan or Present"
+    },
+    {
+     "x": 65,
+     "y": 4,
+     "label": "What is on air"
+    },
+    {
+     "x": 76,
+     "y": 4,
+     "label": "Blank, always in reach"
+    },
+    {
+     "x": 94,
+     "y": 4,
+     "label": "F or Esc comes back"
+    }
+   ],
+   "say": "Press F, or the Focus button at the top right, for Focus. The bar along the top and the controls on the right hide, so you see only the slides. Blank, and Stop the sound now, stay in the small bar at the top, with Plan and Present. Press F again, or Escape, to bring everything back.",
+   "narration": "narration/t1-going-live/07.mp3",
+   "durationSec": 24
+  },
+  {
+   "type": "cta",
+   "heading": "Your turn",
+   "action": "Press Space, then run the practice items",
+   "say": "Your turn. Press Space, and run the practice items as if it were Sunday.",
+   "narration": "narration/t1-going-live/08.mp3",
+   "durationSec": 6
+  }
+ ]
+}

@@ -1,0 +1,30 @@
+name: Release notes
+
+# When a release is published, copy its "What's new" section into latest.json,
+# the file installed copies check for updates. The notes are written on the
+# draft after the build, so the build cannot include them. Run it by hand
+# (Actions > Release notes > Run workflow, with the tag) to fix up a release
+# whose notes were edited after publishing. Steps: docs/RELEASING.md.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, for example v0.5.1
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Put the notes in latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: .github/scripts/release-notes.sh "$TAG"

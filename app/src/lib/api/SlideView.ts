@@ -9,6 +9,11 @@ export type SlideView = {
  */
 label: string | null, lines: Array<string>, 
 /**
+ * The smaller line at the foot: a song's author, copyright and CCLI
+ * number, a verse's reference, or a text slide's attribution.
+ */
+footer: string | null, 
+/**
  * Build steps after the slide appears (deck slides).
  */
 steps: number, 

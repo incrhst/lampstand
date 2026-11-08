@@ -1,0 +1,8 @@
+{
+  "lease": {
+    "holder": "2ac160d95ab8b26c2789f247317a67f3d4d5efe707b578d952bd9a1f8af72389",
+    "name": "Office PC",
+    "epoch": 2
+  },
+  "takeover_secs": 300
+}

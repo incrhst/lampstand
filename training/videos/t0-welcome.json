@@ -1,0 +1,130 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Training Session 0",
+   "heading": "Welcome to Lampstand",
+   "sub": "Five minutes, for everyone on the team",
+   "say": "Welcome to Lampstand. This short video is for everyone on the team, not only the person at the projection computer.",
+   "narration": "narration/t0-welcome/01.mp3",
+   "durationSec": 9
+  },
+  {
+   "type": "quote",
+   "text": "Sunday must not fail.",
+   "attribution": "Our first promise",
+   "tone": "table",
+   "say": "Lampstand makes one promise: Sunday must not fail. It works without the internet, and the screen in the room never shows a desktop.",
+   "narration": "narration/t0-welcome/02.mp3",
+   "durationSec": 11.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/plan.png",
+   "heading": "Plan: during the week",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 10,
+     "y": 20,
+     "label": "Your services"
+    },
+    {
+     "x": 46,
+     "y": 62,
+     "label": "The order of service"
+    },
+    {
+     "x": 86,
+     "y": 45,
+     "label": "Songs, verses, slides"
+    }
+   ],
+   "say": "Plan is where the service is built during the week. Put songs, Bible readings and slides in order. Anyone on the team can help, from their own computer.",
+   "narration": "narration/t0-welcome/03.mp3",
+   "durationSec": 12
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/deck.png",
+   "heading": "Present: on Sunday",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 86.5,
+     "y": 25,
+     "label": "What the room sees"
+    },
+    {
+     "x": 45,
+     "y": 72,
+     "label": "LIVE: on air now"
+    },
+    {
+     "x": 87.5,
+     "y": 45.5,
+     "label": "Space moves on"
+    },
+    {
+     "x": 11.5,
+     "y": 70,
+     "label": "Notes only you see"
+    }
+   ],
+   "say": "Present is for Sunday. One service is open at a time, and every slide of it is laid out. The card marked LIVE is what the room sees. Press Space to move on.",
+   "narration": "narration/t0-welcome/04.mp3",
+   "durationSec": 13.5
+  },
+  {
+   "type": "bullets",
+   "heading": "Setup: once, then rarely",
+   "items": [
+    "Which screen is the projector",
+    "How the words look",
+    "Who does what, on which computer"
+   ],
+   "say": "Setup is for the media volunteer: which screen is the projector, how the words look, and who does what. It is set once, then left alone.",
+   "narration": "narration/t0-welcome/05.mp3",
+   "durationSec": 11
+  },
+  {
+   "type": "bullets",
+   "heading": "Switch any time",
+   "tone": "table",
+   "items": [
+    "Ctrl+1  Plan",
+    "Ctrl+2  Present",
+    "Ctrl+\\  back and forth",
+    "On a Mac, use ⌘ instead of Ctrl"
+   ],
+   "say": "Switch with Control and one for Plan, Control and two for Present, or Control and backslash to go back and forth. On a Mac, use Command.",
+   "narration": "narration/t0-welcome/06.mp3",
+   "durationSec": 13
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/pick.png",
+   "heading": "Learn by running it",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 50,
+     "y": 64,
+     "label": "Training Sessions 0 to 2, built in"
+    }
+   ],
+   "say": "Training Session 0 is itself a service. Training Session 1 teaches you to run one. Training Session 2 practises the surprises. They work offline and never change your own services.",
+   "narration": "narration/t0-welcome/07.mp3",
+   "durationSec": 17
+  },
+  {
+   "type": "cta",
+   "heading": "Press Space to carry on",
+   "action": "Next: Plan and Present, slide by slide",
+   "say": "Press Space to carry on.",
+   "narration": "narration/t0-welcome/08.mp3",
+   "durationSec": 3.5
+  }
+ ]
+}

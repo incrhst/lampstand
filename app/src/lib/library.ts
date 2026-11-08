@@ -5,6 +5,7 @@
 
 import type { ItemKind, SongHit } from "./api";
 import { deckExtensions, imageExtensions, videoExtensions } from "./media.ts";
+import { audioExtensions, linkOffers, streamingRefusal } from "./sound.ts";
 
 export type Kind = "song" | "scripture" | "deck" | "media";
 export type Filter = "all" | Kind;
@@ -104,6 +105,23 @@ export function isLink(query: string): boolean {
   return /^https?:\/\/\S+$/i.test(query.trim());
 }
 
+/**
+ * The rows a pasted link offers: a deck, a sound, or (for a streaming page)
+ * the reason it can't be added. A Drive or OneDrive link could be either,
+ * so it offers both.
+ */
+export function linkEntries(link: string): Entry[] {
+  const url = link.trim();
+  const offers = linkOffers(url);
+  const rows: Entry[] = [];
+  if (offers.deck) rows.push({ key: "link", kind: "deck", title: "Add deck from link", subtitle: url, item: null });
+  if (offers.sound) rows.push({ key: "link:sound", kind: "media", title: "Add sound from link", subtitle: url, item: null });
+  if (offers.streaming) {
+    rows.push({ key: "link:streaming", kind: "media", title: "This link can't be added", subtitle: streamingRefusal, item: null });
+  }
+  return rows;
+}
+
 /** Whether a search should be read as a Bible reference: it has a number in it. */
 export function mightBeReference(query: string): boolean {
   return /\d/.test(query);
@@ -117,6 +135,8 @@ export interface Sorted {
   decks: string[];
   /** Images and video, for `AddMediaFile`. */
   media: string[];
+  /** Music and other sound, for `AddSoundFile`, then the open service. */
+  sounds: string[];
 }
 
 function extension(path: string): string {
@@ -132,34 +152,38 @@ function extension(path: string): string {
  * Hidden files (".DS_Store") are dropped.
  */
 export function sortPaths(paths: string[]): Sorted {
-  const sorted: Sorted = { imports: [], decks: [], media: [] };
+  const sorted: Sorted = { imports: [], decks: [], media: [], sounds: [] };
   for (const path of paths) {
     const name = path.split(/[\\/]/).pop() ?? "";
     if (!name || name.startsWith(".")) continue;
     const ext = extension(path);
     if (deckExtensions.includes(ext)) sorted.decks.push(path);
     else if (videoExtensions.includes(ext) || imageExtensions.includes(ext)) sorted.media.push(path);
+    else if (audioExtensions.includes(ext)) sorted.sounds.push(path);
     else sorted.imports.push(path);
   }
   return sorted;
 }
 
-/** Songs and Bibles from `ImportFiles`' summary line ("Imported 3 songs. Bibles: KJV"). */
-export function importedCounts(message: string): { songs: number; bibles: number } {
+/** Songs and Bibles from `ImportFiles`' summary line ("Imported 3 songs. 1 updated. Bibles: KJV"). */
+export function importedCounts(message: string): { songs: number; bibles: number; updated: number } {
   const songs = Number(/Imported (\d+) songs?/.exec(message)?.[1] ?? 0);
+  const updated = Number(/(\d+) updated/.exec(message)?.[1] ?? 0);
   const list = /Bibles: ([^.]*)/.exec(message)?.[1];
-  return { songs, bibles: list ? list.split(", ").filter(Boolean).length : 0 };
+  return { songs, bibles: list ? list.split(", ").filter(Boolean).length : 0, updated };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** "3 songs · 1 deck", or "Nothing new to add" when every count is zero. */
-export function summarize(added: { songs?: number; bibles?: number; decks?: number; media?: number }): string {
+export function summarize(added: { songs?: number; updated?: number; bibles?: number; decks?: number; media?: number; sounds?: number }): string {
   const parts = [
     added.songs ? plural(added.songs, "song", "songs") : "",
+    added.updated ? `${plural(added.updated, "song", "songs")} updated` : "",
     added.bibles ? plural(added.bibles, "Bible", "Bibles") : "",
     added.decks ? plural(added.decks, "deck", "decks") : "",
     added.media ? plural(added.media, "media file", "media files") : "",
+    added.sounds ? plural(added.sounds, "sound", "sounds") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "Nothing new to add";
 }

@@ -3,4 +3,4 @@
 /**
  * What to tell people when OBS isn't connected.
  */
-export type ObsProblem = "NotRunning" | "NotInstalled" | "ServerOff" | "PasswordRequired" | "WrongPassword" | "Unreachable";
+export type ObsProblem = "NotRunning" | "NotInstalled" | "ServerOff" | "PasswordRequired" | "WrongPassword" | "Unreachable" | "RemoteNotListening";

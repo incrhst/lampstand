@@ -6,4 +6,9 @@ export type ServiceSummary = { id: string, title: string, starts_at: Timestamp |
  * Items that put something on screen (headers don't), so Present can
  * say a service has nothing in it before it is opened.
  */
-items: number, };
+items: number, 
+/**
+ * A bundled training service (#190): listed after the church's own,
+ * read-only in Plan, never synced.
+ */
+training: boolean, };

@@ -5,6 +5,7 @@ import {
   countKinds,
   importedCounts,
   isLink,
+  linkEntries,
   mightBeReference,
   newSongs,
   rank,
@@ -71,23 +72,30 @@ test("dropped paths go to the request that takes them", () => {
     "/Users/me/kjv.xml",
     "/Users/me/.DS_Store",
     "/Users/me/Amazing Grace",
+    "/Users/me/Walk-in.MP3",
+    "/Users/me/track.m4a",
+    "/Users/me/bell.wav",
   ]);
   assert.deepEqual(sorted, {
     imports: ["/Users/me/Songs", "/Users/me/Downloads/English.osb", "/Users/me/kjv.xml", "/Users/me/Amazing Grace"],
     decks: ["C:\\Talks\\Sermon.PPTX"],
     media: ["/Users/me/Welcome loop.mp4", "/Users/me/photo.JPG"],
+    sounds: ["/Users/me/Walk-in.MP3", "/Users/me/track.m4a", "/Users/me/bell.wav"],
   });
 });
 
 test("reads the import summary line", () => {
-  assert.deepEqual(importedCounts("Imported 3 songs. 2 already in the library"), { songs: 3, bibles: 0 });
-  assert.deepEqual(importedCounts("Imported 1 song. Bibles: King James Version, WEB"), { songs: 1, bibles: 2 });
-  assert.deepEqual(importedCounts("Imported 0 songs. skipped 1: photo.png: images"), { songs: 0, bibles: 0 });
+  assert.deepEqual(importedCounts("Imported 3 songs. 2 already in the library"), { songs: 3, bibles: 0, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 1 song. Bibles: King James Version, WEB"), { songs: 1, bibles: 2, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 0 songs. skipped 1: photo.png: images"), { songs: 0, bibles: 0, updated: 0 });
+  assert.deepEqual(importedCounts("Imported 0 songs. 1 updated. 1 already in the library"), { songs: 0, bibles: 0, updated: 1 });
 });
 
 test("summarises what was added", () => {
   assert.equal(summarize({ songs: 3, decks: 1 }), "3 songs · 1 deck");
   assert.equal(summarize({ songs: 1, bibles: 1, media: 2 }), "1 song · 1 Bible · 2 media files");
+  assert.equal(summarize({ sounds: 2 }), "2 sounds");
+  assert.equal(summarize({ updated: 1 }), "1 song updated");
   assert.equal(summarize({}), "Nothing new to add");
 });
 
@@ -121,4 +129,15 @@ test("a few new songs are listed as recent; a whole songbook is not", () => {
   const book = Array.from({ length: 40 }, (_, i) => hit(`s${i}`));
   assert.deepEqual(newSongs(before, [...book, hit("a")]), [], "too many to be recent");
   assert.equal(newSongs(before, book, 50).length, 40, "unless the limit allows it");
+});
+
+test("a pasted link offers the rows it could be added as", () => {
+  const keys = (url: string) => linkEntries(url).map((e) => e.key);
+  assert.deepEqual(keys("https://docs.google.com/presentation/d/abc/edit"), ["link"]);
+  assert.deepEqual(keys("https://drive.google.com/file/d/abc/view"), ["link", "link:sound"]);
+  assert.deepEqual(keys("https://www.dropbox.com/s/abc/Walk-in.mp3?dl=0"), ["link:sound"]);
+  const [refused] = linkEntries("https://open.spotify.com/track/abc");
+  assert.equal(refused.key, "link:streaming");
+  assert.equal(refused.item, null);
+  assert.match(refused.subtitle, /Streaming links can't be added/);
 });

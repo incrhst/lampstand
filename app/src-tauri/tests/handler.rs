@@ -17,7 +17,7 @@ use lampstand_core::output::{
 use lampstand_core::program::{Content, Overlay};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Direction, Effect, Node, NodeKind, Scene, Transition, TransitionKind};
-use lampstand_core::scripture::Translation;
+use lampstand_core::scripture::{Translation, TranslationId};
 use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
 use lampstand_core::song::SongId;
 use lampstand_layout::Fonts;
@@ -114,6 +114,7 @@ fn window_output() -> OutputConfig {
         safe_area: SafeArea::default(),
         background: BackgroundMode::Bleed,
         theme: None,
+        idle: None,
         enabled: true,
     }
 }
@@ -253,6 +254,112 @@ fn a_fresh_library_has_the_bundled_bibles_once() {
     assert_eq!(list_translations(&mut h).len(), 1);
 }
 
+/// Looks `reference` up in `translation`, the default for a reference that
+/// names no version.
+fn lookup(h: &mut Harness, reference: &str, translation: TranslationId) -> Response {
+    h.app
+        .handle(Request::Library(LibraryRequest::LookupPassage {
+            reference: reference.into(),
+            translation,
+        }))
+}
+
+#[test]
+fn a_version_typed_after_the_reference_picks_the_translation() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let translations = list_translations(&mut h);
+    let id = |abbreviation: &str| {
+        translations
+            .iter()
+            .find(|t| t.abbreviation == abbreviation)
+            .unwrap()
+            .id
+    };
+    let (kjv, web) = (id("KJV"), id("WEB"));
+    let text = |response: Response| match response {
+        Response::Passage {
+            translation,
+            display,
+            verses,
+            ..
+        } => (translation, display, verses[0].2.clone()),
+        other => panic!("{other:?}"),
+    };
+
+    // No version typed: the default asked for.
+    let (used, display, plain) = text(lookup(&mut h, "James 3:11", web));
+    assert_eq!((used, display.as_str()), (web, "James 3:11"));
+    // A version typed wins, however it is cased or bracketed.
+    for typed in [
+        "James 3:11 kjv",
+        "james 3:11 KJV",
+        "James 3:11 (King James Version)",
+    ] {
+        let (used, _, verse) = text(lookup(&mut h, typed, web));
+        assert_eq!(used, kjv, "{typed}");
+        assert!(verse.contains("fountain"), "{typed}: {verse}");
+    }
+    assert!(plain.contains("spring"), "{plain}");
+    let (used, ..) = text(lookup(&mut h, "James 3:11 web", kjv));
+    assert_eq!(used, web);
+}
+
+#[test]
+fn an_unrecognised_version_lists_the_ones_there_are() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let web = list_translations(&mut h)
+        .iter()
+        .find(|t| t.abbreviation == "WEB")
+        .unwrap()
+        .id;
+    // The ESV is licensed, so it is not bundled: until a church imports it,
+    // it is a version that is not there.
+    for typed in ["James 3:11 xyz", "James 3:11 ESV"] {
+        match lookup(&mut h, typed, web) {
+            Response::Error { message } => {
+                let version = typed.rsplit(' ').next().unwrap();
+                assert_eq!(
+                    message,
+                    format!("Unrecognised version “{version}”. Available versions: KJV, WEB.")
+                );
+            }
+            other => panic!("{typed}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn the_default_version_is_a_device_setting_that_stays_across_restarts() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let settings = |h: &mut Harness, request| match ok(h.app.handle(Request::Settings(request))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        settings(&mut h, SettingsRequest::Get).default_translation,
+        None
+    );
+    let kjv = list_translations(&mut h)
+        .iter()
+        .find(|t| t.abbreviation == "KJV")
+        .unwrap()
+        .id;
+    let chosen = DeviceSettings {
+        default_translation: Some(kjv),
+        ..DeviceSettings::default()
+    };
+    assert_eq!(
+        settings(&mut h, SettingsRequest::Put(chosen.clone())),
+        chosen
+    );
+    drop(h);
+    let mut h = open(dir.path());
+    assert_eq!(settings(&mut h, SettingsRequest::Get), chosen);
+}
+
 fn list_translations(h: &mut Harness) -> Vec<Translation> {
     match ok(h
         .app
@@ -359,7 +466,7 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
     assert_eq!(service.items.len(), 1);
 
     let listed = match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
-        Response::Services(s) => s,
+        Response::Services(s) => s.into_iter().filter(|s| !s.training).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
     assert_eq!(
@@ -402,7 +509,12 @@ fn create_insert_open_next_shows_the_first_verse_on_the_window_output() {
 
 fn list_titles(h: &mut Harness) -> Vec<String> {
     match ok(h.app.handle(Request::Service(ServiceRequest::List))) {
-        Response::Services(s) => s.into_iter().map(|s| s.title).collect(),
+        // The church's own services: training comes after them (training.rs).
+        Response::Services(s) => s
+            .into_iter()
+            .filter(|s| !s.training)
+            .map(|s| s.title)
+            .collect(),
         other => panic!("{other:?}"),
     }
 }
@@ -696,6 +808,69 @@ fn an_update_waits_while_something_is_on_air_or_a_service_is_about_to_start() {
         .update_blocker_at(Timestamp(starts.0 - 24 * hour))
         .unwrap();
     assert!(on_air.contains("on air"), "{on_air}");
+}
+
+#[test]
+fn a_text_item_becomes_slides_with_its_attribution_and_can_be_edited() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let service = match ok(h.app.handle(Request::Service(ServiceRequest::InsertItem {
+        service: service.id,
+        index: usize::MAX,
+        kind: ItemKind::Text {
+            title: "Quote".into(),
+            body: "Be still.\n\n---\nAnd know".into(),
+            attribution: Some("Psalm 46".into()),
+        },
+    }))) {
+        Response::Service(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let (item, _) = service.ordered()[0];
+
+    let loaded = open_service(&mut h, &service);
+    assert_eq!(loaded.items[0].title, "Quote");
+    assert_eq!(loaded.items[0].slides.len(), 2);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    let Some(Content::Text { slide }) = h.app.program().content.clone() else {
+        panic!("{:?}", h.app.program());
+    };
+    assert_eq!(slide.lines, ["Be still."]);
+    assert_eq!(slide.footer.as_deref(), Some("Psalm 46"));
+    let shown = shown_scenes(&h.sink);
+    assert!(scene_text(&shown.last().unwrap().1).contains("Be still."));
+
+    // Editing reloads the open service with three slides now.
+    let edited = ok(h.app.handle(Request::Service(ServiceRequest::SetItemText {
+        service: service.id,
+        item,
+        title: "Welcome".into(),
+        body: "One\n\nTwo\n\nThree".into(),
+        attribution: Some("  ".into()),
+    })));
+    let Response::Service(edited) = edited else {
+        panic!("{edited:?}");
+    };
+    assert!(matches!(
+        &edited.items[&item].kind,
+        ItemKind::Text { title, attribution: None, .. } if title == "Welcome"
+    ));
+    let slides = h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+        Event::Loaded(l) => Some(l.items[0].slides.len()),
+        _ => None,
+    });
+    assert_eq!(slides, Some(3));
+    let missing = h.app.handle(Request::Service(ServiceRequest::SetItemText {
+        service: service.id,
+        item: ItemId::generate(),
+        title: String::new(),
+        body: String::new(),
+        attribution: None,
+    }));
+    assert!(matches!(missing, Response::Error { .. }), "{missing:?}");
 }
 
 #[test]
@@ -1366,7 +1541,10 @@ fn clicker_mode_is_a_device_setting_and_takes_keys_only_once_a_service_is_open()
         other => panic!("{other:?}"),
     };
     assert!(!settings(&mut h, SettingsRequest::Get).clicker_mode);
-    let on = DeviceSettings { clicker_mode: true };
+    let on = DeviceSettings {
+        clicker_mode: true,
+        ..DeviceSettings::default()
+    };
     assert_eq!(settings(&mut h, SettingsRequest::Put(on.clone())), on);
     let state = h.app.key_state();
     assert!(state.clicker_mode && !state.live);
@@ -1468,7 +1646,14 @@ fn a_service_is_renamed_closed_and_deleted() {
     ok(service_request(&mut h, ServiceRequest::Close(service.id)));
     assert_eq!(list_titles(&mut h), ["Easter"], "off air keeps the service");
 
+    // Open for live, it cannot be deleted; closed, it can.
     open_service(&mut h, &service);
+    match service_request(&mut h, ServiceRequest::Delete(service.id)) {
+        Response::Error { message } => assert!(message.contains("open for live"), "{message}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(list_titles(&mut h), ["Easter"], "still there");
+    ok(service_request(&mut h, ServiceRequest::Close(service.id)));
     ok(service_request(&mut h, ServiceRequest::Delete(service.id)));
     assert!(list_titles(&mut h).is_empty());
 }
@@ -1572,4 +1757,806 @@ fn the_estimate_counts_slides_and_flags_what_has_no_fixed_length() {
     assert_eq!(estimates[0].item, order[1]);
     assert!(estimates[0].open_ended);
     assert_eq!(estimates[0].stills, 0);
+}
+
+fn put_theme(h: &mut Harness, theme: lampstand_core::theme::Theme) {
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::PutTheme(theme))));
+}
+
+fn list_themes(h: &mut Harness) -> Vec<lampstand_core::theme::Theme> {
+    match ok(h.app.handle(Request::Library(LibraryRequest::ListThemes))) {
+        Response::Themes(t) => t,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn error_message(response: Response) -> String {
+    match response {
+        Response::Error { message } => message,
+        other => panic!("expected an error, got {other:?}"),
+    }
+}
+
+fn bg(theme: &lampstand_core::theme::Theme) -> lampstand_core::geom::Color {
+    match theme.background {
+        lampstand_core::theme::Background::Color(c) => c,
+        _ => unreachable!(),
+    }
+}
+
+fn colored_theme(name: &str, color: lampstand_core::geom::Color) -> lampstand_core::theme::Theme {
+    let mut theme = lampstand_library::starter_theme();
+    theme.id = lampstand_core::theme::ThemeId::generate();
+    theme.name = name.into();
+    theme.background = lampstand_core::theme::Background::Color(color);
+    theme
+}
+
+/// The colour of the first solid fill after the black base: the theme's
+/// background.
+fn background_color(scene: &Scene) -> lampstand_core::geom::Color {
+    use lampstand_core::scene::Paint;
+    scene
+        .nodes
+        .iter()
+        .skip(1)
+        .find_map(|n| match &n.kind {
+            NodeKind::Path(p) => match &p.fill {
+                Some(Paint::Solid(c)) => Some(*c),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("a background fill")
+}
+
+#[test]
+fn themes_are_listed_saved_and_deleted_but_never_the_starter_or_the_last() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let starter = list_themes(&mut h);
+    assert_eq!(starter.len(), 1);
+    let mine = colored_theme("Mine", lampstand_core::geom::Color::rgb(0, 0, 90));
+    put_theme(&mut h, mine.clone());
+    assert_eq!(list_themes(&mut h).len(), 2);
+
+    let delete = |h: &mut Harness, id| {
+        h.app
+            .handle(Request::Library(LibraryRequest::DeleteTheme(id)))
+    };
+    let message = error_message(delete(&mut h, starter[0].id));
+    assert!(message.contains("Starter"), "{message}");
+    ok(delete(&mut h, mine.id));
+    assert_eq!(list_themes(&mut h), starter);
+    // A theme that is already gone, with only the starter left.
+    assert!(matches!(delete(&mut h, mine.id), Response::Error { .. }));
+
+    // Editing the starter and restoring it.
+    let mut edited = starter[0].clone();
+    edited.text.size = 12.0;
+    put_theme(&mut h, edited);
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::RestoreStarterTheme)));
+    assert_eq!(list_themes(&mut h), starter);
+}
+
+#[test]
+fn a_screens_theme_beats_the_services_which_beats_the_default() {
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let (red, green, blue) = (
+        colored_theme("Red", Color::rgb(200, 0, 0)),
+        colored_theme("Green", Color::rgb(0, 200, 0)),
+        colored_theme("Blue", Color::rgb(0, 0, 200)),
+    );
+    for t in [&red, &green, &blue] {
+        put_theme(&mut h, t.clone());
+    }
+    let mut output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let mut service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    let on_air = |h: &mut Harness| {
+        h.sink.take();
+        ok(h.app.handle(Request::Live(Command::Next)));
+        let shown = shown_scenes(&h.sink);
+        let c = background_color(&shown.last().unwrap().1);
+        ok(h.app.handle(Request::Live(Command::ClearAll)));
+        c
+    };
+    // Nothing chosen anywhere: the starter's black.
+    assert_eq!(on_air(&mut h), Color::BLACK);
+
+    // The device default.
+    let settings = DeviceSettings {
+        default_theme: Some(blue.id),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    assert_eq!(on_air(&mut h), bg(&blue));
+
+    // The service's own theme beats the default.
+    service.theme = Some(green.id);
+    let library = h.app.library().clone();
+    library.put_service(&service).unwrap();
+    h.app.library_changed(&[lampstand_sync::DocChanged {
+        kind: lampstand_sync::DocKind::Service,
+        id: service.id.uuid(),
+        remote: false,
+    }]);
+    assert_eq!(on_air(&mut h), bg(&green));
+
+    // The screen's beats the service's.
+    output.theme = Some(red.id);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    assert_eq!(on_air(&mut h), bg(&red));
+}
+
+#[test]
+fn songs_are_split_with_the_main_screens_theme() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let mut two_lines = colored_theme("Two lines", lampstand_core::geom::Color::BLACK);
+    two_lines.max_lines = 1;
+    put_theme(&mut h, two_lines.clone());
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    let lines = |loaded: &LoadedService| -> usize {
+        loaded.items[0]
+            .slides
+            .iter()
+            .map(|s| s.lines.len())
+            .max()
+            .unwrap()
+    };
+    let before = lines(&open_service(&mut h, &service));
+    assert!(before > 1);
+
+    let mut output = window_output();
+    output.theme = Some(two_lines.id);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    assert_eq!(lines(&open_service(&mut h, &service)), 1);
+}
+
+fn blob_with(h: &Harness, bytes: &[u8]) -> lampstand_core::id::BlobHash {
+    h.app.library().repo().blobs().put(bytes).unwrap()
+}
+
+fn count_kind(scene: &Scene, wanted: &str) -> usize {
+    fn walk(nodes: &[Node], wanted: &str) -> usize {
+        nodes
+            .iter()
+            .map(|n| {
+                let here = match (&n.kind, wanted) {
+                    (NodeKind::Image(_), "image") | (NodeKind::Video(_), "video") => 1,
+                    _ => 0,
+                };
+                here + match &n.kind {
+                    NodeKind::Group(c) => walk(c, wanted),
+                    _ => 0,
+                }
+            })
+            .sum()
+    }
+    walk(&scene.nodes, wanted)
+}
+
+#[test]
+fn idle_shows_until_something_goes_on_air_and_black_and_logo_cover_it() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let image = blob_with(&h, b"a picture");
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Image {
+            blob: image,
+            name: "Welcome.png".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was sent").1;
+    assert_eq!(count_kind(&last(&h), "image"), 1, "idle is up at the start");
+
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    h.sink.take();
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(count_kind(&last(&h), "image"), 0, "a slide replaces it");
+
+    ok(h.app.handle(Request::Live(Command::EndService)));
+    assert_eq!(count_kind(&last(&h), "image"), 1, "and it returns");
+
+    // Black is one key away and covers it.
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert_eq!(count_kind(&last(&h), "image"), 0);
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert_eq!(count_kind(&last(&h), "image"), 1);
+
+    // Idle puts it back on air mid-service, and the next slide lifts it.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(count_kind(&last(&h), "image"), 0);
+    ok(h.app.handle(Request::Live(Command::ToggleIdle)));
+    assert_eq!(
+        count_kind(&last(&h), "image"),
+        1,
+        "Idle shows the idle screen"
+    );
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(count_kind(&last(&h), "image"), 0, "Next goes to the slide");
+}
+
+#[test]
+fn a_screens_own_idle_beats_the_default_and_blank_turns_it_off() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let default = blob_with(&h, b"default");
+    let own = blob_with(&h, b"own");
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Video {
+            blob: default,
+            name: "Loop.mp4".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let mut output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was sent").1;
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (1, 0)
+    );
+
+    output.idle = Some(IdleScreen::Image {
+        blob: own,
+        name: "Own.png".into(),
+    });
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (0, 1)
+    );
+
+    output.idle = Some(IdleScreen::Blank);
+    ok(h.app.handle(Request::Outputs(OutputRequest::Put(output))));
+    let scene = last(&h);
+    assert_eq!(
+        (count_kind(&scene, "video"), count_kind(&scene, "image")),
+        (0, 0)
+    );
+}
+
+#[test]
+fn an_idle_file_that_is_not_on_this_device_shows_the_plain_background() {
+    use lampstand_core::output::IdleScreen;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let settings = DeviceSettings {
+        idle: Some(IdleScreen::Image {
+            blob: lampstand_core::id::BlobHash::of(b"never arrived"),
+            name: "Gone.png".into(),
+        }),
+        ..DeviceSettings::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let scene = shown_scenes(&h.sink).pop().unwrap().1;
+    assert_eq!(count_kind(&scene, "image"), 0);
+}
+
+#[test]
+fn saving_the_brand_makes_the_default_theme_and_saving_again_updates_it() {
+    use lampstand_core::brand::Brand;
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let brand = |name: &str, primary| Brand {
+        name: name.into(),
+        logo: None,
+        primary,
+        text: None,
+        accent: Color::rgb(240, 190, 60),
+        font_family: "Noto Serif".into(),
+        bug: Default::default(),
+    };
+    let saved = |h: &mut Harness, b: Brand| match ok(h
+        .app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(b))))
+    {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    let first = saved(&mut h, brand("Grace Chapel", Color::rgb(20, 30, 90)));
+    let id = first.default_theme.expect("it becomes the default");
+    assert_eq!(first.brand_theme, Some(id));
+    let themes = list_themes(&mut h);
+    assert_eq!(themes.len(), 2);
+    assert!(themes
+        .iter()
+        .any(|t| t.id == id && t.name == "Grace Chapel"));
+
+    let second = saved(&mut h, brand("Grace Church", Color::rgb(90, 20, 30)));
+    assert_eq!(second.default_theme, Some(id), "the same theme is updated");
+    let themes = list_themes(&mut h);
+    assert_eq!(themes.len(), 2);
+    assert!(themes
+        .iter()
+        .any(|t| t.id == id && t.name == "Grace Church"));
+
+    // Deleting it clears the settings that named it.
+    ok(h.app
+        .handle(Request::Library(LibraryRequest::DeleteTheme(id))));
+    let after = match ok(h.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!((after.default_theme, after.brand_theme), (None, None));
+    assert!(after.brand.is_some());
+}
+
+#[test]
+fn a_brand_file_carries_the_church_look_to_another_computer() {
+    use lampstand_api::BrandImportMode;
+    use lampstand_core::brand::{Brand, BugCorner, BugSize, LogoBug};
+    use lampstand_core::geom::Color;
+    use lampstand_core::output::IdleScreen;
+    let (a_dir, b_dir, files) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut a = open(a_dir.path());
+    let logo = blob_with(&a, b"logo");
+    let video = blob_with(&a, b"video");
+    ok(a.app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(Brand {
+            name: "Grace Chapel".into(),
+            logo: Some(logo),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Some Font Nobody Has".into(),
+            bug: LogoBug {
+                enabled: true,
+                corner: BugCorner::LowerLeft,
+                size: BugSize::Large,
+                opacity: 40,
+            },
+        }))));
+    let mut settings = match ok(a.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    settings.idle = Some(IdleScreen::Video {
+        blob: video,
+        name: "Loop.mp4".into(),
+    });
+    ok(a.app
+        .handle(Request::Settings(SettingsRequest::Put(settings))));
+    let path = files
+        .path()
+        .join("grace.lampstand-brand")
+        .to_string_lossy()
+        .into_owned();
+    let said = match ok(a.app.handle(Request::Library(LibraryRequest::ExportBrand {
+        path: path.clone(),
+    }))) {
+        Response::Text(t) => t,
+        other => panic!("{other:?}"),
+    };
+    assert!(
+        said.contains("1 theme") && said.contains("2 picture or video files"),
+        "{said}"
+    );
+
+    let mut b = open(b_dir.path());
+    let contents = match ok(b.app.handle(Request::Library(LibraryRequest::InspectBrand {
+        path: path.clone(),
+    }))) {
+        Response::BrandFile(c) => c,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(contents.name.as_deref(), Some("Grace Chapel"));
+    assert_eq!(contents.themes, ["Grace Chapel"]);
+    assert!(contents.has_logo && !contents.font_installed);
+    assert_eq!(contents.missing_fonts, ["Some Font Nobody Has"]);
+    assert_eq!(contents.idle.as_deref(), Some("Looping video: Loop.mp4"));
+    assert_eq!(list_themes(&mut b).len(), 1, "inspecting changes nothing");
+
+    for _ in 0..2 {
+        ok(b.app.handle(Request::Library(LibraryRequest::ImportBrand {
+            path: path.clone(),
+            mode: BrandImportMode::Replace,
+        })));
+    }
+    assert_eq!(
+        list_themes(&mut b).len(),
+        2,
+        "a second import does not duplicate"
+    );
+    let got = match ok(b.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(got.brand.as_ref().unwrap().name, "Grace Chapel");
+    assert_eq!(
+        got.brand.as_ref().unwrap().bug,
+        LogoBug {
+            enabled: true,
+            corner: BugCorner::LowerLeft,
+            size: BugSize::Large,
+            opacity: 40,
+        },
+        "the logo bug comes with the brand file"
+    );
+    assert!(got.default_theme.is_some() && got.default_theme == got.brand_theme);
+    assert!(matches!(got.idle, Some(IdleScreen::Video { .. })));
+    assert!(b
+        .app
+        .library()
+        .repo()
+        .blobs()
+        .path(&got.brand.unwrap().logo.unwrap())
+        .is_some());
+
+    // Not a brand file.
+    let junk = files.path().join("junk.lampstand-brand");
+    std::fs::write(&junk, b"nope").unwrap();
+    let msg = error_message(b.app.handle(Request::Library(LibraryRequest::InspectBrand {
+        path: junk.to_string_lossy().into_owned(),
+    })));
+    assert!(msg.contains("not a Lampstand brand file"), "{msg}");
+}
+
+/// A 40x20 PNG, so the logo is twice as wide as it is high.
+fn wide_logo() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image::RgbaImage::from_pixel(40, 20, image::Rgba([240, 190, 60, 255]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    bytes
+}
+
+/// The rectangle of the image node for `blob` in the last scene shown.
+fn bug_in(scene: &Scene, blob: lampstand_core::id::BlobHash) -> Option<lampstand_core::geom::Rect> {
+    scene.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Image(i) if i.blob == blob && i.rect.width < 200.0 => Some(i.rect),
+        _ => None,
+    })
+}
+
+#[test]
+fn the_logo_bug_is_drawn_on_audience_screens_and_follows_black_and_the_toggle() {
+    use lampstand_core::brand::{Brand, BugCorner, BugSize, LogoBug};
+    use lampstand_core::geom::Color;
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "holy")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+
+    // Nothing to put it on before there is a brand.
+    let none = h.app.handle(Request::Settings(SettingsRequest::SetLogoBug(
+        LogoBug::default(),
+    )));
+    assert!(error_message(none).contains("logo"));
+
+    let logo = blob_with(&h, &wide_logo());
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SaveBrand(Brand {
+            name: "Grace Chapel".into(),
+            logo: Some(logo),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+            bug: Default::default(),
+        }))));
+    h.sink.take();
+    let last = |h: &Harness| shown_scenes(&h.sink).pop().expect("a scene was shown").1;
+
+    // Off by default: existing installs do not change.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(bug_in(&last(&h), logo).is_none());
+
+    let bug = LogoBug {
+        enabled: true,
+        ..LogoBug::default()
+    };
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(bug))));
+    let scene = last(&h);
+    let rect = bug_in(&scene, logo).expect("the bug is on the screen");
+    assert!((rect.width / rect.height - 2.0).abs() < 0.01, "{rect:?}");
+    assert!((rect.height - 540.0 * 0.07).abs() < 0.5);
+    assert!(rect.x > 480.0 && rect.y > 270.0, "lower right: {rect:?}");
+
+    // The next slide keeps it where it was.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert_eq!(bug_in(&last(&h), logo), Some(rect));
+
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(LogoBug {
+            corner: BugCorner::LowerLeft,
+            size: BugSize::Large,
+            ..bug
+        }))));
+    let moved = bug_in(&last(&h), logo).unwrap();
+    assert!(moved.x < 480.0 && moved.height > rect.height);
+
+    // Black covers it; turning Black off brings it back.
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert!(bug_in(&last(&h), logo).is_none());
+    ok(h.app.handle(Request::Live(Command::ToggleBlack)));
+    assert!(bug_in(&last(&h), logo).is_some());
+
+    // The toggle is saved in the brand.
+    ok(h.app
+        .handle(Request::Settings(SettingsRequest::SetLogoBug(LogoBug {
+            enabled: false,
+            ..moved_setting()
+        }))));
+    assert!(bug_in(&last(&h), logo).is_none());
+    let saved = match ok(h.app.handle(Request::Settings(SettingsRequest::Get))) {
+        Response::Settings(s) => s.brand.unwrap().bug,
+        other => panic!("{other:?}"),
+    };
+    assert!(!saved.enabled && saved.corner == BugCorner::LowerLeft);
+}
+
+fn moved_setting() -> lampstand_core::brand::LogoBug {
+    use lampstand_core::brand::{BugCorner, BugSize, LogoBug};
+    LogoBug {
+        enabled: true,
+        corner: BugCorner::LowerLeft,
+        size: BugSize::Large,
+        opacity: 80,
+    }
+}
+
+#[test]
+fn a_planning_device_refuses_live_control_and_keeps_its_screens_dark() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let output = window_output();
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let service = create_service(&mut h, "Sunday");
+    let (song, _) = search(&mut h, "amazing grace")[0].clone();
+    let service = insert_song(&mut h, &service, song);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(h.app.program().content.is_some(), "on air while presenting");
+    assert_eq!(h.host.0.lock().unwrap().open.len(), 1);
+
+    // Another device takes over: the service comes off air and the
+    // window closes, but the output stays switched on in its settings.
+    h.app.set_presenting(false);
+    assert!(h.app.program().content.is_none());
+    assert_eq!(h.host.0.lock().unwrap().closed, [output.id]);
+    let enabled = match ok(h.app.handle(Request::Outputs(OutputRequest::List))) {
+        Response::Outputs(o) => o[0].enabled,
+        other => panic!("{other:?}"),
+    };
+    assert!(enabled, "the screen keeps its setting");
+
+    for command in [Command::GoLive, Command::Next, Command::ToggleBlack] {
+        match h.app.handle(Request::Live(command)) {
+            Response::Error { message } => assert!(message.contains("planning"), "{message}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+    assert!(matches!(
+        h.app
+            .handle(Request::Service(ServiceRequest::Open(service.id))),
+        Response::Error { .. }
+    ));
+    assert!(h.app.program().content.is_none());
+
+    // Presenting again brings the window back, with nothing on air.
+    h.app.set_presenting(true);
+    assert_eq!(h.host.0.lock().unwrap().open.len(), 2);
+    open_service(&mut h, &service);
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(h.app.program().content.is_some());
+}
+
+#[test]
+fn a_projector_that_appears_while_the_app_is_starting_is_still_opened() {
+    // The shell takes its first look at the displays only after the app has
+    // opened. A projector that came up in between must not be missed, so
+    // the look is compared with what the windows were placed against.
+    let dir = tempfile::tempdir().unwrap();
+    let projector = DisplayInfo {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    };
+    let mut output = window_output();
+    output.target = OutputTarget::Display(DisplayMatch {
+        name: "Projector".into(),
+        width: 1920,
+        height: 1080,
+        x: 1512,
+        y: 0,
+    });
+    {
+        let mut h = open(dir.path());
+        ok(h.app
+            .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    }
+    let host = Host::default();
+    let mut h = open_with(dir.path(), host.clone());
+    assert!(host.0.lock().unwrap().open.is_empty());
+
+    // The projector comes up before the shell's first look.
+    host.0.lock().unwrap().displays.push(projector.clone());
+    let seen = host.0.lock().unwrap().displays.clone();
+    h.app.displays_polled(seen.clone());
+    assert_eq!(
+        host.0.lock().unwrap().open,
+        [(output.id, Placement::Display(projector))]
+    );
+    // Looking again at the same displays changes nothing.
+    h.app.displays_polled(seen);
+    assert_eq!(host.0.lock().unwrap().open.len(), 1);
+}
+
+#[test]
+fn the_address_obs_is_given_follows_the_network_but_the_key_stays() {
+    // A machine that starts before its network is up first knows only
+    // itself. When the address improves, the URL changes and the key, which
+    // OBS already has, does not.
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    let mut output = window_output();
+    output.role = OutputRole::Stream;
+    output.target = OutputTarget::BrowserSource {
+        width: 1280,
+        height: 720,
+    };
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(output.clone()))));
+    let url = |h: &mut Harness| match ok(h
+        .app
+        .handle(Request::Outputs(OutputRequest::BrowserSourceUrl(output.id))))
+    {
+        Response::Text(t) => t,
+        other => panic!("{other:?}"),
+    };
+    h.app.set_server_address("127.0.0.1:7340".into());
+    let before = url(&mut h);
+    assert!(before.starts_with("http://127.0.0.1:7340/obs/"), "{before}");
+
+    h.app.set_server_address("192.168.1.20:7340".into());
+    let after = url(&mut h);
+    assert!(
+        after.starts_with("http://192.168.1.20:7340/obs/"),
+        "{after}"
+    );
+    assert_eq!(
+        before.split_once("?k=").unwrap().1,
+        after.split_once("?k=").unwrap().1
+    );
+}
+
+/// A speaker's phone (0.9.1): Next and Back page through its own item only
+/// while it is on air, never past either end, and ending the service tells
+/// the shell so the phone stops.
+#[test]
+fn a_speaker_pages_through_its_own_item_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = open(dir.path());
+    ok(h.app
+        .handle(Request::Outputs(OutputRequest::Put(window_output()))));
+    let service = create_service(&mut h, "Sunday");
+    let (first, _) = search(&mut h, "holy")[0].clone();
+    let service = insert_song(&mut h, &service, first);
+    let (second, _) = search(&mut h, "amazing")[0].clone();
+    let service = insert_song(&mut h, &service, second);
+    let loaded = open_service(&mut h, &service);
+    let (song, talk) = (&loaded.items[0], &loaded.items[1]);
+    assert_eq!(
+        h.app.speaker_item(talk.id),
+        Some((service.id, talk.title.clone()))
+    );
+    assert!(h.app.speaker_item(ItemId::generate()).is_none());
+
+    let live = |h: &Harness| h.app.program().content.clone();
+    let refused = |r: Response| matches!(r, Response::Error { .. });
+    // Nothing on air, then the first song: the speaker's item is not up.
+    assert!(refused(h.app.speaker_live(talk.id, Command::Next)));
+    ok(h.app
+        .handle(Request::Live(Command::Show(lampstand_live::Cursor {
+            item: song.id,
+            slide: song.slides.len() - 1,
+            step: 0,
+        }))));
+    let before = live(&h);
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Next)),
+        "Next would land on its item, but it is not up yet"
+    );
+    assert!(refused(h.app.speaker_live(talk.id, Command::ToggleBlack)));
+    assert_eq!(live(&h), before);
+
+    // The operator puts the talk up.
+    ok(h.app.handle(Request::Live(Command::Next)));
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Previous)),
+        "its first slide"
+    );
+    let n = talk.slides.len();
+    for _ in 1..n {
+        ok(h.app.speaker_live(talk.id, Command::Next));
+    }
+    let last = live(&h);
+    assert!(
+        refused(h.app.speaker_live(talk.id, Command::Next)),
+        "its last slide"
+    );
+    assert_eq!(live(&h), last, "the service did not move on");
+    ok(h.app.speaker_live(talk.id, Command::Previous));
+    ok(h.app.speaker_live(talk.id, Command::ToggleBlack));
+    assert_eq!(h.app.program().overlay, Overlay::Black);
+    ok(h.app.speaker_live(talk.id, Command::ToggleBlack));
+
+    // The operator clears the words: the phone is told, and a speaker's
+    // Next cannot put them back.
+    let cleared = |h: &Harness| {
+        h.events.lock().unwrap().iter().rev().find_map(|e| match e {
+            Event::Live { cleared, .. } => Some(*cleared),
+            _ => None,
+        })
+    };
+    assert_eq!(cleared(&h), Some(false));
+    ok(h.app.handle(Request::Live(Command::ClearAll)));
+    assert_eq!(cleared(&h), Some(true));
+    let r = h.app.speaker_live(talk.id, Command::Next);
+    assert!(
+        matches!(&r, Response::Error { message } if message.contains("cleared")),
+        "{r:?}"
+    );
+    assert!(h.app.program().content.is_none(), "the words stay off");
+    ok(h.app.handle(Request::Live(Command::Previous)));
+    assert_eq!(cleared(&h), Some(false), "back on the screen");
+
+    let ended = Arc::new(Mutex::new(0));
+    let count = ended.clone();
+    h.app
+        .on_service_ended(Arc::new(move || *count.lock().unwrap() += 1));
+    ok(h.app.handle(Request::Live(Command::EndService)));
+    assert_eq!(*ended.lock().unwrap(), 1);
+    assert!(refused(h.app.speaker_live(talk.id, Command::Next)));
 }

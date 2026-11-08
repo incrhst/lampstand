@@ -34,36 +34,55 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use lampstand_api::{
-    BrowserSourceStatus, Event, ItemEstimate, LibraryRequest, LoadedItemView, LoadedService,
-    OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary, SettingsRequest,
-    SlideView, SongDatabase, SongHit,
+    BrowserSourceStatus, Event, ItemEstimate, ItemSoundView, LibraryRequest, LoadedItemView,
+    LoadedService, OutputRequest, Request, Response, SectionView, ServiceRequest, ServiceSummary,
+    SettingsRequest, SlideView, SongDatabase, SongHit, SoundSlot, SoundView,
 };
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::id::{BlobHash, Timestamp};
-use lampstand_core::output::{OutputConfig, OutputId, OutputRole, OutputTarget};
-use lampstand_core::program::{Content, Overlay, Program, SlideText};
+use lampstand_core::output::{
+    idle_plan, IdlePlan, IdleScreen, OutputConfig, OutputId, OutputRole, OutputTarget,
+};
+use lampstand_core::program::{Bug, Content, Idle, Logo, Overlay, Program, SlideText};
 use lampstand_core::safe_area::SafeArea;
 use lampstand_core::scene::{Animation, Scene, Transition};
-use lampstand_core::scripture::parse_reference;
-use lampstand_core::service::{CountdownTarget, ItemId, ItemKind, Service, ServiceId};
+use lampstand_core::scripture::{
+    find_translation, parse_reference_versioned, unrecognised_version_message,
+};
+use lampstand_core::service::{
+    CountdownTarget, ItemId, ItemKind, Service, ServiceId, ServiceItem, Sound,
+};
+use lampstand_core::text::text_slides;
 use lampstand_core::theme::{Theme, ThemeId};
 use lampstand_layout::{
     compose_at, paginate_passage, paginate_song, Fonts, OutputSize, PassageSplit,
 };
-use lampstand_library::{starter_theme, starter_theme_id, Library};
+use lampstand_library::Library;
 use lampstand_live::{Command, Cursor, LiveEngine, LoadedItem, LoadedSlide, LoopGroup};
 use lampstand_render::output::{assign_displays, DisplayInfo};
 use lampstand_render::{CalibrationPattern, OutputCommand, OutputSink};
 use lampstand_server::SceneHub;
 use lampstand_sync::DocChanged;
 
+use crate::audio::{AudioDeck, Parts};
 use crate::config::{device_key, KeyStore, OutputStore, SettingsStore};
+
+mod audio;
+mod church;
+mod sound;
+
 use crate::decks::{self, ParsedSlides};
 use crate::import::import_files;
 use crate::journal::{Journal, LiveRecord};
 use crate::keys::KeyState;
 use crate::obs_control::{SceneCue, SceneCues};
 use crate::seed;
+use crate::training;
+use crate::training_videos::{self, TrainingVideos};
+pub use audio::{problem_words, AUDIO_AWAY, AUDIO_NOBODY, AUDIO_NOT_ALLOWED, FORMATS};
+use church::ChurchSync;
+pub use church::{AudioRemote, SyncLink};
+use sound::SoundSync;
 
 /// Where an output window goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +106,28 @@ pub trait WindowHost: Send {
     fn close(&mut self, output: OutputId);
 }
 
+/// The two things Lampstand can ask of this computer itself, both only when
+/// the operator switched them on in Setup (`DeviceSettings::start_at_login`
+/// and `keep_awake`). The Tauri implementation lives in `shell`; with none
+/// set, or in tests, nothing on the computer changes.
+pub trait Machine: Send {
+    /// Adds or removes Lampstand from what opens when someone signs in.
+    fn set_start_at_login(&mut self, on: bool) -> Result<()>;
+    /// Stops the computer sleeping, or lets it. Called only when the answer
+    /// changes.
+    fn set_awake(&mut self, on: bool);
+}
+
+/// Leaves the computer alone.
+struct NoMachine;
+
+impl Machine for NoMachine {
+    fn set_start_at_login(&mut self, _: bool) -> Result<()> {
+        Ok(())
+    }
+    fn set_awake(&mut self, _: bool) {}
+}
+
 pub type EventSink = Arc<dyn Fn(Event) + Send + Sync>;
 
 /// What an output was last sent, so an unchanged output is not composed
@@ -103,7 +144,20 @@ struct Sent {
 }
 
 /// What the UI was last told about the live state.
-type LiveState = (Option<Cursor>, Option<Cursor>, bool, Overlay);
+type LiveState = (
+    Option<Cursor>,
+    Option<Cursor>,
+    bool,
+    Overlay,
+    Option<Cursor>,
+    bool,
+);
+
+/// Something is live but its words were cleared (Clear text, Clear all):
+/// `Event::Live::cleared`, so a speaker's phone waits too.
+fn cleared(live: &LiveEngine) -> bool {
+    live.live().is_some() && live.program().content.is_none()
+}
 
 /// The whole seconds a countdown shows now, rounded up as it is drawn.
 fn countdown_seconds(content: &Option<Content>, now: Timestamp) -> Option<i64> {
@@ -137,9 +191,26 @@ pub struct App {
     fonts: Fonts,
     outputs: OutputStore,
     settings: SettingsStore,
+    /// Bookkeeping for the settings shared with the church's other devices.
+    church_sync: ChurchSync,
+    /// Bookkeeping for sound files that travel by sync.
+    sound_sync: SoundSync,
+    /// What plays on this device when it holds Audio.
+    audio: AudioDeck,
+    /// The sound state the screen was last told.
+    told_sound: Option<SoundView>,
+    /// This device held Audio at the last look (to notice it coming here).
+    audio_held: bool,
     sink: Arc<dyn OutputSink>,
     windows: Box<dyn WindowHost>,
+    machine: Box<dyn Machine>,
+    /// The computer was last told to stay awake (`Machine::set_awake`).
+    awake: bool,
     emit: EventSink,
+    /// Told when the service is ended (`Command::EndService`) while it stays
+    /// open, so speakers' phones stop (`crate::remote`). Closing it says
+    /// `Event::Unloaded` instead.
+    service_ended: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Where each open output window was asked to go. A window is opened
     /// again only when this changes, never because its real size differs.
     placed: HashMap<OutputId, Placement>,
@@ -168,6 +239,8 @@ pub struct App {
     loop_overrides: HashMap<ItemId, Option<u16>>,
     /// Video lengths already read, by blob, in milliseconds.
     video_lengths: HashMap<BlobHash, Option<u32>>,
+    /// Logo shapes already read, by blob: width over height.
+    logo_aspects: HashMap<BlobHash, Option<f32>>,
     /// Parsed decks by the blob they were parsed from, for the decks in
     /// the open service.
     parsed: HashMap<BlobHash, Arc<ParsedSlides>>,
@@ -176,7 +249,31 @@ pub struct App {
     /// Set from `open` until the journal is restored, so the windows
     /// being placed and the half-restored state do not overwrite it.
     restoring: bool,
+    /// Set while the journal's state is put back: items going live then do
+    /// not start their sound.
+    quiet_cues: bool,
+    /// This device may drive the screens: it is the presenter, or has no
+    /// paired devices. Set by the shell as sync reports it; a Planning
+    /// device refuses live control and keeps its screens dark.
+    presenting: bool,
+    /// The displays the windows were last placed against, so a display that
+    /// appears after that, even before the shell's first look, is noticed.
+    seen_displays: Vec<DisplayInfo>,
+    /// The training videos, downloaded the first time a training service
+    /// is opened (#190).
+    training_videos: TrainingVideos,
+    /// The open service has a video item saying it is downloading, so it
+    /// is loaded again when the download ends, however it went.
+    shows_downloading: bool,
 }
+
+/// Why a training service refuses a change (#190).
+pub const TRAINING_READ_ONLY: &str = "Training services can't be changed. \
+     Practise in Present, then press Reset training to start again.";
+
+/// Why a Planning device refuses live control.
+pub const PLANNING_ONLY: &str =
+    "This device is planning. Ask the presenting device to hand over, then take the service live.";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -202,18 +299,40 @@ impl App {
         let key = device_key(data_dir).map_err(err)?;
         let library = Arc::new(Library::open(&data_dir.join("library"), key).map_err(err)?);
         seed::seed_if_new(&library, data_dir).map_err(err)?;
+        // Reads only what an earlier run saved: nothing downloads at start.
+        let training_videos = TrainingVideos::open(
+            data_dir.join("training-videos"),
+            Some(training_videos::SOURCE.to_string()),
+            library.clone(),
+            emit.clone(),
+        );
+        if let Err(e) = training::install(&library, &training_videos.manifest()) {
+            eprintln!("lampstand: the training services could not be added: {e}");
+        }
         let outputs = OutputStore::load(data_dir.join("outputs.json")).map_err(err)?;
         let keys = KeyStore::load(data_dir.join("browser-sources.json")).map_err(err)?;
         let settings = SettingsStore::load(data_dir.join("settings.json")).map_err(err)?;
+        let audio = AudioDeck::new(
+            Parts::real(library.clone()),
+            settings.get().sound_output.clone(),
+        );
         let mut app = Self {
             library,
             live: LiveEngine::new(),
             fonts,
             outputs,
             settings,
+            church_sync: ChurchSync::default(),
+            sound_sync: SoundSync::default(),
+            audio,
+            told_sound: None,
+            audio_held: false,
             sink,
             windows,
+            machine: Box::new(NoMachine),
+            awake: false,
             emit,
+            service_ended: None,
             placed: HashMap::new(),
             sizes: HashMap::new(),
             streams: HashMap::new(),
@@ -227,13 +346,46 @@ impl App {
             loaded: None,
             loop_overrides: HashMap::new(),
             video_lengths: HashMap::new(),
+            logo_aspects: HashMap::new(),
             parsed: HashMap::new(),
             journal: Journal::new(data_dir),
             restoring: true,
+            quiet_cues: false,
+            presenting: true,
+            seen_displays: Vec::new(),
+            training_videos,
+            shows_downloading: false,
         };
         app.place_windows();
         app.restore();
         Ok(app)
+    }
+
+    /// Hands over the computer's own switches (the shell does this once it
+    /// can) and applies what Setup already says: start at login is made so,
+    /// and the computer stays awake if screens are showing. A failure to
+    /// add the startup item is logged and the switch stays as saved.
+    pub fn set_machine(&mut self, machine: Box<dyn Machine>) {
+        self.machine = machine;
+        self.awake = false;
+        if self.settings.get().start_at_login {
+            if let Err(e) = self.machine.set_start_at_login(true) {
+                eprintln!("lampstand: cannot start with this computer: {e}");
+            }
+        }
+        self.sync_awake();
+    }
+
+    /// Keeps the computer awake exactly while the setting is on and a
+    /// screen is showing: an output window is open, or a browser-source
+    /// picture is being served. Called wherever either changes.
+    fn sync_awake(&mut self) {
+        let wanted =
+            self.settings.get().keep_awake && (!self.placed.is_empty() || !self.streams.is_empty());
+        if wanted != self.awake {
+            self.awake = wanted;
+            self.machine.set_awake(wanted);
+        }
     }
 
     /// Shared, so long imports can run without holding the `App` lock.
@@ -278,10 +430,81 @@ impl App {
         self.obs_cues = Some(cues);
     }
 
+    /// Sync says whether this device may drive the screens now. Becoming
+    /// Planning takes the service off air and closes the output windows:
+    /// they stay dark (the outputs keep their settings) until this device
+    /// presents again.
+    pub fn set_presenting(&mut self, presenting: bool) {
+        if self.presenting == presenting {
+            return;
+        }
+        self.presenting = presenting;
+        if !presenting {
+            let had = self.loaded.take().is_some();
+            self.loop_overrides.clear();
+            let events = self.live.apply(Command::EndService);
+            self.live.load(Vec::new());
+            self.after_live(events);
+            if had {
+                (self.emit)(Event::Unloaded);
+            }
+        }
+        self.place_windows();
+        if !presenting {
+            self.journal.clear();
+        }
+    }
+
     /// Where the local server listens (`host:port`), for the URLs
     /// `BrowserSourceUrl` gives.
     pub fn set_server_address(&mut self, address: String) {
         self.server = Some(address);
+    }
+
+    /// The service open now (restored after a crash, at start), if any.
+    pub fn open_service(&self) -> Option<ServiceId> {
+        self.loaded.as_ref().map(|l| l.view.service)
+    }
+
+    /// The open service and the title of its item `item`, if it has one
+    /// with slides: what a speaker's phone may be paired for.
+    pub fn speaker_item(&self, item: ItemId) -> Option<(ServiceId, String)> {
+        let view = &self.loaded.as_ref()?.view;
+        view.items
+            .iter()
+            .find(|i| i.id == item && !i.slides.is_empty())
+            .map(|i| (view.service, i.title.clone()))
+    }
+
+    /// What to call when the service is ended but stays open: the shell ends
+    /// the speakers' phones paired for it.
+    pub fn on_service_ended(&mut self, ended: Arc<dyn Fn() + Send + Sync>) {
+        self.service_ended = Some(ended);
+    }
+
+    /// A speaker's Next, Back or Blank (decision 0006, amended for 0.9.1),
+    /// for the item `own`: checked against the live engine and carried out
+    /// in one step by `gate::speaker_apply`, under the one `&mut App`, so
+    /// the operator cannot move the service between the check and the
+    /// change.
+    pub fn speaker_live(&mut self, own: ItemId, command: Command) -> Response {
+        if !self.presenting {
+            return Response::Error {
+                message: PLANNING_ONLY.into(),
+            };
+        }
+        match crate::gate::speaker_apply(own, command, &mut self.live) {
+            Ok(events) => {
+                self.after_live(events);
+                Response::Ok
+            }
+            Err(why) => {
+                eprintln!("lampstand: refused a speaker's {command:?}: {why}");
+                Response::Error {
+                    message: why.into(),
+                }
+            }
+        }
     }
 
     pub fn handle(&mut self, request: Request) -> Response {
@@ -289,27 +512,45 @@ impl App {
             Request::Library(r) => self.library_request(r),
             Request::Service(r) => self.service_request(r),
             Request::Live(command) => {
+                // Putting a slide on the preview pane changes nothing on air.
+                if !self.presenting && !matches!(command, Command::Preview(_)) {
+                    return Response::Error {
+                        message: PLANNING_ONLY.into(),
+                    };
+                }
                 let events = self.live.apply(command);
                 self.after_live(events);
+                if command == Command::EndService {
+                    if let Some(ended) = &self.service_ended {
+                        ended();
+                    }
+                }
                 Ok(Response::Ok)
             }
             Request::Outputs(r) => self.output_request(r),
+            Request::Sound(r) => self.sound_request(r),
             // The shell answers these from `crate::sync` and
             // `crate::obs_control`, without the lock.
             Request::Team(_) => Err("sync is not running".into()),
             Request::Settings(SettingsRequest::Get) => {
-                Ok(Response::Settings(self.settings.get().clone()))
+                Ok(Response::Settings(self.device_settings()))
             }
-            Request::Settings(SettingsRequest::Put(settings)) => self
-                .settings
-                .put(settings)
-                .map(|()| Response::Settings(self.settings.get().clone()))
-                .map_err(err),
+            Request::Settings(SettingsRequest::Church) => {
+                Ok(Response::Church(self.church_status()))
+            }
+            Request::Settings(SettingsRequest::ResolveChurch(choice)) => self
+                .resolve_church(choice)
+                .map(|()| Response::Church(self.church_status())),
+            Request::Settings(SettingsRequest::Put(settings)) => self.put_settings(settings),
+            Request::Settings(SettingsRequest::SaveBrand(brand)) => self.save_brand(brand),
+            Request::Settings(SettingsRequest::SetLogoBug(bug)) => self.set_logo_bug(bug),
             Request::Obs(_) => Err("OBS control is not running".into()),
             // The shell answers updates: it owns the updater.
             Request::Update(_) => Err("updates are not available here".into()),
             // The shell opens the browser.
             Request::About(_) => Err("the browser is opened by the app shell".into()),
+            // The shell runs Lampstand Remote: it owns the local server.
+            Request::Remote(_) => Err("remotes are not running".into()),
         };
         result.unwrap_or_else(|message| Response::Error { message })
     }
@@ -357,6 +598,27 @@ impl App {
                 lib.put_theme(&theme).map_err(err)?;
                 Response::Ok
             }
+            LibraryRequest::DeleteTheme(id) => {
+                lib.remove_theme(id).map_err(err)?;
+                // Anything that named it now falls back.
+                self.settings_forget_theme(id)?;
+                Response::Ok
+            }
+            LibraryRequest::RestoreStarterTheme => {
+                lib.restore_starter_theme().map_err(err)?;
+                Response::Ok
+            }
+            LibraryRequest::ExportBrand { path } => Response::Text(self.export_brand(&path)?),
+            LibraryRequest::InspectBrand { path } => {
+                Response::BrandFile(self.inspect_brand(&path)?)
+            }
+            LibraryRequest::ImportBrand { path, mode } => {
+                Response::Text(self.import_brand(&path, mode)?)
+            }
+            LibraryRequest::ThemePreview { .. } | LibraryRequest::IdlePreview { .. } => {
+                // It needs the GPU, so the shell draws it.
+                return Err("theme previews are drawn by the app shell".into());
+            }
             LibraryRequest::ListTranslations => {
                 Response::Translations(lib.translations().map_err(err)?)
             }
@@ -364,7 +626,17 @@ impl App {
                 reference,
                 translation,
             } => {
-                let passage = parse_reference(&reference).map_err(|e| format!("{e:?}"))?;
+                let (passage, typed) =
+                    parse_reference_versioned(&reference).map_err(|e| format!("{e:?}"))?;
+                let translation = match typed {
+                    Some(typed) => {
+                        let all = lib.translations().map_err(err)?;
+                        find_translation(&all, &typed)
+                            .map(|t| t.id)
+                            .ok_or_else(|| unrecognised_version_message(&typed, &all))?
+                    }
+                    None => translation,
+                };
                 let text = lib
                     .bible_text(translation)
                     .map_err(err)?
@@ -378,6 +650,7 @@ impl App {
                 Response::Passage {
                     display: passage.to_string(),
                     passage,
+                    translation,
                     verses,
                 }
             }
@@ -390,11 +663,16 @@ impl App {
                 // downloads it and then imports as `ImportFiles` does.
                 return Err("song databases are downloaded by the app shell".into());
             }
+            LibraryRequest::ImportSongSelectDownloads { .. } => {
+                // It needs the user's Downloads folder, which the shell knows.
+                return Err("SongSelect downloads are imported by the app shell".into());
+            }
             LibraryRequest::ListDecks => {
                 let mut decks = lib.decks().map_err(err)?;
                 decks.sort_by_key(|d| d.title.to_lowercase());
                 Response::Decks(decks)
             }
+            LibraryRequest::ListTrainingDecks => Response::Decks(lib.training_decks()),
             LibraryRequest::AddDeckFile { path } => {
                 Response::Deck(decks::add_deck_file(lib, &path)?)
             }
@@ -409,6 +687,14 @@ impl App {
             LibraryRequest::AddMediaFile { path } => {
                 Response::Media(decks::add_media_file(lib, &path)?)
             }
+            LibraryRequest::AddSoundFile { path } => {
+                Response::SoundFile(decks::add_sound_file(lib, &path)?)
+            }
+            LibraryRequest::AddSoundFromLink { .. } => {
+                // A download, like a deck link: the shell fetches it and
+                // then adds it as `AddSoundFile` does.
+                return Err("sound links are downloaded by the app shell".into());
+            }
             LibraryRequest::DeckThumbnail { .. } => {
                 // It needs the GPU, so the shell draws it.
                 return Err("deck thumbnails are drawn by the app shell".into());
@@ -418,11 +704,47 @@ impl App {
                 // the `App` lock; this is the same work, for callers without one.
                 Response::Thumbnail(decks::media_thumbnail(lib, &blob, &name, width)?)
             }
+            LibraryRequest::DeckSlidePicture { .. } => {
+                return Err("deck pictures are drawn by the app shell".into());
+            }
             LibraryRequest::ListMedia => Response::MediaFiles(decks::list_media(lib)?),
         })
     }
 
+    /// Refuses a change to a training service (#190). Quick add and taking
+    /// out what it added are allowed while the service is open for live, as
+    /// practice for scripture nobody planned; Reset training undoes them.
+    fn check_training(&self, request: &ServiceRequest) -> Result<()> {
+        let (service, practice) = match request {
+            ServiceRequest::InsertItem { service, .. }
+            | ServiceRequest::RemoveItem { service, .. } => (*service, true),
+            ServiceRequest::Duplicate { service, .. }
+            | ServiceRequest::Reschedule { service, .. }
+            | ServiceRequest::Rename { service, .. }
+            | ServiceRequest::SetTheme { service, .. }
+            | ServiceRequest::Delete(service)
+            | ServiceRequest::SetSound { service, .. }
+            | ServiceRequest::SetMediaLooped { service, .. }
+            | ServiceRequest::MoveItem { service, .. }
+            | ServiceRequest::SetObsScene { service, .. }
+            | ServiceRequest::SetItemArrangement { service, .. }
+            | ServiceRequest::SetItemText { service, .. }
+            | ServiceRequest::SetLoop { service, .. } => (*service, false),
+            _ => return Ok(()),
+        };
+        if !self.library.is_training(service) {
+            return Ok(());
+        }
+        let open = self.presenting && self.loaded.as_ref().map(|l| l.view.service) == Some(service);
+        if practice && open {
+            Ok(())
+        } else {
+            Err(TRAINING_READ_ONLY.into())
+        }
+    }
+
     fn service_request(&mut self, request: ServiceRequest) -> Result<Response> {
+        self.check_training(&request)?;
         let lib = &self.library;
         let get = |id: ServiceId| -> Result<Service> {
             lib.service(id)
@@ -431,26 +753,26 @@ impl App {
         };
         Ok(match request {
             ServiceRequest::List => {
-                let mut services: Vec<ServiceSummary> = lib
-                    .services()
-                    .map_err(err)?
-                    .into_iter()
-                    .map(|s| ServiceSummary {
-                        id: s.id,
-                        title: s.title,
-                        starts_at: s.starts_at,
-                        time_zone: s.time_zone,
-                        items: s
-                            .items
-                            .values()
-                            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
-                            .count() as u32,
-                    })
-                    .collect();
-                sort_services(&mut services, now());
+                let mut services = summaries(lib.services().map_err(err)?);
+                services.extend(training_summaries(lib));
                 Response::Services(services)
             }
-            ServiceRequest::Get(id) => Response::Service(get(id)?),
+            ServiceRequest::ListChecked => {
+                let scan = lib.services_checked().map_err(err)?;
+                let mut services = summaries(scan.services);
+                services.extend(training_summaries(lib));
+                Response::ServiceList(lampstand_api::ServiceList {
+                    services,
+                    newer: scan.newer as u32,
+                    damaged: scan.damaged,
+                })
+            }
+            ServiceRequest::Get(id) => {
+                let service = get(id)?;
+                self.fetch_training_videos(id);
+                Response::Service(service)
+            }
+            ServiceRequest::TrainingVideos => Response::TrainingVideos(self.training_videos.view()),
             ServiceRequest::Create {
                 title,
                 starts_at,
@@ -461,6 +783,37 @@ impl App {
                 service.time_zone = time_zone;
                 lib.put_service(&service).map_err(err)?;
                 Response::Service(service)
+            }
+            ServiceRequest::Duplicate {
+                service,
+                title,
+                starts_at,
+                time_zone,
+            } => {
+                let title = title.trim();
+                if title.is_empty() {
+                    return Err("a service needs a name".into());
+                }
+                let mut copy = get(service)?.duplicate(title);
+                copy.starts_at = starts_at;
+                copy.time_zone = time_zone;
+                lib.put_service(&copy).map_err(err)?;
+                Response::Service(copy)
+            }
+            ServiceRequest::CreateSample {
+                title,
+                starts_at,
+                time_zone,
+            } => {
+                let mut sample = seed::sample_service(lib)?;
+                let title = title.trim();
+                if !title.is_empty() {
+                    sample.title = title.to_string();
+                }
+                sample.starts_at = starts_at;
+                sample.time_zone = time_zone;
+                lib.put_service(&sample).map_err(err)?;
+                Response::Service(sample)
             }
             ServiceRequest::Reschedule {
                 service,
@@ -488,8 +841,23 @@ impl App {
             }
             ServiceRequest::Delete(service) => {
                 get(service)?;
-                self.close_service(service);
+                // A service open for live is never deleted from under the
+                // operator: it is closed first, on purpose.
+                if self.loaded.as_ref().map(|l| l.view.service) == Some(service) {
+                    return Err(
+                        "This service is open for live. Close it before deleting it.".into(),
+                    );
+                }
                 self.library.delete_service(service).map_err(err)?;
+                Response::Ok
+            }
+            ServiceRequest::ResetTraining => {
+                lib.reset_training();
+                // And a new look for new training videos.
+                self.training_videos.ensure(true);
+                if let Some(open) = self.loaded.as_ref().map(|l| l.view.service) {
+                    self.reload_if_open(open)?;
+                }
                 Response::Ok
             }
             ServiceRequest::Close(service) => {
@@ -527,6 +895,14 @@ impl App {
                 }
                 lib.put_service(&s).map_err(err)?;
                 self.reload_if_open(service)?;
+                Response::Service(s)
+            }
+            ServiceRequest::SetTheme { service, theme } => {
+                let mut s = get(service)?;
+                s.theme = theme;
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                self.present();
                 Response::Service(s)
             }
             ServiceRequest::SetObsScene {
@@ -569,6 +945,32 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::SetItemText {
+                service,
+                item,
+                title,
+                body,
+                attribution,
+            } => {
+                let mut s = get(service)?;
+                match s.items.get_mut(&item).map(|i| &mut i.kind) {
+                    Some(ItemKind::Text {
+                        title: t,
+                        body: b,
+                        attribution: a,
+                    }) => {
+                        *t = title;
+                        *b = body;
+                        *a = attribution
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty());
+                    }
+                    _ => return Err("that item is not a text slide".into()),
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                Response::Service(s)
+            }
             ServiceRequest::SetLoop {
                 service,
                 item,
@@ -581,10 +983,12 @@ impl App {
                 self.reload_if_open(service)?;
                 Response::Service(s)
             }
+            ServiceRequest::Open(_) if !self.presenting => return Err(PLANNING_ONLY.into()),
             ServiceRequest::Open(id) => {
                 if self.loaded.as_ref().map(|l| l.view.service) != Some(id) {
                     self.loop_overrides.clear();
                 }
+                self.fetch_training_videos(id);
                 Response::Loaded(self.load_service(id)?)
             }
             ServiceRequest::SetMediaLooped {
@@ -600,6 +1004,45 @@ impl App {
                 lib.put_service(&s).map_err(err)?;
                 self.reload_if_open(service)?;
                 Response::Service(s)
+            }
+            ServiceRequest::SetSound {
+                service,
+                item,
+                slot,
+                sound,
+            } => {
+                let mut s = get(service)?;
+                let entry = s.items.get_mut(&item).ok_or("no such item")?;
+                let sound = sound.map(|mut sound| {
+                    sound.name = sound.name.trim().to_string();
+                    sound
+                });
+                if sound.as_ref().is_some_and(|sound| sound.name.is_empty()) {
+                    return Err("Give the sound a name.".into());
+                }
+                match (slot, sound) {
+                    (SoundSlot::Item, Some(sound)) => match &mut entry.kind {
+                        ItemKind::Sound { sound: slot } => *slot = sound,
+                        _ => return Err("That item is not a music-only item.".into()),
+                    },
+                    (SoundSlot::Item, None) => {
+                        return Err("A music-only item needs its sound.".into())
+                    }
+                    (SoundSlot::Backing, sound) => {
+                        if !matches!(entry.kind, ItemKind::Song { .. }) {
+                            return Err("Only a song can have a backing track.".into());
+                        }
+                        entry.backing = sound;
+                    }
+                }
+                lib.put_service(&s).map_err(err)?;
+                self.reload_if_open(service)?;
+                // A new file may need fetching from the other devices.
+                self.sound_sync.service_changed(service.uuid());
+                Response::Service(s)
+            }
+            ServiceRequest::SoundStatus(service) => {
+                Response::SoundStatus(self.sound_status(service)?)
             }
             ServiceRequest::SetLiveLoop { header, seconds } => {
                 let Some(service) = self.loaded.as_ref().map(|l| l.view.service) else {
@@ -638,12 +1081,14 @@ impl App {
                 self.outputs.put(config).map_err(err)?;
                 self.sent.remove(&id);
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Remove(id) => {
                 self.outputs.remove(id).map_err(err)?;
                 self.keys.remove(id).map_err(err)?;
                 self.place_windows();
+                self.tell_screens();
                 Response::Outputs(self.outputs.all().to_vec())
             }
             OutputRequest::Calibrate { output, active } => {
@@ -665,16 +1110,7 @@ impl App {
                 Response::Ok
             }
             OutputRequest::BrowserSourceUrl(output) => {
-                self.browser_source(output)?;
-                let key = match self.keys.get(output) {
-                    Some(key) => key.to_string(),
-                    None => {
-                        let key = fresh_key();
-                        self.keys.put(output, &key).map_err(err)?;
-                        key
-                    }
-                };
-                Response::Text(self.browser_source_url(output, &key)?)
+                Response::Text(self.browser_source_address(output)?)
             }
             OutputRequest::BrowserSourceStatus => Response::BrowserSources(
                 self.outputs
@@ -694,6 +1130,31 @@ impl App {
                 Response::Text(self.browser_source_url(output, &key)?)
             }
         })
+    }
+
+    /// A browser-source output's URL, making its key if it has none.
+    fn browser_source_address(&mut self, output: OutputId) -> Result<String> {
+        self.browser_source(output)?;
+        let key = match self.keys.get(output) {
+            Some(key) => key.to_string(),
+            None => {
+                let key = fresh_key();
+                self.keys.put(output, &key).map_err(err)?;
+                key
+            }
+        };
+        self.browser_source_url(output, &key)
+    }
+
+    /// What "Set up OBS" puts in OBS for `output`: its URL as the local
+    /// server has it now (so it follows the address the shell watches) and
+    /// its size. The caller may then swap in a pinned address.
+    pub fn obs_picture(&mut self, output: OutputId) -> Result<(String, u32, u32)> {
+        let url = self.browser_source_address(output)?;
+        match self.outputs.get(output).map(|o| &o.target) {
+            Some(OutputTarget::BrowserSource { width, height }) => Ok((url, *width, *height)),
+            _ => Err("that output is not an OBS browser source".into()),
+        }
     }
 
     /// Checks that `output` is a browser-source output.
@@ -744,8 +1205,8 @@ impl App {
             .service(service)
             .map_err(err)?
             .ok_or("no such service")?;
-        let theme = self.theme(service.theme);
         let primary = self.primary_output();
+        let theme = self.pagination_theme(service.theme, &primary);
         let mut out = Vec::new();
         for (id, item) in service.ordered() {
             if matches!(item.kind, ItemKind::Header { .. }) {
@@ -759,7 +1220,14 @@ impl App {
                 video_ms: None,
                 self_loop: false,
                 open_ended: false,
+                sound_ms: None,
+                sound: false,
             };
+            if let ItemKind::Sound { sound } = &item.kind {
+                // Reported, but not part of a loop's length: nothing plays it.
+                e.sound = true;
+                e.sound_ms = sound.length_ms;
+            }
             for slide in &loaded.slides {
                 match &slide.content {
                     Content::Video { blob, looped } => {
@@ -790,6 +1258,7 @@ impl App {
         let events = self.live.apply(Command::EndService);
         self.live.load(Vec::new());
         self.after_live(events);
+        (self.emit)(Event::Unloaded);
     }
 
     fn reload_if_open(&mut self, service: ServiceId) -> Result<()> {
@@ -807,8 +1276,10 @@ impl App {
             .service(id)
             .map_err(err)?
             .ok_or("no such service")?;
-        let theme = self.theme(service.theme);
+        let training = self.library.is_training(id);
+        self.shows_downloading = false;
         let primary = self.primary_output();
+        let theme = self.pagination_theme(service.theme, &primary);
         let mut items = Vec::new();
         let mut views = Vec::new();
         let mut builds = HashMap::new();
@@ -844,12 +1315,31 @@ impl App {
                 obs_scenes.insert(item_id, scene.clone());
             }
             let mut loaded = self.load_item(item_id, &item.kind, &theme, &primary)?;
+            // A training video not downloaded yet says so instead, and the
+            // rest of the service runs. It is loaded again when it arrives.
+            if let (true, ItemKind::Media { blob, .. }) = (training, &item.kind) {
+                if self.library.repo().blobs().path(blob).is_none() {
+                    let message = self.training_videos.missing_message(blob);
+                    self.shows_downloading |= message == training_videos::DOWNLOADING;
+                    loaded.slides = text_slides(message, None)
+                        .into_iter()
+                        .map(|slide| LoadedSlide {
+                            content: Content::Text { slide },
+                            steps: 0,
+                            dwell_ms: None,
+                        })
+                        .collect();
+                }
+            }
             if !matches!(item.kind, ItemKind::Header { .. }) {
                 if let Some(open) = sections.last_mut() {
                     open.items.push(item_id);
                 }
                 loaded.loop_group = section;
                 if section.is_some() {
+                    // A looping section passes over its music, as before:
+                    // it is not part of the loop.
+                    loaded.sound_only = false;
                     // A video plays through once, then the loop moves on.
                     for slide in &mut loaded.slides {
                         if let Content::Video {
@@ -888,6 +1378,7 @@ impl App {
                 id: item_id,
                 title: loaded.title.clone(),
                 slides: loaded.slides.iter().map(slide_view).collect(),
+                sounds: item_sounds(item),
             });
             items.push(LoadedItem {
                 theme: service.theme,
@@ -933,6 +1424,7 @@ impl App {
             song: None,
             auto_advance_ms: None,
             loop_group: None,
+            sound_only: false,
         };
         let text = |content: Content| LoadedSlide {
             content,
@@ -941,6 +1433,13 @@ impl App {
         };
         Ok(match kind {
             ItemKind::Header { title } => item(title.clone(), Vec::new()),
+            // Sound has no picture: the screens stay as they are. `Next`
+            // stops on it so it can start (#181); playing it is the Audio
+            // role's job.
+            ItemKind::Sound { sound } => LoadedItem {
+                sound_only: true,
+                ..item(sound.name.clone(), Vec::new())
+            },
             ItemKind::Song { song, arrangement } => match self.library.song(*song).map_err(err)? {
                 Some(s) => {
                     let slides = paginate_song(&s, arrangement.as_deref(), theme)
@@ -1036,6 +1535,21 @@ impl App {
                 };
                 item(label.clone(), vec![text(content)])
             }
+            ItemKind::Text {
+                title,
+                body,
+                attribution,
+            } => {
+                let slides = text_slides(body, attribution.as_deref())
+                    .into_iter()
+                    .map(|slide| text(Content::Text { slide }))
+                    .collect();
+                let title = title.trim();
+                item(
+                    if title.is_empty() { "Text" } else { title }.to_string(),
+                    slides,
+                )
+            }
             ItemKind::Announcements {
                 slides,
                 seconds_each,
@@ -1084,6 +1598,9 @@ impl App {
                 lampstand_live::Event::ItemLive { item } => {
                     cursors_changed = true;
                     self.cue_obs(*item);
+                    if !self.quiet_cues {
+                        self.cue_sound(*item);
+                    }
                 }
                 // Comes with `ProgramChanged`: `present_with` sends it as
                 // `Animate` to the outputs showing the step before.
@@ -1111,13 +1628,17 @@ impl App {
                 self.live.preview(),
                 self.live.is_idle(),
                 self.live.program().overlay,
+                self.live.shown(),
+                cleared(&self.live),
             );
             if !ticked || self.told_ui != Some(state) {
                 (self.emit)(Event::Live {
                     live: state.0,
+                    shown: state.4,
                     preview: state.1,
                     idle: state.2,
                     overlay: state.3,
+                    cleared: state.5,
                 });
             }
             self.told_ui = Some(state);
@@ -1154,6 +1675,8 @@ impl App {
     fn present_with(&mut self, now: Timestamp, build: Option<(usize, Vec<Animation>)>) {
         let program = self.stepped(self.live.program().clone());
         let service_theme = self.loaded_theme();
+        let idle = self.live.is_idle();
+        let logo = self.logo();
         let ids: Vec<(OutputId, (u32, u32))> = self
             .sizes
             .iter()
@@ -1164,9 +1687,26 @@ impl App {
             let Some(config) = self.outputs.get(id).cloned() else {
                 continue;
             };
-            let theme = self.theme(config.theme.or(program.theme).or(service_theme));
+            let theme = self.resolve_theme(config.theme.or(program.theme).or(service_theme));
+            // Nothing on air, or the Idle overlay: an audience screen shows
+            // its idle screen. Black is an overlay, so `is_idle` is false
+            // under it and it covers the idle screen. Stage and stream
+            // never show it.
+            let mut shown_program = program.clone();
+            shown_program.logo = logo.clone();
+            // Only audience and stream outputs carry the logo bug.
+            if config.role == OutputRole::Stage {
+                if let Some(l) = shown_program.logo.as_mut() {
+                    l.bug = None;
+                }
+            }
+            if (idle || program.overlay == Overlay::Idle)
+                && matches!(config.role, OutputRole::Audience { .. })
+            {
+                shown_program.idle = self.idle_content(&config);
+            }
             let sent = Sent {
-                program: program.clone(),
+                program: shown_program,
                 size,
                 theme,
                 config,
@@ -1289,6 +1829,75 @@ impl App {
         self.loaded.as_ref()?.slides.get(deck)?.slide(*index)
     }
 
+    /// The logo bug from the church's brand, if it has set one.
+    fn logo(&mut self) -> Option<Logo> {
+        let brand = self.church().brand?;
+        let bug = match brand.logo {
+            Some(image) if brand.bug.enabled => self.logo_aspect(&image).map(|aspect| Bug {
+                image,
+                aspect,
+                corner: brand.bug.corner,
+                size: brand.bug.size,
+                opacity: brand.bug.alpha(),
+            }),
+            _ => None,
+        };
+        Some(Logo { bug })
+    }
+
+    /// The logo's width over its height, read once. `None` when the
+    /// picture is not on this device or cannot be read, so no bug is drawn
+    /// rather than a misshapen one.
+    fn logo_aspect(&mut self, blob: &BlobHash) -> Option<f32> {
+        if let Some(known) = self.logo_aspects.get(blob) {
+            return *known;
+        }
+        let path = self.library.repo().blobs().path(blob);
+        let aspect = path.and_then(|p| {
+            let (w, h) = image::ImageReader::open(p)
+                .ok()?
+                .with_guessed_format()
+                .ok()?
+                .into_dimensions()
+                .ok()?;
+            (w > 0 && h > 0).then(|| w as f32 / h as f32)
+        });
+        if aspect.is_some() {
+            self.logo_aspects.insert(*blob, aspect);
+        }
+        aspect
+    }
+
+    /// What `config` shows while nothing is on air: its own idle screen,
+    /// else the device default, else the default idle screen (the church's
+    /// logo and name, or Lampstand's lamp). A file or deck that has not
+    /// reached this device yet, or that is gone, shows the plain theme
+    /// background rather than a hole.
+    fn idle_content(&mut self, config: &OutputConfig) -> Option<Idle> {
+        let church = self.church();
+        let present = |lib: &Library, blob: &BlobHash| lib.repo().blobs().path(blob).is_some();
+        match idle_plan(config, church.idle.as_ref()) {
+            IdlePlan::Plain => None,
+            IdlePlan::Mark => {
+                let brand = crate::theme_preview::brand_for_idle(&self.library, church.brand);
+                Some(Idle::mark(brand.as_ref()))
+            }
+            IdlePlan::Chosen(IdleScreen::Blank | IdleScreen::Default) => None,
+            IdlePlan::Chosen(IdleScreen::Image { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Image { blob: *blob })
+            }
+            IdlePlan::Chosen(IdleScreen::Video { blob, .. }) => {
+                present(&self.library, blob).then_some(Idle::Video { blob: *blob })
+            }
+            IdlePlan::Chosen(IdleScreen::DeckSlide { deck, slide }) => {
+                let deck = self.library.deck(*deck).ok().flatten()?;
+                let parsed = self.parsed_deck(&deck).ok()?;
+                let scene = parsed.slides.get(*slide)?.scenes.last()?.clone();
+                Some(Idle::Deck { scene })
+            }
+        }
+    }
+
     fn loaded_theme(&self) -> Option<ThemeId> {
         let id = self.loaded.as_ref()?.view.service;
         self.library.service(id).ok().flatten()?.theme
@@ -1297,11 +1906,184 @@ impl App {
     /// The theme with this ID, else the starter theme, else any theme. If
     /// a synced delete removed them all, the built-in starter theme, so a
     /// delete on another device never takes the output down.
-    fn theme(&self, id: Option<ThemeId>) -> Theme {
-        id.and_then(|id| self.library.theme(id).ok().flatten())
-            .or_else(|| self.library.theme(starter_theme_id()).ok().flatten())
-            .or_else(|| self.library.themes().ok()?.into_iter().next())
-            .unwrap_or_else(starter_theme)
+    fn resolve_theme(&self, id: Option<ThemeId>) -> Theme {
+        self.library
+            .resolve_theme(&[id, self.church().default_theme])
+    }
+
+    /// The theme songs and scripture are split with: the one the main
+    /// screen draws them in, else the service's, else the default, so what
+    /// is paginated is what is shown.
+    fn pagination_theme(&self, service: Option<ThemeId>, primary: &OutputConfig) -> Theme {
+        self.library
+            .resolve_theme(&[primary.theme, service, self.church().default_theme])
+    }
+
+    fn put_settings(&mut self, settings: lampstand_api::DeviceSettings) -> Result<Response> {
+        self.put_device_settings(settings)?;
+        // The default theme, the idle screen and the logo change what the
+        // outputs show.
+        self.sent.clear();
+        self.present();
+        Ok(Response::Settings(self.device_settings()))
+    }
+
+    /// Takes a deleted theme out of the settings that name it, on every
+    /// device (the church settings sync).
+    fn settings_forget_theme(&mut self, id: ThemeId) -> Result<()> {
+        self.church_forget_theme(id)?;
+        self.present();
+        Ok(())
+    }
+
+    /// `ExportBrand`: the brand, its themes and its idle screen in one file.
+    fn export_brand(&self, path: &str) -> Result<String> {
+        use lampstand_library::brand_package::{export, BrandSource};
+        let church = self.church();
+        let source = BrandSource {
+            brand: church.brand.clone(),
+            idle: church.idle.clone(),
+            brand_theme: church.brand_theme,
+        };
+        let file = std::fs::File::create(path).map_err(err)?;
+        let report = export(&self.library, &source, std::io::BufWriter::new(file)).map_err(err)?;
+        let mut message = format!(
+            "Saved the brand: {} theme{} and {} picture or video file{}.",
+            report.themes,
+            if report.themes == 1 { "" } else { "s" },
+            report.files,
+            if report.files == 1 { "" } else { "s" },
+        );
+        if church.brand.is_none() {
+            message
+                .push_str(" No church name or logo has been set up yet, so only themes went in.");
+        }
+        for skipped in report.skipped {
+            message.push(' ');
+            message.push_str(&skipped);
+        }
+        Ok(message)
+    }
+
+    /// `InspectBrand`: what a file holds, and which of its fonts are missing here.
+    fn inspect_brand(&self, path: &str) -> Result<lampstand_api::BrandContents> {
+        use lampstand_core::FontLookup;
+        let file = std::fs::File::open(path).map_err(err)?;
+        let file = lampstand_library::brand_package::inspect(std::io::BufReader::new(file))
+            .map_err(err)?;
+        let installed = |family: &str| {
+            family.trim().is_empty()
+                || self.fonts.lookup(family) == lampstand_core::FontMatch::Exact
+        };
+        let mut missing: Vec<String> = Vec::new();
+        for family in file
+            .brand
+            .iter()
+            .map(|b| b.font_family.clone())
+            .chain(file.themes.iter().map(|t| t.text.font_family.clone()))
+        {
+            if !installed(&family) && !missing.contains(&family) {
+                missing.push(family);
+            }
+        }
+        let font = file
+            .brand
+            .as_ref()
+            .map(|b| b.font_family.clone())
+            .filter(|f| !f.trim().is_empty());
+        Ok(lampstand_api::BrandContents {
+            name: file.brand.as_ref().map(|b| b.name.clone()),
+            has_logo: file.brand.as_ref().is_some_and(|b| b.logo.is_some()),
+            font_installed: font.as_deref().is_none_or(installed),
+            font_family: font,
+            missing_fonts: missing,
+            themes: file.themes.iter().map(|t| t.name.clone()).collect(),
+            idle: match &file.idle {
+                Some(IdleScreen::Image { name, .. }) => Some(format!("Picture: {name}")),
+                Some(IdleScreen::Video { name, .. }) => Some(format!("Looping video: {name}")),
+                Some(IdleScreen::Blank) => Some("Plain background".into()),
+                _ => None,
+            },
+            has_brand: file.brand.is_some(),
+        })
+    }
+
+    /// `ImportBrand`: puts the files and themes in the library and the
+    /// brand, default theme and idle screen in the settings.
+    fn import_brand(&mut self, path: &str, mode: lampstand_api::BrandImportMode) -> Result<String> {
+        use lampstand_api::BrandImportMode;
+        use lampstand_library::brand_package::{import, ImportMode};
+        let file = std::fs::File::open(path).map_err(err)?;
+        let got = import(
+            &self.library,
+            std::io::BufReader::new(file),
+            match mode {
+                BrandImportMode::AddAlongside => ImportMode::AddAlongside,
+                BrandImportMode::Replace => ImportMode::Replace,
+            },
+        )
+        .map_err(err)?;
+        let replace = mode == BrandImportMode::Replace;
+        self.save_church(|church| {
+            if got.brand.is_some() && (replace || church.brand.is_none()) {
+                church.brand = got.brand.clone();
+                if let Some(id) = got.brand_theme {
+                    church.brand_theme = Some(id);
+                    church.default_theme = Some(id);
+                }
+            }
+            if got.idle.is_some() && (replace || church.idle.is_none()) {
+                church.idle = got.idle.clone();
+            }
+        })?;
+        self.sent.clear();
+        self.present();
+        Ok(format!(
+            "Imported the brand: {} theme{} added, {} replaced.",
+            got.themes_added,
+            if got.themes_added == 1 { "" } else { "s" },
+            got.themes_replaced
+        ))
+    }
+
+    /// The quick start: keeps the brand, makes (or updates) its theme and
+    /// makes that the default theme.
+    fn save_brand(&mut self, brand: lampstand_core::brand::Brand) -> Result<Response> {
+        let existing = self
+            .church()
+            .brand_theme
+            .filter(|id| self.library.theme(*id).ok().flatten().is_some());
+        let id = existing.unwrap_or_else(ThemeId::generate);
+        self.library
+            .put_theme(&lampstand_library::theme_from_brand(&brand, id))
+            .map_err(err)?;
+        self.save_church(|church| {
+            church.brand = Some(brand);
+            church.brand_theme = Some(id);
+            church.default_theme = Some(id);
+        })?;
+        self.sent.clear();
+        self.present();
+        Ok(Response::Settings(self.device_settings()))
+    }
+
+    /// Turns the logo bug on or off, or moves or resizes it, without
+    /// touching the rest of the brand or its theme. A church that has no
+    /// brand yet has nothing to put it on.
+    fn set_logo_bug(&mut self, bug: lampstand_core::brand::LogoBug) -> Result<Response> {
+        if self.church().brand.is_none() {
+            return Err(err("Add your church's logo in Setup first."));
+        }
+        self.save_church(|church| {
+            if let Some(brand) = church.brand.as_mut() {
+                brand.bug = lampstand_core::brand::LogoBug {
+                    opacity: bug.opacity.clamp(10, 100),
+                    ..bug
+                };
+            }
+        })?;
+        self.present();
+        Ok(Response::Settings(self.device_settings()))
     }
 
     /// The audience output scripture is split against: the primary one,
@@ -1326,6 +2108,7 @@ impl App {
                 safe_area: SafeArea::default(),
                 background: lampstand_core::output::BackgroundMode::Bleed,
                 theme: None,
+                idle: None,
                 enabled: true,
             })
     }
@@ -1336,11 +2119,12 @@ impl App {
     /// closes the rest, then shows the program on the new ones.
     fn place_windows(&mut self) {
         let displays = self.windows.displays();
+        self.seen_displays = displays.clone();
         let wanted: Vec<(OutputId, lampstand_core::output::DisplayMatch)> = self
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match &o.target {
                 OutputTarget::Display(m) => Some((o.id, m.clone())),
                 _ => None,
@@ -1348,7 +2132,12 @@ impl App {
             .collect();
         let assigned = assign_displays(&wanted, &displays);
         let mut placements = HashMap::new();
-        for o in self.outputs.all().iter().filter(|o| o.enabled) {
+        for o in self
+            .outputs
+            .all()
+            .iter()
+            .filter(|o| o.enabled && self.presenting)
+        {
             let placement = match &o.target {
                 OutputTarget::Window { width, height } => Placement::Window {
                     width: *width,
@@ -1394,6 +2183,7 @@ impl App {
             }
         }
         self.place_streams();
+        self.sync_awake();
         self.present();
         self.write_journal(now());
     }
@@ -1406,7 +2196,7 @@ impl App {
             .outputs
             .all()
             .iter()
-            .filter(|o| o.enabled)
+            .filter(|o| o.enabled && self.presenting)
             .filter_map(|o| match o.target {
                 OutputTarget::BrowserSource { width, height } => {
                     Some((o.id, (width.max(1), height.max(1))))
@@ -1458,9 +2248,11 @@ impl App {
         self.placed.remove(&id);
         self.sizes.remove(&id);
         self.sent.remove(&id);
+        self.sync_awake();
         if let Some(mut config) = self.outputs.get(id).cloned() {
             config.enabled = false;
             if self.outputs.put(config).is_ok() {
+                self.tell_screens();
                 (self.emit)(Event::Changed {
                     kind: "outputs".into(),
                     id: id.uuid().to_string(),
@@ -1468,6 +2260,14 @@ impl App {
             }
         }
         self.write_journal(now());
+    }
+
+    /// The shell's look at the displays: place the outputs again only if
+    /// they differ from those the windows were last placed against.
+    pub fn displays_polled(&mut self, now: Vec<DisplayInfo>) {
+        if now != self.seen_displays {
+            self.displays_changed();
+        }
     }
 
     /// Displays came or went: place display outputs again.
@@ -1497,6 +2297,19 @@ impl App {
         crate::update::blocker(self.live.is_idle(), next_service, now)
     }
 
+    /// Something to ask before installing an update, which does not refuse it:
+    /// some services cannot be read here (a newer Lampstand saved them), so
+    /// when the next one starts is not known. Refusing would trap the person,
+    /// since installing is how they become readable.
+    pub fn update_caution(&self) -> Option<String> {
+        let scan = self.library.services_checked().ok()?;
+        (scan.newer > 0).then(|| {
+            "Some services were saved by a newer Lampstand, so this one cannot tell when the next \
+             service starts. Make sure none is about to begin."
+                .to_string()
+        })
+    }
+
     /// Drives announcement loops and countdowns. Call every 100 ms or so;
     /// the engine reports events only when something on air changed.
     pub fn tick(&mut self) {
@@ -1511,6 +2324,68 @@ impl App {
         }
         // The heartbeat while live, and an fsync a burst of clicks put off.
         self.write_journal(now);
+        self.church_tick();
+        self.sound_tick(now);
+        self.audio_tick();
+        self.training_videos_tick();
+    }
+
+    /// Where the training videos come from: `None` never downloads them.
+    /// The website, unless a test says otherwise.
+    pub fn set_training_source(&mut self, source: Option<String>) {
+        self.training_videos.set_source(source);
+    }
+
+    /// Waits for a training video download to finish and applies it, as
+    /// the next tick would (tests).
+    pub fn wait_for_training_videos(&mut self) {
+        self.training_videos.wait();
+        self.training_videos_tick();
+    }
+
+    /// Opening a training service with videos (in Plan or Present) is when
+    /// they download, if they are missing or a day has passed. Never for
+    /// any other service.
+    fn fetch_training_videos(&self, service: ServiceId) {
+        let videos = self
+            .library
+            .is_training(service)
+            .then(|| self.library.service(service).ok().flatten())
+            .flatten()
+            .is_some_and(|s| training::has_video(&s));
+        if videos {
+            self.training_videos.ensure(false);
+        }
+    }
+
+    /// Points the training services at the videos that arrived or changed,
+    /// and loads an open one again, so its video items play.
+    /// Only when something changed: a download that changed nothing
+    /// reloads nothing (the download itself tells Present how it went), so
+    /// a missing video never sets off another look.
+    fn training_videos_tick(&mut self) {
+        let Some(changes) = self.training_videos.take_changes() else {
+            return;
+        };
+        let changed = changes.any();
+        for (from, to) in changes.moved {
+            self.library.replace_training_media(from, to);
+        }
+        // An item saying "downloading" should now say how it went.
+        if changed || self.shows_downloading {
+            let open = self.loaded.as_ref().map(|l| l.view.service);
+            if let Some(open) = open.filter(|id| self.library.is_training(*id)) {
+                if let Err(e) = self.reload_if_open(open) {
+                    eprintln!("lampstand: the training service was not loaded again: {e}");
+                }
+            }
+        }
+        if changed {
+            (self.emit)(Event::Changed {
+                kind: "service".into(),
+                id: String::new(),
+            });
+        }
     }
 
     // ---- Crash recovery (T57) ----------------------------------------
@@ -1523,6 +2398,7 @@ impl App {
         LiveRecord {
             service: self.loaded.as_ref().map(|l| l.view.service),
             live: self.live.live(),
+            shown: self.live.shown(),
             preview: self.live.preview(),
             overlay: program.overlay,
             text: program.content.is_some(),
@@ -1543,7 +2419,12 @@ impl App {
     fn restore(&mut self) {
         let record = self.journal.recover(now());
         let loaded = match record.as_ref().and_then(|r| r.service) {
-            Some(service) => self.load_service(service).map(|_| ()),
+            Some(service) => {
+                // A training service back in Present: its videos download
+                // on their own thread, so the start is not held up.
+                self.fetch_training_videos(service);
+                self.load_service(service).map(|_| ())
+            }
             None => Ok(()),
         };
         self.restoring = false;
@@ -1555,10 +2436,22 @@ impl App {
             return;
         }
         let mut commands = Vec::new();
-        commands.extend(record.live.map(Command::Show));
+        // While music was live the screens showed the slide before it: that
+        // goes live first, then the music, so the screens come back as they
+        // were. A journal from before `shown` was kept has only the music:
+        // the slide Previous reaches from it stands in.
+        match (record.live, record.shown) {
+            (Some(live), Some(shown)) if shown != live => {
+                commands.extend([Command::Show(shown), Command::Show(live)]);
+            }
+            (Some(live), None) if self.sound_of(live.item, false).is_ok() => {
+                commands.extend([Command::Show(live), Command::Previous, Command::Show(live)]);
+            }
+            (live, _) => commands.extend(live.map(Command::Show)),
+        }
         match record.overlay {
             Overlay::Black => commands.push(Command::ToggleBlack),
-            Overlay::Logo => commands.push(Command::ToggleLogo),
+            Overlay::Idle => commands.push(Command::ToggleIdle),
             Overlay::None => {}
         }
         if !record.text {
@@ -1572,7 +2465,11 @@ impl App {
             .into_iter()
             .flat_map(|c| self.live.apply(c))
             .collect();
+        // Coming back from a crash never starts sound unasked: the Sound box
+        // has it ready to play.
+        self.quiet_cues = true;
         self.after_live(events);
+        self.quiet_cues = false;
         let missing = record
             .outputs
             .iter()
@@ -1602,9 +2499,11 @@ impl App {
         }
         (self.emit)(Event::Live {
             live: self.live.live(),
+            shown: self.live.shown(),
             preview: self.live.preview(),
             idle: self.live.is_idle(),
             overlay: self.live.program().overlay,
+            cleared: cleared(&self.live),
         });
     }
 
@@ -1634,6 +2533,30 @@ impl App {
                     id: change.id.to_string(),
                 });
             }
+        }
+        if changes
+            .iter()
+            .any(|c| c.kind == lampstand_sync::DocKind::Theme)
+        {
+            self.present();
+        }
+        // A service changed: it may name sound files this device lacks. Only
+        // that service is read.
+        for change in changes
+            .iter()
+            .filter(|c| c.kind == lampstand_sync::DocKind::Service)
+        {
+            self.sound_sync.service_changed(change.id);
+        }
+        if changes
+            .iter()
+            .any(|c| c.kind == lampstand_sync::DocKind::ChurchSettings)
+        {
+            // The church look or idle screen changed on another device (or
+            // this one): redraw, and look for files it points at.
+            self.sent.clear();
+            self.present();
+            self.church_sync_look_now();
         }
         let Some(loaded) = &self.loaded else {
             return;
@@ -1725,15 +2648,36 @@ fn deck_change(before: Option<&Content>, after: Option<&Content>) -> DeckChange 
     }
 }
 
+/// The sound an item has, for screens that do not read the service.
+fn item_sounds(item: &ServiceItem) -> Vec<ItemSoundView> {
+    let view = |sound: &Sound, backing| ItemSoundView {
+        name: sound.name.clone(),
+        backing,
+        length_ms: sound.length_ms,
+        start: sound.start,
+    };
+    let own = match &item.kind {
+        ItemKind::Sound { sound } => Some(view(sound, false)),
+        _ => None,
+    };
+    own.into_iter()
+        .chain(item.backing.as_ref().map(|b| view(b, true)))
+        .collect()
+}
+
 fn slide_view(slide: &LoadedSlide) -> SlideView {
-    let (label, lines) = match &slide.content {
-        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => {
-            (slide.label.clone(), slide.lines.clone())
+    let (label, lines, footer) = match &slide.content {
+        Content::Lyrics { slide, .. } | Content::Scripture { slide } | Content::Text { slide } => (
+            slide.label.clone(),
+            slide.lines.clone(),
+            slide.footer.clone(),
+        ),
+        Content::DeckSlide { index, .. } => {
+            (Some(format!("Slide {}", index + 1)), Vec::new(), None)
         }
-        Content::DeckSlide { index, .. } => (Some(format!("Slide {}", index + 1)), Vec::new()),
-        Content::Image { .. } => (Some("Image".into()), Vec::new()),
-        Content::Video { .. } => (Some("Video".into()), Vec::new()),
-        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()]),
+        Content::Image { .. } => (Some("Image".into()), Vec::new(), None),
+        Content::Video { .. } => (Some("Video".into()), Vec::new(), None),
+        Content::Countdown { label, .. } => (Some("Countdown".into()), vec![label.clone()], None),
     };
     let notes = match &slide.content {
         Content::DeckSlide { notes, .. } => notes.clone(),
@@ -1742,6 +2686,7 @@ fn slide_view(slide: &LoadedSlide) -> SlideView {
     SlideView {
         label,
         lines,
+        footer,
         steps: slide.steps,
         notes,
     }
@@ -1782,6 +2727,40 @@ fn local_utc_offset_minutes() -> i32 {
 /// A new browser-source key: what `SceneHub` makes, 32 hex digits.
 fn fresh_key() -> String {
     uuid::Uuid::new_v4().simple().to_string()
+}
+
+/// The services as the list shows them, in order.
+/// The training services, Training Session 0 first, listed after the church's own.
+fn training_summaries(library: &Library) -> Vec<ServiceSummary> {
+    library
+        .training_services()
+        .into_iter()
+        .map(|s| ServiceSummary {
+            training: true,
+            ..summary(s)
+        })
+        .collect()
+}
+
+fn summary(s: Service) -> ServiceSummary {
+    ServiceSummary {
+        id: s.id,
+        title: s.title,
+        starts_at: s.starts_at,
+        time_zone: s.time_zone,
+        items: s
+            .items
+            .values()
+            .filter(|i| !matches!(i.kind, ItemKind::Header { .. }))
+            .count() as u32,
+        training: false,
+    }
+}
+
+fn summaries(services: Vec<Service>) -> Vec<ServiceSummary> {
+    let mut services: Vec<ServiceSummary> = services.into_iter().map(summary).collect();
+    sort_services(&mut services, now());
+    services
 }
 
 fn now() -> Timestamp {

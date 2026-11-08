@@ -3,7 +3,7 @@
      T50 replaces this with outputs setup and the calibration wizard. -->
 <script lang="ts">
   import { request, type DisplayMatch, type OutputConfig } from "../../lib/api";
-  import { isCalibrated, live, refreshOutputs, report } from "../../lib/state.svelte";
+  import { isCalibrated, live, refreshOutputs, refreshSettings, refreshThemes, report } from "../../lib/state.svelte";
   import { isScreen } from "../../lib/obs";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
@@ -14,9 +14,13 @@
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
   import CalibrateView from "./CalibrateView.svelte";
+  import ThemePicker from "../../lib/kit/ThemePicker.svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import { isPlanning } from "../../lib/presenting";
+  import { SCREENS_DARK } from "../../lib/roles";
 
   /** Opens Setup › OBS, where pictures sent to OBS are set up. */
-  let { onobs }: { onobs?: () => void } = $props();
+  let { onobs, onidle }: { onobs?: () => void; onidle?: () => void } = $props();
 
   /** The screens: windows and displays. Pictures sent to OBS are on the OBS page. */
   let screens = $derived(live.outputs.filter(isScreen));
@@ -85,6 +89,7 @@
       safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
       background: "Bleed",
       theme: null,
+      idle: null,
       enabled: false,
     });
   }
@@ -110,6 +115,8 @@
   }
 
   refresh();
+  refreshThemes();
+  refreshSettings();
 </script>
 
 {#if calibratingOutput}
@@ -137,6 +144,15 @@
       </div>
     </div>
 
+    {#if isPlanning(live.team)}
+      <div class="saved">
+        <Banner tone="warn" icon="monitor">
+          <span>{SCREENS_DARK}</span>
+          <PresentAction />
+        </Banner>
+      </div>
+    {/if}
+
     {#if savedOutput}
       <div class="saved">
         <Banner tone="ready">
@@ -144,6 +160,13 @@
           <Button variant="ghost" size="small" icon="x" label="Dismiss" onclick={() => (saved = null)} />
         </Banner>
       </div>
+    {/if}
+
+    {#if onidle}
+      <p class="muted idle-link">
+        What the screens show when nothing is on air is under
+        <button class="link" onclick={onidle}>Setup › Idle screen</button>.
+      </p>
     {/if}
 
     <ul class="plain screens">
@@ -161,6 +184,17 @@
             {:else}
               <p class="calibration warn"><Icon name="alert" size={14} />Not calibrated: text may be cut off at the edges</p>
             {/if}
+          </div>
+          <div class="options">
+            <label class="option">
+              <span class="muted">Theme</span>
+              <ThemePicker
+                label="Theme for {o.name}"
+                value={o.theme}
+                inherit="Same as the service"
+                onchange={(theme) => put({ ...o, theme })}
+              />
+            </label>
           </div>
           <div class="controls">
             <Switch checked={o.enabled} onchange={(on) => put({ ...o, enabled: on })} label={o.enabled ? "On" : "Off"} />
@@ -243,9 +277,37 @@
   }
   .screen {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1.25rem;
     padding: 1.5rem 0;
+  }
+  .options {
+    flex-basis: 100%;
+    order: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    padding-left: 17.25rem;
+  }
+  .option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+  }
+  .idle-link {
+    margin: 1.25rem 0 0;
+    font-size: 0.875rem;
+  }
+  .link {
+    font: inherit;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--text);
+    text-decoration: underline;
+    cursor: pointer;
   }
   .screen + .screen {
     border-top: 1px solid var(--line);

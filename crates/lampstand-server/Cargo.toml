@@ -7,7 +7,9 @@ rust-version.workspace = true
 
 [dependencies]
 axum.workspace = true
+blake3.workspace = true
 futures-util.workspace = true
+getrandom.workspace = true
 image.workspace = true
 lampstand-core.workspace = true
 lampstand-layout.workspace = true

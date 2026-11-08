@@ -1,0 +1,288 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "Lampstand 0.8",
+   "heading": "Who runs what",
+   "sub": "Four jobs, shared across your computers",
+   "durationSec": 8.5,
+   "say": "Lampstand is built so a team can share the work of a Sunday service. Here is who runs what.",
+   "narration": "narration/roles-overview/01.mp3"
+  },
+  {
+   "type": "bullets",
+   "heading": "A role is a job",
+   "items": [
+    "A job someone is doing right now",
+    "Each job has one holder at a time",
+    "One computer can hold any mix of jobs",
+    "A computer with no job can still plan"
+   ],
+   "durationSec": 16,
+   "say": "A role is just a job that someone is doing right now. Each job has one holder at a time. One computer can hold any mix of jobs, and a computer with no job can still help plan the service.",
+   "narration": "narration/roles-overview/02.mp3"
+  },
+  {
+   "type": "roles",
+   "heading": "The four jobs",
+   "durationSec": 7,
+   "say": "There are four jobs: Projection, Operator, Stream, and Audio.",
+   "narration": "narration/roles-overview/03.mp3"
+  },
+  {
+   "type": "roles",
+   "focus": "projection",
+   "durationSec": 12.5,
+   "say": "Projection runs the screens. It is the picture on the projector and the stage screens. It lives on the computer that is plugged into them, and it can run on its own, with nobody sitting there.",
+   "narration": "narration/roles-overview/04.mp3"
+  },
+  {
+   "type": "roles",
+   "focus": "operator",
+   "durationSec": 8,
+   "say": "Operator runs the service. Next, back, and jumping to any item. The Operator needs Projection to be running.",
+   "narration": "narration/roles-overview/05.mp3"
+  },
+  {
+   "type": "roles",
+   "focus": "stream",
+   "durationSec": 10,
+   "say": "Stream runs what goes out online. That means OBS and the live stream. It keeps working even if the projector computer is away.",
+   "narration": "narration/roles-overview/06.mp3"
+  },
+  {
+   "type": "roles",
+   "focus": "audio",
+   "durationSec": 11,
+   "say": "Audio runs the sound that Lampstand plays: videos, music, and backing tracks. It plays from the computer next to the mixer.",
+   "narration": "narration/roles-overview/07.mp3"
+  },
+  {
+   "type": "devices",
+   "heading": "One computer",
+   "machines": [
+    {
+     "name": "Your one laptop",
+     "caption": "Holds all four jobs. Nothing to set up.",
+     "kind": "laptop",
+     "roles": [
+      "projection",
+      "operator",
+      "stream",
+      "audio"
+     ]
+    }
+   ],
+   "durationSec": 6.5,
+   "say": "With one computer, it holds all four jobs. There is nothing to set up.",
+   "narration": "narration/roles-overview/08.mp3"
+  },
+  {
+   "type": "devices",
+   "heading": "Two computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection",
+      "operator",
+      "audio"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "caption": "OBS and Zoom",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    }
+   ],
+   "durationSec": 9,
+   "say": "With two computers, the one at the projector keeps Projection, Operator, and Audio, and the stream desk takes Stream.",
+   "narration": "narration/roles-overview/09.mp3"
+  },
+  {
+   "type": "devices",
+   "heading": "Three computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection",
+      "audio"
+     ]
+    },
+    {
+     "name": "Back of the room",
+     "caption": "Runs the service",
+     "kind": "laptop",
+     "roles": [
+      "operator"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    }
+   ],
+   "durationSec": 9,
+   "say": "With three, a laptop at the back of the room takes Operator, so someone can run the service from where they can see everything.",
+   "narration": "narration/roles-overview/10.mp3"
+  },
+  {
+   "type": "devices",
+   "heading": "Four computers",
+   "link": "linked over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection"
+     ]
+    },
+    {
+     "name": "Back of the room",
+     "kind": "laptop",
+     "roles": [
+      "operator"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    },
+    {
+     "name": "Sound desk",
+     "caption": "Plays into the mixer",
+     "kind": "desk",
+     "roles": [
+      "audio"
+     ]
+    }
+   ],
+   "durationSec": 7.5,
+   "say": "With four, the sound desk takes Audio, so music and videos play straight into the mixer.",
+   "narration": "narration/roles-overview/11.mp3"
+  },
+  {
+   "type": "diagram",
+   "src": "diagrams/roles-four-machines.svg",
+   "caption": "The same four computers, drawn out",
+   "durationSec": 5.5,
+   "say": "Here is the same four-computer set-up, drawn out.",
+   "narration": "narration/roles-overview/12.mp3"
+  },
+  {
+   "type": "quote",
+   "text": "Phones and tablets can help, but they never hold a job.",
+   "attribution": "Tablet remote and stage screens",
+   "durationSec": 8,
+   "say": "Phones and tablets can help, for example as a remote, but they never hold a job.",
+   "narration": "narration/roles-overview/13.mp3"
+  },
+  {
+   "type": "bullets",
+   "heading": "Handing a job over",
+   "items": [
+    "Ask: press Take on the job you want",
+    "Allow: the holder sees Allow or Not now",
+    "Decline: choose Not now and nothing changes",
+    "Cut off: if the holder has been gone two minutes, anyone can take it"
+   ],
+   "durationSec": 11.5,
+   "say": "To hand a job over, one computer asks for it. The one holding it chooses Allow or Not now. And if the holder has been gone for two minutes, anyone can take it over.",
+   "narration": "narration/roles-overview/14.mp3"
+  },
+  {
+   "type": "handover",
+   "outcome": "allow",
+   "role": "stream",
+   "holder": {
+    "name": "Back of the room",
+    "kind": "laptop"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   },
+   "say": "Mary's laptop asks to take Stream. The holder sees the question, and chooses Allow. The job moves across.",
+   "narration": "narration/roles-overview/15.mp3",
+   "durationSec": 10
+  },
+  {
+   "type": "handover",
+   "outcome": "decline",
+   "role": "stream",
+   "holder": {
+    "name": "Back of the room",
+    "kind": "laptop"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   },
+   "say": "If the holder chooses Not now, nothing changes. They keep the job.",
+   "narration": "narration/roles-overview/16.mp3",
+   "durationSec": 9
+  },
+  {
+   "type": "handover",
+   "outcome": "cut",
+   "role": "stream",
+   "holder": {
+    "name": "Stream desk",
+    "kind": "desk"
+   },
+   "asker": {
+    "name": "Mary's laptop",
+    "kind": "laptop"
+   },
+   "say": "If the holder is cut off, say the network drops, the job waits. After two minutes, Mary's laptop can take it over.",
+   "narration": "narration/roles-overview/17.mp3",
+   "durationSec": 11
+  },
+  {
+   "type": "bullets",
+   "heading": "What happens on screen",
+   "items": [
+    "Projection passes: the screens clear",
+    "Audio passes: the music stops",
+    "Operator passes: the slide stays up",
+    "Stream passes: OBS stays on its scene"
+   ],
+   "durationSec": 11,
+   "say": "When a job passes, Projection clears the screens, and Audio stops the music. Operator leaves the slide up, and Stream leaves OBS where it is.",
+   "narration": "narration/roles-overview/18.mp3"
+  },
+  {
+   "type": "quote",
+   "text": "A computer that comes back learns it lost the job, and does not grab it back.",
+   "attribution": "After a cut",
+   "durationSec": 7.5,
+   "say": "A computer that comes back learns it lost the job, and does not grab it back.",
+   "narration": "narration/roles-overview/19.mp3"
+  },
+  {
+   "type": "cta",
+   "heading": "Read the full roles guide",
+   "action": "Read the roles guide",
+   "url": "lampstand.dbain.com/docs/",
+   "durationSec": 5,
+   "say": "You can read the full roles guide on the Lampstand website.",
+   "narration": "narration/roles-overview/20.mp3"
+  }
+ ]
+}

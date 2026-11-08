@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { availableVersion, canInstall, checkDue, CHECK_EVERY_MS, updateSummary } from "./updates.ts";
 import type { UpdateState, UpdateStatus } from "./api";
 
-const status = (state: UpdateState, blocked: string | null = null): UpdateStatus => ({ current: "0.1.0", state, blocked });
+const status = (state: UpdateState, blocked: string | null = null, caution: string | null = null): UpdateStatus => ({ current: "0.1.0", state, blocked, caution });
 
 test("the status line says where updating stands", () => {
   assert.deepEqual(updateSummary(null), { tone: "neutral", text: "Not checked yet" });
@@ -30,4 +30,10 @@ test("it looks again when the last check is old", () => {
   assert.equal(checkDue(null, 1000), true);
   assert.equal(checkDue(1000, 1000 + CHECK_EVERY_MS - 1), false);
   assert.equal(checkDue(1000, 1000 + CHECK_EVERY_MS), true);
+});
+
+test("a caution does not stop the Install button, a block does", () => {
+  const found: UpdateState = { Available: { version: "0.8.0", notes: null } };
+  assert.equal(canInstall(status(found, null, "Make sure none is about to begin.")), true);
+  assert.equal(canInstall(status(found, "A service is on air.", null)), false);
 });

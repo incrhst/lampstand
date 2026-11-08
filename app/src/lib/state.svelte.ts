@@ -9,14 +9,27 @@ import {
   type ObsRequest,
   type ObsView,
   type OutputConfig,
+  type SoundRequest,
+  type SoundView,
   type Overlay,
   type SlideView,
+  type TeamRequest,
+  type TeamStatus,
+  type SyncSummary,
+  type DeviceSettings,
+  type Theme,
+  type TrainingVideos,
   type UpdateStatus,
 } from "./api";
+import { loadSettings, updateSettings } from "./settings";
+import { sortThemes } from "./themes";
+import { syncFailed } from "./sync";
 
 class LiveState {
   loaded: LoadedService | null = $state(null);
   live: Cursor | null = $state(null);
+  /** The slide the screens show: the live one, or while a music-only item is live (it has no picture), the slide before it. */
+  shown: Cursor | null = $state(null);
   preview: Cursor | null = $state(null);
   overlay: Overlay = $state("None");
   /** Last import message, error or notice, for the status bar. */
@@ -31,17 +44,46 @@ class LiveState {
   songsVersion: number = $state(0);
   /** Bumped when a deck is added or changes (here or synced in). */
   decksVersion: number = $state(0);
+  /** Bumped when sound files arrive from another device. */
+  soundVersion: number = $state(0);
+  /** Bumped when the church's shared settings change here or on another device. */
+  churchVersion: number = $state(0);
   /** OBS: where it is, whether it's connected and streaming (T89). */
   obs: ObsView | null = $state(null);
+  /** What plays, and who plays it (the Audio role); null until first asked. */
+  sound: SoundView | null = $state(null);
+  /** When `sound` was said, in ms, so its position can move on with the clock. */
+  soundAt: number = $state(0);
+  /** Where sync with the paired devices stands; null until first asked. */
+  sync: SyncSummary | null = $state(null);
+  /** The church plans or presents for real, not just the Welcome service (see tips.ts). */
+  realUse = $state(false);
+  /** Bumped when a quick tip is put off or dismissed, so the status bar looks again. */
+  tipsVersion = $state(0);
+  /** Present's focus mode: the cards only, with the bars hidden. */
+  focus = $state(false);
   /** Where updating Lampstand itself stands; null until first asked. */
   update: UpdateStatus | null = $state(null);
   /** When a new release was last looked for, in ms, so it is not asked too often. */
   updateCheckedAt: number | null = $state(null);
   /** Bumped when a monitor is plugged in or removed, so lists of displays refetch. */
   displaysVersion: number = $state(0);
+  /** Whether the training videos are here, downloading or out of reach (#190); null until first asked. */
+  trainingVideos: TrainingVideos | null = $state(null);
+
+  /** The library's themes, Starter first. Kept current by `refreshThemes`. */
+  themes: Theme[] = $state([]);
+  /** This device's settings: default theme, idle screen, church brand. */
+  settings: DeviceSettings | null = $state(null);
+  /** Paired devices and who presents; null until first asked (`refreshTeam`). */
+  team: TeamStatus | null = $state(null);
+  /** The engine has nothing on air and no service under way: screens show their idle screen. */
+  idle: boolean = $state(true);
 
   /** The slide on air, if it is one of the loaded service's slides. */
   liveSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.live));
+  /** The slide the screens show (`shown`). */
+  shownSlide: SlideView | null = $derived.by(() => slideAt(this.loaded, this.shown));
 }
 
 function slideAt(loaded: LoadedService | null, cursor: Cursor | null): SlideView | null {
@@ -56,8 +98,14 @@ onEvent((event) => {
   switch (event.type) {
     case "Live":
       live.live = event.data.live;
+      // The core says which slide the screens show; a device on an older
+      // build mirroring to this one does not, so it is worked out here.
+      if (event.data.shown !== undefined) live.shown = event.data.shown;
+      else if (!event.data.live) live.shown = null;
+      else if (slideAt(live.loaded, event.data.live)) live.shown = event.data.live;
       live.preview = event.data.preview;
       live.overlay = event.data.overlay;
+      live.idle = event.data.idle;
       break;
     case "Loaded":
       live.loaded = event.data;
@@ -73,12 +121,30 @@ onEvent((event) => {
       break;
     case "Changed":
       if (event.data.kind === "deck") live.decksVersion++;
+      if (event.data.kind === "sound") live.soundVersion++;
+      if (event.data.kind === "theme") refreshThemes();
+      if (event.data.kind === "churchsettings" || event.data.kind === "church") {
+        live.churchVersion++;
+        refreshSettings();
+      }
       break;
     case "Obs":
       live.obs = event.data;
       break;
+    case "Sound":
+      live.sound = event.data;
+      live.soundAt = Date.now();
+      break;
+    case "SyncStatus":
+      live.sync = event.data.sync;
+      // The summary is in the event; who presents and who asks is not.
+      refreshTeam();
+      break;
     case "DisplaysChanged":
       live.displaysVersion++;
+      break;
+    case "TrainingVideos":
+      live.trainingVideos = event.data;
       break;
   }
 });
@@ -86,6 +152,66 @@ onEvent((event) => {
 /** Shows an error from a failed request in the status bar. */
 export function report(error: unknown) {
   live.status = error instanceof Error ? error.message : String(error);
+}
+
+/** Refetches the library's themes into `live.themes`. */
+export async function refreshThemes() {
+  try {
+    live.themes = sortThemes(await request({ area: "Library", request: "ListThemes" }, "Themes"));
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Refetches this device's settings into `live.settings`. */
+export async function refreshSettings() {
+  try {
+    live.settings = await loadSettings();
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Saves a change to this device's settings and keeps `live.settings` current. */
+export async function saveSettings(change: Partial<DeviceSettings>) {
+  try {
+    live.settings = await updateSettings(change);
+  } catch (e) {
+    report(e);
+  }
+}
+
+/**
+ * Refetches the paired devices and who presents into `live.team`. A device
+ * that stops being the presenter loses its open service: the core took it
+ * off air and closed the screens.
+ */
+export async function refreshTeam() {
+  try {
+    const was = live.team?.presenter.role;
+    live.team = await request({ area: "Team", request: "Status" }, "Team");
+    live.sync = live.team.sync;
+    if (was === "Presenting" && live.team.presenter.role === "Planning") {
+      live.loaded = null;
+      live.live = null;
+      live.shown = null;
+      live.preview = null;
+    }
+  } catch (e) {
+    // Sync may be off (the local server could not start): this device presents.
+    live.sync = syncFailed(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Sends a presenter request (ask, allow, claim…) and keeps `live.team` current. */
+export async function presenterRequest(req: TeamRequest): Promise<boolean> {
+  try {
+    live.team = await request({ area: "Team", request: req }, "Team");
+    return true;
+  } catch (e) {
+    report(e);
+    return false;
+  }
 }
 
 /** Refetches this device's outputs into `live.outputs`. */
@@ -174,6 +300,31 @@ export async function obs(req: ObsRequest): Promise<ObsView> {
   live.obs = view;
   return view;
 }
+
+/**
+ * Asks for sound to play, pause, stop or be cut, and keeps `live.sound`
+ * current with the answer. Throws on failure, like `request`: the message
+ * is the core's own sentence (the sound device is away, nobody runs the
+ * sound, and so on).
+ */
+export async function sound(req: SoundRequest): Promise<SoundView> {
+  const view = await request({ area: "Sound", request: req }, "Sound");
+  live.sound = view;
+  live.soundAt = Date.now();
+  return view;
+}
+
+/** Refetches what plays, reporting a failure in the status bar. */
+export async function refreshSound() {
+  try {
+    await sound("Status");
+  } catch (e) {
+    report(e);
+  }
+}
+
+/** Asks sync where it stands; a sync engine that is not running shows as an error. */
+export const refreshSync = refreshTeam;
 
 /** Refetches OBS's state, reporting a failure in the status bar. */
 export async function refreshObs() {

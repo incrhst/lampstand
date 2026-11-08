@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by the Tauri bundler. Since macOS 15 an
+     app needs Local Network permission to reach other computers on the
+     network; without these keys macOS can block Lampstand without asking,
+     and pairing and sync fail with "No route to host". The Bonjour type is
+     the one Lampstand advertises and looks for (SERVICE_TYPE in
+     crates/lampstand-sync/src/net/mod.rs). -->
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lampstand finds and connects to your church's other computers running Lampstand on this network, to pair them and keep their libraries and services in step, and to OBS when it runs on another computer.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_lampstand._tcp</string>
+	</array>
+</dict>
+</plist>

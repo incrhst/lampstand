@@ -12,4 +12,10 @@ current: string, state: UpdateState,
 /**
  * Why `Install` would be refused right now, if it would be.
  */
-blocked: string | null, };
+blocked: string | null, 
+/**
+ * Something to ask the person before installing, which does not refuse
+ * it: the next service's start cannot be known. The screen asks, and
+ * then `Install` goes ahead.
+ */
+caution: string | null, };

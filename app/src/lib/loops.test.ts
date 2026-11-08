@@ -21,6 +21,8 @@ const est = (id: string, over: Partial<ItemEstimate> = {}): ItemEstimate => ({
   video_ms: null,
   self_loop: false,
   open_ended: false,
+  sound_ms: null,
+  sound: false,
   ...over,
 });
 
@@ -91,3 +93,14 @@ const passRows = [row("slides"), row("video"), row("deck")];
     assert.equal(formatLength(87_000), "1:27");
     assert.equal(formatLength(5000), "0:05");
   });
+
+test("music-only items are not part of a loop's length", () => {
+  const pass = estimatePass(
+    [row("slide"), row("walk-in")],
+    { slide: est("slide", { stills: 2 }), "walk-in": est("walk-in", { sound: true, sound_ms: 185_000 }) },
+    10,
+  );
+  assert.equal(pass.ms, 2 * 10_000);
+  assert.equal(passLabel(pass), "≈ 0:20");
+  assert.equal(describeLine(pass.lines[1], 10), "Music, not part of the loop");
+});

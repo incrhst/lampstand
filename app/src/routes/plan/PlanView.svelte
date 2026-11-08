@@ -1,8 +1,13 @@
-<!-- Service planning: services down the left, the selected service's
-     order in the middle, the song, scripture, deck and media library on the right.
+<!-- Service planning: the selected service's order, with one sidebar on
+     the right, Library & controls, the same as Present's. Its front page
+     has the Library (search, browse, Services) on top and the controls
+     (Screens) under it; the Library and Services open as pages inside it,
+     with Back. F or its Hide button hides it, and every launch starts
+     with it open.
      T49 replaces this with the collaborative planner. -->
 <script lang="ts">
-  import { untrack } from "svelte";
+  import PresentAction from "../../lib/kit/PresentAction.svelte";
+  import { tick, untrack } from "svelte";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
     request,
@@ -11,35 +16,90 @@
     type ItemKind,
     type MediaFile,
     type Service,
+    type Sound,
+    type SoundFile,
+    type SoundFileStatus,
+    type SoundSlot,
     type ServiceSummary,
     type SongHit,
     type Translation,
   } from "../../lib/api";
   import { live, report } from "../../lib/state.svelte";
+  import { isPicture } from "../../lib/obs";
+  import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
+  import SideRow from "../../lib/kit/SideRow.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import DeckThumb from "../../lib/kit/DeckThumb.svelte";
   import MediaThumb from "../../lib/kit/MediaThumb.svelte";
   import { deckExtensions, deckSourceLabel, imageExtensions, mediaKind, onePath, videoExtensions } from "../../lib/media";
+  import {
+    audioExtensions,
+    isAudio,
+    linkOffers,
+    isComing,
+    isMissing,
+    newSound,
+    offerSound,
+    soundItem,
+    soundSubtitle,
+    streamingRefusal,
+    soundTotalLabel,
+    words as soundWords,
+  } from "../../lib/sound";
+  import SoundEditor from "./SoundEditor.svelte";
   import Library from "./Library.svelte";
   import ObsScenePicker from "./ObsScenePicker.svelte";
   import SongOrder from "./SongOrder.svelte";
+  import TextEditor from "./TextEditor.svelte";
+  import { splitText, textTitle } from "../../lib/textSlides";
   import LoopPicker from "./LoopPicker.svelte";
   import LoopPanel from "./LoopPanel.svelte";
   import { coveredAt, estimatePass, passLabel, sectionEnd, sectionOf, sectionSize, type Row } from "../../lib/loops";
   import { formatPassage } from "../../lib/passage";
   import { comingSunday, deviceZone, formatWhen, fromInputs, timeZones, toInputs } from "../../lib/when";
+  import { WELCOME_TITLE } from "../../lib/getStarted";
 
-  let { onopened }: { onopened: () => void } = $props();
+  let { onopened, onscreens }: { onopened: () => void; onscreens?: () => void } = $props();
+
+  // Below this width Library & controls is a drawer over the running
+  // order rather than a column that squeezes it.
+  const DRAWERS_BELOW = 900;
+  let width = $state(typeof window === "undefined" ? 1440 : window.innerWidth);
+  let narrow = $derived(width < DRAWERS_BELOW);
+  // live.focus is true while Library & controls is hidden (F, Hide, or the
+  // menu bar's button). It is never remembered: every launch starts open.
+  let focus = $derived(live.focus);
+  /** Which page of Library & controls shows: its front page, or one inside it. */
+  type SidePage = "front" | "library" | "services";
+  let page: SidePage = $state("front");
+  function openPage(to: SidePage) {
+    page = to;
+    live.focus = false;
+    // The search box on the front page opens the Library ready to type.
+    if (to === "library") tick().then(() => document.querySelector<HTMLInputElement>('.library-slot input[aria-label="Search the library"]')?.focus());
+  }
+  const hideSide = () => (live.focus = true);
+  const back = () => (page = "front");
+  function sideKeys(e: KeyboardEvent) {
+    if (e.key !== "Escape" || focus || page === "front" || e.defaultPrevented) return;
+    if (document.querySelector('[aria-modal="true"]')) return;
+    e.preventDefault();
+    back();
+  }
+  let screensOn = $derived(live.outputs.filter((o) => o.enabled && !isPicture(o)).length);
 
   let services: ServiceSummary[] = $state([]);
   let selected: Service | null = $state(null);
   let creating = $state(false);
   let newTitle = $state("Sunday service");
+  /** The service the New service form copies its items from, `SAMPLE` for the sample service, or "" for an empty one. */
+  let copyFrom = $state("");
+  const SAMPLE = "sample";
   /** A date and time as the inputs hold them, in an IANA zone. */
   type When = { date: string; time: string; zone: string };
   /** The coming Sunday at 10:00 in `zone`, as the inputs hold it. */
@@ -59,7 +119,9 @@
   const lookedUp = new Set<string>();
 
   let decks: Deck[] = $state([]);
-  let deckById = $derived(Object.fromEntries(decks.map((d) => [d.id, d])) as Record<string, Deck>);
+  /** The training services' decks: not in the library, only for naming their items. */
+  let trainingDecks: Deck[] = $state([]);
+  let deckById = $derived(Object.fromEntries([...trainingDecks, ...decks].map((d) => [d.id, d])) as Record<string, Deck>);
 
   let translations: Translation[] = $state([]);
   let translation = $state("");
@@ -67,9 +129,46 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
+  /** Services saved by a newer Lampstand, and files that could not be loaded. */
+  let newer = $state(0);
+  let damaged: string[] = $state([]);
+
+  /** Deletes a service file that could not be loaded. */
+  async function removeDamaged(id: string) {
+    try {
+      await request({ area: "Service", request: { Delete: id } }, "Ok");
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
   async function refresh() {
     try {
-      services = await request({ area: "Service", request: "List" }, "Services");
+      const list = await request({ area: "Service", request: "ListChecked" }, "ServiceList");
+      services = list.services;
+      newer = list.newer;
+      damaged = list.damaged;
+      if (trainingDecks.length === 0 && services.some((s) => s.training)) {
+        trainingDecks = await request({ area: "Library", request: "ListTrainingDecks" }, "Decks");
+      }
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  // Training services (#190) are listed apart, after the church's own, and
+  // can't be changed here: they are practised in Present, and Reset
+  // training puts back what practice added.
+  let ownServices = $derived(services.filter((s) => !s.training));
+  let trainingServices = $derived(services.filter((s) => s.training));
+  let readOnly = $derived(selected != null && trainingServices.some((s) => s.id === selected?.id));
+
+  async function resetTraining() {
+    try {
+      await request({ area: "Service", request: "ResetTraining" }, "Ok");
+      if (selected) selected = await request({ area: "Service", request: { Get: selected.id } }, "Service");
+      await refresh();
     } catch (e) {
       report(e);
     }
@@ -86,10 +185,10 @@
   const isOlder = (s: ServiceSummary) => s.starts_at != null && s.starts_at < startOfToday();
   let olderCount = $derived(services.filter((s) => isOlder(s) && s.id !== selected?.id).length);
   let shown = $derived(
-    showOlder ? services : services.filter((s) => !isOlder(s) || s.id === selected?.id),
+    showOlder ? ownServices : ownServices.filter((s) => !isOlder(s) || s.id === selected?.id),
   );
 
-  function startRename(s: ServiceSummary) {
+  function startRename(s: { id: string; title: string }) {
     confirmDelete = null;
     renaming = s.id;
     renameTitle = s.title;
@@ -145,27 +244,52 @@
     creating = !creating;
     // Each new service starts on the coming Sunday unless the planner
     // picks another day.
+    copyFrom = "";
     if (creating) newWhen = defaultWhen();
   }
 
+  /** Picking a service to start from titles the copy after it. */
+  function pickCopy() {
+    const source = services.find((s) => s.id === copyFrom);
+    newTitle = copyFrom === SAMPLE ? WELCOME_TITLE : source ? `${source.title} (copy)` : "Sunday service";
+  }
+
+  /** Offers the New service form with `id` as its starting point. */
+  function startFrom(id: string) {
+    const source = services.find((s) => s.id === id);
+    creating = true;
+    newWhen = defaultWhen();
+    copyFrom = id;
+    if (source) newTitle = `${source.title} (copy)`;
+  }
+
   async function create() {
+    const title = newTitle.trim() || "Service";
     try {
       selected = await request(
         {
           area: "Service",
-          request: {
-            Create: {
-              title: newTitle.trim() || "Service",
-              starts_at: at(newWhen),
-              time_zone: newWhen.zone,
-            },
-          },
+          request:
+            copyFrom === SAMPLE
+              ? { CreateSample: { title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+              : copyFrom
+                ? { Duplicate: { service: copyFrom, title, starts_at: at(newWhen), time_zone: newWhen.zone } }
+                : { Create: { title, starts_at: at(newWhen), time_zone: newWhen.zone } },
         },
         "Service",
       );
       live.planning = selected.id;
       creating = false;
       await refresh();
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  async function setTheme(theme: string | null) {
+    if (!selected) return;
+    try {
+      selected = await request({ area: "Service", request: { SetTheme: { service: selected.id, theme } } }, "Service");
     } catch (e) {
       report(e);
     }
@@ -224,6 +348,8 @@
 
   async function select(id: string) {
     editWhen = null;
+    // On a narrow window the drawer has done its job once a service is picked.
+    if (narrow) live.focus = true;
     try {
       selected = await request({ area: "Service", request: { Get: id } }, "Service");
       live.planning = id;
@@ -262,6 +388,7 @@
   /** Inserts an item at `index`, or at the end of the selected service. */
   async function addItem(kind: ItemKind, index?: number): Promise<boolean> {
     if (!selected) return false;
+    const before = new Set(Object.keys(selected.items));
     try {
       selected = await request(
         {
@@ -276,10 +403,30 @@
         },
         "Service",
       );
+      // A new text slide has nothing yet: open it to be typed into.
+      if ("Text" in kind) openCard = Object.keys(selected.items).find((id) => !before.has(id)) ?? openCard;
       return true;
     } catch (e) {
       report(e);
       return false;
+    }
+  }
+
+  /** A new, empty text slide at the end of the service. */
+  function addText() {
+    return addItem({ Text: { title: "", body: "", attribution: null } });
+  }
+
+  /** Rewrites a text slide item. */
+  async function setText(item: string, title: string, body: string, attribution: string | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetItemText: { service: selected.id, item, title, body, attribution } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
     }
   }
 
@@ -346,17 +493,26 @@
     try {
       const path = onePath(
         await pickFiles({
-          title: "Add a video or image",
+          title: "Add a video, image or sound",
           filters: [
-            { name: "Video and images", extensions: [...videoExtensions, ...imageExtensions] },
+            { name: "Video, images and sound", extensions: [...videoExtensions, ...imageExtensions, ...audioExtensions] },
             { name: "Video", extensions: videoExtensions },
             { name: "Images", extensions: imageExtensions },
+            { name: soundWords.pickFilter, extensions: audioExtensions },
           ],
         }),
       );
       if (!path) return;
       busy = true;
       live.status = "Copying into the library…";
+      // A sound picked here is a music-only item, whether or not this
+      // device offers sound in Plan: the planner chose the file.
+      if (isAudio(path)) {
+        const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+        await addItem(soundItem(file));
+        live.status = `Added ${file.name}`;
+        return;
+      }
       const file = await request({ area: "Library", request: { AddMediaFile: { path } } }, "Media");
       await addMedia(file);
       live.status = `Added ${file.name}`;
@@ -364,6 +520,105 @@
       report(e);
     } finally {
       busy = false;
+    }
+  }
+
+  /** Changes the sound of a music-only item, or a song's backing track. */
+  async function setSound(item: string, slot: SoundSlot, sound: Sound | null) {
+    if (!selected) return;
+    try {
+      selected = await request(
+        { area: "Service", request: { SetSound: { service: selected.id, item, slot, sound } } },
+        "Service",
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
+
+  /** Picks an audio file and adds it as a music-only item. */
+  async function pickSound() {
+    if (!selected) return;
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: soundWords.pickTitle,
+          filters: [{ name: soundWords.pickFilter, extensions: audioExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+      await addItem({ Sound: { sound: newSound(file) } });
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** The "From a link" field under the header, while it is open. */
+  let soundLink: string | null = $state(null);
+
+  /** Fetches a sound from a pasted link and adds it as a music-only item, waiting for Play. */
+  async function addSoundLink() {
+    const url = soundLink?.trim();
+    if (busy || !selected || !url) return;
+    if (linkOffers(url).streaming) {
+      live.status = streamingRefusal;
+      return;
+    }
+    busy = true;
+    try {
+      const file = await request({ area: "Library", request: { AddSoundFromLink: { url } } }, "SoundFile");
+      if (await addItem(soundItem(file))) {
+        soundLink = null;
+        live.status = `Added ${file.name}`;
+      }
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Picks an audio file and makes it the backing track of a song. */
+  async function addBacking(item: string) {
+    try {
+      const path = onePath(
+        await pickFiles({
+          title: soundWords.pickTitle,
+          filters: [{ name: soundWords.pickFilter, extensions: audioExtensions }],
+        }),
+      );
+      if (!path) return;
+      busy = true;
+      live.status = "Copying into the library…";
+      const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+      await setSound(item, "Backing", newSound(file));
+      live.status = `Added ${file.name}`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** The song whose backing track is being asked about before it goes. */
+  let confirmBacking: string | null = $state(null);
+
+  /** Where each sound file of the open service stands on this device. */
+  let soundStatus: SoundFileStatus[] = $state([]);
+  let soundTicket = 0;
+  async function loadSoundStatus(service: Service) {
+    const ticket = ++soundTicket;
+    try {
+      const list = await request({ area: "Service", request: { SoundStatus: service.id } }, "SoundStatus");
+      if (ticket === soundTicket) soundStatus = list;
+    } catch {
+      // Without it Plan cannot say a file is missing, and says nothing.
     }
   }
 
@@ -479,7 +734,9 @@
     if ("Scripture" in k) return formatPassage(k.Scripture.passage);
     if ("Deck" in k) return deckById[k.Deck.deck]?.title ?? "Presentation";
     if ("Media" in k) return k.Media.name;
+    if ("Sound" in k) return k.Sound.sound.name;
     if ("Countdown" in k) return k.Countdown.label;
+    if ("Text" in k) return textTitle(k.Text.title, k.Text.body);
     return "Announcements";
   }
 
@@ -498,7 +755,12 @@
       const deck = deckById[k.Deck.deck];
       return deck ? `${label} · ${deckSourceLabel(deck.source)}` : label;
     }
+    if ("Text" in k) {
+      const n = splitText(k.Text.body).length;
+      return `${label} · ${n === 1 ? "1 slide" : `${n} slides`}`;
+    }
     if ("Media" in k) return `${mediaKind(k.Media.name)}${k.Media.looped ? " · loops" : ""}`;
+    if ("Sound" in k) return soundSubtitle(k.Sound.sound);
     return label;
   }
 
@@ -683,6 +945,18 @@
     }
   });
 
+  // Which sound files are on this device, for a service that has sound; read
+  // again when files arrive from another device.
+  $effect(() => {
+    const service = selected;
+    void live.soundVersion;
+    if (service && Object.values(service.items).some((i) => i && ("Sound" in i.kind || i.backing))) {
+      untrack(() => loadSoundStatus(service));
+    } else {
+      soundStatus = [];
+    }
+  });
+
   // Refetch decks when one is added or synced in.
   $effect(() => {
     void live.decksVersion;
@@ -740,85 +1014,26 @@
   </select>
 {/snippet}
 
-<div class="plan">
-  <aside class="pane pane-side services" aria-label="Services">
-    <div class="pane-head">
-      <h2>Services</h2>
-      <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
-    </div>
-    {#if creating}
-      <form
-        class="create"
-        onsubmit={(e) => {
-          e.preventDefault();
-          create();
-        }}
-      >
-        <!-- svelte-ignore a11y_autofocus -->
-        <input aria-label="New service title" bind:value={newTitle} onkeydown={onKeys(create)} autofocus />
-        <div class="when">
-          <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
-          <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
-        </div>
-        {@render zonePicker(newWhen)}
-        <Button variant="primary" size="small" onclick={create}>Create</Button>
-      </form>
-    {/if}
-    <ul class="plain pane-body">
-      {#each shown as s (s.id)}
-        {#if renaming === s.id}
-          <li class="rename">
+<svelte:window bind:innerWidth={width} onkeydown={sideKeys} />
+
+<div class="plan" class:narrow class:focus>
+  <section class="pane order" aria-labelledby="service-title">
+    {#if selected}
+      <div class="order-head">
+        <div class="heading">
+          {#if renaming === selected.id}
             <!-- svelte-ignore a11y_autofocus -->
             <input
+              class="title-edit"
               aria-label="Service name"
               bind:value={renameTitle}
               onkeydown={onKeys(saveRename, () => (renaming = null))}
               onblur={saveRename}
               autofocus
             />
-          </li>
-        {:else}
-          <ListRow title={s.title} subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`} active={selected?.id === s.id} onclick={() => select(s.id)}>
-            {#snippet details()}
-              {#if live.loaded?.service === s.id}
-                <span class="row-status"><span class="live-dot"></span>Open for live</span>
-              {/if}
-            {/snippet}
-            {#snippet trailing()}
-              {#if selected?.id === s.id}
-                <span class="row-actions">
-                  <Button variant="ghost" size="small" onclick={() => startRename(s)}>Rename</Button>
-                  {#if live.loaded?.service === s.id}
-                    <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => takeOffAir(s.id)}>Close</Button>
-                  {/if}
-                  {#if confirmDelete === s.id}
-                    <Button variant="danger" size="small" onclick={() => deleteService(s.id)}>Delete?</Button>
-                  {:else}
-                    <Button variant="ghost" size="small" icon="trash" label="Delete service" title="Delete service" onclick={() => deleteService(s.id)} />
-                  {/if}
-                </span>
-              {/if}
-            {/snippet}
-          </ListRow>
-        {/if}
-      {:else}
-        <li class="empty muted">No services yet.</li>
-      {/each}
-      {#if olderCount > 0 || showOlder}
-        <li class="older">
-          <Button variant="ghost" size="small" onclick={() => (showOlder = !showOlder)}>
-            {showOlder ? "Hide older services" : `Show ${olderCount} older`}
-          </Button>
-        </li>
-      {/if}
-    </ul>
-  </aside>
-
-  <section class="pane order" aria-labelledby="service-title">
-    {#if selected}
-      <div class="order-head">
-        <div class="heading">
-          <h1 id="service-title">{selected.title}</h1>
+          {:else}
+            <h1 id="service-title">{selected.title}</h1>
+          {/if}
           {#if editWhen}
             <form
               class="reschedule"
@@ -835,29 +1050,89 @@
             <p class="muted when-line">
               <span>
                 {formatWhen(selected.starts_at, selected.time_zone)} · {items.length}
-                {items.length === 1 ? "item" : "items"}
+                {items.length === 1 ? "item" : "items"}{#if soundTotalLabel(selected)} · {soundTotalLabel(selected)}{/if}
               </span>
-              <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
+              <!-- What is done to the service as a whole lives here, beside
+                   its name, so the services list stays a plain list. -->
+              {#if readOnly}
+              <span class="service-tools">
+                <Button variant="ghost" size="small" icon="loop" title="Put every training service back as it was" onclick={resetTraining}>Reset training</Button>
+              </span>
+              {:else}
+              <span class="service-tools">
+                <Button variant="ghost" size="small" icon="calendar" label="Change date and time" title="Change date and time" onclick={startReschedule} />
+                <Button variant="ghost" size="small" icon="pencil" label="Rename" title="Rename" onclick={() => selected && startRename(selected)} />
+                <Button variant="ghost" size="small" icon="copy" label="Duplicate" title="Start a new service from this one" onclick={() => selected && startFrom(selected.id)} />
+                {#if confirmDelete === selected.id}
+                  <Button variant="danger" size="small" onclick={() => selected && deleteService(selected.id)}>Delete?</Button>
+                {:else}
+                  {@const onAir = live.loaded?.service === selected.id}
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    icon="trash"
+                    label="Delete service"
+                    title={onAir ? "Close this service before deleting it" : "Delete service"}
+                    disabled={onAir}
+                    onclick={() => selected && deleteService(selected.id)}
+                  />
+                {/if}
+              </span>
+              {/if}
+              {#if live.loaded?.service === selected.id}
+                <span class="live-tag"><span class="live-dot"></span>Open for live</span>
+                <Button variant="ghost" size="small" title="Close this service: take it off air and put it away" onclick={() => selected && takeOffAir(selected.id)}>Close</Button>
+              {/if}
             </p>
           {/if}
         </div>
         <div class="actions">
+          {#if !readOnly}
+          <label class="look" title="How songs, scripture and text look in this service. A screen's own theme still wins.">
+            <span class="muted">Theme</span>
+            <ThemePicker label="Theme for {selected.title}" value={selected.theme} onchange={setTheme} />
+          </label>
           <Button icon="deck" onclick={pickDeck} disabled={busy}>Add deck</Button>
           <Button icon="media" onclick={pickMedia} disabled={busy}>Add media</Button>
-          <Button variant="primary" icon="play" onclick={openService} disabled={items.length === 0}>Open for live</Button>
+          {#if offerSound(selected, live.settings?.use_sound)}
+            <Button icon="sound" onclick={pickSound} disabled={busy}>{soundWords.addSound}</Button>
+          {/if}
+          <Button
+            icon="sound"
+            onclick={() => (soundLink = soundLink === null ? "" : null)}
+            pressed={soundLink !== null}
+            title="Add a track from a Google Drive, Dropbox or OneDrive link"
+            disabled={busy}
+          >
+            From a link
+          </Button>
+          {/if}
+          <PresentAction label="Open for live" onopen={openService} disabled={items.length === 0} />
         </div>
       </div>
 
-      {#if items.length > 0}
-        <div class="banner">
-          <Banner>
-            <span>Nothing has checked that every item is on this device yet.</span>
-            <Placeholder ticket="T36">Readiness</Placeholder>
+      {#if soundLink !== null}
+        <form class="sound-link" onsubmit={(e) => (e.preventDefault(), addSoundLink())}>
+          <input
+            type="text"
+            aria-label="Link to a sound file"
+            placeholder="Paste a Google Drive, Dropbox or OneDrive link to a sound file"
+            bind:value={soundLink}
+            onkeydown={(e) => e.key === "Escape" && (soundLink = null)}
+          />
+          <Button variant="primary" size="small" onclick={addSoundLink} disabled={busy || !soundLink.trim()}>Add</Button>
+          <Button variant="ghost" size="small" icon="x" label="Cancel" onclick={() => (soundLink = null)} />
+        </form>
+      {/if}
+
+      {#if readOnly}
+        <div class="training-note">
+          <Banner tone="neutral" icon="lamp">
+            A training service. It can't be changed here: open it for live and practise. The trainer's notes are on each item. Reset training puts back anything practice added.
           </Banner>
         </div>
       {/if}
-
-      <div class="order-body" bind:this={orderBody}>
+      <div class="order-body" bind:this={orderBody} inert={readOnly}>
         {#if items.length === 0}
           <div class="empty-order" class:target={carryAt !== null}>
             <p><strong>This service is empty</strong></p>
@@ -954,6 +1229,13 @@
                         <span class="tag warn">Loops by itself</span>
                       {/if}
                       {#if "Song" in item.kind && item.kind.Song.arrangement}<span class="tag">Custom order</span>{/if}
+                      {#if item.backing}<span class="tag">{soundWords.backingTag}</span>{/if}
+                      {#if "Sound" in item.kind && item.kind.Sound.sound.keep_off_stream || item.backing?.keep_off_stream}
+                        <span class="tag">{soundWords.keptOffStreamTag}</span>
+                      {/if}
+                      {#if ("Sound" in item.kind && isMissing(soundStatus, id, false)) || (item.backing && isMissing(soundStatus, id, true))}
+                        <span class="tag warn"><Icon name="alert" size={12} /> {soundWords.missingTag}</span>
+                      {/if}
                       {#if loops}<span class="tag">Loops {item.loop_seconds} s</span>{/if}
                       {#if item.obs_scene}<span class="tag">OBS: {item.obs_scene}</span>{/if}
                       <button
@@ -983,13 +1265,60 @@
                             />
                           </div>
                         {/if}
+                        {#if "Sound" in item.kind}
+                          <div class="option">
+                            <SoundEditor
+                              sound={item.kind.Sound.sound}
+                              label={itemTitle(item)}
+                              missing={isMissing(soundStatus, id, false)}
+                              coming={isComing(soundStatus, id, false)}
+                              onchange={(sound) => setSound(id, "Item", sound)}
+                            />
+                          </div>
+                        {/if}
+                        {#if "Song" in item.kind && item.backing}
+                          <div class="option">
+                            <span class="eyebrow">{soundWords.backing}</span>
+                            <SoundEditor
+                              sound={item.backing}
+                              label="{soundWords.backing} of {itemTitle(item)}"
+                              missing={isMissing(soundStatus, id, true)}
+                              coming={isComing(soundStatus, id, true)}
+                              onchange={(sound) => setSound(id, "Backing", sound)}
+                            />
+                            {#if confirmBacking === id}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => { confirmBacking = null; setSound(id, "Backing", null); }}>{soundWords.removeBackingSure}</Button>
+                              <Button variant="ghost" size="small" onclick={() => (confirmBacking = null)}>Keep it</Button>
+                            {:else}
+                              <Button variant="ghost" size="small" icon="trash" onclick={() => (confirmBacking = id)}>{soundWords.removeBacking}</Button>
+                            {/if}
+                          </div>
+                        {:else if "Song" in item.kind && offerSound(selected, live.settings?.use_sound)}
+                          <div class="option">
+                            <Button size="small" icon="sound" onclick={() => addBacking(id)} disabled={busy}>{soundWords.addBacking}</Button>
+                          </div>
+                        {/if}
+                        {#if "Text" in item.kind}
+                          {@const text = item.kind.Text}
+                          <div class="option">
+                            <TextEditor
+                              title={text.title}
+                              body={text.body}
+                              attribution={text.attribution}
+                              label={itemTitle(item)}
+                              onsave={(t, b, a) => setText(id, t, b, a)}
+                            />
+                          </div>
+                        {/if}
                         <div class="option row-options">
-                          <LoopPicker
-                            value={item.loop_seconds}
-                            section={false}
-                            label="Loop {itemTitle(item)}"
-                            onchange={(seconds) => setLoop(id, seconds)}
-                          />
+                          {#if !("Sound" in item.kind)}
+                            <LoopPicker
+                              value={item.loop_seconds}
+                              section={false}
+                              label="Loop {itemTitle(item)}"
+                              onchange={(seconds) => setLoop(id, seconds)}
+                            />
+                          {/if}
                           <!-- Only where OBS matters; a scene already set always shows. -->
                           {#if live.obs?.relevant || item.obs_scene}
                             <ObsScenePicker
@@ -1011,7 +1340,10 @@
             {#if naming === items.length}
               {@render namingRow(items.length)}
             {:else if !dragging}
-              <li class="slot"><button type="button" class="slot-add" aria-label="Add a header at the end" onclick={() => openNaming(items.length)}>+ Header here</button></li>
+              <li class="slot">
+                <button type="button" class="slot-add" aria-label="Add a header at the end" onclick={() => openNaming(items.length)}>+ Header here</button>
+                <button type="button" class="slot-add" onclick={addText}>+ Text slide</button>
+              </li>
             {/if}
             {#if lineBefore(items.length)}<li class="line-end" aria-hidden="true">{#if dragHint}<span class="drop-hint">{dragHint}</span>{/if}</li>{/if}
           </ol>
@@ -1025,28 +1357,214 @@
     {/if}
   </section>
 
-  <Library
-    service={selected}
-    {items}
-    {decks}
-    {translations}
-    onadd={(kind) => addItem(kind)}
-    ondragover={carryOver}
-    ondragend={carryEnd}
-    onsongs={songsFound}
-    ondecks={loadDecks}
-    ontranslations={loadTranslations}
-  />
+  <!-- Library & controls. Its pages are hidden, not removed, so a
+       half-typed new service and the library's search stay put. -->
+  <aside id="library-and-controls" class="pane pane-side side" aria-label="Library and controls" hidden={focus}>
+    <div class="side-front" hidden={page !== "front"}>
+      <SideHead onhide={hideSide} />
+      <h3 class="side-zone-head">Library</h3>
+      <button type="button" class="side-find" onclick={() => openPage("library")}>
+        <Icon name="search" size={15} />Find a song, reading or video to add
+      </button>
+      <SideRow icon="song" label="Browse the library" onclick={() => openPage("library")} />
+      <SideRow icon="calendar" label="Services" summary={`${ownServices.length} planned`} onclick={() => openPage("services")} />
+      <h3 class="side-zone-head">Controls</h3>
+      <SideRow icon="monitor" label="Screens" summary={screensOn === 0 ? "None on" : `${screensOn} on`} title="Open Setup › Screens" onclick={() => onscreens?.()} />
+      {#if shown.length > 0}
+        <h3 class="side-zone-head quiet">Next services</h3>
+        <ul class="plain">
+          {#each shown.slice(0, 3) as s (s.id)}
+            <ListRow title={s.title} subtitle={formatWhen(s.starts_at, s.time_zone)} active={selected?.id === s.id} onclick={() => select(s.id)} />
+          {/each}
+        </ul>
+      {/if}
+    </div>
+
+    <div class="side-page services" hidden={page !== "services"}>
+      <div class="pane-head">
+        <SideHead title="Services" onback={back} onhide={hideSide} />
+      </div>
+      <div class="new-service">
+        <Button size="small" icon="plus" onclick={toggleCreate} pressed={creating}>New service</Button>
+      </div>
+      {#if creating}
+        <form
+          class="create"
+          onsubmit={(e) => {
+            e.preventDefault();
+            create();
+          }}
+        >
+          <!-- svelte-ignore a11y_autofocus -->
+          <input aria-label="New service title" bind:value={newTitle} onkeydown={onKeys(create)} autofocus />
+          <div class="when">
+            <input type="date" aria-label="Service date" bind:value={newWhen.date} onkeydown={onKeys(create)} />
+            <input type="time" aria-label="Service time" bind:value={newWhen.time} onkeydown={onKeys(create)} />
+          </div>
+          {@render zonePicker(newWhen)}
+          <select aria-label="Start from a previous service" bind:value={copyFrom} onchange={pickCopy}>
+            <option value="">Start empty</option>
+            <option value={SAMPLE}>Start from the sample service (songs, a verse and music)</option>
+            {#each ownServices as s (s.id)}
+              <option value={s.id}>Start from {s.title} · {formatWhen(s.starts_at, s.time_zone)}</option>
+            {/each}
+          </select>
+          <Button variant="primary" size="small" onclick={create}>Create</Button>
+        </form>
+      {/if}
+      <ul class="plain pane-body">
+        {#each shown as s (s.id)}
+          <ListRow
+            title={s.title}
+            subtitle={`${formatWhen(s.starts_at, s.time_zone)} · ${s.items} ${s.items === 1 ? "item" : "items"}`}
+            active={selected?.id === s.id}
+            onclick={() => select(s.id)}
+          >
+            {#snippet details()}
+              {#if live.loaded?.service === s.id}
+                <span class="row-status"><span class="live-dot"></span>Open for live</span>
+              {/if}
+            {/snippet}
+          </ListRow>
+        {:else}
+          <li class="empty muted">No services yet.</li>
+        {/each}
+        {#if olderCount > 0 || showOlder}
+          <li class="older">
+            <Button variant="ghost" size="small" onclick={() => (showOlder = !showOlder)}>
+              {showOlder ? "Hide older services" : `Show ${olderCount} older`}
+            </Button>
+          </li>
+        {/if}
+        {#if trainingServices.length > 0}
+          <li class="group-head" id="training-head">Training</li>
+          {#each trainingServices as s (s.id)}
+            <ListRow
+              title={s.title}
+              subtitle={`${s.items} ${s.items === 1 ? "item" : "items"} · Practise in Present`}
+              active={selected?.id === s.id}
+              onclick={() => select(s.id)}
+            >
+              {#snippet details()}
+                {#if live.loaded?.service === s.id}
+                  <span class="row-status"><span class="live-dot"></span>Open for live</span>
+                {/if}
+              {/snippet}
+            </ListRow>
+          {/each}
+        {/if}
+      </ul>
+      {#if newer > 0}
+        <Banner tone="warn">
+          {newer === 1 ? "1 service was" : `${newer} services were`} saved by a newer Lampstand and can't be opened here. Update Lampstand to see {newer === 1 ? "it" : "them"}.
+        </Banner>
+      {/if}
+      {#each damaged as id (id)}
+        <Banner tone="warn">
+          A service file is damaged and can't be shown.
+          <Button variant="ghost" size="small" icon="trash" onclick={() => removeDamaged(id)}>Delete it</Button>
+        </Banner>
+      {/each}
+    </div>
+
+    <div class="library-slot" hidden={page !== "library"}>
+    <Library
+      service={readOnly ? null : selected}
+      {items}
+      {decks}
+      {translations}
+      onadd={(kind) => addItem(kind)}
+      ondragover={carryOver}
+      ondragend={carryEnd}
+      onsongs={songsFound}
+      ondecks={loadDecks}
+      ontranslations={loadTranslations}
+      onback={back}
+      onhide={hideSide}
+    />
+    </div>
+  </aside>
 </div>
 
 <style>
   .plan {
+    --side: 340px;
     display: grid;
-    grid-template-columns: 248px minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) var(--side);
     height: 100%;
   }
-  .services {
-    border-right: 1px solid var(--line);
+  .plan.focus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plan.focus > .order {
+    width: min(56rem, 100%);
+    justify-self: center;
+  }
+  .plan > [hidden],
+  .side > [hidden] {
+    display: none;
+  }
+  /* Library & controls: one column on the right, as in Present. */
+  .side {
+    border-left: 1px solid var(--line);
+  }
+  .side-front {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.85rem 0.75rem 1rem;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .side-front > :global(.side-head),
+  .side-front > .side-zone-head,
+  .side-front > .side-find {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    width: auto;
+  }
+  .side-zone-head.quiet {
+    color: var(--muted);
+    font-weight: 500;
+    margin-top: 0.9rem;
+  }
+  .side-page,
+  .library-slot {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+  }
+  .side-page > .pane-head {
+    padding-bottom: 0.25rem;
+  }
+  .side-page > .pane-head > :global(.side-head) {
+    flex: 1;
+  }
+  .new-service {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 1rem 0.75rem;
+  }
+  .library-slot > :global(*) {
+    flex: 1;
+  }
+  /* A narrow window: a drawer over the running order, not a column that
+     squeezes it. */
+  .plan.narrow {
+    grid-template-columns: minmax(0, 1fr);
+    position: relative;
+  }
+  .plan.narrow > .side:not([hidden]) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(var(--side), calc(100% - 3rem));
+    background: var(--panel);
+    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.45);
   }
   .create {
     display: flex;
@@ -1076,22 +1594,53 @@
   .create > :global(button) {
     align-self: flex-end;
   }
-  .row-actions {
-    display: flex;
-    gap: 0.25rem;
+  .live-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
   }
-  .rename {
-    padding: 0.5rem 0.75rem;
+  .service-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
   }
-  .rename input {
+  .title-edit {
+    font-size: 1.3rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    min-width: 0;
     width: 100%;
+  }
+  .look {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+  }
+  .look select {
+    max-width: 11rem;
+    padding: 0.3rem 0.5rem;
   }
   .older {
     padding: 0.5rem 0.75rem;
   }
+  .group-head {
+    padding: 1rem 0.75rem 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .training-note {
+    margin-bottom: 0.75rem;
+  }
   .row-status {
     display: flex;
     align-items: center;
+    white-space: nowrap;
     gap: 0.4rem;
     margin-top: 0.3rem;
     font-size: 0.75rem;
@@ -1120,6 +1669,9 @@
   }
   .heading {
     min-width: 0;
+    /* Room for the date, its tools and the live tag before the actions
+       beside it are pushed underneath. */
+    flex: 1 1 26rem;
   }
   h1 {
     font-size: 1.3rem;
@@ -1135,8 +1687,12 @@
   }
   .when-line {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem;
+  }
+  .when-line > span:first-child {
+    white-space: nowrap;
   }
   .reschedule {
     display: flex;
@@ -1148,12 +1704,25 @@
   .reschedule input {
     font-size: 0.85rem;
   }
+  .sound-link {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 1rem;
+  }
+  .sound-link input {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5rem;
-  }
-  .banner {
-    padding: 0 2rem;
+    /* Wrap inside the pane rather than run on under the Library. */
+    max-width: 100%;
+    min-width: 0;
   }
   .order-body {
     flex: 1;

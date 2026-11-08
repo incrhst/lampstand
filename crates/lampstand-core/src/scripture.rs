@@ -153,7 +153,22 @@ pub enum ReferenceError {
 /// SBL abbreviations and unambiguous prefixes, ignoring case, spaces and a
 /// trailing full stop; "I", "II", "III" and "First" stand for 1, 2, 3.
 /// Hyphen, en dash and em dash all work as range separators.
+///
+/// A reference that names a Bible version ("John 3:16 ESV") is not accepted
+/// here; [`parse_reference_versioned`] reads that.
 pub fn parse_reference(input: &str) -> Result<Passage, ReferenceError> {
+    match parse_reference_versioned(input)? {
+        (passage, None) => Ok(passage),
+        (_, Some(_)) => Err(ReferenceError::Malformed(input.trim().to_string())),
+    }
+}
+
+/// As [`parse_reference`], and also reads the Bible version typed after the
+/// reference: "James 3:11 ESV" or "James 3:11 (ESV)". The version is
+/// returned as typed, without the brackets; [`find_translation`] matches it
+/// to a translation. A version follows a space, so "John 3:16a" is still
+/// malformed.
+pub fn parse_reference_versioned(input: &str) -> Result<(Passage, Option<String>), ReferenceError> {
     let input = input.trim();
     if input.is_empty() {
         return Err(ReferenceError::Empty);
@@ -165,7 +180,7 @@ pub fn parse_reference(input: &str) -> Result<Passage, ReferenceError> {
         .skip(1)
         .find(|(_, c)| c.is_ascii_digit())
         .map_or(input.len(), |(i, _)| i);
-    let (book_text, numbers) = input.split_at(split);
+    let (book_text, rest) = input.split_at(split);
     let words: Vec<&str> = book_text.split_whitespace().collect();
 
     // Longest run of words that names a book; leftover words are junk.
@@ -187,12 +202,27 @@ pub fn parse_reference(input: &str) -> Result<Passage, ReferenceError> {
         return Err(ReferenceError::Malformed(input.to_string()));
     }
 
-    let (start, end) =
-        parse_numbers(numbers, book).ok_or_else(|| ReferenceError::Malformed(input.to_string()))?;
+    let malformed = || ReferenceError::Malformed(input.to_string());
+    // The numbers end where the first letter begins; that is the version,
+    // and it has to start after a space or an opening bracket.
+    let (numbers, version) = match rest.find(char::is_alphabetic) {
+        None => (rest, None),
+        Some(at) => {
+            let (numbers, tail) = rest.split_at(at);
+            if !numbers.ends_with(|c: char| c.is_whitespace() || c == '(' || c == '[') {
+                return Err(malformed());
+            }
+            let version = tail.trim_matches(|c: char| c.is_whitespace() || "()[],".contains(c));
+            (numbers, (!version.is_empty()).then(|| version.to_string()))
+        }
+    };
+    let numbers = numbers.trim_end_matches(['(', '[']);
+
+    let (start, end) = parse_numbers(numbers, book).ok_or_else(malformed)?;
     if end < start {
         return Err(ReferenceError::Backwards);
     }
-    Ok(Passage { book, start, end })
+    Ok((Passage { book, start, end }, version))
 }
 
 /// Alias keys (lowercase, letters and digits only) beyond the full names.
@@ -501,6 +531,47 @@ pub enum Licence {
     },
 }
 
+/// The translation a typed version names: "esv", "ESV" or "English
+/// Standard Version" match a translation whose abbreviation or name is
+/// that, ignoring case, spaces and punctuation.
+pub fn find_translation<'a>(
+    translations: &'a [Translation],
+    typed: &str,
+) -> Option<&'a Translation> {
+    let key = squash(typed);
+    if key.is_empty() {
+        return None;
+    }
+    translations
+        .iter()
+        .find(|t| squash(&t.abbreviation) == key || squash(&t.name) == key)
+}
+
+/// What to tell the operator when a typed version matches nothing, with the
+/// versions they can use: `Unrecognised version “xyz”. Available versions:
+/// KJV, WEB.`
+pub fn unrecognised_version_message(typed: &str, translations: &[Translation]) -> String {
+    let mut names: Vec<&str> = translations
+        .iter()
+        .map(|t| {
+            if t.abbreviation.is_empty() {
+                t.name.as_str()
+            } else {
+                t.abbreviation.as_str()
+            }
+        })
+        .collect();
+    names.sort_unstable_by_key(|n| n.to_lowercase());
+    if names.is_empty() {
+        format!("Unrecognised version “{typed}”. No Bible versions are on this device yet.")
+    } else {
+        format!(
+            "Unrecognised version “{typed}”. Available versions: {}.",
+            names.join(", ")
+        )
+    }
+}
+
 /// The full text of a translation. `books[b][c][v]` is book b+1, chapter
 /// c+1, verse v+1, using the translation's own versification. A book the
 /// translation lacks is an empty Vec.
@@ -658,6 +729,106 @@ mod tests {
         assert_eq!(
             text.verses(&passage(43, (9, 1), (9, 1))),
             Err(LookupError::NotInTranslation)
+        );
+    }
+
+    #[test]
+    fn reads_a_version_after_the_reference() {
+        let james = passage(59, (3, 11), (3, 11));
+        let cases = [
+            ("james 3:11", None),
+            ("james 3:11 esv", Some("esv")),
+            ("James 3:11 ESV", Some("ESV")),
+            ("James 3:11 (ESV)", Some("ESV")),
+            ("James 3:11  NIV84 ", Some("NIV84")),
+            (
+                "James 3:11 English Standard Version",
+                Some("English Standard Version"),
+            ),
+        ];
+        for (input, version) in cases {
+            assert_eq!(
+                parse_reference_versioned(input),
+                Ok((james, version.map(String::from))),
+                "{input}"
+            );
+        }
+        assert_eq!(
+            parse_reference_versioned("Jude 3-5 kjv"),
+            Ok((passage(65, (1, 3), (1, 5)), Some("kjv".to_string())))
+        );
+        assert_eq!(
+            parse_reference_versioned("Psalm 23 web"),
+            Ok((passage(19, (23, 1), (23, END)), Some("web".to_string())))
+        );
+        assert_eq!(
+            parse_reference_versioned("1 John 4:8 niv"),
+            Ok((passage(62, (4, 8), (4, 8)), Some("niv".to_string())))
+        );
+    }
+
+    #[test]
+    fn a_version_needs_a_space_and_a_plain_reference_takes_none() {
+        for input in ["James 3:11esv", "John 3:16a", "James esv 3:11"] {
+            assert!(
+                matches!(
+                    parse_reference_versioned(input),
+                    Err(ReferenceError::Malformed(_))
+                ),
+                "{input}"
+            );
+        }
+        assert!(matches!(
+            parse_reference("James 3:11 esv"),
+            Err(ReferenceError::Malformed(_))
+        ));
+        assert_eq!(
+            parse_reference_versioned("James 3:18-11 esv"),
+            Err(ReferenceError::Backwards)
+        );
+    }
+
+    fn translation(name: &str, abbreviation: &str) -> Translation {
+        Translation {
+            id: TranslationId::generate(),
+            name: name.into(),
+            abbreviation: abbreviation.into(),
+            language: "en".into(),
+            licence: Licence::PublicDomain,
+            text: BlobHash::of(name.as_bytes()),
+        }
+    }
+
+    #[test]
+    fn finds_a_translation_by_abbreviation_or_name() {
+        let all = [
+            translation("World English Bible", "WEB"),
+            translation("English Standard Version", "ESV"),
+        ];
+        let name = |typed: &str| find_translation(&all, typed).map(|t| t.abbreviation.as_str());
+        assert_eq!(name("esv"), Some("ESV"));
+        assert_eq!(name("E.S.V."), Some("ESV"));
+        assert_eq!(name("english standard version"), Some("ESV"));
+        assert_eq!(name("Web"), Some("WEB"));
+        assert_eq!(name("xyz"), None);
+        assert_eq!(name(""), None);
+        assert_eq!(name("English"), None);
+    }
+
+    #[test]
+    fn lists_the_available_versions_when_one_is_not_recognised() {
+        let all = [
+            translation("World English Bible", "WEB"),
+            translation("King James Version", "KJV"),
+            translation("Unabbreviated Bible", ""),
+        ];
+        assert_eq!(
+            unrecognised_version_message("xyz", &all),
+            "Unrecognised version “xyz”. Available versions: KJV, Unabbreviated Bible, WEB."
+        );
+        assert_eq!(
+            unrecognised_version_message("esv", &[]),
+            "Unrecognised version “esv”. No Bible versions are on this device yet."
         );
     }
 

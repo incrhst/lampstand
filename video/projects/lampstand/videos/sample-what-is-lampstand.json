@@ -1,0 +1,136 @@
+{
+ "aspect": "16:9",
+ "scenes": [
+  {
+   "type": "title",
+   "kicker": "A free church projection app",
+   "heading": "Lampstand",
+   "sub": "Run Sunday's service from one laptop. A volunteer can learn it in ten minutes.",
+   "durationSec": 5
+  },
+  {
+   "type": "quote",
+   "text": "Sunday must not fail.",
+   "attribution": "Our first promise",
+   "durationSec": 4
+  },
+  {
+   "type": "bullets",
+   "heading": "What it runs",
+   "items": [
+    "Songs and Bible verses",
+    "Sermon slides from PowerPoint or Google Slides",
+    "Announcements and videos",
+    "Lyrics for your live stream"
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/2-plan.png",
+   "heading": "Plan the week",
+   "callouts": [
+    {
+     "x": 46,
+     "y": 48,
+     "label": "Put the service in order"
+    },
+    {
+     "x": 87,
+     "y": 48,
+     "label": "Pick songs, verses and slides"
+    },
+    {
+     "x": 66,
+     "y": 12,
+     "label": "Press Open for live on Sunday"
+    }
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/5-present.png",
+   "heading": "Run it on Sunday",
+   "callouts": [
+    {
+     "x": 47,
+     "y": 43,
+     "label": "What the room sees"
+    },
+    {
+     "x": 36,
+     "y": 71,
+     "label": "Press Next, or Space"
+    },
+    {
+     "x": 87,
+     "y": 23,
+     "label": "See what comes after"
+    }
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "stat",
+   "value": 10,
+   "suffix": " minutes",
+   "label": "of training is the goal before a volunteer runs a service",
+   "tone": "table",
+   "durationSec": 4
+  },
+  {
+   "type": "bullets",
+   "heading": "What we believe",
+   "items": [
+    "It works with no internet on Sunday morning",
+    "Built for volunteers, not technicians",
+    "Free and open source, with no subscription",
+    "Honest about what is finished and what is next"
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "roles",
+   "heading": "Four jobs, shared across your team",
+   "durationSec": 7
+  },
+  {
+   "type": "devices",
+   "heading": "One laptop, or several",
+   "link": "talking over your church network",
+   "machines": [
+    {
+     "name": "At the projector",
+     "kind": "projector",
+     "roles": [
+      "projection",
+      "audio"
+     ]
+    },
+    {
+     "name": "Back of the room",
+     "kind": "laptop",
+     "roles": [
+      "operator"
+     ]
+    },
+    {
+     "name": "Stream desk",
+     "kind": "desk",
+     "roles": [
+      "stream"
+     ]
+    }
+   ],
+   "durationSec": 7
+  },
+  {
+   "type": "cta",
+   "heading": "Still being built, in the open",
+   "action": "Follow it on GitHub",
+   "url": "github.com/incrhst/lampstand",
+   "durationSec": 4
+  }
+ ]
+}

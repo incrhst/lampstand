@@ -13,6 +13,7 @@ const output = (over: Partial<OutputConfig> & { name: string }): OutputConfig =>
   safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
   background: "Bleed",
   theme: null,
+  idle: null,
   enabled: false,
   ...over,
 });

@@ -14,11 +14,26 @@ use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use super::secure::SessionKeys;
+#[cfg(test)]
+use super::sound_cue::SoundReason;
+use super::sound_cue::{SoundCommand, SoundNow, SoundProblem};
+use crate::roles::Role;
 
 /// Bumped when frames change incompatibly. A peer speaking another version
 /// is refused with a message saying which side should update. 2: hellos
 /// carry an X25519 key and frames after the handshake are encrypted (T75).
-pub(crate) const PROTOCOL: u32 = 2;
+/// 3: presenter lease, ask and heartbeat frames. 4: driving. 5: one record
+/// per role (Projection, Operator, Stream, Audio) replaces the lease and
+/// the driver seat. 6: the sender's takeover setting (`Takeover`), added at
+/// the end of the frames. 7: why a sound did not play (`SoundProblem`), added
+/// at the end of the frames. 8 (0.9.0): a role step may be a `Reclaim`, the
+/// holder's signed refusal of a claim against it (`roles::Kind`, added at the
+/// end), which a protocol 7 device cannot read. 9: a claim step carries the
+/// ack of the device it was taken from (`roles::Link::ack`), and a reclaim
+/// may sit above what was built on the claim it refuses. 10: the overlay in
+/// the app's JSON (`DriveLive`, the live state a driving device reads) is
+/// `Idle` where 9 had `Logo`, which a protocol 9 device cannot read.
+pub(crate) const PROTOCOL: u32 = 10;
 
 /// Blob bytes per `BlobChunk` frame.
 pub(crate) const BLOB_CHUNK: usize = 256 * 1024;
@@ -53,6 +68,106 @@ pub(crate) enum Frame {
     BlobMissing {
         hash: [u8; 32],
     },
+    /// The sender's record for one role ([`crate::roles::Record`]): sent for
+    /// all four when a session opens and whenever one changes. The newer
+    /// one wins, whoever sends it.
+    Role {
+        role: Role,
+        holder: Option<[u8; 32]>,
+        epoch: u64,
+        /// The signed steps that led here, newest first (empty for a state
+        /// moved over from 0.7.0). Names are never sent: each device uses
+        /// the one it has from pairing.
+        #[serde(deserialize_with = "crate::roles::bounded_chain")]
+        steps: Vec<crate::roles::Link>,
+    },
+    /// The sender asks the receiver, the holder of `role`, to hand it over.
+    RoleAsk {
+        role: Role,
+    },
+    /// The sender withdraws its ask for `role`.
+    RoleCancel {
+        role: Role,
+    },
+    /// The holder turns an ask for `role` down, made at this record epoch.
+    RoleAnswer {
+        role: Role,
+        epoch: u64,
+        answer: RoleAnswer,
+    },
+    /// The sender, the holder of `role`, gives it up on purpose and asks the
+    /// receiver to take it (an Operator stopping, for the Projection holder
+    /// that runs the service by default).
+    RoleYield {
+        role: Role,
+    },
+    /// Proof of life, every few seconds, so a silent connection is told
+    /// from a quiet one.
+    Beat,
+    /// A request from the Operator to the Projection holder: the same JSON the
+    /// local operator's screen sends.
+    DriveCommand {
+        payload: Vec<u8>,
+    },
+    /// The Projection holder's live state for the Operator's screen: one
+    /// JSON event.
+    DriveLive {
+        payload: Vec<u8>,
+    },
+    /// From the Projection holder to the Stream holder: the OBS scene the
+    /// item that just went live asks for (`None`: no scene, but a new item).
+    /// The scene name is all it carries. `run` is random per start and `seq`
+    /// grows within a run, so an older cue is not applied after a newer one.
+    ObsCue {
+        run: u64,
+        seq: u64,
+        scene: Option<String>,
+    },
+    /// From the Stream holder back to the Projection holder: the cue is
+    /// taken, so it need not be sent again.
+    ObsCueAck {
+        run: u64,
+        seq: u64,
+    },
+    /// To the Audio holder: play, pause, resume, stop or panic (see
+    /// [`super::sound_cue`]). Nothing is kept for a holder that is away.
+    SoundCue {
+        cmd: SoundCommand,
+    },
+    /// From the Audio holder to every connected device: what is playing
+    /// (`None`: nothing).
+    SoundNow {
+        now: Option<SoundNow>,
+    },
+    /// How long the sender waits before it takes a role from a device that
+    /// has gone, in seconds (its takeover setting). Sent when a session opens
+    /// and when the setting changes. The receiver, when it is the one that
+    /// would claim from the sender, waits at least this long too, so a device
+    /// with a shorter setting does not claim before the sender would count the
+    /// other as gone. It can only make a device wait longer than its own
+    /// setting, never shorter, and what is honoured is capped at the longest
+    /// setting there is.
+    ///
+    /// Last in the enum on purpose: postcard numbers the variants in order,
+    /// so a variant added in the middle changes the number of every one after
+    /// it (see `variant_numbers_are_pinned`).
+    Takeover {
+        secs: u32,
+    },
+    /// From the Audio holder to every connected device: why the last sound
+    /// did not play (`None`: nothing is wrong now). A reason from a fixed
+    /// list and the sound's name, never a path (see [`super::sound_cue`]).
+    ///
+    /// Last in the enum, after `Takeover`, for the same reason.
+    SoundProblem {
+        problem: Option<SoundProblem>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum RoleAnswer {
+    Declined,
+    Busy { by: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +319,53 @@ impl Link {
 mod tests {
     use super::*;
 
+    /// postcard numbers a frame's variants in the order they are declared, so
+    /// a variant added in the middle changes the number of every one after it
+    /// and breaks every device on the other side. New frames go last; this
+    /// pins the numbers the released frames have.
+    #[test]
+    fn variant_numbers_are_pinned() {
+        let number = |f: Frame| f.encode()[0];
+        assert_eq!(number(Frame::RoleYield { role: Role::Audio }), 11);
+        assert_eq!(number(Frame::Beat), 12);
+        assert_eq!(number(Frame::DriveCommand { payload: vec![] }), 13);
+        assert_eq!(number(Frame::DriveLive { payload: vec![] }), 14);
+        assert_eq!(
+            number(Frame::ObsCue {
+                run: 0,
+                seq: 0,
+                scene: None
+            }),
+            15
+        );
+        assert_eq!(number(Frame::ObsCueAck { run: 0, seq: 0 }), 16);
+        assert_eq!(
+            number(Frame::SoundCue {
+                cmd: SoundCommand::Panic
+            }),
+            17
+        );
+        assert_eq!(number(Frame::SoundNow { now: None }), 18);
+        assert_eq!(number(Frame::Takeover { secs: 120 }), 19);
+        assert_eq!(number(Frame::SoundProblem { problem: None }), 20);
+        // And the bytes of one, whole.
+        assert_eq!(Frame::Takeover { secs: 120 }.encode(), vec![19, 120]);
+        assert_eq!(Frame::SoundProblem { problem: None }.encode(), vec![20, 0]);
+        assert_eq!(Frame::Beat.encode(), vec![12]);
+    }
+
+    /// The kinds of role step are numbered the same way: `Reclaim` (protocol
+    /// 8) went last, after the three a protocol 7 device knows.
+    #[test]
+    fn step_kinds_are_pinned() {
+        use crate::roles::Kind;
+        let number = |k: Kind| postcard::to_allocvec(&k).unwrap()[0];
+        assert_eq!(number(Kind::Claim), 0);
+        assert_eq!(number(Kind::HandOver), 1);
+        assert_eq!(number(Kind::Release), 2);
+        assert_eq!(number(Kind::Reclaim), 3);
+    }
+
     #[test]
     fn frames_round_trip() {
         let frames = [
@@ -229,11 +391,135 @@ mod tests {
                 data: vec![4; 10],
                 last: true,
             },
+            Frame::Role {
+                role: Role::Operator,
+                holder: Some([8; 32]),
+                epoch: 3,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::HandOver,
+                    holder: Some(crate::team::DeviceKey([8; 32])),
+                    epoch: 3,
+                    prev_holder: Some(crate::team::DeviceKey([7; 32])),
+                    prev_epoch: 2,
+                    sig: vec![5; 64],
+                    ack: None,
+                }],
+            },
+            Frame::Role {
+                role: Role::Stream,
+                holder: Some([7; 32]),
+                epoch: 5,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::Reclaim,
+                    holder: Some(crate::team::DeviceKey([7; 32])),
+                    epoch: 5,
+                    prev_holder: Some(crate::team::DeviceKey([8; 32])),
+                    prev_epoch: 4,
+                    sig: vec![5; 64],
+                    ack: None,
+                }],
+            },
+            Frame::Role {
+                role: Role::Audio,
+                holder: Some([9; 32]),
+                epoch: 6,
+                steps: vec![crate::roles::Link {
+                    kind: crate::roles::Kind::Claim,
+                    holder: Some(crate::team::DeviceKey([9; 32])),
+                    epoch: 6,
+                    prev_holder: Some(crate::team::DeviceKey([7; 32])),
+                    prev_epoch: 5,
+                    sig: vec![5; 64],
+                    ack: Some(vec![6; 64]),
+                }],
+            },
+            Frame::Takeover { secs: 120 },
+            Frame::RoleAsk { role: Role::Audio },
+            Frame::RoleCancel { role: Role::Stream },
+            Frame::RoleAnswer {
+                role: Role::Operator,
+                epoch: 3,
+                answer: RoleAnswer::Busy { by: "Sam".into() },
+            },
+            Frame::RoleYield {
+                role: Role::Operator,
+            },
+            Frame::DriveCommand {
+                payload: b"{\"Next\":null}".to_vec(),
+            },
+            Frame::ObsCue {
+                run: 9,
+                seq: 2,
+                scene: Some("Worship".into()),
+            },
+            Frame::ObsCue {
+                run: 9,
+                seq: 3,
+                scene: None,
+            },
+            Frame::ObsCueAck { run: 9, seq: 3 },
+            Frame::SoundCue {
+                cmd: SoundCommand::Play {
+                    file: [6; 32],
+                    name: "Amazing Grace (track)".into(),
+                    item: "item-1".into(),
+                },
+            },
+            Frame::SoundCue {
+                cmd: SoundCommand::Stop { fade_ms: 3000 },
+            },
+            Frame::SoundCue {
+                cmd: SoundCommand::Panic,
+            },
+            Frame::SoundNow {
+                now: Some(SoundNow {
+                    item: "item-1".into(),
+                    name: "Amazing Grace (track)".into(),
+                    paused: false,
+                    ending: false,
+                    position_ms: 1500,
+                    length_ms: 180_000,
+                }),
+            },
+            Frame::SoundNow { now: None },
+            Frame::SoundProblem {
+                problem: Some(SoundProblem {
+                    reason: SoundReason::NotOnDevice,
+                    item: "item-1".into(),
+                    name: "Walk-in music".into(),
+                }),
+            },
+            Frame::SoundProblem { problem: None },
         ];
         for frame in frames {
             assert_eq!(Frame::decode(&frame.encode()).unwrap(), frame);
         }
         assert!(Frame::decode(&[0xff, 0xff]).is_err());
+    }
+
+    #[test]
+    fn a_role_frame_with_too_many_steps_cannot_be_read() {
+        let step = crate::roles::Link {
+            kind: crate::roles::Kind::HandOver,
+            holder: Some(crate::team::DeviceKey([8; 32])),
+            epoch: 3,
+            prev_holder: Some(crate::team::DeviceKey([7; 32])),
+            prev_epoch: 2,
+            sig: vec![5; 64],
+            ack: None,
+        };
+        let frame = |n: usize| Frame::Role {
+            role: Role::Stream,
+            holder: Some([8; 32]),
+            epoch: 3,
+            steps: vec![step.clone(); n],
+        };
+        assert_eq!(
+            Frame::decode(&frame(crate::roles::CHAIN).encode()).unwrap(),
+            frame(crate::roles::CHAIN)
+        );
+        assert!(Frame::decode(&frame(crate::roles::CHAIN + 1).encode()).is_err());
+        assert!(Frame::decode(&frame(1000).encode()).is_err());
     }
 
     /// Version 1's frames, as they were before T75.

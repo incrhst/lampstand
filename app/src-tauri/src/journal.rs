@@ -45,7 +45,14 @@ pub struct LiveRecord {
     /// The service open in the live engine.
     pub service: Option<ServiceId>,
     pub live: Option<Cursor>,
+    /// The slide on the screens, when a music-only item is live (it has no
+    /// picture). Missing from a journal written before 0.9.0.
+    #[serde(default)]
+    pub shown: Option<Cursor>,
     pub preview: Option<Cursor>,
+    /// A journal from a 0.9.0 preview build may hold `"Logo"`, the overlay
+    /// Idle replaced: it comes back as no overlay.
+    #[serde(deserialize_with = "overlay_from_journal")]
     pub overlay: Overlay,
     /// False when the operator cleared the text (`ClearText`, `ClearAll`).
     pub text: bool,
@@ -53,6 +60,22 @@ pub struct LiveRecord {
     pub background: bool,
     /// The outputs that had windows.
     pub outputs: Vec<OutputId>,
+}
+
+/// Reads the overlay, taking the retired `"Logo"` as `Overlay::None`.
+fn overlay_from_journal<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Overlay, D::Error> {
+    #[derive(Deserialize)]
+    enum Written {
+        None,
+        Black,
+        Idle,
+        Logo,
+    }
+    Ok(match Written::deserialize(d)? {
+        Written::None | Written::Logo => Overlay::None,
+        Written::Black => Overlay::Black,
+        Written::Idle => Overlay::Idle,
+    })
 }
 
 impl LiveRecord {
@@ -212,12 +235,13 @@ mod tests {
                 slide: 2,
                 step: 0,
             }),
+            shown: None,
             preview: Some(Cursor {
                 item,
                 slide: 3,
                 step: 0,
             }),
-            overlay: Overlay::Logo,
+            overlay: Overlay::Idle,
             text: true,
             background: false,
             outputs: vec![OutputId::generate()],
@@ -251,6 +275,30 @@ mod tests {
         };
         journal.record(&idle, Timestamp(1));
         assert!(journal.recover(Timestamp(2)).is_none());
+    }
+
+    #[test]
+    fn a_preview_journal_with_the_logo_overlay_comes_back_with_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut journal = Journal::new(dir.path());
+        let record = live_record();
+        journal.record(&record, Timestamp(1_000));
+        let written = fs::read_to_string(journal.path()).unwrap();
+        assert!(written.contains("\"overlay\":\"Idle\""), "{written}");
+        fs::write(
+            journal.path(),
+            written.replace("\"overlay\":\"Idle\"", "\"overlay\":\"Logo\""),
+        )
+        .unwrap();
+        let back = Journal::new(dir.path()).recover(Timestamp(2_000)).unwrap();
+        assert_eq!(back.overlay, Overlay::None);
+        assert_eq!(
+            back,
+            LiveRecord {
+                overlay: Overlay::None,
+                ..record
+            }
+        );
     }
 
     #[test]

@@ -52,4 +52,18 @@ scene_problem: ObsSceneProblem | null,
  * OBS's audio inputs (microphones, desktop audio, media with sound)
  * in OBS's order, while connected, for the mute toggles (T91).
  */
-audio: Array<ObsAudioInput>, };
+audio: Array<ObsAudioInput>, 
+/**
+ * OBS is on another computer (its host isn't this one). Everything
+ * below is empty or false for a church with OBS on this computer.
+ */
+remote: boolean, 
+/**
+ * This computer's network addresses, when `remote`, for the "Use this
+ * address" picker.
+ */
+addresses: Array<string>, 
+/**
+ * The address pinned for OBS to reach this computer, when `remote`.
+ */
+pinned_address: string | null, };

@@ -3,12 +3,28 @@ import type { Cursor } from "./Cursor";
 import type { LoadedService } from "./LoadedService";
 import type { ObsView } from "./ObsView";
 import type { Overlay } from "./Overlay";
+import type { RemotesView } from "./RemotesView";
+import type { SoundView } from "./SoundView";
+import type { SyncSummary } from "./SyncSummary";
+import type { TrainingVideos } from "./TrainingVideos";
 
 /**
  * Pushed to the UI.
  */
-export type Event = { "type": "Live", "data": { live: Cursor | null, preview: Cursor | null, idle: boolean, 
+export type Event = { "type": "Live", "data": { live: Cursor | null, 
+/**
+ * The slide the screens show: `live`, or while a music-only item is
+ * live (it has no picture), the slide before it.
+ */
+shown: Cursor | null, preview: Cursor | null, idle: boolean, 
 /**
  * Black or logo, which persist across slides.
  */
-overlay: Overlay, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { peers: number, relay_connected: boolean, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView };
+overlay: Overlay, 
+/**
+ * Something is live but the operator cleared its words (Clear
+ * text, Clear all), so nothing of it is on the screens. A speaker's
+ * phone waits until the slides are back (0.9.1). Absent from an
+ * older device's message: false.
+ */
+cleared: boolean, } } | { "type": "Loaded", "data": LoadedService } | { "type": "Unloaded" } | { "type": "Changed", "data": { kind: string, id: string, } } | { "type": "SyncStatus", "data": { sync: SyncSummary, } } | { "type": "Readiness", "data": { service: string, ready: boolean, } } | { "type": "ImportProgress", "data": { done: number, total: number, message: string, } } | { "type": "DisplaysChanged" } | { "type": "Obs", "data": ObsView } | { "type": "Sound", "data": SoundView } | { "type": "Remotes", "data": RemotesView } | { "type": "TrainingVideos", "data": TrainingVideos };

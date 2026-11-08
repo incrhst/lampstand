@@ -136,7 +136,7 @@ impl Repo {
         }
         autosurgeon::hydrate(&loaded.doc)
             .map(Some)
-            .map_err(|e| SyncError::Corrupt(format!("{} {id}: {e}", T::KIND.as_str())))
+            .map_err(|e| SyncError::Unreadable(format!("{} {id}: {e}", T::KIND.as_str())))
     }
 
     /// Writes `doc`, diffing against the stored document so that only the

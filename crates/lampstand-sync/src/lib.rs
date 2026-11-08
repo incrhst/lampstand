@@ -5,7 +5,7 @@
 //! PRD: CD-1 to CD-3, CD-6.
 //!
 //! - One Automerge document per entity (song, service, theme, deck,
-//!   translation, usage log) plus one team document. Documents map to the
+//!   translation, church settings, usage log) plus one team document. Documents map to the
 //!   core types with autosurgeon; the document ID is the entity's `Id`.
 //! - Blobs (deck files, media, Bible text) are content-addressed files,
 //!   fetched by hash from whichever peer has them. Never inside documents.
@@ -20,10 +20,13 @@
 #[cfg(feature = "net")]
 pub mod net;
 mod repo;
+pub mod roles;
 pub mod team;
+pub mod wording;
 
 use std::fmt;
 
+use lampstand_core::church::{ChurchSettings, CHURCH_SETTINGS_ID};
 use lampstand_core::deck::Deck;
 use lampstand_core::scripture::Translation;
 use lampstand_core::service::Service;
@@ -43,18 +46,22 @@ pub enum DocKind {
     Theme,
     Deck,
     Translation,
+    /// The one document of the settings that follow the church across its
+    /// devices (`lampstand_core::church`).
+    ChurchSettings,
     /// One per device: the CCLI usage log of what that device showed.
     UsageLog,
 }
 
 impl DocKind {
-    pub const ALL: [DocKind; 7] = [
+    pub const ALL: [DocKind; 8] = [
         DocKind::Team,
         DocKind::Song,
         DocKind::Service,
         DocKind::Theme,
         DocKind::Deck,
         DocKind::Translation,
+        DocKind::ChurchSettings,
         DocKind::UsageLog,
     ];
 
@@ -67,6 +74,7 @@ impl DocKind {
             DocKind::Theme => "theme",
             DocKind::Deck => "deck",
             DocKind::Translation => "translation",
+            DocKind::ChurchSettings => "church-settings",
             DocKind::UsageLog => "usage-log",
         }
     }
@@ -118,6 +126,13 @@ impl Doc for Translation {
     }
 }
 
+impl Doc for ChurchSettings {
+    const KIND: DocKind = DocKind::ChurchSettings;
+    fn doc_id(&self) -> Uuid {
+        CHURCH_SETTINGS_ID
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocChanged {
     pub kind: DocKind,
@@ -130,6 +145,9 @@ pub struct DocChanged {
 pub enum SyncError {
     Io(std::io::Error),
     Corrupt(String),
+    /// The document loaded, but this version cannot make sense of it (an
+    /// item kind or field it does not know, from a newer Lampstand).
+    Unreadable(String),
     /// The local role may not write this kind of document.
     Forbidden(DocKind),
 }
@@ -139,6 +157,7 @@ impl fmt::Display for SyncError {
         match self {
             SyncError::Io(e) => write!(f, "sync store I/O: {e}"),
             SyncError::Corrupt(why) => write!(f, "corrupt sync data: {why}"),
+            SyncError::Unreadable(why) => write!(f, "not understood by this version: {why}"),
             SyncError::Forbidden(kind) => write!(f, "this device may not write {}", kind.as_str()),
         }
     }

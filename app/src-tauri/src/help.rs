@@ -16,6 +16,9 @@ pub const ISSUES_URL: &str = "https://github.com/incrhst/lampstand/issues";
 /// Lampstand. It is hosted by Tally; nothing is sent from the app.
 pub const REGISTER_URL: &str = "https://tally.so/r/BEzDz7";
 
+/// The documentation pages.
+pub const DOCS_URL: &str = "https://lampstand.dbain.com/docs/";
+
 /// Where questions are asked and answered.
 pub const DISCUSSIONS_URL: &str = "https://github.com/incrhst/lampstand/discussions";
 
@@ -25,6 +28,7 @@ pub fn page(request: &AboutRequest, version: &str, os: &str, arch: &str) -> Stri
     let computer = format!("Lampstand {version} on {os} ({arch})");
     match request {
         AboutRequest::TellUs => REGISTER_URL.to_string(),
+        AboutRequest::ReadDocs => DOCS_URL.to_string(),
         AboutRequest::ReportProblem => issue_form("bug_report.yml", &computer),
         AboutRequest::SuggestIdea => issue_form("idea.yml", &computer),
         // Discussions has no form fields, so the version leads the question.

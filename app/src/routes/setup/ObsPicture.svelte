@@ -5,18 +5,22 @@
      OBS), and needs none of that to work. -->
 <script lang="ts">
   import { request, type OutputConfig } from "../../lib/api";
-  import { isPicture, pictureStatus } from "../../lib/obs";
-  import { isCalibrated, live, pictures, putOutput, refreshPictures, removeOutput, report } from "../../lib/state.svelte";
+  import { isPicture, pictureStatus, withAddress } from "../../lib/obs";
+  import { isCalibrated, live, pictures, putOutput, refreshPictures, refreshSettings, refreshThemes, removeOutput, report } from "../../lib/state.svelte";
   import Button from "../../lib/kit/Button.svelte";
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
+  import ThemePicker from "../../lib/kit/ThemePicker.svelte";
 
   let { oncalibrate }: { oncalibrate: (id: string) => void } = $props();
 
   let sources = $derived(live.outputs.filter(isPicture));
+
+  refreshThemes();
+  refreshSettings();
 
   // Whether OBS has loaded each URL, checked every few seconds while this
   // page is open.
@@ -60,7 +64,7 @@
 
   async function copy(id: string) {
     try {
-      await navigator.clipboard.writeText(urls[id]);
+      await navigator.clipboard.writeText(withAddress(urls[id], live.obs));
       copied = id;
       setTimeout(() => {
         if (copied === id) copied = null;
@@ -89,6 +93,7 @@
       safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
       background: "Bleed",
       theme: null,
+      idle: null,
       enabled: false,
     });
   }
@@ -107,10 +112,19 @@
         <div class="serves">
           <Segmented label="What {o.name} shows in OBS" options={servesOptions} value={serves(o)} onchange={(to) => setServes(o, to)} />
         </div>
+        <label class="theme">
+          <span class="muted">Theme</span>
+          <ThemePicker
+            label="Theme for {o.name}"
+            value={o.theme}
+            inherit="Same as the service"
+            onchange={(theme) => putOutput({ ...o, theme })}
+          />
+        </label>
         {#if urls[o.id]}
           <p class="muted small">In OBS, add a <strong>Browser</strong> source with this URL{o.enabled ? "" : " (turn it on first)"}:</p>
           <div class="url">
-            <input type="text" readonly value={urls[o.id]} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
+            <input type="text" readonly value={withAddress(urls[o.id], live.obs)} aria-label="OBS browser-source URL" onfocus={(e) => e.currentTarget.select()} />
             <Button size="small" onclick={() => copy(o.id)}>{copied === o.id ? "Copied" : "Copy"}</Button>
             <Button variant="ghost" size="small" title="Stops the old URL working" onclick={() => newKey(o.id)}>New key</Button>
           </div>
@@ -136,6 +150,13 @@
 </div>
 
 <style>
+  .theme {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+  }
   .sources {
     display: flex;
     flex-direction: column;

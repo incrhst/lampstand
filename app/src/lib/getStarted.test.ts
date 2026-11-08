@@ -12,7 +12,7 @@ const fresh: Facts = {
 const done = (f: Facts) => steps(f).map((s) => [s.id, s.done]);
 
 test("a brand-new install has nothing done", () => {
-  assert.deepEqual(done(fresh), [["try", false], ["screen", false], ["songs", false], ["plan", false]]);
+  assert.deepEqual(done(fresh), [["try", false], ["screen", false], ["songs", false], ["plan", false], ["look", false]]);
   assert.equal(remaining(steps(fresh)), 4);
   assert.equal(allDone(steps(fresh)), false);
 });
@@ -40,4 +40,12 @@ test("the welcome service is found by name, and only while it has something in i
   assert.equal(welcomeService(fresh.services)?.id, "w");
   assert.equal(welcomeService([{ id: "w", title: WELCOME_TITLE, items: 0 }]), undefined);
   assert.equal(welcomeService([{ id: "x", title: "Sunday", items: 3 }]), undefined);
+});
+
+test("the church's look is offered but never holds the strip open", () => {
+  const all: Facts = { screensOn: 1, songs: 10, services: [{ id: "s", title: "Sunday", items: 4 }], triedService: true };
+  assert.equal(done(all).at(-1)![1], false);
+  assert.equal(allDone(steps(all)), true, "the optional step is left undone");
+  assert.equal(done({ ...all, brandSet: true }).at(-1)![1], true);
+  assert.equal(remaining(steps(fresh)), 4, "optional steps are not counted as left to do");
 });

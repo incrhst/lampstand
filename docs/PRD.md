@@ -128,7 +128,7 @@ P0 is needed for launch, P1 for the first year, P2 later. PowerPoint, Google Sli
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| BI-1 | Type a reference ("Jn 3:16-18") and go live. Split long passages across slides automatically. | P0 |
+| BI-1 | Type a reference ("Jn 3:16-18") and go live. Split long passages across slides automatically. Type a version after it ("James 3:11 ESV") to read from that version if the church has it; a version that is not on the device is reported as unrecognised, with the versions that are. A reference with no version is read from a default version, set in Setup. | P0 |
 | BI-2 | Import translations in OSIS, USFM, Zefania XML, OpenSong and OpenLP formats. The church holds the licence for what it imports; we bundle public domain texts only (for example KJV, WEB). Imported texts sync between the church's own devices but are left out of service packages. | P0 |
 | BI-3 | Show two translations side by side. | P1 |
 
@@ -259,7 +259,7 @@ Before Phase 1, an early-adopter release goes to a small, hand-picked group of c
   - **Access is given and taken back by the church, not by managing the device.** People join with an invite link or QR code and a role (CD-6), a remote pairs with a code, and the congregation view needs neither. Removing a person's device ends its access. No device management (MDM) or church-owned accounts on personal devices.
   - **Secrets stay on the main machine.** Browser-source keys, the OBS password and output settings are device-local and never sync, so a personal device that is lost or leaves the team holds none of them.
   - **A personal device can come and go mid-service.** Losing a remote or a stage-display tablet never affects what is on the screens.
-  - **The main machine may be someone's own laptop.** Lampstand doesn't take the machine over: no startup items, no system settings changed, nothing beyond its own app-data folder. Another volunteer's laptop can take over the next week by joining the team and running the readiness check (CD-10); screen calibration belongs to each machine, so a new one calibrates its own screens. A service package (CD-8) covers a laptop that can't join the team.
+  - **The main machine may be someone's own laptop.** Lampstand doesn't take the machine over: no startup items, no system settings changed, nothing beyond its own app-data folder. The one exception is two switches in Setup that the operator turns on themselves, both off by default: start Lampstand when the computer starts (a startup item), and keep the computer awake while it is showing the screens (no sleep while an output is open). Turning a switch off undoes it. Another volunteer's laptop can take over the next week by joining the team and running the readiness check (CD-10); screen calibration belongs to each machine, so a new one calibrates its own screens. A service package (CD-8) covers a laptop that can't join the team.
 
 **Open questions.**
 

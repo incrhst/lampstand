@@ -4,10 +4,12 @@
 //!
 //! PRD: SL-1, SL-3, BI-2, CD-8, CD-10, PS-6, RP-1.
 
+pub mod brand_package;
 pub mod bundled;
 pub mod package;
 pub mod readiness;
 pub mod search;
+pub mod training;
 pub mod usage;
 
 use std::collections::HashMap;
@@ -15,6 +17,8 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use lampstand_core::brand::Brand;
+use lampstand_core::church::{ChurchSettings, CHURCH_SETTINGS_ID};
 use lampstand_core::deck::{Deck, DeckId};
 use lampstand_core::geom::{Color, Rect};
 use lampstand_core::id::BlobHash;
@@ -65,12 +69,25 @@ struct Search {
     index: SongIndex,
 }
 
+/// What a pass over every service found.
+#[derive(Debug, Default)]
+pub struct ServiceScan {
+    pub services: Vec<Service>,
+    /// Written by a newer Lampstand, so not understood here.
+    pub newer: usize,
+    /// Could not be loaded (a damaged file). `Library::delete_service`
+    /// still reaches them.
+    pub damaged: Vec<ServiceId>,
+}
+
 pub struct Library {
     repo: Arc<Repo>,
     search: Mutex<Search>,
     /// Decoded Bible text by blob hash. Blobs never change, so an entry
     /// is never stale.
     bibles: Mutex<HashMap<BlobHash, Arc<BibleText>>>,
+    /// The training services and what they use; never in the repo.
+    training: Mutex<training::Training>,
 }
 
 impl Library {
@@ -92,6 +109,7 @@ impl Library {
             repo: Arc::new(repo),
             search: Mutex::new(Search { changes, index }),
             bibles: Mutex::new(HashMap::new()),
+            training: Mutex::new(training::Training::default()),
         };
         library.ensure_starter_theme()?;
         Ok(library)
@@ -113,7 +131,14 @@ impl Library {
         Ok(())
     }
 
+    fn training(&self) -> MutexGuard<'_, training::Training> {
+        self.training.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn song(&self, id: SongId) -> Result<Option<Song>, SyncError> {
+        if let Some(song) = self.training().song(id) {
+            return Ok(Some(song));
+        }
         self.repo.get(id.uuid())
     }
 
@@ -121,11 +146,20 @@ impl Library {
         all(&self.repo)
     }
 
+    /// Saves a song. A training hymn cannot be saved: the copy in the repo
+    /// would sync to the team while every device kept showing the training
+    /// one.
     pub fn put_song(&self, song: &Song) -> Result<(), SyncError> {
+        if self.training().song(song.id).is_some() {
+            return Err(SyncError::Forbidden(DocKind::Song));
+        }
         self.repo.put(song)
     }
 
     pub fn delete_song(&self, id: SongId) -> Result<(), SyncError> {
+        if self.training().song(id).is_some() {
+            return Err(SyncError::Forbidden(DocKind::Song));
+        }
         self.repo.delete(DocKind::Song, id.uuid())
     }
 
@@ -152,18 +186,55 @@ impl Library {
     }
 
     pub fn service(&self, id: ServiceId) -> Result<Option<Service>, SyncError> {
+        if let Some(service) = self.training().service(id) {
+            return Ok(Some(service));
+        }
         self.repo.get(id.uuid())
     }
 
+    /// The services this version can read. One it cannot is left out and
+    /// logged, not fatal; see [`Library::services_checked`].
     pub fn services(&self) -> Result<Vec<Service>, SyncError> {
-        all(&self.repo)
+        Ok(self.services_checked()?.services)
     }
 
+    /// The readable services, and the ones that are not, told apart:
+    /// `newer` could not be understood (written by a newer Lampstand), and
+    /// `damaged` could not be loaded at all. A failing disk still fails.
+    pub fn services_checked(&self) -> Result<ServiceScan, SyncError> {
+        let mut scan = ServiceScan::default();
+        for id in self.repo.list(DocKind::Service) {
+            match self.repo.get::<Service>(id) {
+                Ok(Some(service)) => scan.services.push(service),
+                Ok(None) => {}
+                Err(SyncError::Unreadable(why)) => {
+                    eprintln!("lampstand: service {id} needs a newer Lampstand: {why}");
+                    scan.newer += 1;
+                }
+                Err(SyncError::Corrupt(why)) => {
+                    eprintln!("lampstand: service {id} is damaged: {why}");
+                    scan.damaged.push(ServiceId::from_uuid(id));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(scan)
+    }
+
+    /// Writes `service`. A training service's practice changes stay in
+    /// memory and never reach the repo (see [`training`]).
     pub fn put_service(&self, service: &Service) -> Result<(), SyncError> {
+        if self.training().put(service) {
+            return Ok(());
+        }
         self.repo.put(service)
     }
 
+    /// Deletes a service. A training service cannot be deleted.
     pub fn delete_service(&self, id: ServiceId) -> Result<(), SyncError> {
+        if self.is_training(id) {
+            return Err(SyncError::Forbidden(DocKind::Service));
+        }
         self.repo.delete(DocKind::Service, id.uuid())
     }
 
@@ -183,7 +254,78 @@ impl Library {
         self.repo.delete(DocKind::Theme, id.uuid())
     }
 
+    /// Deletes a theme the way the Themes page does: never the last one,
+    /// and never the Starter theme, which is what everything falls back to
+    /// (use [`Library::delete_theme`] for a delete that arrives by sync).
+    pub fn remove_theme(&self, id: ThemeId) -> Result<(), ThemeDeleteError> {
+        if id == starter_theme_id() {
+            return Err(ThemeDeleteError::Starter);
+        }
+        if self.repo.list(DocKind::Theme).len() <= 1 {
+            return Err(ThemeDeleteError::Last);
+        }
+        self.repo.delete(DocKind::Theme, id.uuid())?;
+        Ok(())
+    }
+
+    /// Puts the Starter theme back as it was made, even if it was edited
+    /// or a synced delete removed it.
+    pub fn restore_starter_theme(&self) -> Result<Theme, SyncError> {
+        let theme = starter_theme();
+        self.repo.put(&theme)?;
+        Ok(theme)
+    }
+
+    /// The theme to draw with: the first of `candidates` (most specific
+    /// first: the output's, the service's, the device default) that still
+    /// exists, else the Starter theme, else any theme, else the built-in
+    /// starter, so that a delete on another device never takes an output
+    /// down.
+    pub fn resolve_theme(&self, candidates: &[Option<ThemeId>]) -> Theme {
+        candidates
+            .iter()
+            .flatten()
+            .find_map(|id| self.theme(*id).ok().flatten())
+            .or_else(|| self.theme(starter_theme_id()).ok().flatten())
+            .or_else(|| self.themes().ok()?.into_iter().next())
+            .unwrap_or_else(starter_theme)
+    }
+
+    /// The church's settings (look, default theme, idle screen) that sync
+    /// to its other devices; all unset before anything is saved.
+    pub fn church_settings(&self) -> Result<ChurchSettings, SyncError> {
+        Ok(self
+            .repo
+            .get::<ChurchSettings>(CHURCH_SETTINGS_ID)?
+            .unwrap_or_default())
+    }
+
+    /// Saves the church's settings. Only the fields that changed become
+    /// edits, so another device's edit to a different field is kept.
+    pub fn put_church_settings(&self, settings: &ChurchSettings) -> Result<(), SyncError> {
+        self.repo.put(settings)
+    }
+
+    /// Takes a deleted theme out of the church settings that name it, so
+    /// the default falls back to the Starter theme on every device.
+    pub fn forget_theme_in_church_settings(&self, id: ThemeId) -> Result<(), SyncError> {
+        let mut settings = self.church_settings()?;
+        if settings.default_theme == Some(id) || settings.brand_theme == Some(id) {
+            if settings.default_theme == Some(id) {
+                settings.default_theme = None;
+            }
+            if settings.brand_theme == Some(id) {
+                settings.brand_theme = None;
+            }
+            self.put_church_settings(&settings)?;
+        }
+        Ok(())
+    }
+
     pub fn deck(&self, id: DeckId) -> Result<Option<Deck>, SyncError> {
+        if let Some(deck) = self.training().deck(id) {
+            return Ok(Some(deck));
+        }
         self.repo.get(id.uuid())
     }
 
@@ -200,7 +342,10 @@ impl Library {
     }
 
     pub fn translation(&self, id: TranslationId) -> Result<Option<Translation>, SyncError> {
-        self.repo.get(id.uuid())
+        match self.repo.get(id.uuid())? {
+            Some(translation) => Ok(Some(translation)),
+            None => Ok(self.training().translation(id)),
+        }
     }
 
     pub fn translations(&self) -> Result<Vec<Translation>, SyncError> {
@@ -256,6 +401,54 @@ fn all<T: Doc>(repo: &Repo) -> Result<Vec<T>, SyncError> {
         }
     }
     Ok(out)
+}
+
+/// Why a theme could not be deleted from the Themes page.
+#[derive(Debug)]
+pub enum ThemeDeleteError {
+    /// The Starter theme is what everything falls back to.
+    Starter,
+    /// There must always be a theme.
+    Last,
+    Sync(SyncError),
+}
+
+impl From<SyncError> for ThemeDeleteError {
+    fn from(e: SyncError) -> Self {
+        Self::Sync(e)
+    }
+}
+
+impl std::fmt::Display for ThemeDeleteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Starter => write!(
+                f,
+                "The Starter theme can't be deleted: it is what every screen falls back to. Duplicate it to make your own."
+            ),
+            Self::Last => write!(f, "This is the only theme, so it can't be deleted."),
+            Self::Sync(e) => e.fmt(f),
+        }
+    }
+}
+
+/// A theme made from a church's brand: the Starter theme with the brand's
+/// colours and font. Lyrics are readable on the brand colour (black or
+/// white unless the church chose a text colour).
+pub fn theme_from_brand(brand: &Brand, id: ThemeId) -> Theme {
+    let mut theme = starter_theme();
+    theme.id = id;
+    theme.name = if brand.name.trim().is_empty() {
+        "Our church".into()
+    } else {
+        brand.name.trim().into()
+    };
+    theme.background = Background::Color(brand.primary);
+    theme.text.color = brand.text_color();
+    if !brand.font_family.trim().is_empty() {
+        theme.text.font_family = brand.font_family.trim().into();
+    }
+    theme
 }
 
 /// White Noto Sans on black, full screen, four lines a slide. A fresh
@@ -346,6 +539,85 @@ mod tests {
         lib.put_service(&s).unwrap();
         assert_eq!(lib.service(s.id).unwrap(), Some(s.clone()));
         assert_eq!(lib.services().unwrap(), vec![s]);
+    }
+
+    /// A service document this version cannot hydrate, as a newer version's
+    /// would be: the stored `starts_at` is not a time.
+    #[derive(autosurgeon::Hydrate, autosurgeon::Reconcile)]
+    struct FromTheFuture {
+        id: ServiceId,
+        title: String,
+        starts_at: String,
+    }
+
+    impl Doc for FromTheFuture {
+        const KIND: DocKind = DocKind::Service;
+        fn doc_id(&self) -> Uuid {
+            self.id.uuid()
+        }
+    }
+
+    #[test]
+    fn one_unreadable_service_does_not_take_the_list_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let good = Service::new("Sunday");
+        lib.put_service(&good).unwrap();
+        let other = Service::new("Wednesday");
+        lib.put_service(&other).unwrap();
+        lib.repo()
+            .put(&FromTheFuture {
+                id: ServiceId::generate(),
+                title: "Newer".into(),
+                starts_at: "tomorrow".into(),
+            })
+            .unwrap();
+        // The direct read still says why; the list skips it and counts it.
+        assert_eq!(lib.services().unwrap().len(), 2);
+        let scan = lib.services_checked().unwrap();
+        assert_eq!((scan.newer, scan.damaged.len()), (1, 0));
+        assert!(scan.services.iter().any(|s| s.id == good.id));
+        assert!(scan.services.iter().any(|s| s.id == other.id));
+        // A library with only readable services reports none.
+        let clean = tempfile::tempdir().unwrap();
+        let lib = open(clean.path());
+        lib.put_service(&good).unwrap();
+        assert_eq!(lib.services_checked().unwrap().newer, 0);
+    }
+
+    /// A damaged file is not "needs a newer Lampstand": it is counted
+    /// apart, named so it can be deleted, and the rest still list.
+    #[test]
+    fn a_damaged_service_is_told_apart_from_a_newer_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = Service::new("Sunday");
+        let bad = Service::new("Wednesday");
+        {
+            let lib = open(dir.path());
+            lib.put_service(&good).unwrap();
+            lib.put_service(&bad).unwrap();
+        }
+        // Overwrite every chunk of the second service's document.
+        let docs = dir.path().join("repo/docs").join(bad.id.uuid().to_string());
+        let mut damaged = 0;
+        for entry in std::fs::read_dir(&docs).unwrap() {
+            let path = entry.unwrap().path();
+            if path.file_name().is_some_and(|n| n != "kind") {
+                std::fs::write(&path, b"this is not an automerge chunk").unwrap();
+                damaged += 1;
+            }
+        }
+        assert!(damaged > 0, "no chunk found to damage");
+        let lib = open(dir.path());
+        let scan = lib.services_checked().unwrap();
+        assert_eq!(scan.newer, 0, "a damaged file is not a newer one");
+        assert_eq!(scan.damaged, vec![bad.id]);
+        assert_eq!(scan.services.len(), 1);
+        assert_eq!(scan.services[0].id, good.id);
+        // It can still be deleted.
+        lib.delete_service(bad.id).unwrap();
+        let scan = lib.services_checked().unwrap();
+        assert!(scan.damaged.is_empty() && scan.services.len() == 1);
     }
 
     #[test]
@@ -521,5 +793,263 @@ mod tests {
         lib.put_theme(&t).unwrap();
         drop(lib);
         assert_eq!(open(dir.path()).themes().unwrap().len(), 1);
+    }
+
+    fn another_theme(lib: &Library, name: &str) -> Theme {
+        let mut t = starter_theme();
+        t.id = ThemeId::generate();
+        t.name = name.into();
+        lib.put_theme(&t).unwrap();
+        t
+    }
+
+    #[test]
+    fn the_starter_and_the_last_theme_cannot_be_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        assert!(matches!(
+            lib.remove_theme(starter_theme_id()),
+            Err(ThemeDeleteError::Starter)
+        ));
+        let mine = another_theme(&lib, "Mine");
+        lib.remove_theme(mine.id).unwrap();
+        assert_eq!(lib.themes().unwrap().len(), 1);
+        // Only the starter is left, and a synced delete had removed it
+        // from beside another theme: the one that is left stays.
+        let other = another_theme(&lib, "Other");
+        lib.delete_theme(starter_theme_id()).unwrap();
+        assert!(matches!(
+            lib.remove_theme(other.id),
+            Err(ThemeDeleteError::Last)
+        ));
+        assert_eq!(lib.themes().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_starter_theme_can_be_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let mut edited = lib.theme(starter_theme_id()).unwrap().unwrap();
+        edited.text.size = 20.0;
+        lib.put_theme(&edited).unwrap();
+        lib.restore_starter_theme().unwrap();
+        assert_eq!(
+            lib.theme(starter_theme_id()).unwrap(),
+            Some(starter_theme())
+        );
+        another_theme(&lib, "Other");
+        lib.delete_theme(starter_theme_id()).unwrap();
+        lib.restore_starter_theme().unwrap();
+        assert!(lib.theme(starter_theme_id()).unwrap().is_some());
+    }
+
+    #[test]
+    fn the_most_specific_theme_that_exists_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        let output = another_theme(&lib, "Output");
+        let service = another_theme(&lib, "Service");
+        let default = another_theme(&lib, "Default");
+        let pick = |c: &[Option<ThemeId>]| lib.resolve_theme(c).name;
+        let all = [Some(output.id), Some(service.id), Some(default.id)];
+        assert_eq!(pick(&all), "Output");
+        assert_eq!(pick(&[None, Some(service.id), Some(default.id)]), "Service");
+        assert_eq!(pick(&[None, None, Some(default.id)]), "Default");
+        assert_eq!(pick(&[None, None, None]), "Starter");
+        // A theme deleted on another device falls through to the next.
+        lib.delete_theme(output.id).unwrap();
+        assert_eq!(pick(&all), "Service");
+    }
+
+    #[test]
+    fn with_every_theme_gone_the_built_in_starter_is_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = open(dir.path());
+        lib.delete_theme(starter_theme_id()).unwrap();
+        assert_eq!(
+            lib.resolve_theme(&[Some(ThemeId::generate())]),
+            starter_theme()
+        );
+    }
+
+    #[test]
+    fn a_brand_makes_a_theme_in_its_colours_and_font() {
+        use lampstand_core::brand::contrast;
+        let brand = Brand {
+            name: " Grace Chapel ".into(),
+            logo: None,
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+            bug: Default::default(),
+        };
+        let id = ThemeId::generate();
+        let t = theme_from_brand(&brand, id);
+        assert_eq!((t.id, t.name.as_str()), (id, "Grace Chapel"));
+        assert_eq!(t.background, Background::Color(brand.primary));
+        assert_eq!(t.text.font_family, "Noto Serif");
+        assert!(contrast(t.text.color, brand.primary) > 7.0);
+        let plain = Brand {
+            font_family: "".into(),
+            name: "".into(),
+            text: Some(Color::rgb(255, 230, 0)),
+            ..brand
+        };
+        let t = theme_from_brand(&plain, id);
+        assert_eq!(t.text.font_family, starter_theme().text.font_family);
+        assert_eq!(t.text.color, Color::rgb(255, 230, 0));
+        assert_eq!(t.name, "Our church");
+    }
+
+    /// Passes sync messages both ways until neither library has more to say.
+    fn sync(a: &Library, b: &Library) {
+        for _ in 0..20 {
+            let mut ids: Vec<Uuid> = a.repo().documents().into_iter().map(|(_, id)| id).collect();
+            ids.extend(b.repo().documents().into_iter().map(|(_, id)| id));
+            ids.sort();
+            ids.dedup();
+            let mut quiet = true;
+            for id in ids {
+                if let Some(m) = a.repo().generate_sync_message(b.repo().device(), id) {
+                    b.repo().receive_sync_message(a.repo().device(), m).unwrap();
+                    quiet = false;
+                }
+                if let Some(m) = b.repo().generate_sync_message(a.repo().device(), id) {
+                    a.repo().receive_sync_message(b.repo().device(), m).unwrap();
+                    quiet = false;
+                }
+            }
+            if quiet {
+                return;
+            }
+        }
+        panic!("libraries did not converge");
+    }
+
+    fn brand(name: &str) -> Brand {
+        Brand {
+            name: name.into(),
+            logo: Some(BlobHash::of(b"logo")),
+            primary: Color::rgb(20, 30, 90),
+            text: None,
+            accent: Color::rgb(240, 190, 60),
+            font_family: "Noto Serif".into(),
+            bug: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_brand_and_logo_set_on_one_device_arrive_on_the_other() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let theme = ThemeId::generate();
+        let mut s = a.church_settings().unwrap();
+        s.set_brand(Some(&brand("Grace Chapel")));
+        s.brand_theme = Some(theme);
+        s.default_theme = Some(theme);
+        s.set_idle(Some(&lampstand_core::output::IdleScreen::Video {
+            blob: BlobHash::of(b"loop"),
+            name: "Loop.mp4".into(),
+        }));
+        s.updated_by = Some("Mary's laptop".into());
+        a.put_church_settings(&s).unwrap();
+        assert!(b.church_settings().unwrap().is_empty());
+        sync(&a, &b);
+        let got = b.church_settings().unwrap();
+        assert_eq!(got, s);
+        assert_eq!(got.brand().unwrap().logo, Some(BlobHash::of(b"logo")));
+        assert_eq!(got.files().len(), 2);
+    }
+
+    #[test]
+    fn concurrent_edits_to_different_fields_merge_and_the_same_field_keeps_the_later() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        // Both devices create the document before they meet.
+        let mut base = ChurchSettings::default();
+        base.set_brand(Some(&brand("Grace Chapel")));
+        a.put_church_settings(&base).unwrap();
+        sync(&a, &b);
+        let mut on_a = a.church_settings().unwrap();
+        let mut on_b = b.church_settings().unwrap();
+        let mut brand_a = on_a.brand().unwrap();
+        brand_a.name = "Grace Church".into();
+        on_a.set_brand(Some(&brand_a));
+        let mut brand_b = on_b.brand().unwrap();
+        brand_b.font_family = "Lato".into();
+        on_b.set_brand(Some(&brand_b));
+        a.put_church_settings(&on_a).unwrap();
+        b.put_church_settings(&on_b).unwrap();
+        sync(&a, &b);
+        let (ma, mb) = (a.church_settings().unwrap(), b.church_settings().unwrap());
+        assert_eq!(ma, mb);
+        let merged = ma.brand().unwrap();
+        assert_eq!(merged.name, "Grace Church");
+        assert_eq!(merged.font_family, "Lato");
+
+        // The same field edited on both: one wins, on both devices.
+        let mut x = a.church_settings().unwrap();
+        x.name = Some("From A".into());
+        a.put_church_settings(&x).unwrap();
+        let mut y = b.church_settings().unwrap();
+        y.name = Some("From B".into());
+        b.put_church_settings(&y).unwrap();
+        sync(&a, &b);
+        let (ma, mb) = (a.church_settings().unwrap(), b.church_settings().unwrap());
+        assert_eq!(ma.name, mb.name);
+        assert!(matches!(ma.name.as_deref(), Some("From A" | "From B")));
+    }
+
+    #[test]
+    fn two_devices_that_each_start_the_document_still_merge() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let mut on_a = ChurchSettings::default();
+        on_a.set_brand(Some(&brand("Grace Chapel")));
+        a.put_church_settings(&on_a).unwrap();
+        let theme = ThemeId::generate();
+        let on_b = ChurchSettings {
+            default_theme: Some(theme),
+            ..ChurchSettings::default()
+        };
+        b.put_church_settings(&on_b).unwrap();
+        sync(&a, &b);
+        for lib in [&a, &b] {
+            let got = lib.church_settings().unwrap();
+            assert_eq!(got.brand().unwrap().name, "Grace Chapel");
+            assert_eq!(got.default_theme, Some(theme));
+        }
+    }
+
+    #[test]
+    fn a_deleted_theme_falls_back_to_the_starter_on_every_device() {
+        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(da.path()), open(db.path()));
+        let mut t = starter_theme();
+        t.id = ThemeId::generate();
+        t.name = "Church".into();
+        a.put_theme(&t).unwrap();
+        a.put_church_settings(&ChurchSettings {
+            default_theme: Some(t.id),
+            brand_theme: Some(t.id),
+            ..ChurchSettings::default()
+        })
+        .unwrap();
+        sync(&a, &b);
+        let on_b = b.church_settings().unwrap();
+        assert_eq!(b.resolve_theme(&[on_b.default_theme]).id, t.id);
+
+        a.remove_theme(t.id).unwrap();
+        a.forget_theme_in_church_settings(t.id).unwrap();
+        sync(&a, &b);
+        let on_b = b.church_settings().unwrap();
+        assert_eq!((on_b.default_theme, on_b.brand_theme), (None, None));
+        assert_eq!(
+            b.resolve_theme(&[on_b.default_theme]).id,
+            starter_theme_id()
+        );
+        // Even a setting that still names the theme resolves to the starter.
+        assert_eq!(b.resolve_theme(&[Some(t.id)]).id, starter_theme_id());
     }
 }

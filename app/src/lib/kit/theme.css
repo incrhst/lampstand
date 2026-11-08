@@ -28,6 +28,24 @@
   --warn: #f5a524;
   --warn-soft: rgba(245, 165, 36, 0.12);
 
+  /* The four roles, as the docs, diagrams and videos colour them
+     (video/projects/lampstand/theme.ts: Projection #1f5fbf, Operator
+     #1d7a46, Stream #6a3fc0, Audio #b85a00), lightened just enough to reach
+     3:1 against --panel, --canvas and --raised (the app is dark only). */
+  --role-projection: #4c7fcc;
+  --role-operator: #348758;
+  --role-stream: #8865cd;
+  --role-audio: #bf6a1a;
+
+  /* Song sections, so a verse, chorus, pre-chorus or bridge is spotted at
+     a glance (lib/sections.ts sectionTone). Never red or gold, which mean
+     LIVE and NEXT; each is at least 6:1 on --canvas, --panel and --raised.
+     The label (V1, C, P, B) is always shown too, so colour is never alone. */
+  --section-verse: #7fa8f5;
+  --section-chorus: #4cc7b0;
+  --section-prechorus: #b49af2;
+  --section-bridge: #eb9a5c;
+
   --radius: 6px;
   --radius-lg: 10px;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -128,4 +146,34 @@ h2.title {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+/* Library & controls, the one sidebar in Plan and Present: a heading for
+   each part (Library on top, Controls under it, in both modes) and the
+   search box that opens the Library. */
+.side-zone-head {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.side-find {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--faint);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  margin: 0.15rem 0 0.2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  text-align: left;
+  cursor: text;
+}
+.side-find:hover {
+  border-color: var(--gold);
+  color: var(--muted);
 }

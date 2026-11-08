@@ -1,8 +1,7 @@
 <!-- Calibrating one screen: set how far in from each edge text must stay.
      The margins are the output's safe area and save through
-     OutputRequest::Put. Putting the numbered grid on the screen itself,
-     so someone in the room can read it, arrives with T26; until then the
-     grid shows here only.
+     OutputRequest::Put. The numbered grid shows here only (T26 would put
+     it on the screen itself).
      A screen of another shape than the projector's picture (a 4:5 screen
      under a 16:9 projector) starts from a shape preset; backgrounds can
      then stay on the screen too (BackgroundMode::Fit). -->
@@ -11,7 +10,6 @@
   import type { BackgroundMode, OutputConfig, SafeArea } from "../../lib/api";
   import { marginsForScreen, screenShapes, targetSize, type ScreenShape } from "../../lib/screenShape";
   import Button from "../../lib/kit/Button.svelte";
-  import Placeholder from "../../lib/kit/Placeholder.svelte";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
 
@@ -77,7 +75,6 @@
     <div class="head">
       <Button variant="ghost" icon="prev" onclick={oncancel}>All screens</Button>
       <h1 id="calibrate-title">Calibrate {output.name}</h1>
-      <Placeholder ticket="T26">Grid on the screen itself</Placeholder>
     </div>
 
     <div class="frame">

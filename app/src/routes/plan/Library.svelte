@@ -23,6 +23,7 @@
     countKinds,
     importedCounts,
     isLink,
+    linkEntries,
     mightBeReference,
     rank,
     newSongs,
@@ -33,12 +34,17 @@
     type Entry,
     type Filter,
   } from "../../lib/library";
+  import { linkOffers, soundItem, streamingRefusal } from "../../lib/sound";
   import { deckSourceLabel, mediaKind } from "../../lib/media";
-  import { formatPassage, parseReference } from "../../lib/passage";
+  import { formatPassage, parseReferenceVersioned } from "../../lib/passage";
+  import { chooseTranslation } from "../../lib/bibles";
+  import { loadDefaultTranslation, saveDefaultTranslation } from "../../lib/bibleSetting";
   import Button from "../../lib/kit/Button.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
+  import SongSelectCard from "./SongSelectCard.svelte";
   import SongEditor from "./SongEditor.svelte";
 
   type Item = NonNullable<Service["items"][string]>;
@@ -54,6 +60,8 @@
     onsongs,
     ondecks,
     ontranslations,
+    onhide,
+    onback,
   }: {
     /** The service rows are added to, if one is selected. */
     service: Service | null;
@@ -71,6 +79,10 @@
     onsongs: (hits: SongHit[]) => void;
     ondecks: () => Promise<void>;
     ontranslations: () => Promise<void>;
+    /** Hides Library & controls, the sidebar the library is a page of. */
+    onhide?: () => void;
+    /** Back to the front page of Library & controls. With it, the head is the sidebar's: Back / Library and Hide. */
+    onback?: () => void;
   } = $props();
 
   // Device-local preferences and history. Storage can be missing or full
@@ -118,12 +130,17 @@
    */
   let looseMedia: MediaFile[] = $state(load("lampstand.library.media", []));
   let recent: Entry[] = $state(load("lampstand.library.recent", []));
-  let translation = $state(load("lampstand.library.translation", ""));
+  let translation = $state("");
+  /** Set in Setup › Scripture; what a reference with no version is read from. */
+  let defaultTranslation: string | null = $state(null);
   let databases: SongDatabase[] = $state([]);
   let database = $state("en");
 
   let busy = $state(false);
   let downloading = $state(false);
+  /** Watching Downloads for SongSelect files. */
+  let watching = $state(false);
+  let watchTimer: ReturnType<typeof setInterval> | undefined;
   let dropping = $state(false);
   /** What the last import added, shown for a few seconds. */
   let notice = $state("");
@@ -136,11 +153,20 @@
     Object.fromEntries(translations.map((t) => [t.id, t.abbreviation || t.name])) as Record<string, string>,
   );
 
-  // Keep the chosen translation one this device has.
+  // Read from the default Bible unless one was picked here, and keep the
+  // choice one this device has.
+  loadDefaultTranslation()
+    .then((id) => (defaultTranslation = id))
+    .catch(report);
   $effect(() => {
-    if (translations.length && !translations.some((t) => t.id === translation)) translation = translations[0].id;
+    const next = chooseTranslation(translations, defaultTranslation, translation);
+    if (next !== translation) translation = next;
   });
-  $effect(() => save("lampstand.library.translation", translation));
+  /** Picking a Bible here makes it the default, so the next reference is read from it too. */
+  function pick() {
+    defaultTranslation = translation;
+    saveDefaultTranslation(translation).catch(report);
+  }
 
   // --- Search -------------------------------------------------------------
 
@@ -178,19 +204,19 @@
   }
 
   // The reference the search reads as, and the core's lookup of it.
-  let reference = $derived(mightBeReference(trimmed) ? parseReference(trimmed) : null);
+  let reference = $derived(mightBeReference(trimmed) ? parseReferenceVersioned(trimmed) : null);
   let passage: Entry | null = $state(null);
   let lookupSeq = 0;
   $effect(() => {
-    const ref = reference;
+    const typed = reference;
     const t = translation;
     const seq = ++lookupSeq;
-    if (!ref) {
+    if (!typed) {
       passage = null;
       return;
     }
-    const title = formatPassage(ref);
-    const key = `scripture:${JSON.stringify(ref)}:${t}`;
+    const title = formatPassage(typed.passage);
+    const key = `scripture:${JSON.stringify(typed.passage)}:${typed.version ?? t}`;
     if (!t) {
       passage = { key, kind: "scripture", title, subtitle: "No Bible on this device yet. Drop one here to import it.", item: null };
       return;
@@ -201,11 +227,11 @@
         if (seq !== lookupSeq) return;
         const first = found.verses[0]?.[2] ?? "";
         passage = {
-          key: `scripture:${JSON.stringify(found.passage)}:${t}`,
+          key: `scripture:${JSON.stringify(found.passage)}:${found.translation}`,
           kind: "scripture",
           title: found.display,
-          subtitle: `${abbreviation[t] ?? ""} · ${first}`,
-          item: { Scripture: { passage: found.passage, translation: t } },
+          subtitle: `${abbreviation[found.translation] ?? ""} · ${first}`,
+          item: { Scripture: { passage: found.passage, translation: found.translation } },
         };
       })
       .catch((e) => {
@@ -248,13 +274,9 @@
   let everything = $derived(sortByTitle([...allSongs.map(songEntry), ...others]));
   let libraryCount = $derived(allSongs.length + others.length);
 
-  let linkEntry = $derived<Entry | null>(
-    isLink(trimmed)
-      ? { key: "link", kind: "deck", title: "Add deck from link", subtitle: trimmed, item: null }
-      : null,
-  );
+  let linkRows = $derived(isLink(trimmed) ? linkEntries(trimmed) : []);
   let results = $derived(
-    trimmed ? [...(linkEntry ? [linkEntry] : []), ...rank(trimmed, passage, hits.map(songEntry), others)] : everything,
+    trimmed ? [...linkRows, ...rank(trimmed, passage, hits.map(songEntry), others)] : everything,
   );
   let counts = $derived(countKinds(results));
 
@@ -316,6 +338,11 @@
 
   async function add(entry: Entry) {
     if (entry.key === "link") return addLink(entry.subtitle);
+    if (entry.key === "link:sound") return addSoundLink(entry.subtitle);
+    if (entry.key === "link:streaming") {
+      live.status = entry.subtitle;
+      return;
+    }
     if (!entry.item) return;
     if (!service) {
       live.status = "Pick a service on the left first";
@@ -325,6 +352,7 @@
   }
 
   async function addLink(url: string) {
+    if (busy) return;
     busy = true;
     try {
       const deck = await request({ area: "Library", request: { AddDeckFromLink: { url } } }, "Deck");
@@ -339,6 +367,57 @@
     } finally {
       busy = false;
     }
+  }
+
+  /** A link to a sound file: fetched into the library, then added to the end of the open service. */
+  async function addSoundLink(url: string) {
+    if (busy) return;
+    if (!service) {
+      live.status = "Pick a service on the left first";
+      return;
+    }
+    busy = true;
+    try {
+      const file = await request({ area: "Library", request: { AddSoundFromLink: { url } } }, "SoundFile");
+      query = "";
+      if (await onadd(soundItem(file))) live.status = `Added ${file.name}`;
+      else live.status = `${file.name} could not be added to the service`;
+    } catch (e) {
+      report(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /**
+   * A link dropped or pasted on the library, with a service open. One that
+   * can only be a sound or a deck is added; a Drive or OneDrive link could
+   * be either, so it goes in the search to pick from.
+   */
+  function takeLink(text: string): boolean {
+    const url = text.trim();
+    if (!service || !isLink(url)) return false;
+    const offers = linkOffers(url);
+    if (offers.sound && !offers.deck) void addSoundLink(url);
+    else if (offers.streaming) live.status = streamingRefusal;
+    else if (offers.deck && !offers.sound) void addLink(url);
+    else tryQuery(url);
+    return true;
+  }
+
+  function onpaste(e: ClipboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (takeLink(e.clipboardData?.getData("text/plain") ?? "")) e.preventDefault();
+  }
+
+  function ondropover(e: DragEvent) {
+    if (service && e.dataTransfer?.types.some((t) => t === "text/uri-list" || t === "text/plain")) e.preventDefault();
+  }
+
+  function ondrop(e: DragEvent) {
+    const text = e.dataTransfer?.getData("text/uri-list") || e.dataTransfer?.getData("text/plain") || "";
+    if (takeLink(text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "")) e.preventDefault();
   }
 
   // --- Dragging a row into the order -----------------------------------------
@@ -439,9 +518,9 @@
 
   async function importPaths(paths: string[]) {
     const sorted = sortPaths(paths);
-    if (!sorted.imports.length && !sorted.decks.length && !sorted.media.length) return;
+    if (!sorted.imports.length && !sorted.decks.length && !sorted.media.length && !sorted.sounds.length) return;
     busy = true;
-    const added = { songs: 0, bibles: 0, decks: 0, media: 0 };
+    const added = { songs: 0, bibles: 0, decks: 0, media: 0, sounds: 0 };
     const failed: string[] = [];
     let message = "";
     const knownSongs = allSongs.map((s) => s.song);
@@ -476,6 +555,23 @@
           failed.push(e instanceof Error ? e.message : String(e));
         }
       }
+      // Sound has no shelf in the library: it goes straight into the open
+      // service as a music-only item.
+      for (const path of sorted.sounds) {
+        const name = path.split(/[\\/]/).pop();
+        if (!service) {
+          failed.push(`${name}: open a service to add sound to it`);
+          continue;
+        }
+        live.status = "Copying into the library…";
+        try {
+          const file = await request({ area: "Library", request: { AddSoundFile: { path } } }, "SoundFile");
+          if (await onadd(soundItem(file))) added.sounds++;
+          else failed.push(`${name}: not added to the service`);
+        } catch (e) {
+          failed.push(e instanceof Error ? e.message : String(e));
+        }
+      }
       save("lampstand.library.media", looseMedia);
       if (fresh.length > 0) {
         for (const entry of fresh) recent = remember(recent, entry);
@@ -500,7 +596,7 @@
       const picked = await pickFiles(
         directory
           ? { directory: true, title: "Add a song folder or OpenSong library" }
-          : { multiple: true, title: "Add songs, Bibles, decks or media" },
+          : { multiple: true, title: "Add songs, Bibles, decks, media or sound" },
       );
       if (picked) await importPaths(Array.isArray(picked) ? picked : [picked]);
     } catch (e) {
@@ -521,6 +617,35 @@
       busy = false;
       downloading = false;
     }
+  }
+
+  /**
+   * Milliseconds before the last look a download may have landed and still
+   * count: a browser stamps a file before it shows up under its own name.
+   * The shell remembers what it imported, so the overlap is not reported twice.
+   */
+  const WATCH_SLACK = 2000;
+  const WATCH_EVERY_MS = 3000;
+
+  function toggleWatching() {
+    watching = !watching;
+    clearInterval(watchTimer);
+    if (!watching) return;
+    let since = Date.now() - WATCH_SLACK;
+    watchTimer = setInterval(async () => {
+      if (busy) return;
+      const asked = Date.now() - WATCH_SLACK;
+      try {
+        const message = await request({ area: "Library", request: { ImportSongSelectDownloads: { since } } }, "Text");
+        since = asked;
+        if (!message) return;
+        live.status = message;
+        announce(summarize(importedCounts(message)));
+      } catch (e) {
+        // Keep watching: one failed look is not worth stopping for.
+        report(e);
+      }
+    }, WATCH_EVERY_MS);
   }
 
   function overPanel(position: { x: number; y: number }): boolean {
@@ -555,6 +680,9 @@
           else if (payload.type === "drop") {
             const here = overPanel(payload.position);
             dropping = false;
+            // A link dragged from a browser may arrive as a "path".
+            const link = payload.paths.find((p) => isLink(p));
+            if (here && link && takeLink(link)) return;
             if (here) importPaths(payload.paths);
           }
         }),
@@ -571,11 +699,12 @@
       stop?.();
       clearTimeout(addedTimer);
       clearTimeout(noticeTimer);
+      clearInterval(watchTimer);
     };
   });
 </script>
 
-<svelte:window onkeydown={onwindowkey} />
+<svelte:window onkeydown={onwindowkey} {onpaste} />
 
 {#if editing}
   <SongEditor song={editing} onclose={() => (editing = null)} />
@@ -606,15 +735,33 @@
   </div>
 {/snippet}
 
-<aside class="pane pane-side library" aria-label="Library" bind:this={panel}>
+<aside class="pane pane-side library" aria-label="Library" bind:this={panel} ondragover={ondropover} {ondrop}>
   <header class="head">
-    <div class="title-row">
-      <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+    {#if onback && onhide}
+      <SideHead title={libraryCount > 0 ? `Library · ${libraryCount}` : "Library"} {onback} {onhide} />
+    {/if}
+    <div class="title-row" class:tools-only={!!onback}>
+      {#if !onback}
+        <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+      {/if}
       <div class="add">
+        <Button
+          size="small"
+          variant="ghost"
+          icon="text"
+          disabled={!service}
+          onclick={() => onadd({ Text: { title: "", body: "", attribution: null } })}
+          title="Add a slide you type yourself: a quote, welcome or prayer points"
+        >
+          Text slide
+        </Button>
         <Button size="small" icon="upload" onclick={() => browse()} disabled={busy} title="Add files, or drop them anywhere on the library">
           Add files
         </Button>
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
+        {#if onhide && !onback}
+          <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
+        {/if}
       </div>
     </div>
 
@@ -649,7 +796,7 @@
     {#if translations.length > 0 && (passage || filter === "scripture")}
       <label class="translation">
         <span class="muted">Read from</span>
-        <select title="The translation scripture is read from" bind:value={translation}>
+        <select title="The translation scripture is read from when a reference names none, like “John 3:16 KJV”" bind:value={translation} onchange={pick}>
           {#each translations as t (t.id)}
             <option value={t.id}>{t.abbreviation ? `${t.abbreviation} · ${t.name}` : t.name}</option>
           {/each}
@@ -663,6 +810,7 @@
     {#if showEmpty}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
         {@render dropZone()}
         <p class="muted small center">
           Scripture is built in. Try
@@ -674,12 +822,14 @@
     {#if showSongCard && allSongs.length === 0}
       <div class="empty-state">
         <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+        <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
       </div>
     {:else}
       <div class="rows">
         {#if showSongCard}
           <div class="card-gap">
             <SongDatabaseCard {databases} bind:code={database} {downloading} disabled={busy} ondownload={downloadDatabase} />
+            <SongSelectCard {watching} disabled={busy} ontoggle={toggleWatching} />
           </div>
         {/if}
         {#if showRecent}
@@ -757,6 +907,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+  /* Inside Library & controls the sidebar's head names it; this row keeps the add buttons. */
+  .title-row.tools-only {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .count {
     margin-left: 0.5rem;

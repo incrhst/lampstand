@@ -34,6 +34,15 @@ export function parseLabel(label: string): { kind: Kind; number: number | null }
   return { kind: WORDS[word] ?? "other", number: digits ? Number(digits[1]) : null };
 }
 
+/** The colour group of a song section, for its tag: verse, chorus, pre-chorus or bridge. Anything else is plain. */
+export type SectionTone = "verse" | "chorus" | "prechorus" | "bridge";
+
+export function sectionTone(label: string | null | undefined): SectionTone | null {
+  if (!label) return null;
+  const { kind } = parseLabel(label);
+  return kind === "verse" || kind === "chorus" || kind === "prechorus" || kind === "bridge" ? kind : null;
+}
+
 /** The section a key asks for, or null if the key is not a section key. */
 export function keyTarget(key: string): { kind: Kind; number: number | null } | null {
   if (/^[1-9]$/.test(key)) return { kind: "verse", number: Number(key) };

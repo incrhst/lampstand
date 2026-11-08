@@ -102,7 +102,11 @@ bundle settings.
 3. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
 4. Wait for the three builds. Open the draft release, check it has the
    `.dmg`, `.AppImage`, `.deb` and the Windows `.exe`, and write the notes
-   (what is new, known problems).
+   (what is new, known problems). Put what an operator should expect from the
+   update under a line that starts `**What's new in 0.1.0**`, as a short list in
+   plain words. Publishing copies that section into `latest.json` (the Release
+   notes workflow), and installed copies show it under Setup, About before the
+   operator installs. A release without that heading shows no notes.
 5. Publish. Installed copies are offered it from then on. Update the landing
    page's download link.
 
@@ -120,3 +124,70 @@ them.
   is not sandboxed. Add an entitlement only if a notarised build fails without
   it, and say why.
 - The bundle settings are under `bundle` in `app/src-tauri/tauri.conf.json`.
+
+### Check playback on each kind of computer
+
+Nothing in CI can listen. Before a release that changes sound, on a Mac and on a Windows computer with the sound output the church would really use:
+
+1. List the outputs: `cargo run -p lampstand-media --example play_check -- --list` (the names are what Setup › Sound shows).
+2. Play a music file through one: `cargo run -p lampstand-media --example play_check -- path/to/music.mp3 "Output name"`. It plays through the same player the app uses, and prints what it does and when. You should hear the music, a gap (pause), the music again (resume), a smooth fade over a second, then a short burst cut off at once (the panic stop), with no clicks, in the output you chose and no other.
+3. In the app, with a service that has a backing track: Plan › add sound, Present › Sound box: Play, Pause, Resume, Fade out and "Stop the sound now"; then choose another output in Setup › Sound while it plays (it stops) and play again.
+
+On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
+
+### Releasing 0.9.2: the Present redesign
+
+- **No sync change.** Still sync protocol 10, so 0.9.0, 0.9.1 and 0.9.2 computers work together and a church can update them one at a time. #253 changes when a newly paired computer starts dialling and turns away one unpaired mid-handshake, with nothing new on the wire.
+- **Publish the training videos with the release, not before.** They were re-rendered for the new layout (the right side instead of the strip on top and the More menu, Focus in the menu bar, coloured song sections). 0.9.1 downloads its training videos from the website too, so publishing them early shows 0.9.1 operators a screen they don't have. On release day, after publishing the GitHub release: `node training/build.mjs publish`, then merge `training/` and `site/training/` to `main`. The decks, the cheat sheet and the training services' notes are bundled and change with the release itself.
+- **A quick look in the desktop app before tagging** is enough: 0.9.x is pre-release, and testing on real projectors and second screens waits for 1.0.0. The redesign was checked in a browser against the capture mock; the things worth a glance:
+  - F turns Focus on and off in Plan and in Present (not while typing in a field); Esc leaves it; the Focus button sits top right; Plan | Present in each Focus pill switches mode and stays in Focus.
+  - Plan in Focus hides the services list and the Library, and both come back as they were.
+  - Present's right side scrolls on its own beside the wall. Remotes, Clear and Keys fold and stay folded after a restart. Clicker mode, the logo bug and the safe area guide switch from there; the OBS control opens the OBS drawer; Close service asks first when something is on air.
+  - Song cards show their colours: verse blue, chorus teal, pre-chorus violet, bridge orange, on the wall, a phone's wall and in the song editor.
+- **What the notes should say**, under `**What's new in 0.9.2**`: "Present is calmer: the controls moved to the right side, in boxes that fold away. Focus (F) is in the bar at the top, works in Plan too, and lets you switch between Plan and Present without leaving it. Song slides are coloured by part: verse, chorus, pre-chorus and bridge."
+- **Where the old controls went**, for the notes: Show, Idle and Blank, Safe area guide, Logo bug and Change idle screen are in the Screen card; Clear text and Clear all in Clear; Connect a phone or tablet and Clicker mode in Remotes; Keys is its own card; Close service moved from the top bar to the bottom of the right side.
+
+### Releasing 0.9.1: training videos download, the phone wall and a speaker's phone
+
+- **No sync change.** 0.9.1 is still sync protocol 10, so 0.9.0 and 0.9.1 computers work together and a church can update them one at a time. The live state gains a `cleared` field that a 0.9.0 computer ignores.
+- **Phones paired with 0.9.0 keep working**, as Run the service phones. Their page becomes the wall after the update; nobody has to pair again.
+- **Check Lampstand Remote on real phones before tagging (#179):** an iPhone and an Android phone held upright, and a tablet on its side. Pair one as Run the service: select a card, then Show this slide; Next through a deck's builds; open the Sound fold-out and Stop the sound now. Pair one as a Speaker for a deck: it waits until the deck is on air, Next stops on the last slide, Clear all shows the cleared message, and closing the service ends it.
+- **The Training Session 2 phone lesson's video (`t2-phones.mp4`) follows on the website.** Until then the item says it isn't ready yet (or, offline before the website was first reached, to connect to the internet).
+
+- **The installer no longer carries the training videos.** It is about 6.9 MB smaller. The training videos are on the website (`site/training/`, https://lampstand.dbain.com/training/) and download the first time a training service is opened. Decks, songs and scripture are still bundled, so the rest of each training service runs offline.
+- **What the notes should say**, under `**What's new in 0.9.1**`: "The training videos download the first time you open a training service, so the first time needs the internet. Without it, each video says so and the rest of the training service still runs. Once downloaded, they work offline."
+- **A video can follow the release.** A training service item may name a video the website does not list yet. Until it does, the item shows "This training video isn't ready yet. Check back soon." and the rest of the service runs; publish the video later and installed copies download it with no update. Merge `site/training/` changes before tagging for every video that is ready. The release reads the manifest it was built with until it first reaches the website.
+- **Check before tagging**, on a Mac and on Windows: with the network off, open Training Session 1 and run it to the end (each video item shows "The training videos download the first time. Connect to the internet to watch them."). Turn the network on, open it again, watch Present show the download, and play a video through an output window. Turn the network off again and quit: the videos still play after a restart.
+- **Updating a training video needs no release.** Render it, run `node training/build.mjs publish`, and merge `training/` and `site/training/` to `main`. Installed copies fetch it the next time a training service is opened a day after their last check, or at once after Reset training. See `training/README.md`.
+
+### Releasing 0.9.0: sync protocol 10
+
+- **Every device must update together again.** 0.9.0 is sync protocol 10 (a role step may be a `Reclaim`, the holder's signed refusal of a takeover, and a claim carries the ack of the device it was taken from, `docs/roles.md`; and the live state a driving device reads carries the Idle overlay, which replaced Logo). `v0.9.0-preview.1` is protocol 8, later 0.9.0 previews with the Logo overlay are protocol 9, and 0.8.1 is protocol 7; all are refused at the handshake with "the other device runs an older Lampstand; update it" (and the 0.9.0 side is told the same from the other end), so a church updates every paired computer before the next service. Say so first in the release notes.
+- **Going back to 0.8.1 loses settings.** 0.8.1 cannot read a `roles.json` whose history holds a refused takeover. It moves the file aside as `roles.json.bad` and starts from defaults. That resets more than who runs what: this device's takeover time goes back to two minutes, and its "Always allow this device" lists for Operator and Stream are emptied. Paired devices do not teach those back, so set them again by hand. Who runs what is taught again only by other 0.8.1 devices, because a 0.9.0 device (protocol 10) refuses a 0.8.1 one. Downgrade every paired computer together, or not at all.
+- **Check on real hardware before tagging `v0.9.0`.** CI can't do these. Install `v0.9.0-preview.1`, then:
+  - **Sound (#186):** the playback check above, on a Mac and on Windows. Also, in the app: Next onto a music item set to "Plays on its own" fades what's playing and starts it. Walk-in music started by hand doesn't restart when Next reaches it. And "Stop the sound now", from the Sound box and from a phone.
+  - **Lampstand Remote (#179):** pair and run a service from a real iPhone, an Android phone and a tablet. Check Next, Back, Black, Idle, Clear and the Sound box. Revoke a phone in Setup › Devices and check its page disconnects.
+  - **Sound from a link:** add a track from a real Google Drive link and play it. Drop a link onto the library.
+  - **Start at login and keep awake:**
+    - On a Mac: the Login Items entry appears and goes, and Lampstand opens after logging out and in. `pmset -g assertions` lists Lampstand while a screen is open.
+    - On Windows: the Startup apps entry appears and goes. `powercfg /requests` still lists Lampstand under DISPLAY and SYSTEM after it has been idle for more than 10 seconds with a screen open.
+  - **Pairing on a Mac:** two Macs pair, with the Local Network prompt shown once.
+  - **Training:** each of Training Sessions 0–2 runs start to finish in Present, offline, with the videos playing through an output window.
+  - **The role bar:** looks right in the status bar and in Setup › Devices.
+
+### Releasing 0.8.0: roles and sound
+
+0.8.0 was built but never published. It froze about 20 seconds after starting, when it first checked for updates (and whenever Help, About opened): the update status took the `App` lock twice in one statement, so every request after it waited forever (no services listed, nothing could be created or added). 0.8.1 is the first release with roles and sound, and everything below applies to it. A test copy of 0.8.0 cannot update itself (installing is on the page that freezes) and, on protocol 6, cannot sync with 0.8.1, so replace it by hand from the 0.8.1 `.dmg` or installer.
+
+- **Every device must update together.** 0.8.1 is sync protocol 7 and 0.7.0 is protocol 4. A device on any other version (including 0.8.0 and the test builds before it, on protocols 5 and 6) is refused at the handshake with a message saying which side should update, so a church with several paired computers updates all of them before the next service. The release notes say so first. Installed copies offer the update from Setup, About, and refuse to install while a service is on air or starts within the hour.
+- **Roles move out of the old files.** A device reads `presenter.json` and `driver.json` once into `roles.json` and leaves the old files alone, so going back to 0.7.0 starts from them as they were.
+- **The Roles page.** `site/docs/roles.html` says roles are new in 0.8.0. The site deploys when this merges to `main`, so merge the release on the day the release is published.
+- **What the notes should say is not there yet:** sending Lampstand's sound to the stream through OBS; a music-only item starting by itself from Next (it plays from its Play button); and the warnings that nobody runs the sound or the stream. The same list is at the end of `docs/roles.md`.
+
+### Sound in the order of the service, and going back
+
+A service can hold music-only items from 0.8.0. A build older than the fix that shipped with this (any 0.8.0 build before it, on sync protocol 5) cannot list **any** service while one of them holds a music-only item, and the Setup switch "Use sound in services" does not protect it, because the item still syncs from the device that added it. Update such a device before anyone adds sound. Released 0.7.0 is on protocol 4 and never receives these documents.
+
+From the fix on, a version that cannot understand a service leaves it out of the list and says "N services were saved by a newer Lampstand and can't be opened here. Update Lampstand to see them." Installing an update is never refused for that reason: About asks "Install anyway?" because the next service's start time is unknown. Before releasing a version that reads a new kind of item, field or document, check what the previous release does with it.
+
+To roll back past this change, remove the music-only items from the services first; backing tracks on songs are ignored harmlessly.

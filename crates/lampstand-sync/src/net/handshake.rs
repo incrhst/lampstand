@@ -606,4 +606,89 @@ mod tests {
         );
         assert!(!trusted);
     }
+
+    /// A device on the protocol before roles (version 4, 0.7.0), on the one
+    /// before the sound problem frame (6, test builds of 0.8.0), or on the
+    /// one before the reclaim step (7, 0.8.1), on 0.9.0-preview.1 (8) or on
+    /// the 0.9.0 previews with the Logo overlay (9), sends a hello this
+    /// version can read; it is refused with the usual message and is not
+    /// paired, whether or not it brings a code.
+    #[tokio::test]
+    async fn a_device_on_the_protocol_before_roles_is_refused_with_the_usual_message() {
+        assert_eq!(PROTOCOL, 10, "the Idle overlay is protocol 10");
+        for (old_protocol, with_code) in [
+            (4, false),
+            (4, true),
+            (6, false),
+            (6, true),
+            (7, false),
+            (7, true),
+            (8, false),
+            (8, true),
+            (9, false),
+            (9, true),
+        ] {
+            let sanctuary = device("Sanctuary");
+            let old = DeviceKeypair::generate();
+            let code = lock(&sanctuary.trust).start_pairing().code;
+            let pairing = tokio::sync::Mutex::new(());
+            let Wire {
+                client: mut c_link,
+                server: mut s_link,
+                ..
+            } = wire();
+            let pair = with_code.then(|| {
+                Spake2::<Ed25519Group>::start_a(
+                    &Password::new(code.as_bytes()),
+                    &Identity::new(SPAKE_CLIENT),
+                    &Identity::new(SPAKE_SERVER),
+                )
+                .1
+            });
+            let (_, public) = ephemeral();
+            let hello = Hello {
+                protocol: old_protocol,
+                device: old.public().0,
+                name: "Old laptop".into(),
+                nonce: crate::repo::random_bytes::<32>(),
+                pair,
+                ephemeral: public.to_bytes(),
+            };
+            c_link.send(&Frame::Hello(hello)).await.unwrap();
+            let s_me = sanctuary.me();
+            let refused = server(&mut s_link, &s_me, &sanctuary.trust, &pairing).await;
+            assert!(
+                matches!(refused, Err(NetError::Refused(ref why))
+                    if why == "the other device runs an older Lampstand; update it"),
+                "{refused:?}"
+            );
+            match c_link.recv().await.unwrap() {
+                Some(Frame::Refused { reason }) => {
+                    assert_eq!(
+                        reason,
+                        "the other device runs an older Lampstand; update it"
+                    )
+                }
+                other => panic!("expected a refusal, got {other:?}"),
+            }
+            // Nothing was trusted, and the code was not spent.
+            assert!(!lock(&sanctuary.trust).is_paired(old.public()));
+            assert!(lock(&sanctuary.trust).pairing().is_some());
+        }
+    }
+
+    /// And the other way round: a hello from a newer version says to update
+    /// this one.
+    #[test]
+    fn versions_say_which_side_should_update() {
+        assert!(version_check(PROTOCOL).is_ok());
+        assert_eq!(
+            version_check(PROTOCOL - 1).unwrap_err(),
+            "the other device runs an older Lampstand; update it"
+        );
+        assert_eq!(
+            version_check(PROTOCOL + 1).unwrap_err(),
+            "the other device runs a newer Lampstand; update this one"
+        );
+    }
 }

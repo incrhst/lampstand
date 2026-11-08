@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "The operator window: the api command, its event stream, and file pickers for imports.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
 }

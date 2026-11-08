@@ -29,11 +29,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use lampstand_api::{
-    Event, LibraryRequest, Request, Response, ServiceRequest, UpdateRequest, UpdateState,
-    UpdateStatus,
+    Event, LibraryRequest, Request, Response, ServiceRequest, SoundRequest, UpdateRequest,
+    UpdateState,
 };
 use lampstand_connectors::song_databases::download_worship_leader_app;
 use lampstand_core::id::BlobHash;
@@ -42,6 +42,7 @@ use lampstand_layout::Fonts;
 use lampstand_library::Library;
 use lampstand_render::output::DisplayInfo;
 use lampstand_render::{Background, BlobSource, OutputEvent, OutputOptions, Outputs, Renderer};
+use lampstand_server::RemoteHub;
 use lampstand_sync::DocChanged;
 use tauri::webview::PageLoadEvent;
 use tauri::window::{Color, Window, WindowBuilder};
@@ -51,15 +52,19 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+use crate::awake::Awake;
 use crate::config::device_key;
 use crate::decks;
 use crate::display_names;
-use crate::handler::{App, EventSink, Placement, WindowHost};
-use crate::import::import_files;
+use crate::handler::{App, EventSink, Machine, Placement, WindowHost};
+use crate::import::{import_files, import_song_select_downloads};
 use crate::keys::{Key, Keys, ShortcutHost};
 use crate::obs_control::{ObsControl, Os, System};
 use crate::seed;
-use crate::sync::{Obs, Sync, SyncConfig};
+use crate::sync::{
+    mirroring, public_address_on, AddressWatch, DriveSinks, NodeCell, Obs, Sync, SyncConfig,
+};
+use crate::update;
 
 /// Everything that reaches the app thread.
 enum Internal {
@@ -72,6 +77,12 @@ enum Internal {
     Key(Key),
     /// An output window gained or lost focus.
     Focused(OutputId, bool),
+    /// Sync says whether this device presents (`true`) or only plans.
+    Presenting(bool),
+    /// The device driving this one sent a request.
+    Drive(Request),
+    /// A device started driving this one: tell it everything on air.
+    Announce,
 }
 
 struct Shared {
@@ -83,6 +94,8 @@ struct Shared {
     downloads: PathBuf,
     /// `None` when the local server could not start.
     sync: Option<Arc<Sync>>,
+    /// Why `sync` is `None`, for the status bar.
+    sync_error: Option<String>,
     /// OBS over its WebSocket (T89). Answers `Obs` requests without the
     /// `App` lock.
     obs: Arc<ObsControl>,
@@ -92,8 +105,14 @@ struct Shared {
     /// Fonts for parsing a deck to draw its thumbnail: loaded when the first
     /// one is asked for, and used one at a time.
     thumbnail_fonts: Arc<Mutex<Option<Fonts>>>,
+    /// The SongSelect downloads the watcher has imported, so its
+    /// overlapping looks do not report them twice.
+    song_select_handled: Arc<Mutex<HashMap<PathBuf, SystemTime>>>,
     /// Where updating Lampstand itself stands: what the last check found.
     update: Arc<tokio::sync::Mutex<UpdaterState>>,
+    /// Lampstand Remote: `None` when the local server did not start or
+    /// `remotes.json` could not be read.
+    remotes: Option<Arc<RemoteHub>>,
 }
 
 /// What the last check for a new release found, and the release to install.
@@ -122,8 +141,25 @@ async fn api(
             .await
             .map_err(|e| e.to_string())
     };
+    // A device that is driving another sends what the operator does there.
+    if let Some(sync) = &state.sync {
+        if let Some(response) = sync.forward(&request).await {
+            return Ok(response);
+        }
+    }
     match request {
-        Request::Obs(request) => Ok(state.obs.handle(request).await),
+        Request::Obs(request) => {
+            // A scene or mute chosen by hand is carried out by the device
+            // that owns OBS (a driver's choice is forwarded above).
+            let here = state.sync.as_ref().is_none_or(|s| s.node().obs_here());
+            if !here && crate::stream_cues::switches_obs(&request) {
+                return Ok(Response::Error {
+                    message: crate::stream_cues::NOT_THE_STREAM.into(),
+                });
+            }
+            let response = state.obs.handle(request).await;
+            Ok(crate::stream_cues::shape_response(response, here))
+        }
         Request::Update(request) => Ok(update_request(&app_handle, &state, request).await),
         Request::About(request) => {
             let url = crate::help::page(
@@ -143,7 +179,10 @@ async fn api(
         Request::Team(request) => Ok(match &state.sync {
             Some(sync) => sync.handle(request).await,
             None => Response::Error {
-                message: "sync is off: the local server could not start".into(),
+                message: format!(
+                    "Sync is off: {}",
+                    state.sync_error.as_deref().unwrap_or("it did not start")
+                ),
             },
         }),
         Request::Library(LibraryRequest::ImportFiles { paths }) => {
@@ -157,29 +196,34 @@ async fn api(
             slide,
             step,
             width,
-        }) => {
-            let Some(renderer) = state.thumbnails.clone() else {
-                return Ok(Response::Error {
-                    message: "thumbnails are off: no GPU for them".into(),
-                });
-            };
-            let app = state.app.clone();
-            blocking(Box::new(move || {
-                let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
-                    return Response::Error {
-                        message: "no picture for this slide".into(),
-                    };
+        }) => Ok(slide_thumbnail(
+            state.app.clone(),
+            state.thumbnails.clone(),
+            item,
+            slide,
+            step,
+            width,
+        )
+        .await),
+        Request::Remote(request) => Ok(match (&state.remotes, &state.sync) {
+            (Some(hub), Some(sync)) => {
+                // A speaker's PIN is for an item of the service open now.
+                let found = match &request {
+                    lampstand_api::RemoteRequest::StartSpeakerPairing { item } => {
+                        let (app, item) = (state.app.clone(), *item);
+                        tauri::async_runtime::spawn_blocking(move || lock(&app).speaker_item(item))
+                            .await
+                            .ok()
+                            .flatten()
+                    }
+                    _ => None,
                 };
-                let (w, h) = decks::thumbnail_size(&scene, width);
-                renderer
-                    .render_offscreen(&scene, w, h)
-                    .map_err(|e| format!("{e:?}"))
-                    .and_then(|image| decks::png_data_url(&image))
-                    .map(Response::Thumbnail)
-                    .unwrap_or_else(|message| Response::Error { message })
-            }))
-            .await
-        }
+                crate::remote::handle(hub, request, sync.local_addr().port(), |_| found)
+            }
+            _ => Response::Error {
+                message: "Remotes are off: the local server did not start.".into(),
+            },
+        }),
         // Parsing a deck, copying a video and downloading a link all run
         // off the `App` lock, like imports.
         Request::Library(LibraryRequest::AddDeckFile { path }) => {
@@ -206,6 +250,71 @@ async fn api(
             }))
             .await
         }
+        Request::Library(LibraryRequest::DeckSlidePicture { deck, slide, width }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "thumbnails are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                decks::deck_slide_picture(&library, deck, slide, width, &fonts, &renderer)
+                    .map(|(thumbnail, slides)| Response::DeckSlide { thumbnail, slides })
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // A theme drawn with sample text, by the same layout and renderer
+        // as the screens.
+        Request::Library(LibraryRequest::ThemePreview {
+            theme,
+            sample,
+            width,
+            height,
+            thumb_width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "previews are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                crate::theme_preview::preview(
+                    &theme,
+                    sample,
+                    (width, height),
+                    thumb_width,
+                    &fonts,
+                    &renderer,
+                )
+                .map(Response::Thumbnail)
+                .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        // The default idle screen, by the same layout and renderer as the
+        // screens.
+        Request::Library(LibraryRequest::IdlePreview {
+            brand,
+            theme,
+            width,
+        }) => {
+            let Some(renderer) = state.thumbnails.clone() else {
+                return Ok(Response::Error {
+                    message: "previews are off: no GPU for them".into(),
+                });
+            };
+            let fonts = state.thumbnail_fonts.clone();
+            blocking(Box::new(move || {
+                let brand = crate::theme_preview::brand_for_idle(&library, brand);
+                let theme = library.resolve_theme(&[theme]);
+                crate::theme_preview::idle_preview(brand.as_ref(), &theme, width, &fonts, &renderer)
+                    .map(Response::Thumbnail)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
         // Decoding a video for its thumbnail runs off the `App` lock.
         Request::Library(LibraryRequest::MediaThumbnail { blob, name, width }) => {
             blocking(Box::new(move || {
@@ -222,6 +331,52 @@ async fn api(
                     .unwrap_or_else(|message| Response::Error { message })
             }))
             .await
+        }
+        Request::Library(LibraryRequest::AddSoundFile { path }) => {
+            blocking(Box::new(move || {
+                decks::add_sound_file(&library, &path)
+                    .map(Response::SoundFile)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await
+        }
+        Request::Library(LibraryRequest::AddSoundFromLink { url }) => {
+            let link = match decks::classify_sound(&url) {
+                Ok(link) => link,
+                Err(message) => return Ok(Response::Error { message }),
+            };
+            emit(Event::ImportProgress {
+                done: 0,
+                total: 1,
+                message: "Downloading the track".into(),
+            });
+            let done = |message: String| {
+                emit(Event::ImportProgress {
+                    done: 1,
+                    total: 1,
+                    message,
+                })
+            };
+            let download = match decks::download_sound(&link, &state.downloads).await {
+                Ok(download) => download,
+                Err(why) => {
+                    let message = format!("Could not add the track: {why}");
+                    done(message.clone());
+                    return Ok(Response::Error { message });
+                }
+            };
+            let response = blocking(Box::new(move || {
+                decks::add_downloaded_sound(&library, download)
+                    .map(Response::SoundFile)
+                    .unwrap_or_else(|message| Response::Error { message })
+            }))
+            .await;
+            done(match &response {
+                Ok(Response::SoundFile(file)) => format!("Added {}", file.name),
+                Ok(Response::Error { message }) => format!("Could not add the track: {message}"),
+                _ => String::new(),
+            });
+            response
         }
         Request::Library(LibraryRequest::AddDeckFromLink { url }) => {
             let link = match decks::classify(&url) {
@@ -288,6 +443,20 @@ async fn api(
             }))
             .await
         }
+        Request::Library(LibraryRequest::ImportSongSelectDownloads { since }) => {
+            let Ok(dir) = app_handle.path().download_dir() else {
+                return Ok(Response::Text(String::new()));
+            };
+            let handled = state.song_select_handled.clone();
+            blocking(Box::new(move || {
+                let mut handled = handled.lock().unwrap_or_else(|e| e.into_inner());
+                Response::Text(
+                    import_song_select_downloads(&library, &dir, since, &mut handled)
+                        .unwrap_or_default(),
+                )
+            }))
+            .await
+        }
         request => {
             let app = state.app.clone();
             blocking(Box::new(move || lock(&app).handle(request))).await
@@ -295,9 +464,105 @@ async fn api(
     }
 }
 
+/// A picture of one slide of the open service, drawn off the `App` lock.
+async fn slide_thumbnail(
+    app: Arc<Mutex<App>>,
+    renderer: Option<Arc<Renderer>>,
+    item: lampstand_core::service::ItemId,
+    slide: usize,
+    step: usize,
+    width: u32,
+) -> Response {
+    let Some(renderer) = renderer else {
+        return Response::Error {
+            message: "thumbnails are off: no GPU for them".into(),
+        };
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(scene) = lock(&app).slide_scene(item, slide, step) else {
+            return Response::Error {
+                message: "no picture for this slide".into(),
+            };
+        };
+        let (w, h) = decks::thumbnail_size(&scene, width);
+        renderer
+            .render_offscreen(&scene, w, h)
+            .map_err(|e| format!("{e:?}"))
+            .and_then(|image| decks::png_data_url(&image))
+            .map(Response::Thumbnail)
+            .unwrap_or_else(|message| Response::Error { message })
+    })
+    .await
+    .unwrap_or_else(|e| Response::Error {
+        message: e.to_string(),
+    })
+}
+
+/// Carries out a request from a remote that passed the gate
+/// (`crate::remote::answer`), as Present's own screen would: sent on to the
+/// presenting device when this one drives it, and otherwise to the app.
+///
+/// A speaker's Next, Back and Blank are checked against the live engine and
+/// carried out under one lock (`App::speaker_live`). They are never sent on
+/// to another device: there the check could not be made in the same step as
+/// the change.
+async fn remote_request(
+    app: Arc<Mutex<App>>,
+    sync: Arc<Sync>,
+    thumbnails: Option<Arc<Renderer>>,
+    caller: crate::gate::Caller,
+    request: Request,
+) -> Response {
+    if let (crate::gate::Caller::Speaker(own), Request::Live(command)) = (caller, &request) {
+        if sync.node().driving().is_some() {
+            eprintln!("lampstand: refused a speaker's command: this device drives another");
+            return Response::Error {
+                message: "A speaker's phone works only with the computer that runs the screens."
+                    .into(),
+            };
+        }
+        let command = *command;
+        return tauri::async_runtime::spawn_blocking(move || lock(&app).speaker_live(own, command))
+            .await
+            .unwrap_or_else(|e| Response::Error {
+                message: e.to_string(),
+            });
+    }
+    if let Some(response) = sync.forward(&request).await {
+        return response;
+    }
+    match request {
+        Request::Service(ServiceRequest::SlideThumbnail {
+            item,
+            slide,
+            step,
+            width,
+        }) => slide_thumbnail(app, thumbnails, item, slide, step, width).await,
+        request => tauri::async_runtime::spawn_blocking(move || lock(&app).handle(request))
+            .await
+            .unwrap_or_else(|e| Response::Error {
+                message: e.to_string(),
+            }),
+    }
+}
+
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // The plugin reads this computer's path to the app when it starts, and a
+    // failure there would stop the whole app. Without it only the startup
+    // switch is lost.
+    match std::env::current_exe().and_then(|path| path.canonicalize()) {
+        // Registers nothing by itself: the startup item is added only when
+        // the operator turns on "Start Lampstand when this computer starts".
+        Ok(_) => {
+            builder = builder.plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ));
+        }
+        Err(e) => eprintln!("lampstand: cannot start with the computer: {e}"),
+    }
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![api])
         .setup(|tauri_app| {
@@ -406,9 +671,26 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         tx: tx.clone(),
     };
     let emitter = handle.clone();
-    let emit = Arc::new(move |event: Event| {
-        let _ = emitter.emit("api-event", event);
-    });
+    // Remote pages see what Present sees (`crate::remote`).
+    let remotes = match crate::remote::open_hub(data_dir) {
+        Ok(hub) => Some(Arc::new(hub)),
+        Err(e) => {
+            eprintln!("lampstand: remotes are off: {e}");
+            None
+        }
+    };
+    let bridged = remotes.clone();
+    // Events also go to a device driving this one, once there is one.
+    let node_cell = NodeCell::default();
+    let emit = mirroring(
+        Arc::new(move |event: Event| {
+            if let Some(hub) = &bridged {
+                crate::remote::bridge(hub, &event);
+            }
+            let _ = emitter.emit("api-event", event);
+        }),
+        node_cell.clone(),
+    );
     // A folder that has never been seeded is a brand-new install, which
     // starts with a welcome service. Known before `App::open` seeds it.
     let first_run = !data_dir.join("seeded").exists();
@@ -432,17 +714,70 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     };
     let streaming = app.streaming();
     let app = Arc::new(Mutex::new(app));
+    lock(&app).set_machine(Box::new(TauriMachine::new(handle.clone())));
+    // OBS belongs to the Stream holder (`crate::stream_cues`): its events
+    // are shaped for whether this device owns OBS, and the cue each live item
+    // makes goes to this device's OBS or the Stream holder's.
     let obs_control = tauri::async_runtime::block_on(async {
         ObsControl::start(
             data_dir,
             streaming,
             Arc::new(System),
             Os::current(),
+            crate::stream_cues::shaping(emit.clone(), node_cell.clone()),
+        )
+    });
+    let obs_view = obs_control.clone();
+    let cues = tauri::async_runtime::block_on(async {
+        crate::stream_cues::start_router(
+            node_cell.clone(),
+            obs_control.cues(),
+            Arc::new(move || obs_view.view()),
             emit.clone(),
         )
     });
-    lock(&app).set_obs_cues(obs_control.cues());
+    lock(&app).set_obs_cues(cues);
+    // "Set up OBS" asks the app for a picture's address and size, so the
+    // window never supplies the address OBS is pointed at.
+    let picture_app = app.clone();
+    obs_control.set_pictures(Arc::new(move |output| {
+        lock(&picture_app).obs_picture(output)
+    }));
 
+    let role_tx = tx.clone();
+    let drive_tx = tx.clone();
+    let announce_tx = tx.clone();
+    let drive_obs = obs_control.clone();
+    let announce_obs = obs_control.clone();
+    let announce_emit = crate::stream_cues::shaping(emit.clone(), node_cell.clone());
+    let drive_cell = node_cell.clone();
+    let drive = DriveSinks {
+        command: Arc::new(move |request| match request {
+            // OBS answers on the async runtime, without the `App` lock.
+            Request::Obs(request) => {
+                if !crate::stream_cues::obs_here(&drive_cell) {
+                    eprintln!(
+                        "lampstand: ignored an OBS request from a driver: OBS is not run here"
+                    );
+                    return;
+                }
+                let obs = drive_obs.clone();
+                tauri::async_runtime::spawn(async move {
+                    obs.handle(request).await;
+                });
+            }
+            request => {
+                let _ = drive_tx.send(Internal::Drive(request));
+            }
+        }),
+        driver: Arc::new(move |on| {
+            if on {
+                let _ = announce_tx.send(Internal::Announce);
+                announce_emit(Event::Obs(Box::new(announce_obs.view())));
+            }
+        }),
+        cell: node_cell,
+    };
     let sync = match device_key(data_dir) {
         Ok(key) => tauri::async_runtime::block_on(Sync::start(
             &library,
@@ -451,19 +786,39 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
             SyncConfig::from_env(),
             obs,
             emit.clone(),
+            Arc::new(move |presenting| {
+                let _ = role_tx.send(Internal::Presenting(presenting));
+            }),
+            drive,
         )),
         Err(e) => Err(e.to_string()),
     };
-    let sync = match sync {
+    let mut address_watch = None;
+    let (sync, sync_error) = match sync {
         Ok(sync) => {
-            lock(&app).set_server_address(sync.public_address());
-            Some(Arc::new(sync))
+            crate::stream_cues::accept(sync.node(), obs_control.cues());
+            // Cues for the sound this device plays when it holds Audio.
+            let deck = lock(&app).audio().clone();
+            sync.node().set_sound_hook(deck.hook());
+            let stopping = deck.clone();
+            sync.on_music_stop(Arc::new(move || stopping.cut()));
+            let address = sync.public_address();
+            lock(&app).set_server_address(address.clone());
+            lock(&app).set_sync_link(sync.link());
+            let sync = Arc::new(sync);
+            if let Some(hub) = &remotes {
+                serve_remotes(hub, &sync, &app, thumbnails.clone(), emit.clone());
+            }
+            let port = sync.local_addr().port();
+            address_watch = Some(AddressWatch::new(address, move || public_address_on(port)));
+            (Some(sync), None)
         }
         Err(e) => {
             eprintln!("lampstand: sync is off: {e}");
-            None
+            (None, Some(e))
         }
     };
+    let remotes = sync.as_ref().and(remotes);
     let wake_tx = tx.clone();
     std::thread::Builder::new()
         .name("lampstand-changes".into())
@@ -479,7 +834,7 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
     let thread_app = app.clone();
     std::thread::Builder::new()
         .name("lampstand-app".into())
-        .spawn(move || app_thread(thread_app, host, keys, rx, changes))
+        .spawn(move || app_thread(thread_app, host, keys, rx, changes, address_watch))
         .map_err(|e| e.to_string())?;
     Ok(Shared {
         app,
@@ -487,14 +842,70 @@ fn start(handle: AppHandle, data_dir: &Path) -> Result<Shared, String> {
         emit,
         downloads: data_dir.join("downloads"),
         sync,
+        sync_error,
         obs: obs_control,
         thumbnails,
         thumbnail_fonts: Arc::new(Mutex::new(None)),
+        song_select_handled: Arc::default(),
         update: Arc::new(tokio::sync::Mutex::new(UpdaterState {
             state: UpdateState::NotChecked,
             pending: None,
         })),
+        remotes,
     })
+}
+
+/// Opens Lampstand Remote: its requests pass the gate and are carried out
+/// by [`remote_request`], the screens hear when a phone pairs, connects or
+/// is revoked, and the remote pages start with what the sound is doing.
+fn serve_remotes(
+    hub: &Arc<RemoteHub>,
+    sync: &Arc<Sync>,
+    app: &Arc<Mutex<App>>,
+    thumbnails: Option<Arc<Renderer>>,
+    emit: crate::handler::EventSink,
+) {
+    let (handler_app, handler_sync) = (app.clone(), sync.clone());
+    hub.set_handler(Arc::new(move |kind, request| {
+        let (app, sync, thumbnails) = (
+            handler_app.clone(),
+            handler_sync.clone(),
+            thumbnails.clone(),
+        );
+        Box::pin(async move {
+            crate::remote::answer(&kind, request, |caller, request| {
+                remote_request(app, sync, thumbnails, caller, request)
+            })
+            .await
+        })
+    }));
+    // A speaker's phone does not outlive a quit: at start only the service
+    // the journal restored (a crash mid-service) keeps its speakers.
+    // Ending the service (it stays open) stops the speakers' phones, as
+    // closing it does through `remote::bridge`. Both under one lock, so a
+    // service closed in between is not missed.
+    {
+        let mut opened = lock(app);
+        crate::remote::end_speakers(hub, opened.open_service());
+        let ended = Arc::downgrade(hub);
+        opened.on_service_ended(Arc::new(move || {
+            if let Some(hub) = ended.upgrade() {
+                crate::remote::end_speakers(&hub, None);
+            }
+        }));
+    }
+    let (watched, port) = (Arc::downgrade(hub), sync.local_addr().port());
+    hub.on_change(Arc::new(move || {
+        if let Some(hub) = watched.upgrade() {
+            emit(Event::Remotes(Box::new(crate::remote::view(&hub, port))));
+        }
+    }));
+    // Sound events come only with a change; a page that opens before any
+    // still learns who plays the sound.
+    if let Response::Sound(view) = lock(app).handle(Request::Sound(SoundRequest::Status)) {
+        crate::remote::bridge(hub, &Event::Sound(Box::new(view)));
+    }
+    sync.serve_remotes(hub.clone());
 }
 
 /// Looks for a newer release, or installs the one found. An install is
@@ -508,11 +919,11 @@ async fn update_request(
     use tauri_plugin_updater::UpdaterExt;
 
     let status = |u: &UpdaterState| {
-        Response::Update(UpdateStatus {
-            current: app.package_info().version.to_string(),
-            state: u.state.clone(),
-            blocked: lock(&state.app).update_blocker(),
-        })
+        Response::Update(update::status(
+            &state.app,
+            app.package_info().version.to_string(),
+            u.state.clone(),
+        ))
     };
 
     match request {
@@ -523,20 +934,12 @@ async fn update_request(
                 Err(e) => Err(e.to_string()),
                 Ok(updater) => updater.check().await.map_err(|e| e.to_string()),
             };
-            match found {
-                Ok(Some(update)) => {
-                    u.state = UpdateState::Available {
-                        version: update.version.clone(),
-                        notes: update.body.clone().filter(|n| !n.trim().is_empty()),
-                    };
-                    u.pending = Some(update);
-                }
-                Ok(None) => {
-                    u.state = UpdateState::UpToDate;
-                    u.pending = None;
-                }
-                Err(message) => u.state = UpdateState::Failed { message },
-            }
+            u.state = update::checked(found.as_ref().map_err(String::clone).map(|found| {
+                found
+                    .as_ref()
+                    .map(|update| (update.version.clone(), update.body.clone()))
+            }));
+            u.pending = found.ok().flatten();
             status(&u)
         }
         UpdateRequest::Install => {
@@ -575,9 +978,9 @@ fn app_thread(
     keys: Keys<TauriShortcuts>,
     rx: Receiver<Internal>,
     changes: Receiver<DocChanged>,
+    mut address: Option<AddressWatch>,
 ) {
     const TICK: Duration = Duration::from_millis(100);
-    let mut displays = host.displays();
     let mut polled = Instant::now();
     let mut ticked = Instant::now();
     let mut clicker = Clicker {
@@ -600,9 +1003,9 @@ fn app_thread(
                 &mut clicker,
                 message,
                 &changes,
-                &mut displays,
                 &mut polled,
                 &mut ticked,
+                address.as_mut(),
             )
         });
         if std::panic::catch_unwind(step).is_err() {
@@ -625,9 +1028,9 @@ fn app_step(
     clicker: &mut Clicker,
     message: Result<Internal, RecvTimeoutError>,
     changes: &Receiver<DocChanged>,
-    displays: &mut Vec<DisplayInfo>,
     polled: &mut Instant,
     ticked: &mut Instant,
+    address: Option<&mut AddressWatch>,
 ) {
     const TICK: Duration = Duration::from_millis(100);
     const DISPLAY_POLL: Duration = Duration::from_secs(1);
@@ -639,6 +1042,13 @@ fn app_step(
                 lock(app).output_closed(id)
             }
             Ok(Internal::LibraryChanged) => {}
+            Ok(Internal::Presenting(presenting)) => lock(app).set_presenting(presenting),
+            Ok(Internal::Drive(request)) => {
+                if let Response::Error { message } = lock(app).handle(request) {
+                    eprintln!("lampstand: a driver's request failed: {message}");
+                }
+            }
+            Ok(Internal::Announce) => lock(app).announce(),
             Ok(Internal::Key(key)) => {
                 if let Response::Error { message } = lock(app).handle(Request::Live(key.command()))
                 {
@@ -685,11 +1095,16 @@ fn app_step(
         if polled.elapsed() >= DISPLAY_POLL {
             *polled = Instant::now();
             // Tauri has no monitor hot-plug event, so poll.
+            // Against what the windows were placed for, so a display that
+            // appeared while the app was starting is not missed.
             let now = host.displays();
-            if now != *displays {
-                *displays = now;
-                lock(app).displays_changed();
-            }
+            lock(app).displays_polled(now);
+        }
+        // A network that came up after the start gives OBS a better
+        // address. The probe takes no lock.
+        if let Some(found) = address.and_then(|w| w.check(Instant::now())) {
+            eprintln!("lampstand: the local server is now at {found}");
+            lock(app).set_server_address(found);
         }
         // Without the `App` lock: registering waits on the main thread.
         let mut state = lock(app).key_state();
@@ -713,6 +1128,54 @@ fn shortcut_for(key: Key) -> Shortcut {
         Key::ShiftDown => (Some(Modifiers::SHIFT), Code::ArrowDown),
     };
     Shortcut::new(modifiers, code)
+}
+
+/// The computer's own switches (#140): `tauri-plugin-autostart` for the
+/// startup item, `keepawake` for the sleep assertion (IOKit on macOS, the
+/// execution-state API on Windows). Both are only used when the operator
+/// turned them on in Setup.
+struct TauriMachine {
+    handle: AppHandle,
+    awake: Awake,
+}
+
+impl TauriMachine {
+    fn new(handle: AppHandle) -> Self {
+        TauriMachine {
+            handle,
+            awake: Awake::spawn(|| {
+                keepawake::Builder::default()
+                    .display(true)
+                    .idle(true)
+                    .reason("Lampstand is showing the screens")
+                    .app_name("Lampstand")
+                    .app_reverse_domain("org.lampstand.app")
+                    .create()
+                    .inspect_err(|e| eprintln!("lampstand: cannot keep the computer awake: {e}"))
+                    .ok()
+            }),
+        }
+    }
+}
+
+impl Machine for TauriMachine {
+    fn set_start_at_login(&mut self, on: bool) -> Result<(), String> {
+        use tauri_plugin_autostart::{AutoLaunchManager, ManagerExt};
+        if self.handle.try_state::<AutoLaunchManager>().is_none() {
+            return Err("this computer's startup list is not available".into());
+        }
+        let launch = self.handle.autolaunch();
+        if on {
+            launch.enable()
+        } else {
+            launch.disable()
+        }
+        .map_err(|e| e.to_string())
+    }
+
+    fn set_awake(&mut self, on: bool) {
+        self.awake.set(on);
+    }
 }
 
 /// `tauri-plugin-global-shortcut` behind `keys::ShortcutHost`.

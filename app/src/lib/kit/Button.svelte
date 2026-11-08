@@ -13,6 +13,7 @@
     disabled = false,
     title,
     label,
+    describedby,
     shortcut,
   }: {
     onclick: () => void;
@@ -26,6 +27,8 @@
     title?: string;
     /** Accessible name, needed when there is no visible text. */
     label?: string;
+    /** The id of the text that says more, such as why the button is greyed out. */
+    describedby?: string;
     /** Shown after the label, e.g. "Space". */
     shortcut?: string;
   } = $props();
@@ -39,6 +42,7 @@
   {disabled}
   {title}
   aria-label={label}
+  aria-describedby={describedby}
   aria-pressed={pressed}
 >
   {#if icon}<Icon name={icon} size={size === "small" ? 14 : 16} />{/if}
@@ -78,7 +82,10 @@
     width: 1.75rem;
   }
   button:disabled {
-    opacity: 0.45;
+    opacity: 0.6;
+    /* Grey as well as faint, so a button that cannot be used (a planning
+       device's Open for live, say) does not still look gold. */
+    filter: saturate(0);
     cursor: not-allowed;
   }
   .primary {
