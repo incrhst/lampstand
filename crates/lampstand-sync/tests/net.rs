@@ -482,6 +482,41 @@ async fn blobs_are_fetched_by_hash() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_blob_past_the_cap_is_refused_and_the_session_carries_on() {
+    let (presenter, office) = paired().await;
+    until(Duration::from_secs(5), "connected", || {
+        presenter.node.status().connected() == 1
+    })
+    .await;
+    presenter.node.set_max_blob(500_000);
+    // Three chunks: the second takes it past the cap.
+    let bytes: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
+    let hash = office.repo().blobs().put(&bytes).unwrap();
+    let err = presenter.node.fetch_blob(hash).await.unwrap_err();
+    assert!(err.to_string().contains("500000-byte limit"), "{err}");
+    assert!(presenter.repo().blobs().path(&hash).is_none());
+    let incoming = presenter._dir.path().join("sync").join("incoming");
+    let left: Vec<_> = std::fs::read_dir(&incoming)
+        .map(|d| d.collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "nothing left in incoming/: {left:?}");
+    // Asking again fails at once rather than fetching it all again.
+    let start = Instant::now();
+    let again = presenter.node.fetch_blob(hash).await.unwrap_err();
+    assert!(again.to_string().contains("500000-byte limit"), "{again}");
+    assert!(start.elapsed() < Duration::from_millis(100));
+
+    // The connection is still good for changes.
+    let s = song("Amazing Grace", "Amazing grace how sweet the sound");
+    office.repo().put(&s).unwrap();
+    until(Duration::from_secs(5), "the song", || {
+        title(presenter.repo(), s.id).is_some()
+    })
+    .await;
+    assert_eq!(presenter.node.status().connected(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_large_library_syncs_on_first_connect() {
     const SONGS: usize = 500;
     let presenter = peer("Sanctuary").await;
