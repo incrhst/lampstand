@@ -30,4 +30,6 @@ pub enum FetchError {
     NotFound,
     /// The link points at something that is not a presentation.
     NotADeck(String),
+    /// The file is larger than the limit for its kind.
+    TooLarge,
 }

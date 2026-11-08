@@ -27,7 +27,6 @@
   import Icon from "./lib/kit/Icon.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
-  import ModeSwitch from "./lib/kit/ModeSwitch.svelte";
 
   // The operator view keeps its T47 name in code; volunteers call it Present.
   const screens = [
@@ -49,7 +48,8 @@
       screen = next;
       return;
     }
-    // F: Focus in Plan and Present. Esc leaves it in Plan; Present's own
+    // F hides and shows Library & controls in Plan and Present (live.focus
+    // is true while it is hidden). Esc brings it back in Plan; Present's own
     // Esc closes its OBS drawer first. Typing in a field never triggers it
     // (a switch is not a field). With a dialog open, such as the song
     // editor, F and Esc are the dialog's: hiding it would lose its edits.
@@ -66,9 +66,9 @@
     }
   }
 
-  // Focus is one switch for Plan and Present: Plan keeps the order of
-  // service, Present the cards. Switching modes keeps it; Present needs a
-  // service open to have anything to focus on.
+  // Hiding Library & controls is one switch for Plan and Present; switching
+  // modes keeps it. It is never remembered, so every launch starts with it
+  // open. Present needs a service open to have a sidebar at all.
   let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
   let focused = $derived(live.focus && focusable);
 
@@ -244,8 +244,8 @@
 <svelte:window {onkeydown} />
 
 <div class="shell">
-  <!-- Focus hides the bar; its pill (here for Plan, on the wall for Present) keeps the way out and the other mode. -->
-  {#if !focused}
+  <!-- The bar always shows, so Plan | Present and the Library & controls
+       button are where a volunteer left them, even with the sidebar hidden. -->
   <header>
     <nav aria-label="Screens">
       {#each screens as s}
@@ -265,28 +265,34 @@
       <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
         <span class="setup-word">Help</span>
+        {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
       <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
         <span class="setup-word">Setup</span>
       </button>
-      {#if focusable}
-        <button class="setup focus-on" title="{screen === "plan" ? "Just the order of service: hide the services and the Library" : "Cards only: hide the bar and the sidecard"} (F)" onclick={() => (live.focus = true)}>
-          <Icon name="focus" size={16} />
-          <span class="setup-word">Focus</span>
+      {#if screen === "plan" || screen === "operate"}
+        <!-- One name in Plan and Present, so it means the same thing next
+             month. It stays put in Present before a service is open, greyed
+             out with the reason, so it never seems to have gone missing.
+             aria-disabled, not disabled, so the reason still shows on hover. -->
+        <button
+          class="setup focus-on"
+          class:waiting={!focusable}
+          aria-disabled={!focusable}
+          aria-pressed={focusable ? !focused : undefined}
+          aria-controls="library-and-controls"
+          title={focusable ? `${focused ? "Show" : "Hide"} the Library and the controls (F)` : "Open a service first: Library & controls comes with it"}
+          onclick={() => focusable && (live.focus = !live.focus)}
+        >
+          <Icon name="panelRight" size={16} />
+          <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
+          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what">&nbsp;library &amp; controls</span></span>
           <kbd>F</kbd>
         </button>
       {/if}
     </div>
   </header>
-  {:else if screen === "plan"}
-  <div class="focus-row">
-    <div class="focus-pill" role="group" aria-label="Focus">
-      <ModeSwitch current="plan" {mod} onpresent={() => (screen = "operate")} />
-      <button class="focus-exit" title="Show the services and the Library again (F or Esc)" onclick={() => (live.focus = false)}>Exit focus <kbd>F</kbd></button>
-    </div>
-  </div>
-  {/if}
 
   <PresenterNotices />
 
@@ -294,7 +300,7 @@
 
   <main class:arriving>
     {#if screen === "plan"}
-      <PlanView onopened={() => (screen = "operate")} />
+      <PlanView onopened={() => (screen = "operate")} onscreens={() => openSetup("screens")} />
     {:else if screen === "operate"}
       <OperateView ondevices={() => openSetup("devices")} onsetup={() => openSetup("screens")} onidle={() => openSetup("idle")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
     {:else if screen === "help"}
@@ -338,7 +344,7 @@
     {/snippet}
     {#snippet end()}
       {#if newVersion}
-        <button class="status-link" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
+        <button class="status-link update-pill" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
           <Icon name="download" size={14} />
           <span class="update">Update {newVersion} available</span>
         </button>
@@ -435,7 +441,7 @@
   .setup:hover {
     color: var(--text);
   }
-  /* Framed, so the way into Focus is easy to find; its pill takes this corner in Focus. */
+  /* Framed, so the way to hide and show Library & controls is easy to find. */
   .focus-on {
     border: 1px solid var(--line-strong);
     color: var(--text);
@@ -443,46 +449,22 @@
   .focus-on:hover {
     border-color: var(--muted);
   }
-  .focus-on kbd,
-  .focus-exit kbd {
+  /* Present with no service open: here, but nothing to hide yet. */
+  .focus-on.waiting {
+    color: var(--faint);
+    border-color: var(--line);
+    cursor: default;
+  }
+  .focus-on.waiting:hover {
+    border-color: var(--line);
+  }
+  .focus-on kbd {
     font: inherit;
     font-size: 0.72em;
     opacity: 0.7;
     padding: 0 0.3rem;
     border: 1px solid currentColor;
     border-radius: 3px;
-  }
-  .focus-row {
-    flex-shrink: 0;
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.5rem 1rem 0;
-  }
-  .focus-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--panel);
-    font-size: 0.8rem;
-  }
-  .focus-exit {
-    font: inherit;
-    color: var(--text);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    min-height: 1.75rem;
-    padding: 0 0.6rem 0 0.75rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: none;
-    cursor: pointer;
-  }
-  .focus-exit:hover {
-    border-color: var(--muted);
   }
   .setup.active {
     color: var(--text);
@@ -519,6 +501,17 @@
       display: none;
     }
   }
+  /* Smaller windows: the button says just Show or Hide. */
+  @media (max-width: 1100px) {
+    .side-what {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
   @media (max-width: 560px) {
     .onair {
       display: none;
@@ -527,8 +520,9 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. */
-    .setup-word {
+    /* Help and Setup as their icons; the title still names them. Show or
+       Hide keeps its word, since an icon alone would not say which. */
+    .setup-word:not(.side-word) {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -566,6 +560,26 @@
   }
   .update {
     color: var(--gold);
+  }
+  /* A new version is waiting: a gold pill in the footer and a dot on Setup. */
+  .update-pill {
+    background: var(--gold-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--gold);
+    font-weight: 600;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+  }
+  .update-pill:hover {
+    background: var(--gold-soft);
+    color: var(--gold-hover);
+  }
+  .update-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-left: 0.15rem;
   }
   .status-link {
     font: inherit;

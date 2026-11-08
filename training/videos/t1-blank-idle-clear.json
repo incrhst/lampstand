@@ -18,17 +18,17 @@
    "callouts": [
     {
      "x": 95,
-     "y": 45.5,
+     "y": 62.5,
      "label": "Full stop blanks"
     },
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "The room sees black"
     },
     {
-     "x": 86.5,
-     "y": 85,
+     "x": 81,
+     "y": 75.5,
      "label": "Show · Idle · Blank"
     }
    ],
@@ -43,18 +43,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 86.5,
-     "y": 58.3,
+     "x": 81.2,
+     "y": 75.5,
      "label": "Idle"
     },
     {
      "x": 86.5,
-     "y": 25,
+     "y": 42,
      "label": "The idle screen is up"
     },
     {
-     "x": 79,
-     "y": 58.3,
+     "x": 77.4,
+     "y": 75.5,
      "label": "Show goes back to the slide"
     }
    ],
