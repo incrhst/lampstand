@@ -208,7 +208,7 @@
       creating = false;
       markMade();
       await refresh();
-      live.status = "New service made. Type its name, or press Enter to keep Sunday service.";
+      live.status = NAME_IT;
       startRename(selected);
     } catch (e) {
       report(e);
@@ -247,10 +247,13 @@
     renameTitle = s.title;
   }
 
+  const NAME_IT = "New service made. Type its name, or press Enter to keep Sunday service.";
   async function saveRename() {
     const id = renaming;
     if (!id) return;
     renaming = null;
+    // The hint from New service has done its job once the name is settled.
+    if (live.status === NAME_IT) live.status = "";
     if (!renameTitle.trim()) return;
     try {
       const renamed = await request(
