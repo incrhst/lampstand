@@ -220,12 +220,6 @@
       setObsOpen(false);
       return;
     }
-    // F (Focus) is the menu bar's, in App.svelte. Esc leaves it here.
-    if (live.focus && e.key === "Escape") {
-      e.preventDefault();
-      setFocus(false);
-      return;
-    }
     const keys: Record<string, Command> = {
       " ": "Next",
       ArrowRight: "Next",
@@ -328,21 +322,13 @@
    * until the next service is opened; nothing is remembered between them.
    */
   let readyOpen = $state(true);
-  /** On air's drawer, at the top right: open whenever a service is opened, like Ready. */
-  let onAirOpen = $state(true);
   let readyFor: string | null = null;
   $effect(() => {
     const service = live.loaded?.service ?? null;
-    if (service && service !== readyFor) {
-      readyOpen = true;
-      onAirOpen = true;
-    }
+    if (service && service !== readyFor) readyOpen = true;
     readyFor = service;
   });
-  /** The drawers' sizes, so the sidebar's cards and the wall keep clear of them. */
-  let onAirH = $state(0);
-  let readyH = $state(0);
-  let drawerW = $state(0);
+
   function setReadyOpen(open: boolean) {
     readyOpen = open;
   }
@@ -450,13 +436,6 @@
   let clickNext = $derived(live.loaded ? nextClick(live.loaded, live.live, live.returnsTo) : null);
   /** A deck slide with builds is on air: the one time the wall shows the screen and the next click, because the cards show each slide fully built. */
   let stepped = $derived(!!live.live && (live.liveSlide?.steps ?? 0) > 0);
-  /** Library & controls hidden (live.focus): F hides and shows it, Esc brings it back; closing the service brings it back too. */
-  function setFocus(on: boolean) {
-    live.focus = on;
-  }
-  $effect(() => {
-    if (!live.loaded) live.focus = false;
-  });
   // The picture of what is on air, top right: small (the default), large
   // (the sidecard widens on a wide window, so the picture is big) or off.
   // Remembered per computer, as the cards' folds are.
@@ -936,21 +915,7 @@
            it holds the screen, the controls and the room, as cards that
            fold; F or its Hide button hides it, leaving a pill with the panic controls. -->
       <section class="pane wall-pane" aria-label="The whole service">
-        {#if live.focus}
-          <div class="focus-pill" role="group" aria-label="Library and controls are hidden" style:right={live.loaded && onAirOpen ? `${drawerW + 20}px` : null}>
-            <span class="state" role="status"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-            {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
-            <!-- Labelled controls, so Focus never relies on keys alone; the
-                 panic controls stay within reach. -->
-            <Button size="small" icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
-            <Button size="small" variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
-            <Button size="small" variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
-            <Button size="small" onclick={() => command("ToggleIdle")} pressed={live.overlay === "Idle"} title="The idle screen, until you tap again or show a slide">Idle</Button>
-            <Button size="small" variant="danger" onclick={() => sound("Panic").catch(report)}>{words.panic}</Button>
-            <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the Library and the controls again (F or Esc)">Show<span class="side-what"> library &amp; controls</span></Button>
-          </div>
-        {/if}
-        <div class="wall-body" style:padding-right={live.focus && live.loaded && (onAirOpen || readyOpen) ? `${drawerW + 20}px` : null}>
+        <div class="wall-body">
           {#each groups as group (group.section?.header ?? "ungrouped")}
             {@const section = group.section}
             <section class="wall-group" class:looping={!!section?.seconds} aria-label={section?.title}>
@@ -1053,19 +1018,21 @@
             </section>
           {/each}
         </div>
-        {#if !live.focus}
-        <!-- Wide, one column: the notices, On air, Sound, then the rest.
-             Narrow, On air stands on its own beside a column of the rest
-             (Sound first) that scrolls, so Previous, Next, Blank and Stop
-             the sound now always stay in view. -->
-        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="Library and controls"
-          style:padding-top={live.loaded ? (onAirOpen ? `${onAirH + 12}px` : "3.25rem") : null}
-          style:padding-bottom={live.loaded && readyOpen ? `${readyH + 16}px` : null}>
+        <!-- The right column, the same every time, for a volunteer who comes
+             once a month: On air at the top (never hides), Library &
+             controls scrolling in the middle, Ready at the bottom (folds in
+             place to one line, never leaves). -->
+        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="On air, Library and controls, and Ready">
+          <section class="col-onair" aria-label="On air">
+            <h3 class="col-head">On air</h3>
+            {@render onAirBody()}
+          </section>
 
+          <div class="col-middle">
           <div class="side-rest">
             <!-- Library on top, then Controls, as in Plan. -->
             <div class="side-top">
-              <SideHead onhide={() => setFocus(true)} />
+              <SideHead />
               <h3 class="side-zone-head">Library</h3>
               <button type="button" class="side-find" title="Add a song or scripture after what is on air, or keep a deck or media ready (/)" onclick={() => openQuickAdd(false)}>
                 <Icon name="search" size={15} /><span>Find a song, reading, deck or media</span><kbd>/</kbd>
@@ -1175,38 +1142,20 @@
               <button type="button" class="side-row quiet" title="Put the service away; it stays in Plan" onclick={askClose}><Icon name="x" size={14} />Close service</button>
             {/if}
           </div>
+          </div>
+
+          <section id="ready-tray" class="col-ready" class:folded={!readyOpen} aria-label="Ready">
+            <button type="button" class="ready-head" aria-expanded={readyOpen} aria-controls="ready-body" onclick={() => setReadyOpen(!readyOpen)} title={readyOpen ? "Fold Ready to one line; it stays here" : "Open Ready: Blank, Idle and what you added"}>
+              <Icon name="star" size={14} /><strong>Ready</strong>
+              {#if ready.length > 0}<span class="ready-count num">{ready.length}</span>{/if}
+              <span class="muted ready-say">{readyOpen ? "One tap during the service" : ""}</span>
+              <span class="ready-fold">{readyOpen ? "Fold" : "Open"}<Icon name="chevronDown" size={12} /></span>
+            </button>
+            {#if readyOpen}<div id="ready-body" class="ready-body">{@render readyBody()}</div>{/if}
+          </section>
         </aside>
-        {/if}
       </section>
     </div>
-    {#if live.loaded}
-      <!-- On air at the top right and Ready at the bottom right, each a
-           drawer fixed to the right edge: they never scroll and never hide
-           with F. A drawer slides away to the right, leaving a tab to bring
-           it back. With Library & controls shown, its other cards scroll
-           between them. -->
-      <section class="drawer drawer-top" class:closed={!onAirOpen} class:large={previewSize === "large"} aria-label="On air" inert={!onAirOpen} bind:offsetHeight={onAirH} bind:offsetWidth={drawerW}>
-        <header class="drawer-head">
-          <strong>On air</strong>
-          <button type="button" class="drawer-hide" onclick={() => (onAirOpen = false)} title="Slide On air away to the right" aria-label="Slide On air away"><Icon name="next" size={14} /></button>
-        </header>
-        <div class="drawer-body">{@render onAirBody()}</div>
-      </section>
-      {#if !onAirOpen}
-        <button type="button" class="drawer-tab drawer-tab-top" onclick={() => (onAirOpen = true)} title="Bring back On air"><Icon name="prev" size={13} />On air</button>
-      {/if}
-      <section id="ready-tray" class="drawer drawer-bottom" class:closed={!readyOpen} class:large={previewSize === "large"} aria-label="Ready" inert={!readyOpen} bind:offsetHeight={readyH}>
-        <header class="drawer-head">
-          <strong>Ready</strong>
-          <span class="muted drawer-say">One tap during the service. Next comes back to the service.</span>
-          <button type="button" class="drawer-hide" onclick={() => setReadyOpen(false)} title="Slide Ready away to the right" aria-label="Slide Ready away"><Icon name="next" size={14} /></button>
-        </header>
-        <div class="drawer-body">{@render readyBody()}</div>
-      </section>
-      {#if !readyOpen}
-        <button type="button" class="drawer-tab drawer-tab-bottom" onclick={() => setReadyOpen(true)} aria-controls="ready-tray" title="Bring back Ready: Blank, Idle and what you added"><Icon name="prev" size={13} /><Icon name="star" size={13} />Ready{#if ready.length > 0}<span class="drawer-count num">{ready.length}</span>{/if}</button>
-      {/if}
-    {/if}
   </div>
 {/if}
 
@@ -1595,117 +1544,59 @@
     position: relative;
     flex-direction: row;
   }
-  /* On air and Ready: drawers fixed to the right edge of Present. */
-  .drawer {
-    position: absolute;
-    right: 0;
-    z-index: 6;
-    width: 21rem;
-    max-width: 92vw;
+  /* The right column: On air at the top, Library & controls scrolling in
+     the middle, Ready at the bottom. Nothing in it hides or moves. */
+  .col-head {
+    margin: 0 0 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .col-onair {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    background: var(--canvas);
-    border-left: 1px solid var(--line);
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
-    transition:
-      transform 0.25s ease,
-      visibility 0.25s;
-  }
-  @media (min-width: 1200px) {
-    .drawer.large {
-      width: 32rem;
-    }
-  }
-  .drawer.closed {
-    transform: translateX(105%);
-    visibility: hidden;
-  }
-  .drawer-top {
-    top: 0;
-    max-height: 60%;
-    border-bottom: 1px solid var(--line);
-    border-bottom-left-radius: var(--radius-lg);
-  }
-  .drawer-bottom {
-    bottom: 0;
-    max-height: 45%;
-    border-top: 1px solid var(--line);
-    border-top-left-radius: var(--radius-lg);
-  }
-  .drawer-head {
-    display: flex;
-    align-items: baseline;
     gap: 0.5rem;
-    padding: 0.6rem 0.75rem 0.3rem 1rem;
+    padding: 0.75rem 1rem 0.75rem 0;
+    border-bottom: 1px solid var(--line);
   }
-  .drawer-say {
-    flex: 1;
-    font-size: 0.75rem;
-  }
-  .drawer-head strong {
-    flex-shrink: 0;
-  }
-  .drawer-top .drawer-head strong {
-    flex: 1;
-  }
-  .drawer-hide {
-    align-self: center;
-    font: inherit;
-    display: inline-flex;
-    color: var(--muted);
-    background: none;
-    border: 1px solid var(--line);
-    padding: 0.2rem 0.3rem;
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-  .drawer-hide:hover {
-    color: var(--text);
-    border-color: var(--gold-hover);
-  }
-  .drawer-body {
-    min-height: 0;
+  .col-middle {
+    flex: 1 1 auto;
+    min-height: 6rem;
     overflow-y: auto;
-    padding: 0.2rem 1rem 0.75rem;
+    padding: 0.75rem 1rem 0.75rem 0;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
   }
-  .drawer-body .ready-empty {
-    display: block;
-    margin: 0;
-    font-size: 0.8125rem;
+  .col-ready {
+    flex: 0 1 auto;
+    max-height: 45%;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+    padding-right: 1rem;
   }
-  /* A slid-away drawer leaves a labelled tab on the edge to bring it back. */
-  .drawer-tab {
-    position: absolute;
-    right: 0;
-    z-index: 6;
+  .ready-head {
     font: inherit;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.45rem 0.8rem 0.45rem 0.6rem;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.6rem 0;
     color: var(--text);
-    background: var(--raised);
-    border: 1px solid var(--gold);
-    border-right: none;
-    border-radius: 999px 0 0 999px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    background: none;
+    border: none;
+    text-align: left;
     cursor: pointer;
   }
-  .drawer-tab:hover {
-    background: var(--gold-soft);
+  .ready-say {
+    flex: 1;
+    font-size: 0.75rem;
   }
-  .drawer-tab-top {
-    top: 0.75rem;
-  }
-  .drawer-tab-bottom {
-    bottom: 0.75rem;
-  }
-  .drawer-count {
+  .ready-count {
     min-width: 1.3rem;
     padding: 0 0.3rem;
     border-radius: 999px;
@@ -1714,20 +1605,44 @@
     font-size: 0.75rem;
     text-align: center;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .drawer {
-      transition: none;
-    }
+  .ready-fold {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .col-ready.folded .ready-fold :global(svg) {
+    transform: rotate(180deg);
+  }
+  .ready-head:hover .ready-fold {
+    color: var(--text);
+    border-color: var(--gold-hover);
+  }
+  .ready-body {
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .ready-body .ready-empty {
+    display: block;
+    margin: 0;
+    font-size: 0.8125rem;
   }
   .sidecard {
     flex: 0 0 21rem;
     min-height: 0;
-    overflow-y: auto;
-    /* Room at the bottom, so the Ready button never covers the last card. */
-    padding: 0.75rem 1rem 4.5rem 0;
+    padding: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
   }
   /* Large picture of the screen: on a wide window the sidecard widens, so
      On air, top right, shows the screen big. */
@@ -2124,15 +2039,16 @@
       flex-direction: row;
       overflow: hidden;
     }
-    .side-onair,
-    .side-rest {
+    .col-onair,
+    .col-middle,
+    .col-ready {
       flex: 1 1 0;
       min-width: 0;
       min-height: 0;
+      max-height: none;
       overflow-y: auto;
-    }
-    .side-onair {
-      display: block;
+      border: none;
+      padding: 0 0.5rem;
     }
     .side-rest {
       display: flex;
@@ -2153,50 +2069,6 @@
     .sidecard .wall-steps figure {
       max-width: 12rem;
     }
-  }
-  /* Library & controls hidden: what is on air, the panic controls and the way back in a pill. */
-  .focus-pill {
-    position: absolute;
-    top: 0.75rem;
-    right: 1.25rem;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    max-width: calc(100% - 2.5rem);
-    padding: 0.3rem 0.3rem 0.3rem 0.75rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--panel);
-    font-size: 0.75rem;
-  }
-  /* Smaller windows: the pill's button says just Show; screen readers
-     still hear the rest. */
-  @media (max-width: 1100px) {
-    .focus-pill .side-what {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-  }
-  /* The smallest windows: the buttons keep their words, the key hints go. */
-  @media (max-width: 780px) {
-    .focus-pill :global(kbd) {
-      display: none;
-    }
-  }
-  /* Room above the first row, so the pill never covers a card. */
-  .focus-pill ~ .wall-body {
-    padding-top: 3.5rem;
-  }
-  .focus-where {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .wall-steps {
     display: flex;
@@ -2244,8 +2116,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    /* Room at the bottom, so the Ready button never covers the last slides. */
-    padding: 0.75rem 1.25rem 4.5rem;
+    padding: 0.75rem 1.25rem 2rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
