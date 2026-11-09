@@ -36,11 +36,14 @@ async function clip(name, scene, crop, script, { open = "Pre-service and service
   await p.addInitScript(([s]) => {
     window.__scene = s;
     localStorage.setItem("lampstand.getstarted.hidden", "1");
-    localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "safe-area"]));
+    localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "safe-area", "connect-device"]));
   }, [scene]);
   p.on("pageerror", (e) => console.log(name, "pageerror", e.message));
   await p.goto(APP);
   await p.waitForTimeout(500);
+  // "Start here" points at the Plan | Present tabs at every launch; close it.
+  const point = p.getByRole("button", { name: "Close Start here" });
+  if (await point.count()) await point.click();
   if (open) {
     // Plan's services list is a page inside Library & controls.
     await openServices(p);
@@ -124,17 +127,11 @@ await clip("blank-screen", "tips", crops.full, async (p) => {
   await wait(p, 1500);
 });
 await clip("safe-area", "tips", crops.top, async (p) => {
+  // The guide is the dashed line on the On air picture (switched in Settings › Screens).
   await startItem(p);
   await wait(p, 1000);
-  // The switch is in the Screen card, under Controls in Library & controls.
-  const guide = p.getByRole("switch", { name: /Safe area guide/ }).first();
-  const label = p.getByText("Safe area guide").first();
-  if (await guide.isChecked()) {
-    await label.click();
-    await wait(p, 900);
-  }
-  await label.click();
-  await wait(p, 1500);
+  await p.keyboard.press(" ");
+  await wait(p, 1800);
 });
 
 // Clips for the website docs only: the basic jobs, from the default demo service.
@@ -153,7 +150,7 @@ await clip("present-next", "default", crops.full, async (p) => {
 }, { open: "Sunday service" });
 await clip("setup-screens", "default", crops.full, async (p) => {
   await wait(p, 600);
-  await p.getByText("Setup").first().click();
+  await p.getByRole("button", { name: "Settings" }).first().click();
   await wait(p, 1800);
 }, { open: null });
 await browser.close();

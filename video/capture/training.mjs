@@ -1,12 +1,13 @@
 // Takes the screenshots the training videos (#190) use, from the real UI
 // with the fake bridge: run `npm run capture:serve` first, then
-// `npm run capture:training`. Writes public/shots/training/*.png.
+// `npm run capture:training` (set APP to the server's address if it is not
+// port 1431). Writes public/shots/training/*.png.
 // Each one is a scripted run of Present or Plan on the mock's training
 // services, so a UI change is a retake, not a reshoot.
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
 
-const APP = "http://localhost:1431/";
+const APP = process.env.APP ?? "http://localhost:1431/";
 const OUT = new URL("../public/shots/training/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -19,7 +20,7 @@ async function shot(name, script) {
     window.__scene = "training";
     localStorage.setItem("lampstand.getstarted.hidden", "1");
     // The quick tips have been read: the order of service shows in full.
-    localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "logo-bug", "safe-area"]));
+    localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "logo-bug", "safe-area", "connect-device"]));
   });
   p.on("pageerror", (e) => console.log(name, "pageerror", e.message));
   await p.goto(APP);
@@ -64,13 +65,18 @@ const shots = {
   },
   // Training Session 1, Amazing Grace on air.
   "song": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); },
-  // The same with Library & controls hidden (F): the slides, and the small bar.
-  "hidden": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); await p.keyboard.press("f"); },
+  // The same with Ready folded to its one-line bar at the bottom of the right column.
+  "folded": async (p) => {
+    await openTraining(p, "Training Session 1: Run a service");
+    await go(p, 3, 1);
+    await p.locator("#ready-tray").getByRole("button", { expanded: true }).click();
+  },
   // The same with Idle chosen: the idle screen is up, the service stays open.
   "idle": async (p) => {
     await openTraining(p, "Training Session 1: Run a service");
     await go(p, 3, 1);
-    await p.getByRole("radio", { name: "Idle" }).or(p.getByRole("button", { name: "Idle", exact: true })).first().click();
+    // Idle is a tile in Ready.
+    await p.locator("#ready-tray .screen-pick").filter({ hasText: "Idle" }).first().click();
   },
   // Training Session 1, the sermon deck one click into slide 2's builds: the builds panel shows.
   "deck": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 8, 2); },

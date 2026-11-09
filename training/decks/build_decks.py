@@ -196,7 +196,7 @@ def save(name, title, label, slides):
 T0 = "Lampstand training · 0 Orientation"
 save("t0-plan-and-present.pptx", "Plan and Present", T0, [
     {"kind": "title", "kicker": "Training Session 0", "heading": "Two modes and a toolbox",
-     "sub": "Plan during the week. Present on Sunday. Setup once.",
+     "sub": "Plan during the week. Present on Sunday. Settings once.",
      "notes": """
 Trainer: Welcome everyone. This takes five minutes and is for everybody on the team,
 not only the people at the projection computer.
@@ -220,13 +220,13 @@ Trainer: Present is the operator's screen. One service is open at a time, and ev
 of it is laid out as cards. The card marked LIVE, in red, is what the room sees, and so is the
 picture in the On air box, on the right. Everything else is only for you.
 The training service is open in Present right now, and it works like any other service."""},
-    {"kind": "bullets", "heading": "Setup: once, then rarely", "fade": True, "items": [
+    {"kind": "bullets", "heading": "Settings: once, then rarely", "fade": True, "items": [
         "Screens: which screen is the projector",
         "Themes: how the words look",
         "Devices and Team: who does what, on which computer",
     ], "notes": """
-Trainer: Setup is for the media or tech volunteer. It is set once and then left alone.
-If something looks wrong on the projector on Sunday, it is usually a Setup question,
+Trainer: Settings is for the media or tech volunteer. It is set once and then left alone.
+If something looks wrong on the projector on Sunday, it is usually a Settings question,
 and it can wait until after the service. Blank the screen and carry on."""},
     {"kind": "keys", "heading": "Move between them", "fade": True, "rows": [
         ("Ctrl+1", "Plan  (⌘1 on a Mac)"),
@@ -252,18 +252,18 @@ and no desktop showing. Point at each part of the screen as we go."""},
         "The wall: every slide of the service",
         "Red LIVE: what the room sees now",
         "Gold NEXT: the next slide",
-        "Library & controls, on the right: the main screen and the buttons",
+        "On the right: On air, then Add, Sound and Check, then Ready",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
 The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
 NEXT card is the next slide. On a slide with builds, Space plays the next build first.
-The notes, where you are reading this, sit beside the item on air. On the right is the
-sidebar called Library & controls. At the top, the Library's search adds a song or reading next.
-Under Controls is On air: a picture of the main screen, then Previous, Next and Blank. Under it,
-Show, Idle and Blank switch the room between the slide, the idle screen and black. Below that
-are the sound, and boxes that fold away: Remotes, Clear and Keys. Press F, or the Hide button,
-to hide the sidebar and see only the slides; Blank and Stop the sound now stay in the small bar.
-F, Esc or Show brings it back."""},
+The notes, where you are reading this, sit beside the item on air. On the right, at the top,
+is On air: a picture of the main screen, then Previous, Next and Blank. Under it are three rows:
+Add finds a song or reading to add next, Sound has Stop the sound now, and Check says All set
+when the screen is on (or the one thing to fix, with its button). At the bottom right is Ready:
+Blank, Idle and Clear text, one tap away, and anything added to Ready. Adding to Ready is
+optional; most services need nothing added. Ready's Fold makes it one line; Open brings it back,
+and it opens again with each service."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
 Trainer: Choosing an item with Shift and Down only marks it for you. The room sees nothing new. It goes on air when you
@@ -284,8 +284,8 @@ save("t1-sermon-practice.pptx", "Practice sermon: The Lord is my shepherd", T1, 
      "notes": """
 Preacher: Good morning. Our reading today is Psalm 23.
 Operator: this deck has builds. Each Space press brings in one point. When the slide is
-complete, the next Space goes to the next slide. While a slide with builds is on air, the On air
-box on the right shows what the next click brings, and how many clicks are left."""},
+complete, the next Space goes to the next slide. While a slide with builds is on air, On air
+on the right says how many clicks are left."""},
     {"kind": "bullets", "heading": "He leads me", "builds": True, "fade": True, "items": [
         "Green pastures",
         "Still waters",
@@ -323,9 +323,10 @@ Trainer: Well done. Ask the trainee: what would you do if the wrong slide went u
         "Before: screens on, open the service for live",
         "Start on the idle screen; Space puts the first slide up",
         "During: Space to move on, full stop to blank",
-        "After: Close service, bottom right",
+        "After: Close service, at the top",
     ], "notes": """
-Trainer: Walk through a real Sunday. Point out Close service at the bottom of Library & controls.
+Trainer: Walk through a real Sunday. Point out Close service in the menu bar at the top, beside
+"Live service". It asks first if something is still on air.
 Give them the printed key sheet to keep by the computer.
 Next: Training Session 2, Confident operator, practises the five surprises that happen on a real Sunday."""},
 ])
@@ -396,7 +397,7 @@ save("t2-phones.pptx", "Phones and tablets", T2, [
      "sub": "A helper can run the service from a phone. A speaker can step through their own slides.",
      "notes": """
 Trainer: This part takes about ten minutes and needs a phone on the same Wi-Fi as this computer.
-Phones and tablets connect from Present, with nothing to install. There are two kinds, and
+Phones and tablets connect from Settings › Devices, with nothing to install. There are two kinds, and
 choosing the right one is the whole lesson."""},
     {"kind": "bullets", "heading": "Two kinds of phone", "builds": True, "items": [
         "Run the service: every slide as cards, Next and Back, Blank, Idle and the sound",
@@ -411,13 +412,13 @@ item: the slide on screen, the next click, their notes and a timer. Next on thei
 nothing, so a speaker can never move the service on by accident. If you clear the screen, their
 phone says so and waits."""},
     {"kind": "bullets", "heading": "Connecting one", "builds": True, "items": [
-        "Present › Remotes › Connect a phone or tablet",
+        "Settings › Devices › Connect a phone or tablet",
         "Choose Run the service, or Speaker and whose slides",
         "They scan the code and type the PIN",
-        "Setup › Devices lists every phone; Revoke disconnects one",
+        "The same page lists every phone; Revoke disconnects one",
     ], "notes": """
 Trainer: The PIN works for five minutes and only once. A speaker's phone stops working by itself
-when the service is closed. A Run the service phone stays paired until you revoke it in Setup ›
+when the service is closed. A Run the service phone stays paired until you revoke it in Settings ›
 Devices. Now try it: the next item is the practice."""},
 ])
 
@@ -433,8 +434,8 @@ A confident operator gets through all five surprises with the screen calm every 
     {"kind": "title", "kicker": "Training Session 2", "heading": "Confident operator",
      "sub": "Next for planners: Training Session 3. For media volunteers: Training Session 4.",
      "notes": """
-Trainer: That is the end of operator training. Training Session 3 (Planner) and Training Session 4 (Setup and the
-stream) come in a later version of Lampstand. Close the service with Close service, bottom right."""},
+Trainer: That is the end of operator training. Training Session 3 (Planner) and Training Session 4 (Settings and the
+stream) come in a later version of Lampstand. Close the service with Close service, at the top."""},
 ])
 
 if __name__ == "__main__":

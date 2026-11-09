@@ -3,7 +3,7 @@
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
 
-const APP = "http://localhost:1431/";
+const APP = process.env.APP ?? "http://localhost:1431/";
 const OUT = new URL("../public/shots/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -16,13 +16,16 @@ async function shot(name, scene, script, storage = {}) {
     window.__scene = s;
     if (s !== "fresh") localStorage.setItem("lampstand.getstarted.hidden", "1");
     // The quick tips have been read, so the wall shows in full.
-    if (s !== "fresh") localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "logo-bug", "safe-area"]));
+    if (s !== "fresh") localStorage.setItem("lampstand.tips.dismissed", JSON.stringify(["loop-group", "loop-progress", "fold-group", "quick-add", "jump-keys", "blank-screen", "logo-bug", "safe-area", "connect-device"]));
     for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
   }, [scene, storage]);
   p.on("pageerror", (e) => console.log(name, "pageerror", e.message));
   p.on("console", (m) => m.type() === "warning" && console.log(name, m.text().slice(0, 160)));
   await p.goto(APP);
   await p.waitForTimeout(700);
+  // "Start here" points at the Plan | Present tabs at every launch; close it.
+  const point = p.getByRole("button", { name: "Close Start here" });
+  if (await point.count()) await point.click();
   await script(p);
   await p.waitForTimeout(500);
   await p.screenshot({ path: `${OUT}${name}.png` });
@@ -58,14 +61,14 @@ const shots = {
     await p.keyboard.press("Enter"); await p.waitForTimeout(200);
     await p.keyboard.press(" "); await p.keyboard.press(" ");
   }],
-  // Focus (F): the cards only, with the pill.
+  // There is no Focus (F) any more: this shot (the hero tour's "focus") has Ready folded to one line.
   "5c-focus": ["default", async (p) => {
     await p.getByText("Sunday service").first().click();
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400);
     await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
     await p.waitForTimeout(200); await p.keyboard.press(" "); await p.keyboard.press(" ");
-    await p.keyboard.press("f");
+    await p.locator("#ready-tray").getByRole("button", { expanded: true }).click();
   }],
   // Sound: Next has started Amazing Grace and its backing track; the Sound box open, then folded.
   ...Object.fromEntries([["5d-sound", "1"], ["5e-sound-folded", "0"]].map(([n, open]) => [n, ["default", async (p) => {
@@ -75,10 +78,10 @@ const shots = {
     await p.waitForTimeout(400);
     await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
   }, { "lampstand.sound.open.during": open }]])),
-  "6-setup": ["default", async (p) => { await p.getByText("Setup").first().click(); }],
+  "6-setup": ["default", async (p) => { await p.getByRole("button", { name: "Settings" }).first().click(); }],
   "7-obs": ["default", async (p) => {
     await p.evaluate(() => window.__obsOn());
-    await p.getByText("Setup").first().click(); await p.getByText("Send pictures, control scenes").click();
+    await p.getByRole("button", { name: "Settings" }).first().click(); await p.getByText("Send pictures, control scenes").click();
   }],
   "8-present-obs": ["default", async (p) => {
     await p.evaluate(() => window.__obsOn());

@@ -17,23 +17,23 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 45,
-     "y": 84,
+     "x": 28.8,
+     "y": 69.7,
      "label": "LIVE: on air now"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.2,
      "label": "The main screen"
     },
     {
-     "x": 87.5,
-     "y": 62.5,
+     "x": 87.9,
+     "y": 38.6,
      "label": "Next: Space or →"
     },
     {
-     "x": 79,
-     "y": 62.5,
+     "x": 79.1,
+     "y": 38.6,
      "label": "Previous: ←"
     }
    ],
@@ -48,18 +48,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 63,
-     "y": 85,
+     "x": 46.6,
+     "y": 70.7,
      "label": "NEXT: the next slide"
     },
     {
-     "x": 11.5,
-     "y": 88,
+     "x": 15,
+     "y": 58.4,
      "label": "Notes for you"
     },
     {
-     "x": 27,
-     "y": 57,
+     "x": 11,
+     "y": 31,
      "label": "Every slide of the service"
     }
    ],
@@ -74,18 +74,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 27,
-     "y": 69,
+     "x": 10.9,
+     "y": 85.0,
      "label": "Shift+↓ chooses"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.2,
      "label": "Still on air"
     },
     {
-     "x": 45,
-     "y": 69,
+     "x": 28.8,
+     "y": 84.0,
      "label": "Click a card to show it now"
     }
    ],
@@ -100,22 +100,22 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.2,
      "label": "On screen now"
     },
     {
      "x": 80.5,
-     "y": 67,
+     "y": 43.2,
      "label": "Clicks left on this slide"
     },
     {
-     "x": 86.5,
-     "y": 79.5,
-     "label": "What the next click shows"
+     "x": 46.6,
+     "y": 65.3,
+     "label": "The next slide"
     }
    ],
-   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, the On air box on the right shows what the next click brings, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, On air on the right says how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
    "narration": "narration/t1-going-live/05.mp3",
    "durationSec": 23
   },
@@ -135,34 +135,29 @@
   },
   {
    "type": "screenshot",
-   "src": "shots/training/hidden.png",
-   "heading": "Hide Library & controls",
+   "src": "shots/training/folded.png",
+   "heading": "The right side",
    "tone": "screen",
    "callouts": [
     {
-     "x": 45,
-     "y": 10.4,
-     "label": "What is on air"
+     "x": 87.1,
+     "y": 20.2,
+     "label": "On air: always at the top"
     },
     {
-     "x": 70,
-     "y": 10.4,
-     "label": "Blank, always in reach"
+     "x": 80.5,
+     "y": 46.8,
+     "label": "Add, Sound and Check"
     },
     {
-     "x": 78.5,
-     "y": 10.4,
-     "label": "Stop the sound now"
-    },
-    {
-     "x": 91,
-     "y": 10.4,
-     "label": "Show, F or Esc brings it back"
+     "x": 87.1,
+     "y": 93.6,
+     "label": "Ready, folded: press Open"
     }
    ],
-   "say": "Press F, or Hide at the top of Library and controls, to hide the sidebar and see only the slides. The bar along the top stays. Previous, Next, Blank, and Stop the sound now, stay in the small bar above the slides. Press F again, or Escape, or Show, to bring it back.",
+   "say": "On the right, On air is always at the top: what the room sees, with Previous, Next and Blank. Under it are Add, to find a song or reading, Sound, with Stop the sound now, and Check, which says All set when everything is ready. Ready sits at the bottom. Press Fold to make it one line, and Open to bring it back.",
    "narration": "narration/t1-going-live/07.mp3",
-   "durationSec": 22
+   "durationSec": 22.5
   },
   {
    "type": "cta",

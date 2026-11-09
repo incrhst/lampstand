@@ -455,7 +455,8 @@ function api(req: any): any {
       return { type: "Settings", data: settings };
     case "Update": return { type: "Update", data: { current: "0.1.0", state: "UpToDate", blocked: null } };
     case "Team": return { type: "Team", data: team() };
-    case "Obs": return { type: "Obs", data: state.obs ?? obsOff() };
+    // The training and tip scenes are a church without OBS, so Check says All set.
+    case "Obs": return { type: "Obs", data: state.obs ?? (/^(training|tips)/.test(state.scene) ? { ...obsOff(), relevant: false } : obsOff()) };
     case "About": return ok;
     case "Sound": return { type: "Sound", data: soundOn ? soundView() : { here: true, holder: "Demo laptop", away: false, nobody: false, output_ok: true, playing: null, problem: null, problem_item: null } };
   }

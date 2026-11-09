@@ -15,9 +15,9 @@
    { "id": "sound", "src": "shots/5d-sound.png", "title": "Lampstand · Present", "x": 8150, "y": 20, "yaw": -3 },
    { "id": "soundfold", "src": "shots/5e-sound-folded.png", "title": "Lampstand · Present", "x": 8870, "y": 470, "z": 170, "yaw": -3, "scale": 0.72 },
    { "id": "remote", "src": "shots/9-remote.png", "title": "Lampstand Remote", "x": 9750, "y": 0, "yaw": 4, "w": 390, "h": 844 },
-   { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Setup", "x": 13450, "y": 10, "z": -20, "yaw": 6 },
+   { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Settings", "x": 13450, "y": 10, "z": -20, "yaw": 6 },
    { "id": "obslive", "src": "shots/8-present-obs.png", "title": "Lampstand · Present", "x": 14100, "y": 400, "z": 170, "yaw": 6, "scale": 0.72 },
-   { "id": "screens", "src": "shots/6-setup.png", "title": "Lampstand · Setup", "x": 15600, "y": 0, "yaw": 4 }
+   { "id": "screens", "src": "shots/6-setup.png", "title": "Lampstand · Settings", "x": 15600, "y": 0, "yaw": 4 }
   ],
   "screen": {
    "x": 11650, "y": -20, "yaw": -3, "w": 1600, "h": 900,
@@ -40,7 +40,7 @@
     { "text": "REMOTE", "x": 11900, "y": 5300 },
     { "text": "THE SCREEN", "x": 13850, "y": 5300 },
     { "text": "OBS", "x": 17400, "y": 5300 },
-    { "text": "SETUP", "x": 19100, "y": 5300 }
+    { "text": "SETTINGS", "x": 19100, "y": 5300 }
    ]
   }
  },
@@ -94,7 +94,7 @@
      { "on": "obslive", "x": -10, "d": 1330, "yaw": -10, "pitch": 10, "roll": -1, "atSec": 5.2 }
     ] },
   { "type": "stop", "durationSec": 6,
-    "tag": "Setup", "title": "Fit each screen once.", "sub": "Calibrate so words never fall off the edge.",
+    "tag": "Settings", "title": "Fit each screen once.", "sub": "Calibrate so words never fall off the edge.",
     "stops": [{ "on": "screens", "d": 1470, "yaw": -8, "pitch": 11, "roll": 0.5 }] },
   { "type": "close", "durationSec": 7.6, "captionIn": 0.6,
     "tag": "Lampstand", "title": "Free and open source.", "sub": "Training built in. GPL-3.0 · github.com/incrhst/lampstand",

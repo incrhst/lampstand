@@ -17,22 +17,22 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 95,
-     "y": 62.5,
+     "x": 95.9,
+     "y": 38.6,
      "label": "Full stop blanks"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.2,
      "label": "The room sees black"
     },
     {
-     "x": 81,
-     "y": 75.5,
-     "label": "Show · Idle · Blank"
+     "x": 79.1,
+     "y": 81.8,
+     "label": "Blank, in Ready"
     }
    ],
-   "say": "Press the full stop key and the screen goes black at once. Press it again, or choose Show, and the slide comes back where it was.",
+   "say": "Press the full stop key and the screen goes black at once. Press it again, or tap Blank again, and the slide comes back where it was.",
    "narration": "narration/t1-blank-idle-clear/02.mp3",
    "durationSec": 13
   },
@@ -43,22 +43,22 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 81.2,
-     "y": 75.5,
-     "label": "Idle"
+     "x": 87.1,
+     "y": 81.2,
+     "label": "Idle, in Ready"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.2,
      "label": "The idle screen is up"
     },
     {
-     "x": 77.4,
-     "y": 75.5,
-     "label": "Show goes back to the slide"
+     "x": 87.9,
+     "y": 38.6,
+     "label": "Space carries on"
     }
    ],
-   "say": "Idle puts up your idle screen, usually the church's logo, without closing the service. Use it in the gaps between items. Choose Show to bring the slide back, or press Space to carry on.",
+   "say": "Idle, in Ready at the bottom right, puts up your idle screen, usually the church's logo, without closing the service. Use it in the gaps between items. Tap Idle again to bring the slide back, or press Space to carry on.",
    "narration": "narration/t1-blank-idle-clear/03.mp3",
    "durationSec": 15
   },
@@ -70,9 +70,9 @@
     "Blank: black, at once",
     "Idle: the waiting screen, for gaps",
     "Clear text: hides the words, keeps the picture",
-    "Show: back to the slide"
+    "Tap it again: back to the slide"
    ],
-   "say": "Blank puts up black. Idle puts up the waiting screen, for gaps between items. Clear, in the boxes on the right, hides the words but keeps the background. Show brings the slide back.",
+   "say": "Blank puts up black. Idle puts up the waiting screen, for gaps between items. Clear text hides the words but keeps the background. All three are in Ready, and tapping Blank or Idle again brings the slide back.",
    "narration": "narration/t1-blank-idle-clear/04.mp3",
    "durationSec": 13
   },
