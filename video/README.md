@@ -90,8 +90,8 @@ npm run capture:remote  # the phone shot, public/shots/9-remote.png (no capture 
 ```
 
 `capture/shoot.mjs` drives Chrome through each moment (Get started strip, Plan,
-quick add, decks, the Present wall, the builds panel, Library & controls hidden, the Sound box open
-and folded, OBS, Setup › Screens). `capture/remote.mjs` pairs Lampstand Remote at
+quick add, decks, the Present wall, a deck with builds, Ready folded, the Sound row
+playing, OBS, Settings › Screens). `capture/remote.mjs` pairs Lampstand Remote at
 phone size with the server's stand-in (`cargo run -p lampstand-server --example
 remote_fixture`); set `LAMPSTAND_REMOTE_FIXTURE` to a built fixture to skip the build.
 Set `CHROME=/path/to/chrome` if Chrome isn't in the usual macOS place.

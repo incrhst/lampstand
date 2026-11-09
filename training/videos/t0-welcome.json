@@ -52,41 +52,41 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.7,
      "label": "What the room sees"
     },
     {
-     "x": 45,
-     "y": 64,
+     "x": 28.8,
+     "y": 64.3,
      "label": "LIVE: on air now"
     },
     {
-     "x": 87.5,
-     "y": 62.5,
-     "label": "Space moves on"
+     "x": 91.8,
+     "y": 78,
+     "label": "Next, or Space"
     },
     {
-     "x": 10.5,
-     "y": 69,
+     "x": 10,
+     "y": 45.5,
      "label": "Notes only you see"
     }
    ],
-   "say": "Present is for Sunday. One service is open at a time, and every slide of it is laid out. The card marked LIVE is what the room sees. Press Space to move on.",
+   "say": "Present is for Sunday. One service is open at a time, and every slide of it is laid out. The card marked LIVE is what the room sees. Press Next, or Space, to move on.",
    "narration": "narration/t0-welcome/04.mp3",
-   "durationSec": 13.5
+   "durationSec": 14
   },
   {
    "type": "bullets",
-   "heading": "Setup: once, then rarely",
+   "heading": "Settings: once, then rarely",
    "items": [
     "Which screen is the projector",
     "How the words look",
     "Who does what, on which computer"
    ],
-   "say": "Setup is for the media volunteer: which screen is the projector, how the words look, and who does what. It is set once, then left alone.",
+   "say": "Settings is for the media volunteer: which screen is the projector, how the words look, and who does what. It is set once, then left alone.",
    "narration": "narration/t0-welcome/05.mp3",
-   "durationSec": 11
+   "durationSec": 10.5
   },
   {
    "type": "bullets",

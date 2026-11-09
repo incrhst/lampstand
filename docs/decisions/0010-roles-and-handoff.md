@@ -178,6 +178,8 @@ adjusted during the build: see "Decided during the build" below and the
   the sound, so {item} will not play." is not.
 - **Sound is opt-in.** Setup > Sound > "Use sound in services" is off by
   default and only decides whether Plan offers the buttons that add sound.
+  On 2026-11-08 (1.0.0) the default changed to on for a new device; a
+  device someone turned off stays off.
 - **One-click OBS setup** runs on the machine that serves the pictures, with
   OBS on another computer, and writes that machine's network address into the
   browser source (never `localhost`); it is not run on the Stream holder.

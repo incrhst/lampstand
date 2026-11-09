@@ -11,11 +11,11 @@ installer: they are on the website and download the first time a training servic
 
 | Service | For | Time | Ends with | Outline |
 | --- | --- | --- | --- | --- |
-| Training Session 0: Orientation | Everyone | 5 min | Plan vs Present, what Setup is for | [outlines/training-0.md](outlines/training-0.md) |
+| Training Session 0: Orientation | Everyone | 5 min | Plan vs Present, what Settings is for | [outlines/training-0.md](outlines/training-0.md) |
 | Training Session 1: Run a service | Operators | 10 min | A practice service with no wrong slide and no desktop showing | [outlines/training-1.md](outlines/training-1.md) |
 | Training Session 2: Confident operator | Operators | 30 min | Recovering from five surprises | [outlines/training-2.md](outlines/training-2.md) |
 
-Training Sessions 3 to 5 (Planner, Setup and the stream, Admin) are for a later release.
+Training Sessions 3 to 5 (Planner, Settings and the stream, Admin) are for a later release.
 
 ## What is here
 
