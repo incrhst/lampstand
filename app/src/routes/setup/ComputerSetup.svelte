@@ -1,4 +1,4 @@
-<!-- Settings › This computer: the two switches that reach past Lampstand's own
+<!-- Settings › This computer: the switches that reach past Lampstand's own
      windows. Both are off by default and belong to this computer, so they are
      not shared with the church's other devices. -->
 <script lang="ts">
@@ -37,6 +37,15 @@
       onchange={(on) => saveSettings({ keep_awake: on })}
     />
     <p class="muted small">{words.awakeSentence}</p>
+  </Panel>
+  <Panel title="Presenter clicker">
+    <Switch
+      checked={live.settings?.clicker_mode ?? false}
+      label="Clicker mode"
+      disabled={live.settings === null}
+      onchange={(on) => saveSettings({ clicker_mode: on })}
+    />
+    <p class="muted small">While a service is open for live, a clicker's Page Up, Page Down, B and full stop work whichever window has focus, and B means Blank. Leave it off unless you use a clicker: while it is on, those keys never reach other apps.</p>
   </Panel>
 </div>
 
