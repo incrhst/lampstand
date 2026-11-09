@@ -687,8 +687,10 @@
      added to Ready. Sound joins while it plays; Stream for a church with OBS. -->
 {#snippet pressBody()}
     <div class="transport">
-      <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
-      <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
+      <!-- The arrow keys are what people reach for, and what a clicker sends;
+           Space still works for Next. -->
+      <Button icon="prev" onclick={() => command("Previous")} title="Previous (← or Page Up)" shortcut="←">Previous</Button>
+      <Button variant="primary" onclick={() => command("Next")} title="Next (→, Space or Page Down)" shortcut="→">Next</Button>
     </div>
     <div class="ready-screens" aria-label="Screens">
       <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide (,)">
