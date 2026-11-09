@@ -79,7 +79,7 @@ A section is a header and the items after it, up to the next header. Nothing is 
 | HC-4 | Common names are offered as one-tap chips: Pre-service, Greeting, Announcements, Praise and Worship, Communion, Offering, Sermon, Post-service. A chip fills the field, which stays editable. | P0 |
 | HC-5 | While naming, the cards that will fall under the new header are highlighted and counted ("The 2 cards highlighted below will sit under this header"). A header at the very end says it starts empty. | P0 |
 | HC-6 | A blank name is refused. | P0 |
-| HC-7 | The list of common names is editable in Setup, per church. | P2 |
+| HC-7 | The list of common names is editable in Settings, per church. | P2 |
 
 ### 6.3 Moving a header
 

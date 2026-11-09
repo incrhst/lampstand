@@ -17,29 +17,29 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 45,
-     "y": 84,
+     "x": 28.8,
+     "y": 84.2,
      "label": "LIVE: on air now"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.7,
      "label": "The main screen"
     },
     {
-     "x": 87.5,
-     "y": 62.5,
+     "x": 91.8,
+     "y": 78,
      "label": "Next: Space or →"
     },
     {
-     "x": 79,
-     "y": 62.5,
+     "x": 79.8,
+     "y": 78,
      "label": "Previous: ←"
     }
    ],
-   "say": "The card marked LIVE, in red, is on air. The picture in the On air box, on the right, shows the main screen. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "say": "The card marked LIVE, in red, is on air. The picture at the top right, under On air, shows the main screen. Press Space, the right arrow, or Next, to move on. The left arrow, or Previous, goes back one. A clicker sends the same keys.",
    "narration": "narration/t1-going-live/02.mp3",
-   "durationSec": 20.5
+   "durationSec": 25.5
   },
   {
    "type": "screenshot",
@@ -48,18 +48,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 63,
-     "y": 85,
+     "x": 46.6,
+     "y": 85.2,
      "label": "NEXT: the next slide"
     },
     {
-     "x": 11.5,
-     "y": 88,
+     "x": 10,
+     "y": 71.7,
      "label": "Notes for you"
     },
     {
-     "x": 27,
-     "y": 57,
+     "x": 11,
+     "y": 31,
      "label": "Every slide of the service"
     }
    ],
@@ -74,18 +74,18 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 27,
-     "y": 69,
+     "x": 10,
+     "y": 72.4,
      "label": "Shift+↓ chooses"
     },
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.7,
      "label": "Still on air"
     },
     {
-     "x": 45,
-     "y": 69,
+     "x": 10.9,
+     "y": 85,
      "label": "Click a card to show it now"
     }
    ],
@@ -100,24 +100,24 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 86.5,
-     "y": 42,
+     "x": 87.1,
+     "y": 20.7,
      "label": "On screen now"
     },
     {
-     "x": 80.5,
-     "y": 67,
+     "x": 87.1,
+     "y": 40,
      "label": "Clicks left on this slide"
     },
     {
-     "x": 86.5,
-     "y": 79.5,
-     "label": "What the next click shows"
+     "x": 46.6,
+     "y": 65.3,
+     "label": "The next slide"
     }
    ],
-   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, the On air box on the right shows what the next click brings, and how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, On air on the right says how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
    "narration": "narration/t1-going-live/05.mp3",
-   "durationSec": 23
+   "durationSec": 20
   },
   {
    "type": "bullets",
@@ -135,34 +135,34 @@
   },
   {
    "type": "screenshot",
-   "src": "shots/training/hidden.png",
-   "heading": "Hide Library & controls",
+   "src": "shots/training/right.png",
+   "heading": "The right side",
    "tone": "screen",
    "callouts": [
     {
-     "x": 45,
-     "y": 10.4,
-     "label": "What is on air"
+     "x": 87.1,
+     "y": 20.7,
+     "label": "Look up: what the room sees"
     },
     {
-     "x": 70,
-     "y": 10.4,
-     "label": "Blank, always in reach"
+     "x": 91.8,
+     "y": 78,
+     "label": "Press down: Next"
     },
     {
-     "x": 78.5,
-     "y": 10.4,
-     "label": "Stop the sound now"
+     "x": 87.1,
+     "y": 86.5,
+     "label": "Idle, Blank, Clear text"
     },
     {
-     "x": 91,
-     "y": 10.4,
-     "label": "Show, F or Esc brings it back"
+     "x": 96.2,
+     "y": 9.4,
+     "label": "Narrower"
     }
    ],
-   "say": "Press F, or Hide at the top of Library and controls, to hide the sidebar and see only the slides. The bar along the top stays. Previous, Next, Blank, and Stop the sound now, stay in the small bar above the slides. Press F again, or Escape, or Show, to bring it back.",
+   "say": "On the right, look up, then press down. At the top, On air shows what the room sees, what Next brings, and All set when everything is ready. Below it is everything you press: Previous and Next, then Idle, Blank and Clear text, and anything added to Ready. To add a song or reading, use Add at the end of the service. And Narrower, at the top, gives the slides more room.",
    "narration": "narration/t1-going-live/07.mp3",
-   "durationSec": 22
+   "durationSec": 29
   },
   {
    "type": "cta",

@@ -29,7 +29,7 @@ export const app = {
   "line-strong": "#3a4250",
   text: "#e6e8ec",
   muted: "#9aa3b2",
-  faint: "#808a9b",
+  faint: "#8690a0",
   gold: "#f0c75e",
   "gold-hover": "#f5d47e",
   "on-gold": "#1b1f27",

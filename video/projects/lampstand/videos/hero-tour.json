@@ -11,13 +11,12 @@
    { "id": "decks", "src": "shots/4-decks.png", "title": "Lampstand · Plan", "x": 3450, "y": -40, "z": -30, "yaw": -7 },
    { "id": "present", "src": "shots/5-present.png", "title": "Lampstand · Present", "x": 5000, "y": 20, "yaw": -5 },
    { "id": "builds", "src": "shots/5b-present-deck.png", "title": "Lampstand · Present", "x": 5620, "y": 380, "z": 170, "yaw": -5, "scale": 0.72 },
-   { "id": "focus", "src": "shots/5c-focus.png", "title": "Lampstand · Present", "x": 6650, "y": -30, "z": -20, "yaw": -4 },
+   { "id": "press", "src": "shots/5c-press.png", "title": "Lampstand · Present", "x": 6650, "y": -30, "z": -20, "yaw": -4 },
    { "id": "sound", "src": "shots/5d-sound.png", "title": "Lampstand · Present", "x": 8150, "y": 20, "yaw": -3 },
-   { "id": "soundfold", "src": "shots/5e-sound-folded.png", "title": "Lampstand · Present", "x": 8870, "y": 470, "z": 170, "yaw": -3, "scale": 0.72 },
    { "id": "remote", "src": "shots/9-remote.png", "title": "Lampstand Remote", "x": 9750, "y": 0, "yaw": 4, "w": 390, "h": 844 },
-   { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Setup", "x": 13450, "y": 10, "z": -20, "yaw": 6 },
+   { "id": "obs", "src": "shots/7-obs.png", "title": "Lampstand · Settings", "x": 13450, "y": 10, "z": -20, "yaw": 6 },
    { "id": "obslive", "src": "shots/8-present-obs.png", "title": "Lampstand · Present", "x": 14100, "y": 400, "z": 170, "yaw": 6, "scale": 0.72 },
-   { "id": "screens", "src": "shots/6-setup.png", "title": "Lampstand · Setup", "x": 15600, "y": 0, "yaw": 4 }
+   { "id": "screens", "src": "shots/6-setup.png", "title": "Lampstand · Settings", "x": 15600, "y": 0, "yaw": 4 }
   ],
   "screen": {
    "x": 11650, "y": -20, "yaw": -3, "w": 1600, "h": 900,
@@ -40,7 +39,7 @@
     { "text": "REMOTE", "x": 11900, "y": 5300 },
     { "text": "THE SCREEN", "x": 13850, "y": 5300 },
     { "text": "OBS", "x": 17400, "y": 5300 },
-    { "text": "SETUP", "x": 19100, "y": 5300 }
+    { "text": "SETTINGS", "x": 19100, "y": 5300 }
    ]
   }
  },
@@ -64,22 +63,25 @@
     "tag": "Slides", "title": "Bring your PowerPoint or Google Slides.", "sub": "Animation steps and speaker notes come too.",
     "stops": [{ "on": "decks", "d": 1540, "yaw": 12, "pitch": 11, "roll": -1 }] },
   { "type": "stop", "durationSec": 8.2, "captionOut": 0.6,
-    "tag": "3 · Present", "title": "Every slide of the service, at once.", "sub": "Click a card to show it. Space moves on. Period blanks the screen.", "keys": ["Space"],
+    "tag": "3 · Present", "title": "Every slide of the service, at once.", "sub": "Click a card to show it. Next or Space moves on. Full stop blanks the screen.", "keys": ["Space"],
     "stops": [
      { "on": "present", "x": -20, "y": 10, "d": 1540, "yaw": 8, "pitch": 12, "roll": 0.5 },
      { "on": "present", "x": -300, "y": 230, "d": 900, "yaw": 6, "pitch": 8, "atSec": 4 }
     ] },
   { "type": "stop", "durationSec": 6.4,
-    "tag": "Builds", "title": "See the next click before you press it.", "sub": "PowerPoint builds play one click at a time.",
+    "tag": "Builds", "title": "PowerPoint builds, one click at a time.", "sub": "On air says how many clicks are left.",
     "stops": [{ "on": "builds", "x": 120, "y": -10, "d": 1260, "yaw": 8, "pitch": 10, "roll": -1 }] },
   { "type": "stop", "durationSec": 5,
-    "tag": "Focus", "title": "Press F for just the slides.", "sub": "Blank and Stop the sound stay in reach.", "keys": ["F"],
-    "stops": [{ "on": "focus", "y": 10, "d": 1450, "yaw": 6, "pitch": 10, "roll": -0.5 }] },
+    "tag": "Look up, press down", "title": "What the room sees, and everything you press.", "sub": "On air on top. Next, Idle, Blank, Clear text and Ready below it.",
+    "stops": [
+     { "on": "press", "y": 10, "d": 1450, "yaw": 6, "pitch": 10, "roll": -0.5 },
+     { "on": "press", "x": 420, "y": 150, "d": 820, "yaw": 5, "pitch": 9, "atSec": 2.6 }
+    ] },
   { "type": "stop", "durationSec": 7.4,
-    "tag": "Sound", "title": "Next starts the music.", "sub": "What was playing fades out. The Sound box folds once the service is under way.",
+    "tag": "Sound", "title": "Next starts the music.", "sub": "What was playing fades out. Stop the sound now is right under Next.",
     "stops": [
      { "on": "sound", "x": -250, "y": -200, "d": 1200, "yaw": 8, "pitch": 10, "roll": 0.5 },
-     { "on": "soundfold", "x": -300, "y": -60, "d": 900, "yaw": 6, "pitch": 9, "atSec": 3.6 }
+     { "on": "sound", "x": 420, "y": 210, "d": 820, "yaw": 6, "pitch": 9, "atSec": 3.6 }
     ] },
   { "type": "stop", "durationSec": 6,
     "tag": "Remote", "title": "Run the service from a phone or tablet.", "sub": "Next, Back, Black and Idle in your hand. Nothing to install.",
@@ -94,7 +96,7 @@
      { "on": "obslive", "x": -10, "d": 1330, "yaw": -10, "pitch": 10, "roll": -1, "atSec": 5.2 }
     ] },
   { "type": "stop", "durationSec": 6,
-    "tag": "Setup", "title": "Fit each screen once.", "sub": "Calibrate so words never fall off the edge.",
+    "tag": "Settings", "title": "Fit each screen once.", "sub": "Calibrate so words never fall off the edge.",
     "stops": [{ "on": "screens", "d": 1470, "yaw": -8, "pitch": 11, "roll": 0.5 }] },
   { "type": "close", "durationSec": 7.6, "captionIn": 0.6,
     "tag": "Lampstand", "title": "Free and open source.", "sub": "Training built in. GPL-3.0 · github.com/incrhst/lampstand",
