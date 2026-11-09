@@ -543,34 +543,37 @@ These sit on the critical path, but no session can do them:
 
 ## 1.0.0
 
-1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a slim, church-ready cut of Phase 1: what is already built, made safe, signed and checked on real hardware. It is not every P0 in the PRD: new features wait for 1.1.0 and 1.5.0, and the parts that need a server or an outside approval wait for 1.x (below).
+1.0.0 is the release a church can rely on every Sunday with no developer nearby. It is a slim, church-ready cut of Phase 1: what is already built, made safe, made clear for a volunteer who comes once a month, and checked on real hardware. It is not every P0 in the PRD: new features wait for 1.1.0 and 1.5.0, and the parts that need a server or an outside approval wait for 1.x (below).
 
 **How it ships.** The GitHub milestone "1.0.0" holds everything 1.0.0 needs. We get there through 0.9.x releases: each new 0.9.x takes a few tickets out of the 1.0.0 milestone into its own milestone, and ships them. 1.0.0 is tagged when the 1.0.0 milestone is empty and the release checks below pass. Where "Send sound to the stream" (#125, #137, milestone 0.10.0) lands is still to be decided.
 
-**Slimmed on 2026-11-08.** Sermon recording (T117 to T124) moved to 1.5.0, with the readiness check (T36, so it can check the recording input and OBS too), the full performance ticket (T61) and the full WCAG audit (T60), since both are measured with recording running. A song from a link (T125), the ChordPro importer (T68), CCLI reporting (T38), the migration wizard (T55), service packages (T37) and Flathub (part of T95) moved to 1.1.0.
+**Slimmed on 2026-11-08.** Sermon recording (T117 to T124) moved to 1.5.0, with the readiness check (T36, so it can check the recording input and OBS too), the full performance ticket (T61) and the full WCAG audit (T60), since both are measured with recording running. A song from a link (T125), the ChordPro importer (T68), CCLI reporting (T38), the migration wizard (T55), service packages (T37), Flathub and Windows signing (T95) and the app side of Plans from Notion (T106 to T112) moved to 1.1.0. 1.0.0 ships with the Windows installer unsigned: the release notes say how to get past SmartScreen (More info, then Run anyway).
 
-**The order.** Merge the finished work first (#261 Library & controls, #260 Setup, #91 update status), because the later checks look at those screens. Safety next, because every later release carries it: T77 and T78 share `sync/src/repo/mod.rs` and T80 and T81 share `connectors/src/links.rs`, so each pair goes one after the other; the rest run in parallel. Then the short accessibility pass, Windows signing, the wording in docs and training, and the release checks last.
+**Where it stands.** The code is in: the finished screens (#261, #260, #91), the safety tickets, the short accessibility pass, and the volunteer pass from testing (#287, #288: Settings, one-click New service, Close service in the menu bar, Add to Ready, and Present's "look up, press down" right side with the Ctrl + Alt chord for regulars). The training and docs follow in #276 and #289. What is left is the real-hardware checks and the release itself ([#286](https://github.com/incrhst/lampstand/pull/286), RELEASING.md).
 
 ### In 1.0.0
 
-| ID | Title | Why it is in 1.0.0 |
+| ID | Title | Status |
 | --- | --- | --- |
-| — | Merge #261 (Library & controls), #260 (Setup: font list, grouped sidebar, "Logo and colours"), #91 (update status) | Finished work the release checks look at. |
-| T65, T76, T77, T78, T79, T80, T81 | Sync, file and download safety ([#217](https://github.com/incrhst/lampstand/issues/217), [#218](https://github.com/incrhst/lampstand/issues/218), [#219](https://github.com/incrhst/lampstand/issues/219), [#220](https://github.com/incrhst/lampstand/issues/220), [#221](https://github.com/incrhst/lampstand/issues/221), [#222](https://github.com/incrhst/lampstand/issues/222), [#223](https://github.com/incrhst/lampstand/issues/223)) | A Sunday must not lose a document, fill a disk or trust a bad file. |
-| T95 | Windows signing ([#228](https://github.com/incrhst/lampstand/issues/228)) | Most projection laptops run Windows; SmartScreen warnings stop at 1.0.0. |
-| T60 | Accessibility, the short pass: keyboard, contrast, labels ([#229](https://github.com/incrhst/lampstand/issues/229)) | Checked on the finished screens, after #261 and #260. |
-| — | Docs and training wording ([#265](https://github.com/incrhst/lampstand/issues/265)) | "Focus" is now "Library & controls" and "Church look" is now "Logo and colours". |
+| — | Library & controls ([#261](https://github.com/incrhst/lampstand/pull/261)), Settings, then Setup: font list, grouped sidebar, "Logo and colours" ([#260](https://github.com/incrhst/lampstand/pull/260)), update status ([#91](https://github.com/incrhst/lampstand/pull/91)) | Merged |
+| T65, T76, T77, T78, T79, T80, T81 | Sync, file and download safety ([#217](https://github.com/incrhst/lampstand/issues/217), [#218](https://github.com/incrhst/lampstand/issues/218), [#219](https://github.com/incrhst/lampstand/issues/219), [#220](https://github.com/incrhst/lampstand/issues/220), [#221](https://github.com/incrhst/lampstand/issues/221), [#222](https://github.com/incrhst/lampstand/issues/222), [#223](https://github.com/incrhst/lampstand/issues/223)) | Merged (#267 to #275) |
+| T60 | Accessibility, the short pass: keyboard, contrast, labels ([#229](https://github.com/incrhst/lampstand/issues/229)) | Merged (#277) |
+| — | Keyboard slide choosing in Quick add and Add to Ready ([#278](https://github.com/incrhst/lampstand/pull/278)); a clear message when there is no service to add to ([#287](https://github.com/incrhst/lampstand/pull/287)) | Merged |
+| — | The volunteer pass ([#288](https://github.com/incrhst/lampstand/pull/288)): Settings, one-click New service with a "Start here" note, Close service in the menu bar, Add to Ready, sound on by default, and Present's right side: On air on top, one press block below (Previous ←, Next →, Idle `,`, Blank `.`, Clear text `;`, Ready), Narrower / Wider, and the Ctrl + Alt chord. No F, no hiding. | In review |
+| — | Docs and training wording ([#265](https://github.com/incrhst/lampstand/issues/265), [#276](https://github.com/incrhst/lampstand/pull/276), [#289](https://github.com/incrhst/lampstand/pull/289)): decks, cheat sheet, training videos, clips, the hero tour and the website, for all of the above | #276 merged; #289 in review; the videos publish on release day |
+| — | Release checks on real hardware ([#231](https://github.com/incrhst/lampstand/issues/231), [#186](https://github.com/incrhst/lampstand/issues/186), [#179](https://github.com/incrhst/lampstand/issues/179)) | To do |
 
 ### 1.1.0
 
 | ID | Title |
 | --- | --- |
-| T125 | Add a song from a link ([#244](https://github.com/incrhst/lampstand/issues/244)); needs T114 and T68 |
+| T125 | Add a song from a link ([#244](https://github.com/incrhst/lampstand/issues/244), PR [#208](https://github.com/incrhst/lampstand/pull/208)); needs T114 and T68 |
 | T68 | ChordPro file importer ([#245](https://github.com/incrhst/lampstand/issues/245)) |
 | T38 | CCLI usage log and report ([#225](https://github.com/incrhst/lampstand/issues/225)) |
 | T55 | Migration wizard ([#226](https://github.com/incrhst/lampstand/issues/226)) |
 | T37 | Service packages ([#227](https://github.com/incrhst/lampstand/issues/227)) |
-| T95 | Flathub ([#264](https://github.com/incrhst/lampstand/issues/264)) |
+| T95 | Windows signing ([#228](https://github.com/incrhst/lampstand/issues/228)) and Flathub ([#264](https://github.com/incrhst/lampstand/issues/264)) |
+| T106 to T112 | Plans from Notion in the app ([#279](https://github.com/incrhst/lampstand/issues/279) to [#285](https://github.com/incrhst/lampstand/issues/285)) |
 
 ### 1.5.0
 
@@ -642,7 +645,7 @@ Tracked in [#231](https://github.com/incrhst/lampstand/issues/231).
 
 - A full mock service on the 2019-class laptop, with three outputs and OBS streaming, fixing what it turns up (the full T61 is in 1.5.0).
 - The 0.9.0 checks again (#186 sound, #179 phones and tablets) on the 1.0.0 build, on a Mac and on Windows.
-- Windows signing in place (T95), and the "Not code" items above that 1.0.0 still needs.
+- The "Not code" items above that 1.0.0 still needs. Windows signing (T95) waits for 1.1.0; 1.0.0's notes say how to install it unsigned.
 
 The recording checks (the real-hardware check from T124, and the mock service with the sermon recording) moved to 1.5.0 in [#262](https://github.com/incrhst/lampstand/issues/262).
 
