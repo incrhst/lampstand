@@ -851,6 +851,13 @@
            fold; F or its Hide button hides it, leaving a pill with the panic controls. -->
       <section class="pane wall-pane" aria-label="The whole service">
         <div class="wall-body">
+          <!-- A quick tip, at the top of the wall and only while nothing is on
+               air: never mid-service, and never in the right column's way. -->
+          {#if tip && !live.live}
+            <div class="wall-tip">
+              <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
+            </div>
+          {/if}
           {#each groups as group (group.section?.header ?? "ungrouped")}
             {@const section = group.section}
             <section class="wall-group" class:looping={!!section?.seconds} aria-label={section?.title}>
@@ -1009,10 +1016,6 @@
               </section>
             {/if}
 
-            <!-- A quick tip waits until nothing is on air: never mid-service. -->
-            {#if tip && !live.live}
-              <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
-            {/if}
           </div>
 
           <section id="ready-tray" class="col-ready" class:folded={!readyOpen} aria-label="Ready">
@@ -1472,9 +1475,10 @@
     gap: 0.5rem;
     padding: 0.75rem 1rem 0.5rem 0;
   }
+  /* The middle never gives up its rows: when room is short, Ready's tiles
+     scroll inside Ready instead, and its header stays in view. */
   .col-middle {
-    flex: 1 1 auto;
-    min-height: 6rem;
+    flex: 1 0 auto;
     overflow-y: auto;
     padding: 0.4rem 1rem 0.4rem 0;
     display: flex;
@@ -1490,7 +1494,9 @@
   }
   .col-ready {
     flex: 0 1 auto;
+    min-height: 2.6rem;
     max-height: 45%;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     padding-right: 1rem;
@@ -2029,10 +2035,12 @@
     align-items: center;
     justify-content: space-between;
   }
+  /* Each item: its name on one line, its slides across the full width
+     beneath, so no column of white space sits beside the slides. */
   .wall-row {
     display: grid;
-    grid-template-columns: 13rem minmax(0, 1fr);
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
     padding: 0.75rem;
     border: 1px solid transparent;
     border-radius: var(--radius-lg);
@@ -2052,12 +2060,23 @@
   }
   .wall-label {
     display: flex;
-    align-items: flex-start;
+    align-items: baseline;
     gap: 0.5rem;
     min-width: 0;
   }
   .wall-title {
     min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.75rem;
+    row-gap: 0.25rem;
+  }
+  .wall-tip {
+    max-width: 34rem;
+  }
+  .wall-title .wall-notes {
+    flex-basis: 100%;
   }
   .wall-title h3 {
     font-size: 0.95rem;
