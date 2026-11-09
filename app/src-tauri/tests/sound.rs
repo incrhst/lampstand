@@ -1008,9 +1008,11 @@ fn the_sound_switch_is_on_by_default_and_kept_with_the_device_settings() {
 /// was turned off stays off.
 #[test]
 fn a_settings_file_without_the_sound_switch_reads_as_on() {
-    let old: lampstand_api::DeviceSettings = serde_json::from_str(r#"{"clicker_mode":true}"#).unwrap();
+    let old: lampstand_api::DeviceSettings =
+        serde_json::from_str(r#"{"clicker_mode":true}"#).unwrap();
     assert!(old.use_sound);
     assert!(old.clicker_mode);
-    let off: lampstand_api::DeviceSettings = serde_json::from_str(r#"{"use_sound":false}"#).unwrap();
+    let off: lampstand_api::DeviceSettings =
+        serde_json::from_str(r#"{"use_sound":false}"#).unwrap();
     assert!(!off.use_sound);
 }

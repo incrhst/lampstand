@@ -914,7 +914,8 @@ impl App {
                     if !s.pin_ready(item) {
                         return Err(match s.items.get(&item) {
                             Some(_) => {
-                                "A header has nothing to show, so it can't be added to Ready.".into()
+                                "A header has nothing to show, so it can't be added to Ready."
+                                    .into()
                             }
                             None => "no such item".into(),
                         });
