@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use lampstand_api::DeviceSettings;
 use lampstand_core::output::{OutputConfig, OutputId};
 use lampstand_sync::team::DeviceKeypair;
+use lampstand_sync::{restrict_to_owner, write_atomic, write_private};
 
 /// `outputs.json`: every output configured on this machine.
 pub struct OutputStore {
@@ -68,7 +69,7 @@ impl OutputStore {
 
     fn save(&self) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(&self.outputs).map_err(io::Error::other)?;
-        write_atomically(&self.path, &json)
+        write_atomic(&self.path, &json)
     }
 }
 
@@ -121,7 +122,7 @@ impl KeyStore {
 
     fn save(&self) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(&self.keys).map_err(io::Error::other)?;
-        write_atomically(&self.path, &json)
+        write_atomic(&self.path, &json)
     }
 }
 
@@ -152,13 +153,16 @@ impl SettingsStore {
 
     pub fn put(&mut self, settings: DeviceSettings) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(&settings).map_err(io::Error::other)?;
-        write_atomically(&self.path, &json)?;
+        write_atomic(&self.path, &json)?;
         self.settings = settings;
         Ok(())
     }
 }
 
 /// The device's signing key, created on first run (`device.key`, 32 bytes).
+/// It is this machine's identity to the team, so only this user can read
+/// it: written owner-only and durably, and a key from before that (0.9.x,
+/// which left it readable by everyone) narrowed when it is read.
 pub fn device_key(dir: &Path) -> io::Result<DeviceKeypair> {
     let path = dir.join("device.key");
     match std::fs::read(&path) {
@@ -166,21 +170,19 @@ pub fn device_key(dir: &Path) -> io::Result<DeviceKeypair> {
             let secret: [u8; 32] = bytes
                 .try_into()
                 .map_err(|_| io::Error::other(format!("{} is not 32 bytes", path.display())))?;
+            if let Err(e) = restrict_to_owner(&path) {
+                // The key still works; say so rather than refuse to start.
+                eprintln!("lampstand: could not narrow {}: {e}", path.display());
+            }
             Ok(DeviceKeypair::from_secret_bytes(secret))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             let key = DeviceKeypair::generate();
-            write_atomically(&path, &key.secret_bytes())?;
+            write_private(&path, &key.secret_bytes())?;
             Ok(key)
         }
         Err(e) => Err(e),
     }
-}
-
-fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]
@@ -267,5 +269,21 @@ mod tests {
         let first = device_key(dir.path()).unwrap();
         let second = device_key(dir.path()).unwrap();
         assert_eq!(first.public(), second.public());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_this_user_can_read_the_device_key() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("device.key");
+        let key = device_key(dir.path()).unwrap();
+        assert_eq!(mode(&path), 0o600);
+
+        // A key 0.9.x wrote readable by everyone is narrowed, and kept.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(device_key(dir.path()).unwrap().public(), key.public());
+        assert_eq!(mode(&path), 0o600);
     }
 }

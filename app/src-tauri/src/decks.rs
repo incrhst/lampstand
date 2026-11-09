@@ -197,6 +197,10 @@ pub async fn fetch_link(link: &Link) -> Result<Fetched, String> {
             }
             FetchError::NotFound => "nothing is shared at that link".into(),
             FetchError::NotADeck(_) => "the link does not lead to a presentation".into(),
+            FetchError::TooLarge => format!(
+                "the presentation is larger than {} MB",
+                links::MAX_DECK_BYTES / (1024 * 1024)
+            ),
         }),
     }
 }

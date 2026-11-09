@@ -1,6 +1,6 @@
 # 0013. A song from a link: shared files and public-domain hymns, never lyric sites
 
-- Status: accepted by the owner on 2026-10-25 (which links, SongSelect, CCLI); the details marked **proposed** wait for approval when T125 is built
+- Status: accepted by the owner on 2026-10-25 (which links, SongSelect, CCLI); the details marked **proposed** wait for approval when T125 is built. On 2026-11-08 the owner moved it from 1.0.0 to 1.1.0; nothing else in this decision changed.
 - Date: 2026-10-25
 
 ## Question

@@ -145,7 +145,7 @@
       {:else if ready.length > 1}
         <p class="ready">{ready.length} computers nearby are showing a code. Type the one you want to pair with.</p>
       {:else}
-        <p class="muted">On the other computer, open Setup › Devices and choose Pair a device. Then type the code it shows here.</p>
+        <p class="muted">On the other computer, open Settings › Devices and choose Pair a device. Then type the code it shows here.</p>
       {/if}
       <label>
         Pairing code
@@ -266,13 +266,14 @@
     {#snippet actions()}
       <Button onclick={() => (connecting = true)}>Connect a phone or tablet</Button>
     {/snippet}
-    <p class="muted">Phones and tablets that run the slides and the sound from their browser. Revoke one to disconnect it at once.</p>
+    <p class="muted">Phones and tablets that run the slides and the sound from their browser, and speakers' phones that page through one item's slides. Revoke one to disconnect it at once.</p>
     <ul class="list">
       {#each remotes?.sessions ?? [] as r (r.id)}
         <li>
           <span>
             <span class="dot" class:on={r.connected} aria-hidden="true"></span>
             <strong>{r.name}</strong>
+            {#if r.speaker}<small class="speaker">Speaker · {r.speaker}</small>{/if}
             <small class="muted">{r.connected ? "connected now" : `last seen ${ago(r.last_seen_ms, now)}`} · paired {new Date(r.paired_ms).toLocaleDateString()}</small>
           </span>
           <span class="row">
@@ -332,9 +333,15 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
+  }
+  /* The rules above replace the shared ones in theme.css, focus included. */
+  input:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--gold);
   }
   .row {
     display: flex;
@@ -359,7 +366,7 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
   }
@@ -389,5 +396,12 @@
   }
   .dot.on {
     background: var(--live);
+  }
+  .speaker {
+    margin: 0 0.4rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    color: var(--gold);
   }
 </style>

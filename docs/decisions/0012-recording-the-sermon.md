@@ -1,6 +1,6 @@
 # 0012. Recording the sermon: audio in Lampstand, video in OBS, on the Stream holder
 
-- Status: accepted by the owner on 2026-10-25 (what is recorded, which computer, how it starts, the 1.0.0 scope); the details marked **proposed** wait for approval when they are built (tickets T117 to T124)
+- Status: accepted by the owner on 2026-10-25 (what is recorded, which computer, how it starts, the 1.0.0 scope); the details marked **proposed** wait for approval when they are built (tickets T117 to T124). On 2026-11-08 the owner moved recording from 1.0.0 to 1.5.0; nothing else in this decision changed.
 - Date: 2026-10-25
 
 ## Question

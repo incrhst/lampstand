@@ -9,5 +9,5 @@ export function isPlanning(team: TeamStatus | null): boolean {
   return team?.presenter.role === "Planning";
 }
 
-/** The takeover times offered in Setup › Devices, in seconds. */
+/** The takeover times offered in Settings › Devices, in seconds. */
 export const TAKEOVER_CHOICES = [30, 60, 120, 300, 600, 1800] as const;

@@ -48,6 +48,12 @@ pub enum RemoteRequest {
     /// Shows a fresh PIN for five minutes, replacing any shown before, with
     /// the addresses a phone opens.
     StartPairing,
+    /// Shows a fresh PIN for a speaker's phone (0.9.1): it will page
+    /// through `item`'s slides of the open service while that item is on
+    /// air, and nothing else. It stops working when the service is closed.
+    StartSpeakerPairing {
+        item: ItemId,
+    },
     StopPairing,
     /// Forgets a paired phone (`RemoteSessionView::id`): its open page is
     /// disconnected at once and it must pair again.
@@ -63,6 +69,9 @@ pub enum RemoteRequest {
 pub struct RemotesView {
     /// The PIN shown now, while a phone may pair.
     pub pairing: Option<RemotePinView>,
+    /// While a speaker's PIN is shown: the title of the item it is for.
+    #[serde(default)]
+    pub pairing_speaker: Option<String>,
     /// Where a phone opens the remote, the likeliest first, while pairing:
     /// `http://<lan-ip>:<port>/remote` with the port the server got. Empty
     /// when not pairing, or when this computer has no network.
@@ -102,6 +111,10 @@ pub struct RemoteSessionView {
     pub last_seen_ms: Option<i64>,
     /// Its remote page is open now.
     pub connected: bool,
+    /// A speaker's phone: the title of the item whose slides it pages
+    /// through. `None` for a phone that runs the service.
+    #[serde(default)]
+    pub speaker: Option<String>,
 }
 
 /// Playing the sound in a service (decision 0010, the Audio role). Any
@@ -223,6 +236,33 @@ pub struct UpdateStatus {
     pub caution: Option<String>,
 }
 
+/// Where the training videos stand on this device (#190). They are not in
+/// the installer: they download from the website the first time a training
+/// service is opened, and a changed one arrives the same way.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingVideos {
+    pub state: TrainingVideoState,
+    /// What to tell the volunteer, or empty when every video is here.
+    pub message: String,
+}
+
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrainingVideoState {
+    /// Every training video is on this device and plays offline.
+    Ready,
+    /// Some are not here yet; nothing has tried to download them since the
+    /// app started.
+    NotDownloaded,
+    /// Downloading: `done` of `total` bytes.
+    Downloading { done: u32, total: u32 },
+    /// The last try could not reach the website (or a file was damaged on
+    /// the way), so some videos are missing. The rest of each training
+    /// service still runs.
+    Offline,
+}
+
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateState {
@@ -314,7 +354,7 @@ pub struct WaitingFile {
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceSettings {
     /// Clicker mode (T56, PS-9): while a service is open for live, a
     /// presenter clicker's Page Up, Page Down, B and full stop work
@@ -322,26 +362,27 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
-    /// Setup › Sound › "Use sound in services": this device offers music-only
-    /// items and backing tracks in Plan. Off by default. A service that
-    /// already has sound shows it whatever this says. Kept on this device
-    /// (not in the synced church settings): a service with sound turns the
-    /// controls on for every device that has it anyway.
-    #[serde(default)]
+    /// Settings › Sound › "Use sound in services": this device offers music-only
+    /// items and backing tracks in Plan. On by default, and on when a saved
+    /// file has no value for it; a device where someone turned it off keeps
+    /// it off. A service that already has sound shows it whatever this says.
+    /// Kept on this device (not in the synced church settings): a service
+    /// with sound turns the controls on for every device that has it anyway.
+    #[serde(default = "on")]
     pub use_sound: bool,
-    /// Setup › This computer › "Start Lampstand when this computer starts":
+    /// Settings › This computer › "Start Lampstand when this computer starts":
     /// Lampstand opens when someone signs in to this computer. Off by
     /// default, and the only startup item Lampstand ever adds. Kept on this
     /// device: it is about this computer, not the church.
     #[serde(default)]
     pub start_at_login: bool,
-    /// Setup › This computer › "Keep this computer awake while it is showing
+    /// Settings › This computer › "Keep this computer awake while it is showing
     /// the screens": while an output window is open or an OBS picture is
     /// served, the computer is stopped from sleeping or dimming its screen.
     /// Off by default. Kept on this device, like `start_at_login`.
     #[serde(default)]
     pub keep_awake: bool,
-    /// Setup › Sound › Output: the sound output this device plays through
+    /// Settings › Sound › Output: the sound output this device plays through
     /// when it holds Audio, by name. Unset, or no longer on this computer,
     /// means the computer's own default.
     #[serde(default)]
@@ -352,7 +393,7 @@ pub struct DeviceSettings {
     #[serde(default)]
     pub default_translation: Option<TranslationId>,
     /// The church's name, logo, colours and font (the quick start). The
-    /// logo is what the Logo overlay shows.
+    /// logo is on the default idle screen and is the logo bug.
     #[serde(default)]
     pub brand: Option<Brand>,
     /// The theme made from `brand`, so saving the brand again updates it.
@@ -372,6 +413,29 @@ pub struct DeviceSettings {
     /// save from the UI cannot change this.
     #[serde(default)]
     pub church_synced: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for DeviceSettings {
+    /// A new device: everything off or unset except Use sound in services.
+    fn default() -> Self {
+        Self {
+            clicker_mode: false,
+            use_sound: true,
+            start_at_login: false,
+            keep_awake: false,
+            sound_output: None,
+            default_translation: None,
+            brand: None,
+            brand_theme: None,
+            default_theme: None,
+            idle: None,
+            church_synced: false,
+        }
+    }
 }
 
 /// What opening a brand file does to the themes already here.
@@ -636,8 +700,12 @@ pub enum ServiceRequest {
     /// Answers `Response::Ok`; a service that is not open is left alone.
     Close(ServiceId),
     /// Puts every training service back as it was bundled, undoing what
-    /// practice in Present added (#190). Answers `Response::Ok`.
+    /// practice in Present added (#190), and looks for new training videos.
+    /// Answers `Response::Ok`.
     ResetTraining,
+    /// Where the training videos stand, as `Response::TrainingVideos`.
+    /// Changes come as `Event::TrainingVideos`.
+    TrainingVideos,
     /// Sets the sound of an item: the `sound` of a sound item (`Item`, which
     /// needs `Some`) or a song's backing track (`Backing`, where `None`
     /// takes it off). Answers `Response::Service`.
@@ -686,6 +754,42 @@ pub enum ServiceRequest {
     RemoveItem {
         service: ServiceId,
         item: ItemId,
+    },
+    /// Pins an item of the order to Ready (`ready: true`), or takes the pin
+    /// off (`false`); the item stays in the order either way. A header
+    /// cannot be pinned. Answers `Response::Service`.
+    PinReady {
+        service: ServiceId,
+        item: ItemId,
+        ready: bool,
+    },
+    /// Keeps a deck or media from the Library ready, without putting it in
+    /// the order. Other kinds are refused. Answers `Response::Service`.
+    AddReady {
+        service: ServiceId,
+        kind: ItemKind,
+    },
+    /// Keeps one slide of a deck ready, on its own (`slide` from 0, hidden
+    /// slides left out, as the deck is shown). Its builds play by
+    /// themselves when it is shown. Keeping the same slide twice keeps it
+    /// once. Answers `Response::Service`.
+    AddReadySlide {
+        service: ServiceId,
+        deck: DeckId,
+        slide: u32,
+    },
+    /// Takes an entry out of Ready: a pin, or something kept only there.
+    /// Answers `Response::Service`.
+    RemoveReady {
+        service: ServiceId,
+        item: ItemId,
+    },
+    /// Moves an entry to `index` in the Ready list. Answers
+    /// `Response::Service`.
+    MoveReady {
+        service: ServiceId,
+        item: ItemId,
+        index: usize,
     },
     /// The OBS scene an item switches to when it goes live (T90); `None`
     /// (or blank) leaves OBS as it is. Answers `Response::Service`.
@@ -1462,6 +1566,7 @@ pub enum Response {
     Church(ChurchStatus),
     Update(UpdateStatus),
     Remotes(RemotesView),
+    TrainingVideos(TrainingVideos),
 }
 
 /// The services, and the ones that cannot be shown.
@@ -1546,6 +1651,22 @@ pub struct LoadedService {
     /// Every header and the items under it, with the loop each has now
     /// (a change made on air included).
     pub sections: Vec<SectionView>,
+    /// What is kept ready, in the Ready list's order: `Command::ShowReady`
+    /// puts one on air. Absent from an older device's message: empty.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(as = "Option<Vec<ReadyView>>", optional))]
+    pub ready: Vec<ReadyView>,
+}
+
+/// One thing kept ready in the loaded service.
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReadyView {
+    /// The item and its slides. For a pin, the same as its entry in
+    /// `LoadedService::items`.
+    pub item: LoadedItemView,
+    /// A pinned item of the order; false for something kept only in Ready.
+    pub in_order: bool,
 }
 
 /// A header and the items up to the next header.
@@ -1671,6 +1792,21 @@ pub enum Event {
         idle: bool,
         /// Black or logo, which persist across slides.
         overlay: Overlay,
+        /// Something is live but the operator cleared its words (Clear
+        /// text, Clear all), so nothing of it is on the screens. A speaker's
+        /// phone waits until the slides are back (0.9.1). Absent from an
+        /// older device's message: false.
+        #[serde(default)]
+        cleared: bool,
+        /// On a side-trip to a ready item (`Command::ShowReady`), the slide
+        /// the service goes back to after it. Absent from an older device's
+        /// message: none.
+        #[serde(default)]
+        returns_to: Option<Cursor>,
+        /// A side-trip to a ready item is under way. Absent from an older
+        /// device's message: false.
+        #[serde(default)]
+        on_ready: bool,
     },
     /// A service was loaded or reloaded (an edit synced in mid-service):
     /// the operator view should show these slides.
@@ -1710,4 +1846,6 @@ pub enum Event {
     /// A phone paired or was revoked, a remote page connected or left, or
     /// the PIN changed.
     Remotes(Box<RemotesView>),
+    /// The training videos started or finished downloading, or moved on.
+    TrainingVideos(TrainingVideos),
 }

@@ -4,6 +4,11 @@
 //!   eBible.org, imports them with the USFM importer and writes the
 //!   postcard + zstd blobs the app installs on first run to
 //!   `assets/bibles/`, with a README recording sources and licences.
+//! - `training-videos`: publishes the training videos (#190). Copies
+//!   `training/media/*.mp4` into `site/training/`, removes any there that
+//!   are no longer in `training/media/`, and writes the manifest the app
+//!   downloads them by, `site/training/videos.json`. Run through
+//!   `node training/build.mjs publish`.
 
 use std::fmt::Write as _;
 use std::io::Cursor;
@@ -51,8 +56,9 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("bibles") => bibles(),
+        Some("training-videos") => training_videos(),
         _ => {
-            eprintln!("usage: cargo xtask bibles");
+            eprintln!("usage: cargo xtask bibles | training-videos");
             return ExitCode::FAILURE;
         }
     };
@@ -72,6 +78,57 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("xtask is one level below the repo root")
         .to_path_buf()
+}
+
+/// Publishes `training/media/*.mp4` to the website with their manifest.
+fn training_videos() -> Result<()> {
+    use lampstand_core::id::BlobHash;
+    use lampstand_library::training::{TrainingVideo, VideoManifest};
+
+    let root = repo_root();
+    let (media, site) = (root.join("training/media"), root.join("site/training"));
+    std::fs::create_dir_all(&site)?;
+    let mp4 = |dir: &Path| -> Result<Vec<String>> {
+        let mut names = Vec::new();
+        for entry in std::fs::read_dir(dir)? {
+            let name = entry?.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".mp4") {
+                names.push(name);
+            }
+        }
+        names.sort();
+        Ok(names)
+    };
+    let names = mp4(&media)?;
+    if names.is_empty() {
+        return Err("training/media has no videos".into());
+    }
+    for old in mp4(&site)? {
+        if !names.contains(&old) {
+            std::fs::remove_file(site.join(&old))?;
+            println!("removed {old}");
+        }
+    }
+    let mut manifest = VideoManifest {
+        version: VideoManifest::VERSION,
+        videos: Vec::new(),
+    };
+    for file in names {
+        let bytes = std::fs::read(media.join(&file))?;
+        std::fs::write(site.join(&file), &bytes)?;
+        let video = TrainingVideo {
+            id: file.trim_end_matches(".mp4").to_string(),
+            size: bytes.len() as u64,
+            blake3: BlobHash::of(&bytes),
+            file,
+        };
+        println!("{} ({} KB)", video.file, video.size / 1024);
+        manifest.videos.push(video);
+    }
+    let json = serde_json::to_string_pretty(&manifest)? + "\n";
+    std::fs::write(site.join("videos.json"), json)?;
+    println!("site/training/videos.json");
+    Ok(())
 }
 
 fn bibles() -> Result<()> {

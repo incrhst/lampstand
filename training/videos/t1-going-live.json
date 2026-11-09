@@ -3,7 +3,7 @@
  "scenes": [
   {
    "type": "title",
-   "kicker": "Training 1",
+   "kicker": "Training Session 1",
    "heading": "Going live",
    "sub": "Space, the arrows, and choosing an item",
    "say": "Going live, and moving through the slides.",
@@ -17,24 +17,29 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 47,
-     "y": 43,
-     "label": "On air now"
+     "x": 28.8,
+     "y": 84.2,
+     "label": "LIVE: on air now"
     },
     {
-     "x": 36,
-     "y": 71,
+     "x": 87.1,
+     "y": 20.7,
+     "label": "The main screen"
+    },
+    {
+     "x": 91.8,
+     "y": 78,
      "label": "Next: Space or →"
     },
     {
-     "x": 26,
-     "y": 71,
+     "x": 79.8,
+     "y": 78,
      "label": "Previous: ←"
     }
    ],
-   "say": "The slide in the red frame is on air. Press Space, or the right arrow, to move on. The left arrow goes back one. A clicker sends the same keys.",
+   "say": "The card marked LIVE, in red, is on air. The picture at the top right, under On air, shows the main screen. Press Space, the right arrow, or Next, to move on. The left arrow, or Previous, goes back one. A clicker sends the same keys.",
    "narration": "narration/t1-going-live/02.mp3",
-   "durationSec": 13
+   "durationSec": 25.5
   },
   {
    "type": "screenshot",
@@ -43,24 +48,24 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 87,
-     "y": 29,
-     "label": "What Space shows next"
+     "x": 46.6,
+     "y": 85.2,
+     "label": "NEXT: the next slide"
     },
     {
-     "x": 87,
-     "y": 49,
+     "x": 10,
+     "y": 71.7,
      "label": "Notes for you"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Every slide of this item"
+     "x": 11,
+     "y": 31,
+     "label": "Every slide of the service"
     }
    ],
-   "say": "On the right, Next shows what Space will put up, and the notes are for you, never for the room. Below, every slide of the item is laid out.",
+   "say": "The gold card marked NEXT is the next slide. The notes beside the item on air are for you, never for the room. And the whole service is laid out on the wall, every slide of every item.",
    "narration": "narration/t1-going-live/03.mp3",
-   "durationSec": 12
+   "durationSec": 15.5
   },
   {
    "type": "screenshot",
@@ -70,44 +75,102 @@
    "callouts": [
     {
      "x": 10,
-     "y": 66,
+     "y": 72.4,
      "label": "Shift+↓ chooses"
     },
     {
-     "x": 47,
-     "y": 43,
+     "x": 87.1,
+     "y": 20.7,
      "label": "Still on air"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Click a slide to show it now"
+     "x": 10.9,
+     "y": 85,
+     "label": "Click a card to show it now"
     }
    ],
-   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any slide to show it at once.",
+   "say": "To jump to another item, hold Shift and press Down. That only chooses it. The room still sees the old slide. Press Enter to start it, or click any card to show it at once.",
    "narration": "narration/t1-going-live/04.mp3",
-   "durationSec": 15
+   "durationSec": 17.5
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/deck.png",
+   "heading": "Slides with builds",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 87.1,
+     "y": 20.7,
+     "label": "On screen now"
+    },
+    {
+     "x": 87.1,
+     "y": 40,
+     "label": "Clicks left on this slide"
+    },
+    {
+     "x": 46.6,
+     "y": 65.3,
+     "label": "The next slide"
+    }
+   ],
+   "say": "Some slide decks bring their points in one at a time. These are called builds. While one is on air, On air on the right says how many clicks are left. Each Space plays one build. When the slide is complete, the next Space goes to the next slide.",
+   "narration": "narration/t1-going-live/05.mp3",
+   "durationSec": 20
   },
   {
    "type": "bullets",
-   "heading": "Songs and decks",
+   "heading": "Song keys",
    "tone": "table",
    "items": [
     "1 to 9 jump to that verse",
     "C jumps to the chorus",
-    "A deck's builds: one Space each"
+    "Verses are blue, choruses teal",
+    "Or click the card you want"
    ],
-   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. In a slide deck, each press of Space plays the next build, until the slide is complete.",
-   "narration": "narration/t1-going-live/05.mp3",
-   "durationSec": 13
+   "say": "In a song, the number keys jump to that verse, and C jumps to the chorus. Each part of a song has its own colour, verses blue and choruses teal, so you can find them at a glance. Or click the card you want.",
+   "narration": "narration/t1-going-live/06.mp3",
+   "durationSec": 18
+  },
+  {
+   "type": "screenshot",
+   "src": "shots/training/right.png",
+   "heading": "The right side",
+   "tone": "screen",
+   "callouts": [
+    {
+     "x": 87.1,
+     "y": 20.7,
+     "label": "Look up: what the room sees"
+    },
+    {
+     "x": 91.8,
+     "y": 78,
+     "label": "Press down: Next"
+    },
+    {
+     "x": 87.1,
+     "y": 86.5,
+     "label": "Idle, Blank, Clear text"
+    },
+    {
+     "x": 96.2,
+     "y": 9.4,
+     "label": "Narrower"
+    }
+   ],
+   "say": "On the right, look up, then press down. At the top, On air shows what the room sees, what Next brings, and All set when everything is ready. Below it is everything you press: Previous and Next, then Idle, Blank and Clear text, and anything added to Ready. To add a song or reading, use Add at the end of the service. And Narrower, at the top, gives the slides more room.",
+   "narration": "narration/t1-going-live/07.mp3",
+   "durationSec": 29
   },
   {
    "type": "cta",
    "heading": "Your turn",
    "action": "Press Space, then run the practice items",
    "say": "Your turn. Press Space, and run the practice items as if it were Sunday.",
-   "narration": "narration/t1-going-live/06.mp3",
-   "durationSec": 8
+   "narration": "narration/t1-going-live/08.mp3",
+   "durationSec": 6
   }
  ]
 }

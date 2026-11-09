@@ -1,4 +1,4 @@
-<!-- Setup › Sound: whether this device offers music and backing tracks in the
+<!-- Settings › Sound: whether this device offers music and backing tracks in the
      order of the service. Off by default, so a church that does not use sound
      sees nothing about it in Plan. Sound already in a service always shows. -->
 <script lang="ts">
@@ -26,7 +26,7 @@
   <h1>{words.setupTitle}</h1>
   <Panel title={words.setupPanel}>
     <Switch
-      checked={live.settings?.use_sound ?? false}
+      checked={live.settings?.use_sound ?? true}
       label={words.setupSwitch}
       disabled={live.settings === null}
       onchange={(on) => saveSettings({ use_sound: on })}
@@ -77,9 +77,13 @@
     font: inherit;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--raised);
     color: var(--text);
+  }
+  select:focus {
+    outline: none;
+    border-color: var(--gold);
   }
   .warn {
     color: var(--warn);

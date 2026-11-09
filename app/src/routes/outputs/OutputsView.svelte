@@ -13,13 +13,19 @@
   import { displaysWithScreens } from "../../lib/screenOffers";
   import Segmented from "../../lib/kit/Segmented.svelte";
   import Switch from "../../lib/kit/Switch.svelte";
+  import { loadPreviewSize, loadSafeAreaGuide, previewSizes, savePreviewSize, saveSafeAreaGuide, type PreviewSize } from "../../lib/presentPrefs";
   import CalibrateView from "./CalibrateView.svelte";
   import ThemePicker from "../../lib/kit/ThemePicker.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
   import { SCREENS_DARK } from "../../lib/roles";
 
-  /** Opens Setup › OBS, where pictures sent to OBS are set up. */
+  // How Present's On air shows the screen, on this computer. Set here, once,
+  // so a volunteer in Present has nothing to change by accident.
+  let previewSize: PreviewSize = $state(loadPreviewSize());
+  let safeAreaGuide = $state(loadSafeAreaGuide());
+
+  /** Opens Settings › OBS, where pictures sent to OBS are set up. */
   let { onobs, onidle }: { onobs?: () => void; onidle?: () => void } = $props();
 
   /** The screens: windows and displays. Pictures sent to OBS are on the OBS page. */
@@ -133,7 +139,7 @@
         <h1>Screens</h1>
         <p class="muted intro">
           The projectors, TVs and windows this device drives. Each keeps lyrics and scripture inside its own safe area. Turn a
-          screen on to open its window; fullscreen screens go on a display below. Pictures for OBS are under Setup › OBS.
+          screen on to open its window; fullscreen screens go on a display below. Pictures for OBS are under Settings › OBS.
         </p>
       </div>
       <div class="add">
@@ -165,7 +171,7 @@
     {#if onidle}
       <p class="muted idle-link">
         What the screens show when nothing is on air is under
-        <button class="link" onclick={onidle}>Setup › Idle screen</button>.
+        <button class="link" onclick={onidle}>Settings › Idle screen</button>.
       </p>
     {/if}
 
@@ -234,6 +240,18 @@
         <li class="faint">No displays found.</li>
       {/each}
     </ul>
+
+    <div class="displays-head">
+      <h2 class="title">In Present</h2>
+    </div>
+    <div class="in-present">
+      <div class="in-present-row">
+        <span>Picture of the screen in On air</span>
+        <Segmented options={previewSizes} value={previewSize} onchange={(v) => { previewSize = v; savePreviewSize(v); }} label="Picture of the screen in Present's On air" />
+      </div>
+      <Switch checked={safeAreaGuide} label="Show the safe area guide on that picture" onchange={(on) => { safeAreaGuide = on; saveSafeAreaGuide(on); }} />
+      <p class="muted small">The guide shows what a projector might crop. It is drawn only on the picture in Present, never on the screen itself. Both are kept on this computer.</p>
+    </div>
   </div>
 </div>
 {/if}
@@ -385,5 +403,23 @@
   }
   .displays li :global(button) {
     margin-left: auto;
+  }
+  .in-present {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.25rem 0 1rem;
+  }
+  .in-present p {
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .in-present-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.875rem;
   }
 </style>

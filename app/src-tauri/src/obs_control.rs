@@ -20,7 +20,7 @@
 //! - **OBS on another computer (#133).** When the OBS host isn't this
 //!   computer, [`diagnose`] says whether the computer refused the
 //!   connection (OBS closed there, its server off, another port) or never
-//!   answered, and Setup › OBS offers "Use this address" (a pin kept in
+//!   answered, and Settings › OBS offers "Use this address" (a pin kept in
 //!   `obs.json`) and "Set up OBS": a "Lampstand" collection with starter
 //!   scenes and a "Lampstand stream" browser source. The source's address is
 //!   this computer's network address, the pinned one if set, and never
@@ -199,23 +199,10 @@ impl SettingsStore {
     }
 }
 
-/// Writes `bytes` to `path` through a temporary file, readable only by
-/// this user on Unix, because it holds the OBS password.
+/// Writes `bytes` to `path` readable only by this user, because it holds
+/// the OBS password.
 fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    use std::io::Write as _;
-    let tmp = path.with_extension("tmp");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&tmp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    std::fs::rename(&tmp, path)
+    lampstand_sync::write_private(path, bytes)
 }
 
 // Finding OBS on this machine.

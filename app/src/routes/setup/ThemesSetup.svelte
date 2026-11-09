@@ -1,4 +1,4 @@
-<!-- Setup › Themes: how songs, scripture and text slides look. The list of
+<!-- Settings › Themes: how songs, scripture and text slides look. The list of
      the library's themes on the left (new, duplicate, rename, delete), one
      theme's settings on the right, and a live preview drawn by the same
      layout and renderer the screens use, at the main screen's shape. A
@@ -43,6 +43,7 @@
   import Switch from "../../lib/kit/Switch.svelte";
   import ThemeSketch from "../../lib/kit/ThemeSketch.svelte";
   import BrandFile from "../../lib/kit/BrandFile.svelte";
+  import Suggest from "../../lib/kit/Suggest.svelte";
 
   let { onbrand }: { onbrand?: () => void } = $props();
 
@@ -121,6 +122,8 @@
   $effect(() => () => flush());
 
   /** Called after every change to the draft. */
+  const fontOptions = bundledFonts.map((f) => ({ value: f.family, note: f.note }));
+
   function changed() {
     saved = false;
     clearTimeout(saveTimer);
@@ -384,7 +387,7 @@
                   {#if pictures[s.id] && !previewFailed}
                     <img src={pictures[s.id]} alt="{s.label} sample" />
                   {:else}
-                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} />
+                    <ThemeSketch theme={draft} lines={s.lines} footer={s.footer} width={shape.width} height={shape.height} song={s.id === "Lyrics"} />
                   {/if}
                 </div>
                 <figcaption class="muted">{s.label}</figcaption>
@@ -406,16 +409,15 @@
           <div class="grid">
             <label>
               <span>Font</span>
-              <input
-                list="theme-fonts"
+              <Suggest
                 bind:value={draft.text.font_family}
+                options={fontOptions}
+                fontPreview
                 oninput={changed}
+                onpick={changed}
                 spellcheck="false"
-                placeholder="Noto Sans"
+                placeholder="Literata"
               />
-              <datalist id="theme-fonts">
-                {#each bundledFonts as f (f.family)}<option value={f.family}>{f.note}</option>{/each}
-              </datalist>
             </label>
             <label>
               <span>Weight</span>

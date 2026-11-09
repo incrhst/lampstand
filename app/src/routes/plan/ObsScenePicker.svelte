@@ -4,6 +4,7 @@
      is marked, since it won't switch on the day. -->
 <script lang="ts">
   import Icon from "../../lib/kit/Icon.svelte";
+  import Suggest from "../../lib/kit/Suggest.svelte";
 
   let {
     value,
@@ -18,7 +19,6 @@
     onchange: (scene: string | null) => void;
   } = $props();
 
-  const list = `obs-scenes-${Math.random().toString(36).slice(2)}`;
   let text = $state("");
   $effect(() => {
     text = value ?? "";
@@ -34,9 +34,10 @@
 
 <label class="picker" class:unknown title={unknown ? "OBS has no scene with this name" : "OBS scene when this item goes live"}>
   <Icon name="play" size={12} />
-  <input
+  <Suggest
     type="text"
-    list={list}
+    options={scenes.map((s) => ({ value: s }))}
+    onpick={commit}
     placeholder="OBS scene"
     aria-label={label}
     bind:value={text}
@@ -49,9 +50,6 @@
       }
     }}
   />
-  <datalist id={list}>
-    {#each scenes as scene (scene)}<option value={scene}></option>{/each}
-  </datalist>
 </label>
 
 <style>
@@ -62,19 +60,19 @@
     color: var(--faint);
     flex-shrink: 0;
   }
-  .picker input {
+  .picker :global(input) {
     width: 9rem;
     font-size: 0.75rem;
     padding: 0.2rem 0.4rem;
   }
-  .picker:not(:focus-within) input:placeholder-shown {
+  .picker:not(:focus-within) :global(input:placeholder-shown) {
     border-color: transparent;
     background: transparent;
   }
   .unknown {
     color: var(--warn);
   }
-  .unknown input {
+  .unknown :global(input) {
     border-color: color-mix(in srgb, var(--warn) 50%, transparent);
   }
 </style>

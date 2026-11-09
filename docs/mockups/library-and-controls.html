@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library and Controls</title>
+<!-- Mockup: Lampstand with one hideable "Library & controls" sidebar, after the
+     "Overview" side card pattern. Plan and Present each keep their own
+     open or hidden state for the session, and it opens again on every launch. It opens on a front page (rows that drill in,
+     then short lists with counts); a row swaps the content in place, with
+     "Back" to come back. \ hides and shows it. -->
+<style>
+:root {
+  --canvas: #121419; --panel: #1b1f27; --raised: #232833;
+  --line: #2a303b; --line-strong: #3a4250;
+  --text: #e6e8ec; --muted: #9aa3b2; --faint: #808a9b;
+  --gold: #f0c75e; --gold-hover: #f5d47e; --on-gold: #1b1f27; --gold-soft: rgba(240,199,94,.12);
+  --live: #e5484d; --live-strong: #c62f37; --ready: #46a758; --ready-text: #5cc16f;
+  --warn: #f5a524; --warn-soft: rgba(245,165,36,.12);
+  --section-verse: #7fa8f5; --section-chorus: #4cc7b0; --section-bridge: #eb9a5c;
+  --radius: 6px; --radius-lg: 10px; --ease: cubic-bezier(.23,1,.32,1);
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  font-size: 15px; line-height: 1.4; -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); }
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+kbd { font: 600 .7rem/1 ui-monospace, Menlo, monospace; padding: .2em .4em; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted); }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+svg { flex-shrink: 0; }
+
+.shell { height: 100%; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+
+/* Top bar */
+header { display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem; border-bottom: 1px solid var(--line); }
+.logo { display: flex; align-items: center; gap: .45rem; font-weight: 700; color: var(--gold); font-size: 1.05rem; margin-right: .5rem; }
+.modes { display: flex; gap: .25rem; background: var(--panel); padding: .2rem; border-radius: var(--radius); border: 1px solid var(--line); }
+.modes button { padding: .35rem .9rem; border-radius: 4px; color: var(--muted); font-weight: 500; }
+.modes button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.right { margin-left: auto; display: flex; align-items: center; gap: .4rem; }
+.onair { color: var(--muted); font-size: .9rem; margin-right: .6rem; }
+.onair b { color: var(--text); font-weight: 600; }
+.tb { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .7rem; border-radius: var(--radius); color: var(--muted); font-size: .9rem; }
+.tb:hover { background: var(--raised); color: var(--text); }
+.tb.panel-toggle { border: 1px solid var(--line-strong); color: var(--text); }
+.tb.panel-toggle[aria-pressed="true"] { background: var(--raised); }
+
+/* Body: main + one panel */
+.body { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 0; min-height: 0; transition: grid-template-columns .28s var(--ease); }
+.body.closed { grid-template-columns: minmax(0,1fr) 0px; }
+main { min-width: 0; overflow: auto; padding: 1.4rem 1.6rem 2rem; }
+.panel-slot { min-width: 0; overflow: hidden; padding: .9rem .9rem .9rem 0; }
+.body.closed .panel-slot { padding: 0; visibility: hidden; transition: visibility 0s .28s; }
+.panel { width: 350px; height: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 8px 28px rgba(0,0,0,.25); }
+.panel-head { display: flex; align-items: center; gap: .4rem; padding: .75rem .8rem .55rem 1rem; }
+.panel-head h2 { font-size: .9rem; font-weight: 500; color: var(--muted); }
+.panel-head .back { display: inline-flex; align-items: center; gap: .3rem; color: var(--muted); font-size: .9rem; padding: .2rem .4rem .2rem .1rem; border-radius: 4px; }
+.panel-head .back:hover { color: var(--text); background: var(--raised); }
+.panel-head .crumb { color: var(--text); font-weight: 600; font-size: .95rem; }
+.panel-head .hide { margin-left: auto; font-size: .8rem; color: var(--faint); display: inline-flex; gap: .35rem; align-items: center; padding: .25rem .4rem; border-radius: 4px; }
+.panel-head .hide:hover { color: var(--text); background: var(--raised); }
+.panel-body { overflow: auto; flex: 1; padding-bottom: .6rem; }
+.panel-body.enter { animation: slide .22s var(--ease); }
+.panel-body.enter-back { animation: slideback .22s var(--ease); }
+@keyframes slide { from { opacity: 0; transform: translateX(14px); } }
+@keyframes slideback { from { opacity: 0; transform: translateX(-14px); } }
+
+/* Front page: the Library on top, the controls under it, the same in both modes */
+.zone { padding: .2rem .45rem .55rem; border-bottom: 1px solid var(--line); }
+.zone-head { font-size: .95rem; font-weight: 650; color: var(--text); padding: .55rem .55rem .45rem; }
+.find { width: calc(100% - 1.1rem); margin: 0 .55rem .35rem; display: flex; align-items: center; gap: .55rem; background: var(--canvas); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: .55rem .65rem; color: var(--faint); font-size: .92rem; text-align: left; }
+.find:hover { border-color: var(--gold); color: var(--muted); }
+/* Overview pieces */
+.nav { padding: 0 .45rem .5rem; border-bottom: 1px solid var(--line); }
+.nav-row { width: 100%; display: flex; align-items: center; gap: .75rem; padding: .55rem .55rem; border-radius: 8px; text-align: left; font-size: 1rem; }
+.nav-row > span:first-of-type { white-space: nowrap; }
+.nav-row:hover { background: var(--raised); }
+.nav-row .icon { color: var(--muted); }
+.nav-row .sum { margin-left: auto; color: var(--faint); font-size: .85rem; display: inline-flex; align-items: center; gap: .4rem; }
+.nav-row .chev { color: var(--faint); }
+.group { padding: .7rem .45rem .4rem; border-bottom: 1px solid var(--line); }
+.group:last-child { border-bottom: 0; }
+.group-head { display: flex; align-items: center; gap: .5rem; padding: 0 .55rem .35rem; color: var(--muted); font-size: .9rem; }
+.count { font-size: .75rem; color: var(--muted); background: var(--raised); border-radius: 999px; padding: .05rem .45rem; }
+.group-head .act { margin-left: auto; font-size: .8rem; color: var(--faint); padding: .1rem .35rem; border-radius: 4px; }
+.group-head .act:hover { color: var(--text); background: var(--raised); }
+.row { width: 100%; display: flex; align-items: center; gap: .65rem; padding: .42rem .55rem; border-radius: 8px; text-align: left; font-size: .95rem; min-width: 0; }
+button.row:hover { background: var(--raised); }
+.row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row .sub { color: var(--faint); font-size: .85rem; white-space: nowrap; }
+.row .end { margin-left: auto; color: var(--faint); font-size: .82rem; display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--faint); flex-shrink: 0; }
+.dot.live { background: var(--live); } .dot.ok { background: var(--ready); } .dot.warn { background: var(--warn); }
+.tag { font: 700 .66rem/1 system-ui; letter-spacing: .06em; padding: .25em .45em; border-radius: 4px; }
+.tag.live { background: var(--live-strong); color: #fff; }
+.tag.next { background: var(--gold-soft); color: var(--gold); }
+.row.is-live { background: rgba(229,72,77,.08); }
+.ico-k { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; background: var(--raised); color: var(--muted); flex-shrink: 0; }
+
+/* Drill-in views */
+.view { padding: 0 1rem 1rem; display: grid; gap: .8rem; }
+.tabs { display: flex; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--radius); padding: .2rem; }
+.tabs button { flex: 1; padding: .35rem 0; border-radius: 4px; color: var(--muted); font-size: .88rem; }
+.tabs button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.search { display: flex; align-items: center; gap: .5rem; background: var(--canvas); border: 1px solid var(--gold); border-radius: var(--radius); padding: .45rem .6rem; }
+.search input { all: unset; flex: 1; font-size: .92rem; }
+.lib { display: grid; margin: 0 -.45rem; }
+.add { margin-left: auto; display: inline-flex; align-items: center; gap: .3rem; font-size: .82rem; border: 1px solid var(--line-strong); padding: .25rem .55rem; border-radius: var(--radius); }
+.add:hover { background: var(--raised); }
+.inservice { margin-left: auto; color: var(--ready-text); font-size: .82rem; display: inline-flex; gap: .3rem; align-items: center; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .5rem .85rem; border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--raised); font-size: .9rem; font-weight: 500; }
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+.btn.primary:hover { background: var(--gold-hover); }
+.btn.danger { background: var(--live-strong); border-color: var(--live-strong); color: #fff; }
+.btn.wide { width: 100%; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg button { flex: 1; padding: .45rem 0; font-size: .88rem; color: var(--muted); border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.switch { display: flex; align-items: center; justify-content: space-between; font-size: .92rem; padding: .2rem 0; }
+.sw { width: 34px; height: 20px; border-radius: 999px; background: var(--line-strong); position: relative; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); transition: transform .2s var(--ease); }
+.sw.on { background: var(--ready); }
+.sw.on::after { transform: translateX(14px); }
+.label { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); font-weight: 600; }
+.meter { height: 6px; background: var(--raised); border-radius: 999px; overflow: hidden; }
+.meter i { display: block; height: 100%; width: 62%; background: var(--ready); }
+dl.keys { display: grid; grid-template-columns: auto 1fr; gap: .45rem .9rem; margin: 0; font-size: .9rem; }
+dl.keys dt { text-align: right; } dl.keys dd { margin: 0; color: var(--muted); }
+
+/* Plan main */
+.svc-head { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1.1rem; }
+.svc-head h1 { font-size: 1.5rem; font-weight: 650; }
+.svc-head .actions { margin-left: auto; display: flex; gap: .5rem; }
+.notice { display: flex; gap: .6rem; align-items: center; background: var(--warn-soft); border: 1px solid rgba(245,165,36,.3); border-radius: var(--radius-lg); padding: .65rem .85rem; font-size: .92rem; margin-bottom: 1.1rem; }
+.notice .link { margin-left: auto; color: var(--warn); font-weight: 600; font-size: .88rem; }
+ol.order { list-style: none; margin: 0; padding: 0; max-width: 860px; }
+.hdr { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); font-weight: 650; padding: 1.1rem .4rem .45rem; border-bottom: 1px solid var(--line); }
+.item { display: flex; align-items: center; gap: .85rem; padding: .7rem .4rem; border-bottom: 1px solid var(--line); }
+.item:hover { background: rgba(255,255,255,.02); }
+.grip { color: var(--line-strong); }
+.num { width: 1.4rem; text-align: right; color: var(--faint); font-variant-numeric: tabular-nums; font-size: .9rem; }
+.tile { width: 3.4rem; height: 1.95rem; border-radius: 4px; background: #000; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); flex-shrink: 0; }
+.item .t { font-weight: 550; }
+.item .sub { color: var(--faint); font-size: .85rem; }
+.item .end { margin-left: auto; display: flex; align-items: center; gap: .6rem; color: var(--faint); font-size: .85rem; }
+.chip { font-size: .75rem; padding: .15rem .45rem; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); }
+.chip.warn { border-color: rgba(245,165,36,.45); color: var(--warn); }
+
+/* Present main */
+.stage { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 1.2rem; align-items: start; }
+.body.closed .stage { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.cap { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--muted); margin-bottom: .45rem; }
+.cap b { color: var(--live); letter-spacing: .06em; font-size: .78rem; }
+.screen { aspect-ratio: 16/9; background: #000; border-radius: var(--radius-lg); display: grid; place-items: center; text-align: center; padding: 6%; font-weight: 650; color: #fff; line-height: 1.35; }
+.screen.live { outline: 2px solid var(--live); outline-offset: 2px; font-size: clamp(.8rem, 1.55vw, 1.35rem); }
+.screen.next { font-size: clamp(.55rem, .9vw, .85rem); border: 1px solid var(--line); }
+.transport { display: flex; gap: .5rem; margin-top: 1rem; flex-wrap: wrap; }
+.transport .btn { padding: .65rem 1.1rem; font-size: .95rem; }
+.transport .btn.primary { min-width: 9rem; }
+.btn kbd { border-color: currentColor; color: inherit; opacity: .7; }
+.stopsound { margin-left: auto; }
+.slides-head { display: flex; align-items: baseline; gap: .6rem; margin: 1.6rem 0 .7rem; }
+.slides-head h2 { font-size: 1.05rem; }
+.slides-head .faint { margin-left: auto; font-size: .85rem; }
+.slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .8rem; }
+.slide { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; text-align: left; padding: 0; }
+.slide:hover { border-color: var(--line-strong); }
+.slide .screen { border-radius: 0; font-size: .62rem; padding: 8%; }
+.slide .foot { display: flex; align-items: center; gap: .5rem; padding: .45rem .6rem; font-size: .8rem; color: var(--muted); }
+.sec { font-weight: 700; font-size: .75rem; }
+.sec.v { color: var(--section-verse); } .sec.c { color: var(--section-chorus); } .sec.b { color: var(--section-bridge); }
+.slide.on { border-color: var(--live); }
+
+/* Status bar */
+footer { display: flex; align-items: center; gap: 1rem; padding: .4rem 1rem; border-top: 1px solid var(--line); font-size: .8rem; color: var(--muted); }
+footer .sp { margin-left: auto; }
+footer span { display: inline-flex; align-items: center; gap: .4rem; }
+
+@media (max-width: 900px) {
+  .body { grid-template-columns: minmax(0,1fr) 0px; }
+  .body:not(.closed) .panel-slot { position: fixed; right: 0; top: 52px; bottom: 34px; width: 370px; max-width: 100vw; padding: .6rem; z-index: 5; }
+  .panel { width: 100%; }
+  .stage { grid-template-columns: 1fr !important; }
+  .onair { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="logo">
+      <svg width="16" height="18" viewBox="0 0 16 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.5c1.6 1.6 1.6 3.4 0 4.6-1.6-1.2-1.6-3 0-4.6Z" fill="currentColor"/><path d="M5 8.5h6M8 8.5v6M4.5 16.5h7"/></svg>
+      Lampstand
+    </div>
+    <div class="modes" role="group" aria-label="Mode">
+      <button data-mode="plan">Plan</button>
+      <button data-mode="present">Present</button>
+    </div>
+    <div class="right">
+      <p class="onair">Live service: <b>Sunday service</b></p>
+      <button class="tb"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.5v.1" stroke-linecap="round"/></svg>Help</button>
+      <button class="tb"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke-linecap="round"/></svg>Setup</button>
+      <button class="tb panel-toggle" id="toggle" title="Hide or show the Library and the controls (\)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg>
+        <span id="toggle-word">Hide library &amp; controls</span><kbd>\</kbd>
+      </button>
+    </div>
+  </header>
+
+  <div class="body" id="body">
+    <main id="main"></main>
+    <div class="panel-slot"><aside class="panel" aria-label="Library and controls">
+      <div class="panel-head" id="panel-head"></div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside></div>
+  </div>
+
+  <footer>
+    <span><span class="dot"></span>This device only</span>
+    <span class="faint">Mockup: hide it with <kbd>\</kbd>. It opens again every time Lampstand starts</span>
+    <span class="sp"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5"/></svg>2 screens · 2 on</span>
+  </footer>
+</div>
+
+<script>
+const I = {
+  chev: '<svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  back: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  book: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 3h4a1.5 1.5 0 0 1 1.5 1.5V13a1 1 0 0 0-1-1h-4.5ZM13.5 3h-4A1.5 1.5 0 0 0 8 4.5V13a1 1 0 0 1 1-1h4.5Z"/></svg>',
+  cal: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>',
+  check: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6.3"/><path d="m5.3 8.2 1.8 1.8 3.6-3.8"/></svg>',
+  note: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3Z"/><path d="M5.5 7.5h5M5.5 10h5"/></svg>',
+  sound: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5Z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" stroke-linecap="round"/></svg>',
+  monitor: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5"/></svg>',
+  cam: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="m10.5 7 4-2.2v6.4l-4-2.2"/></svg>',
+  phone: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12.2h2" stroke-linecap="round"/></svg>',
+  keys: '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="4" width="13" height="8.5" rx="1.5"/><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 10h6" stroke-linecap="round"/></svg>',
+  plus: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>',
+  search: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="color:var(--muted)"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>',
+  music: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 12V3.5l7-1.5V10"/><circle cx="4.3" cy="12" r="1.8"/><circle cx="11.3" cy="10" r="1.8"/></svg>',
+  scripture: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h8.5a1 1 0 0 1 1 1v10H4a1 1 0 0 1-1-1Z"/><path d="M7.7 5v4.5M5.8 6.6h3.8"/></svg>',
+  deck: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="8" rx="1"/><path d="M8 11v3M5.5 14h5"/></svg>',
+  media: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="m6.5 6 3.5 2-3.5 2Z" fill="currentColor"/></svg>',
+  grip: '<svg class="grip" width="12" height="16" viewBox="0 0 12 16" fill="currentColor"><circle cx="4" cy="4" r="1.2"/><circle cx="8" cy="4" r="1.2"/><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="8" cy="12" r="1.2"/></svg>',
+  ok: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  alert: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--warn)" stroke-width="1.5" stroke-linecap="round"><path d="M8 2 14.5 13.5h-13Z"/><path d="M8 6.5v3M8 11.5v.1"/></svg>',
+  prev: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+};
+
+const order = [
+  { h: "Gathering" },
+  { k: "media", t: "Countdown", s: "Video · 5:00" },
+  { k: "deck", t: "Welcome and notices", s: "Deck · 6 slides", warn: "Not on this computer" },
+  { h: "Worship" },
+  { k: "music", t: "Holy, Holy, Holy", s: "Song · Reginald Heber", sec: "V1 V2 V3 V4" },
+  { k: "music", t: "Amazing Grace", s: "Song · John Newton", sec: "V1 V2 V3 V4", warn: "No CCLI number" },
+  { k: "music", t: "Great Is Thy Faithfulness", s: "Song · Thomas Chisholm", sec: "V1 C V2 C V3 C" },
+  { h: "The Word" },
+  { k: "scripture", t: "Psalm 23", s: "Scripture · KJV · 6 verses" },
+  { k: "deck", t: "Sermon: The Good Shepherd", s: "Deck · 18 slides" },
+  { h: "Response" },
+  { k: "music", t: "Be Thou My Vision", s: "Song · Irish traditional", sec: "V1 V2 V3 V4 V5" },
+];
+const items = order.filter(o => !o.h);
+const LIVE = 2; // index into items: Holy, Holy, Holy is on air (verse 2)
+
+const state = {
+  mode: "plan",
+  open: { plan: true, present: true },
+  view: { plan: "overview", present: "overview" },
+  libTab: "Songs", screenMode: "Show", clicker: false, guide: true, bug: false, sound: true,
+};
+// Open or hidden lasts for this session only: every launch starts with it open,
+// so nobody arrives to a sidebar someone else hid last month.
+try { const { open, view, ...rest } = JSON.parse(localStorage.getItem("ls-library-controls") || "{}"); Object.assign(state, rest); } catch {}
+const save = () => { try { localStorage.setItem("ls-library-controls", JSON.stringify(state)); } catch {} };
+
+/* ---------- Panel views ---------- */
+const navRow = (id, icon, label, sum = "") =>
+  `<button class="nav-row" data-go="${id}">${I[icon]}<span>${label}</span><span class="sum">${sum}${I.chev}</span></button>`;
+const group = (title, count, rows, act = "") =>
+  `<section class="group"><div class="group-head"><span>${title}</span>${count != null ? `<span class="count">${count}</span>` : ""}${act}</div>${rows}</section>`;
+
+const zone = (title, rows) =>
+  `<section class="zone"><h3 class="zone-head">${title}</h3>${rows}</section>`;
+const findBox = (hint) =>
+  `<button class="find" data-go="library">${I.search}<span>${hint}</span></button>`;
+const LIB_SONGS = [["A Mighty Fortress Is Our God"],["Abide With Me"],["Amazing Grace", true],["Be Thou My Vision", true],["Blessed Assurance"],["Come Thou Fount"],["Crown Him With Many Crowns"],["Great Is Thy Faithfulness", true],["Holy, Holy, Holy", true],["How Great Thou Art"],["It Is Well With My Soul"],["Joyful, Joyful, We Adore Thee"]];
+// The same Library in both modes. In Present, Add puts it straight after what is on air.
+const libBody = (mode) => `<div class="view">
+    <div class="tabs">${["Songs","Scripture","Media","Decks"].map(t => `<button data-lib="${t}" aria-pressed="${state.libTab===t}">${t}</button>`).join("")}</div>
+    <label class="search">${I.search}<input value="" placeholder="Search ${state.libTab.toLowerCase()} by title or words"></label>
+    ${mode === "present" ? `<p class="muted" style="font-size:.85rem">Add puts it straight after <b style="color:var(--text)">Holy, Holy, Holy</b>, without changing what is on the screen.</p>` : ""}
+    <div class="lib">${LIB_SONGS.map(([t, inS]) => `<div class="row"><span class="t">${t}</span>${inS ? `<span class="inservice">${I.ok}In service</span>` : `<button class="add">${I.plus}${mode === "present" ? "Add next" : "Add"}</button>`}</div>`).join("")}</div>
+    ${mode === "plan" ? `<div style="display:flex;gap:.5rem"><button class="btn" style="flex:1">Import files…</button><button class="btn" style="flex:1">Get songs</button></div>` : ""}
+  </div>`;
+
+const views = {
+  plan: {
+    overview: { title: "Library & controls", body: () =>
+      `${zone("Library",
+        `${findBox("Find a song, reading or video to add")}
+         ${navRow("library", "book", "Browse the library")}
+         ${navRow("services", "cal", "Services", "4 planned")}`)}
+      ${zone("Controls",
+        `${navRow("screens", "monitor", "Screens", '<span class="dot ok"></span>2 connected')}
+         ${navRow("readiness", "check", "Check this service", '<span class="dot warn"></span>2 to fix')}`)}
+      ${group("Needs attention", 2,
+        `<button class="row" data-go="readiness">${I.alert}<span class="t">Welcome and notices</span><span class="end">Not on this computer</span></button>
+         <button class="row" data-go="readiness">${I.alert}<span class="t">Amazing Grace</span><span class="end">No CCLI number</span></button>`)}
+      ${group("Notes for the team", 1,
+        `<button class="row" data-go="notes" style="align-items:flex-start"><span class="t" style="white-space:normal;color:var(--muted);font-size:.88rem">Sermon deck has a video on slide 12. Sound goes through the desk.</span></button>`)}` },
+
+    library: { title: "Library", body: () => libBody("plan") },
+
+    screens: { title: "Screens", body: () => `<div class="view">
+        <div class="lib">
+          <div class="row"><span class="dot ok"></span><span class="t">Main screen</span><span class="end">Projector · 1920×1080</span></div>
+          <div class="row"><span class="dot ok"></span><span class="t">Stage display</span><span class="end">TV · words + next</span></div>
+        </div>
+        <div class="switch">Stage display shows the next slide <span class="sw on"></span></div>
+        <button class="btn wide">Show a test picture on every screen</button>
+        <button class="btn wide">Open Setup › Screens</button></div>` },
+
+    services: { title: "Services", body: () => `<div class="view">
+        <button class="btn primary wide">${I.plus}New service</button>
+        <div class="lib">
+          <button class="row is-live"><span class="dot live"></span><span class="t">Sunday service</span><span class="end">Sun 9 Nov · 10:00</span></button>
+          <button class="row"><span class="dot"></span><span class="t">Midweek prayer</span><span class="end">Wed 12 Nov · 19:00</span></button>
+          <button class="row"><span class="dot"></span><span class="t">Sunday service</span><span class="end">Sun 16 Nov · 10:00</span></button>
+          <button class="row"><span class="dot"></span><span class="t">Carol service</span><span class="end">Sun 21 Dec · 18:00</span></button>
+        </div>
+        <p class="label" style="margin-top:.4rem">Past</p>
+        <div class="lib">
+          <button class="row"><span class="t muted">Sunday service</span><span class="end">Sun 2 Nov</span></button>
+          <button class="row"><span class="t muted">Sunday service</span><span class="end">Sun 26 Oct</span></button>
+        </div></div>` },
+
+    readiness: { title: "Readiness", body: () => `<div class="view">
+        <p class="muted" style="font-size:.9rem">Checked 2 minutes ago on this computer. 8 of 10 items are ready to present.</p>
+        <div class="meter"><i style="width:80%"></i></div>
+        <div class="lib">
+          <div class="row">${I.alert}<span class="t">Welcome and notices</span><button class="add">Download</button></div>
+          <div class="row">${I.alert}<span class="t">Amazing Grace</span><button class="add">Add CCLI</button></div>
+          ${items.filter(i => !i.warn).map(i => `<div class="row"><span style="color:var(--ready-text)">${I.ok}</span><span class="t muted">${i.t}</span></div>`).join("")}
+        </div>
+        <button class="btn wide">Check again</button></div>` },
+
+    notes: { title: "Notes for the team", body: () => `<div class="view">
+        <div style="background:var(--raised);border-radius:8px;padding:.75rem .85rem;font-size:.92rem">
+          <p class="label" style="margin-bottom:.3rem">From Pastor Ann · Fri</p>
+          Sermon deck has a video on slide 12. Play it from Present; sound goes through the desk.</div>
+        <button class="btn wide">${I.plus}Add a note</button></div>` },
+  },
+
+  present: {
+    overview: { title: "Library & controls", body: () =>
+      `${zone("Library",
+        `${findBox("Find a song or reading to add next")}
+         ${navRow("library", "book", "Browse the library")}`)}
+      ${zone("Controls",
+        `${navRow("sound", "sound", "Sound", state.sound ? '<span class="dot ok"></span>Music playing' : "Quiet")}
+         ${navRow("screen", "monitor", "Screen", state.screenMode + (state.guide ? " · Safe area" : ""))}
+         ${navRow("obs", "cam", "OBS", '<span class="dot ok"></span>Worship cam')}
+         ${navRow("remotes", "phone", "Remotes", state.clicker ? "Clicker on" : "1 phone")}
+         ${navRow("keys", "keys", "Keys")}`)}
+      ${group("Service order", items.length,
+        items.map((it, i) => `<button class="row${i === LIVE ? " is-live" : ""}"><span class="ico-k">${I[it.k]}</span><span class="t">${it.t}</span><span class="end">${i === LIVE ? '<span class="tag live">LIVE</span>' : i === LIVE + 1 ? '<span class="tag next">UP NEXT</span>' : ""}</span></button>`).join(""))}
+      ${group("Notes", 1, `<div class="row" style="align-items:flex-start"><span class="t" style="white-space:normal;color:var(--muted);font-size:.88rem">Sermon deck has a video on slide 12. Sound goes through the desk.</span></div>`)}` },
+
+    library: { title: "Library", body: () => libBody("present") },
+
+
+    sound: { title: "Sound", body: () => `<div class="view">
+        <div class="row" style="padding:0"><span class="ico-k">${I.music}</span><span class="t">Gathering music · Track 3 of 8</span></div>
+        <div class="meter"><i></i></div>
+        <div style="display:flex;gap:.5rem"><button class="btn" style="flex:1">Fade out</button><button class="btn danger" style="flex:1">Stop the sound now</button></div>
+        <div class="switch">Fade between items <span class="sw on"></span></div>
+        <div class="switch">Duck under video <span class="sw on"></span></div></div>` },
+
+    screen: { title: "Screen", body: () => `<div class="view">
+        <div class="seg">${["Show","Logo","Idle","Blank"].map(m => `<button data-screen="${m}" aria-pressed="${state.screenMode===m}">${m}</button>`).join("")}</div>
+        <div class="switch">Safe area guide <span class="sw ${state.guide ? "on" : ""}" data-sw="guide"></span></div>
+        <div class="switch">Logo bug <span class="sw ${state.bug ? "on" : ""}" data-sw="bug"></span></div>
+        <p class="label" style="margin-top:.3rem">Clear</p>
+        <div style="display:flex;gap:.5rem"><button class="btn" style="flex:1">Text</button><button class="btn" style="flex:1">Everything</button></div></div>` },
+
+    obs: { title: "OBS", body: () => `<div class="view">
+        <p class="muted" style="font-size:.9rem">On air: <b style="color:var(--text)">Worship cam</b> · Next item switches to <b style="color:var(--text)">Pulpit wide</b></p>
+        <div class="lib">${["Worship cam","Pulpit wide","Slides full","Countdown"].map((s, i) => `<button class="row${i===0?" is-live":""}"><span class="dot ${i===0?"live":""}"></span><span class="t">${s}</span><span class="end">${i===0?'<span class="tag live">ON AIR</span>':"Preview"}</span></button>`).join("")}</div>
+        <div class="switch">Mute desk mic in OBS <span class="sw"></span></div></div>` },
+
+    remotes: { title: "Remotes", body: () => `<div class="view">
+        <div class="switch">Clicker mode <span class="sw ${state.clicker ? "on" : ""}" data-sw="clicker"></span></div>
+        <div class="lib"><div class="row"><span class="dot ok"></span><span class="t">Pastor Ann's phone</span><span class="end">Next / Previous</span></div></div>
+        <button class="btn wide">${I.plus}Connect a phone or tablet</button></div>` },
+
+    keys: { title: "Keys", body: () => `<div class="view"><dl class="keys">
+        ${[["Space","Next"],["←","Previous"],[".","Blank"],["1–9","Go to verse"],["C B P","Chorus, bridge, pre-chorus"],["/","Find a song to add next"],["O","OBS scenes"],["\\","Hide or show Library & controls"]].map(([k,w]) => `<dt><kbd>${k}</kbd></dt><dd>${w}</dd>`).join("")}
+      </dl></div>` },
+  },
+};
+
+/* ---------- Main areas ---------- */
+function planMain() {
+  let n = 0;
+  return `<div class="svc-head">
+      <div><h1>Sunday service</h1><p class="muted" style="margin-top:.2rem">Sun 9 Nov · 10:00 · ${items.length} items</p></div>
+      <div class="actions"><button class="btn">${I.plus}Add from Library</button><button class="btn primary" data-mode="present">Present this service</button></div>
+    </div>
+    <div class="notice">${I.alert}<span>2 items need attention before Sunday.</span><button class="link" data-open="readiness">See what to fix ›</button></div>
+    <ol class="order">${order.map(o => o.h ? `<li class="hdr">${o.h}</li>` :
+      `<li class="item">${I.grip}<span class="num">${++n}</span><span class="tile">${I[o.k]}</span>
+        <div><div class="t">${o.t}</div><div class="sub">${o.s}</div></div>
+        <div class="end">${o.warn ? `<span class="chip warn">${o.warn}</span>` : ""}${o.sec ? `<span class="chip">${o.sec}</span>` : ""}</div></li>`).join("")}
+    </ol>`;
+}
+
+const verses = [
+  ["V1", "v", "Holy, holy, holy! Lord God Almighty!<br>Early in the morning our song shall rise to Thee;"],
+  ["V2", "v", "Holy, holy, holy! All the saints adore Thee,<br>Casting down their golden crowns around the glassy sea;"],
+  ["V3", "v", "Holy, holy, holy! Though the darkness hide Thee,<br>Though the eye of sinful man Thy glory may not see;"],
+  ["V4", "v", "Holy, holy, holy! Lord God Almighty!<br>All Thy works shall praise Thy name, in earth, and sky, and sea;"],
+];
+function presentMain() {
+  return `<div class="stage">
+      <div><p class="cap"><span class="dot live"></span><b>LIVE</b> Main screen · Holy, Holy, Holy · V2</p>
+        <div class="screen live">Holy, holy, holy! All the saints adore Thee,<br>Casting down their golden crowns around the glassy sea;<br>Cherubim and seraphim falling down before Thee,<br>Which wert, and art, and evermore shalt be.</div></div>
+      <div><p class="cap">Next · V3</p><div class="screen next">${verses[2][2]}</div></div>
+    </div>
+    <div class="transport">
+      <button class="btn">${I.prev}Previous <kbd>←</kbd></button>
+      <button class="btn primary">Next <kbd>Space</kbd></button>
+      <button class="btn">Blank <kbd>.</kbd></button>
+      ${state.sound ? `<button class="btn danger stopsound" title="Always here while sound plays, even with Library & controls hidden">Stop the sound now</button>` : ""}
+    </div>
+    <div class="slides-head"><h2>Holy, Holy, Holy</h2><span class="muted" style="font-size:.85rem">3 of ${items.length}</span><span class="faint">Click a slide to take it live</span></div>
+    <div class="slides">${verses.map(([l, c, txt], i) => `<button class="slide${i === 1 ? " on" : ""}"><div class="screen">${txt}</div><div class="foot">${i === 1 ? '<span class="tag live">LIVE</span>' : i === 2 ? '<span class="tag next">NEXT</span>' : ""}<span class="sec ${c}">${l}</span></div></button>`).join("")}</div>`;
+}
+
+/* ---------- Render ---------- */
+const $ = id => document.getElementById(id);
+let lastView = null;
+function render(dir) {
+  const m = state.mode, v = state.view[m], view = views[m][v];
+  document.querySelectorAll(".modes button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === m));
+  $("main").innerHTML = m === "plan" ? planMain() : presentMain();
+  $("body").classList.toggle("closed", !state.open[m]);
+  $("toggle").setAttribute("aria-pressed", state.open[m]);
+  $("toggle-word").textContent = state.open[m] ? "Hide library & controls" : "Show library & controls";
+  $("panel-head").innerHTML = v === "overview"
+    ? `<h2>Library &amp; controls</h2><button class="hide" data-hide>Hide <kbd>\\</kbd></button>`
+    : `<button class="back" data-go="overview">${I.back}Back</button><span class="faint">/</span><span class="crumb">${view.title}</span><button class="hide" data-hide>Hide <kbd>\\</kbd></button>`;
+  const pb = $("panel-body");
+  pb.innerHTML = view.body();
+  if (dir) { pb.classList.remove("enter", "enter-back"); void pb.offsetWidth; pb.classList.add(dir === "back" ? "enter-back" : "enter"); }
+  save();
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-mode],[data-go],[data-open],[data-hide],[data-lib],[data-screen],[data-sw],#toggle");
+  if (!t) return;
+  if (t.id === "toggle" || t.dataset.hide !== undefined) { state.open[state.mode] = !state.open[state.mode]; return render(); }
+  if (t.dataset.mode) { state.mode = t.dataset.mode; return render(); }
+  if (t.dataset.open) { state.open[state.mode] = true; state.view[state.mode] = t.dataset.open; return render("in"); }
+  if (t.dataset.go) { const back = t.dataset.go === "overview"; state.view[state.mode] = t.dataset.go; return render(back ? "back" : "in"); }
+  if (t.dataset.lib) { state.libTab = t.dataset.lib; return render(); }
+  if (t.dataset.screen) { state.screenMode = t.dataset.screen; return render(); }
+  if (t.dataset.sw) { state[t.dataset.sw] = !state[t.dataset.sw]; return render(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.target instanceof Element && e.target.closest("input")) return;
+  if (e.key === "\\" || e.code === "Backslash") { e.preventDefault(); state.open[state.mode] = !state.open[state.mode]; render(); }
+  if (e.key === "/" && state.mode === "present") { e.preventDefault(); state.open.present = true; state.view.present = "library"; render("in"); }
+  if (e.key === "Escape" && state.view[state.mode] !== "overview") { state.view[state.mode] = "overview"; render("back"); }
+});
+render();
+</script>
+</body>
+</html>

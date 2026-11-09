@@ -1,4 +1,4 @@
-// What a screen shows when nothing is on air (Setup › Screens): a picture,
+// What a screen shows when nothing is on air (Settings › Screens): a picture,
 // a looping video or a slide of a deck, set per screen or for every screen.
 // Until one is chosen, a screen shows the default: the church's logo and name,
 // else the Lampstand lamp.
@@ -36,13 +36,27 @@ export function describeDefaultIdle(brand: Pick<Brand, "name" | "logo"> | null):
     const name = brand.name.trim();
     return name ? `Your logo and name (${name}) on your colour` : "Your logo on your colour";
   }
-  return "The Lampstand lamp. Add your logo under Setup › Church look to show yours instead.";
+  return "The Lampstand lamp. Add your logo under Settings › Logo and colours to show yours instead.";
 }
 
 /** The idle setting that applies to a screen: its own, else the default for all screens, else the default idle screen. `null` is the theme's plain background. */
 export function effectiveIdle(own: IdleScreen | null, fallback: IdleScreen | null): IdleScreen | null {
   const chosen = own ?? fallback ?? "Default";
   return chosen === "Blank" ? null : chosen;
+}
+
+/**
+ * The idle screen in a word or two, for Present's Idle button and the live
+ * preview: what it is, and whether it is a looping video (which moves on the
+ * screens, while its picture here is a still). `effective` is what
+ * `effectiveIdle` gives: `null` is the plain background.
+ */
+export function idleSummary(effective: IdleScreen | null): { label: string; video: boolean } {
+  if (effective === null || effective === "Blank") return { label: "Plain background", video: false };
+  if (effective === "Default") return { label: "Logo", video: false };
+  if ("Image" in effective) return { label: effective.Image.name, video: false };
+  if ("Video" in effective) return { label: effective.Video.name, video: true };
+  return { label: `Deck slide ${effective.DeckSlide.slide + 1}`, video: false };
 }
 
 /** The slide to show after the operator steps by `by`, kept inside the deck. */

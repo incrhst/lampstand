@@ -141,7 +141,7 @@ fn add_welcome_sound(library: &Library, service: &mut Service) -> std::io::Resul
     service.insert(
         at,
         ItemKind::Header {
-            title: "Sound. In Present, press Play in the Sound box".into(),
+            title: "Sound. In Present, press Play on the music".into(),
         },
     );
     service.insert(

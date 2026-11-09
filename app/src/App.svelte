@@ -1,6 +1,6 @@
 <!-- The shell: a top bar with the two weekly jobs (Plan and Present) and
      Setup apart on the right, the screen, and a status bar whose sync and
-     screens items open Setup. Each screen lives in src/routes/<name>/ so
+     screens items open Settings. Each screen lives in src/routes/<name>/ so
      T47 to T55 can each own one folder. -->
 <script lang="ts">
   import PlanView from "./routes/plan/PlanView.svelte";
@@ -8,7 +8,7 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, report, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { syncPill } from "./lib/sync";
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
@@ -25,7 +25,6 @@
   import GetStarted from "./lib/kit/GetStarted.svelte";
   import Dot from "./lib/kit/Dot.svelte";
   import Icon from "./lib/kit/Icon.svelte";
-  import Logo from "./lib/kit/Logo.svelte";
   import ProgressBar from "./lib/kit/ProgressBar.svelte";
   import StatusBar from "./lib/kit/StatusBar.svelte";
 
@@ -44,10 +43,37 @@
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
   function onkeydown(e: KeyboardEvent) {
     const next = screenForKey(e, screen);
-    if (!next) return;
-    e.preventDefault();
-    screen = next;
+    if (next) {
+      e.preventDefault();
+      screen = next;
+      live.pointTabs = false;
+      return;
+    }
   }
+
+  // Close service sits beside the live service's name, in Plan and Present,
+  // so it never scrolls away or hides with Library & controls. It asks
+  // first while something is on air.
+  let confirmClose = $state(false);
+  function askClose() {
+    if (live.live || live.overlay !== "None") confirmClose = true;
+    else closeService();
+  }
+  async function closeService() {
+    const loaded = live.loaded;
+    confirmClose = false;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { Close: loaded.service } }, "Ok");
+      live.loaded = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+  $effect(() => {
+    if (!live.loaded) confirmClose = false;
+  });
+
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -221,31 +247,57 @@
 <svelte:window {onkeydown} />
 
 <div class="shell">
+  <!-- The bar always shows, so Plan | Present and the Library & controls
+       button are where a volunteer left them, even with the sidebar hidden. -->
   <header>
-    <span class="brand"><Logo size={22} />Lampstand</span>
     <nav aria-label="Screens">
       {#each screens as s}
-        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
+        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => { screen = s.id; live.pointTabs = false; }}>
           {s.label}
         </button>
       {/each}
+      {#if live.pointTabs && (screen === "plan" || screen === "operate")}
+        <!-- At every launch: where a monthly volunteer starts. Goes once a
+             tab is chosen, a service is made, or it is closed. -->
+        <div class="point-tabs" role="note">
+          <div class="point-say">
+            <strong>Start here</strong>
+            <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
+          </div>
+          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close"><Icon name="x" size={14} /></button>
+        </div>
+      {/if}
     </nav>
     <div class="right">
-      <!-- Present's own bar already names the service, so it is not said twice there. -->
-      {#if live.loaded && screen !== "operate"}
+      {#if live.loaded}
+        <!-- While Close service asks, the question takes the name's place. -->
+        {#if !confirmClose}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
           {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
         </p>
+        {/if}
+        {#if confirmClose}
+          <span class="close-ask" role="alert">
+            Something is on air. Close the service?
+            <button class="close-live danger" onclick={closeService}>Close service</button>
+            <button class="close-live" onclick={() => (confirmClose = false)}>Keep open</button>
+          </span>
+        {:else}
+          <button class="close-live" onclick={askClose} title="Put the service away; it stays in Plan">
+            <Icon name="x" size={14} />Close service
+          </button>
+        {/if}
       {/if}
       <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
         <span class="setup-word">Help</span>
+        {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
-      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
+      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Settings" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
-        <span class="setup-word">Setup</span>
+        <span class="setup-word">Settings</span>
       </button>
     </div>
   </header>
@@ -256,7 +308,7 @@
 
   <main class:arriving>
     {#if screen === "plan"}
-      <PlanView onopened={() => (screen = "operate")} />
+      <PlanView onopened={() => (screen = "operate")} onscreens={() => openSetup("screens")} />
     {:else if screen === "operate"}
       <OperateView ondevices={() => openSetup("devices")} onsetup={() => openSetup("screens")} onidle={() => openSetup("idle")} onobs={() => openSetup("obs")} ontips={() => openHelp("tips")} onplan={() => (screen = "plan")} />
     {:else if screen === "help"}
@@ -268,7 +320,7 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Settings › Devices">
         <Dot tone={syncStatus.tone} />
         {#if live.team && live.team.paired.length > 0}
           <RoleBar held={heldRoles(live.team)} unchecked={uncheckedRoles(live.team)} />
@@ -280,7 +332,7 @@
         {#if streamOffline}<Dot tone="warn" /><span class="warn">{streamOffline}</span>{/if}
       </span>
       {#if connectLine}
-        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
+        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Settings › Devices">
           Connect another device
         </button>
       {/if}
@@ -300,7 +352,7 @@
     {/snippet}
     {#snippet end()}
       {#if newVersion}
-        <button class="status-link" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
+        <button class="status-link update-pill" onclick={() => openHelp("about")} title="A new version of Lampstand is ready to install. Open Help › About">
           <Icon name="download" size={14} />
           <span class="update">Update {newVersion} available</span>
         </button>
@@ -308,12 +360,12 @@
       {#if obsStatus}
         <!-- OBS's connection, streaming and recording, kept quiet here;
              Present has the OBS control itself. -->
-        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Settings › OBS">
           <Dot tone={obsStatus.tone} />
           <span class:warn={obsStatus.tone === "warn"}>{obsStatus.text}</span>
         </button>
       {/if}
-      <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
+      <button class="status-link" onclick={() => openSetup("screens")} title="Open Settings › Screens">
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
@@ -321,7 +373,7 @@
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}
-        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Settings › OBS">
           <Icon name="broadcast" size={14} />
           {pictureOutputs.length}
           {pictureOutputs.length === 1 ? "picture" : "pictures"} to OBS
@@ -348,28 +400,90 @@
     border-bottom: 1px solid var(--line);
     background: var(--panel);
   }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--gold);
-  }
   nav {
+    position: relative;
     display: flex;
     gap: 0.25rem;
   }
-  nav button {
-    font: inherit;
+  /* Start here, under the Plan | Present tabs: a soft yellow note with a
+     dark outline and a small point at its top left, toward the tabs. Still,
+     no animation. */
+  .point-tabs {
+    --note: #fbeca2;
+    --note-line: #1f1f1f;
+    position: absolute;
+    top: calc(100% + 0.75rem);
+    left: 0.25rem;
+    z-index: 40;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: max-content;
+    max-width: 24rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.9rem;
+    border: 3px solid var(--note-line);
+    border-radius: 12px;
+    background: var(--note);
+    color: #2a2410;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 0.8125rem;
+  }
+  /* The point: a small square turned on its corner, outlined on its two
+     outer sides only, so it joins the note's edge. */
+  .point-tabs::before {
+    content: "";
+    position: absolute;
+    top: -9px;
+    left: 1.6rem;
+    width: 14px;
+    height: 14px;
+    background: var(--note);
+    border-top: 3px solid var(--note-line);
+    border-left: 3px solid var(--note-line);
+    border-radius: 3px 0 0 0;
+    transform: rotate(45deg);
+  }
+  .point-say {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: #4a4020;
+  }
+  .point-say strong {
+    color: #1f1a08;
     font-size: 0.875rem;
+  }
+  .point-say b {
+    color: #1f1a08;
+    font-weight: 700;
+  }
+  .point-close {
+    font: inherit;
+    display: inline-flex;
+    line-height: 1;
+    color: #4a4020;
+    background: none;
+    border: none;
+    padding: 0 0.2rem;
+    cursor: pointer;
+  }
+  .point-close:hover {
+    color: #000;
+  }
+  /* Plan and Present as quiet tabs: the chosen one in full white with a
+     thin gold line on the bar's bottom edge, the other muted. */
+  nav {
+    align-self: stretch;
+  }
+  nav button {
+    position: relative;
+    font: inherit;
+    font-size: 0.9375rem;
     font-weight: 500;
     background: none;
     border: none;
     color: var(--muted);
-    padding: 0.4rem 0.9rem;
-    border-radius: var(--radius);
+    padding: 0 0.95rem;
     cursor: pointer;
     /* No transition: selection shows at once, and a window that is not
        frontmost can freeze a transition part way. */
@@ -377,9 +491,25 @@
   nav button:hover {
     color: var(--text);
   }
+  nav button::after {
+    content: "";
+    position: absolute;
+    left: 0.6rem;
+    right: 0.6rem;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+  }
+  nav button:hover::after {
+    background: var(--line-strong);
+  }
   nav button.active {
     color: var(--text);
-    background: var(--raised);
+    font-weight: 600;
+  }
+  nav button.active::after {
+    background: var(--gold);
   }
   .right {
     margin-left: auto;
@@ -387,6 +517,37 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+  }
+  .close-live {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.6rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--field-line, var(--line));
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .close-live:hover {
+    border-color: var(--gold-hover);
+  }
+  .close-live.danger {
+    color: #fff;
+    background: var(--live);
+    border-color: var(--live);
+  }
+  .close-ask {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    color: var(--text);
   }
   .setup {
     font: inherit;
@@ -449,7 +610,7 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. */
+    /* Help and Settings as their icons; the title still names them. */
     .setup-word {
       position: absolute;
       width: 1px;
@@ -488,6 +649,26 @@
   }
   .update {
     color: var(--gold);
+  }
+  /* A new version is waiting: a gold pill in the footer and a dot on Setup. */
+  .update-pill {
+    background: var(--gold-soft);
+    border: 1px solid var(--line-strong);
+    color: var(--gold);
+    font-weight: 600;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+  }
+  .update-pill:hover {
+    background: var(--gold-soft);
+    color: var(--gold-hover);
+  }
+  .update-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-left: 0.15rem;
   }
   .status-link {
     font: inherit;

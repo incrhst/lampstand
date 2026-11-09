@@ -40,6 +40,8 @@
   import { chooseTranslation } from "../../lib/bibles";
   import { loadDefaultTranslation, saveDefaultTranslation } from "../../lib/bibleSetting";
   import Button from "../../lib/kit/Button.svelte";
+  import Banner from "../../lib/kit/Banner.svelte";
+  import SideHead from "../../lib/kit/SideHead.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import LibraryRow from "./LibraryRow.svelte";
   import SongDatabaseCard from "./SongDatabaseCard.svelte";
@@ -60,6 +62,9 @@
     ondecks,
     ontranslations,
     onhide,
+    onback,
+    onservices,
+    training = false,
   }: {
     /** The service rows are added to, if one is selected. */
     service: Service | null;
@@ -77,9 +82,37 @@
     onsongs: (hits: SongHit[]) => void;
     ondecks: () => Promise<void>;
     ontranslations: () => Promise<void>;
-    /** Hides the library; Plan shows a strip to bring it back. */
+    /** Hides Library & controls, the sidebar the library is a page of. */
     onhide?: () => void;
+    /** Back to the front page of Library & controls. With it, the head is the sidebar's: Back / Library and Hide. */
+    onback?: () => void;
+    /** Opens Services, to choose or make the service to add to. */
+    onservices?: () => void;
+    /** The open service is a training service, which can't be changed. */
+    training?: boolean;
   } = $props();
+
+  /** Why adding can't happen now, said where the operator is looking; null when it can. */
+  let blocked = $derived(service ? null : training ? "training" : "none");
+  /** Set for a moment when Add is pressed with nowhere to add, so the notice draws the eye. */
+  let nudged = $state(false);
+  let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+  const NOWHERE = ["Choose or make a service first, under Services", "Training services can't be changed. Choose one of your own services first."];
+  // Once a service is open, the "choose a service" message no longer applies.
+  $effect(() => {
+    if (service && NOWHERE.includes(live.status)) live.status = "";
+  });
+  /** Adding was tried with no service to add to: say so, and point at the notice. */
+  function nowhere() {
+    live.status = NOWHERE[blocked === "training" ? 1 : 0];
+    nudged = false;
+    clearTimeout(nudgeTimer);
+    // Off for a moment first, so pressing Add again starts the shake again.
+    nudgeTimer = setTimeout(() => {
+      nudged = true;
+      nudgeTimer = setTimeout(() => (nudged = false), 900);
+    }, 30);
+  }
 
   // Device-local preferences and history. Storage can be missing or full
   // (a private window), so every read and write is wrapped.
@@ -127,7 +160,7 @@
   let looseMedia: MediaFile[] = $state(load("lampstand.library.media", []));
   let recent: Entry[] = $state(load("lampstand.library.recent", []));
   let translation = $state("");
-  /** Set in Setup › Scripture; what a reference with no version is read from. */
+  /** Set in Settings › Scripture; what a reference with no version is read from. */
   let defaultTranslation: string | null = $state(null);
   let databases: SongDatabase[] = $state([]);
   let database = $state("en");
@@ -340,10 +373,7 @@
       return;
     }
     if (!entry.item) return;
-    if (!service) {
-      live.status = "Pick a service on the left first";
-      return;
-    }
+    if (!service) return nowhere();
     if (await onadd(entry.item)) flash(entry);
   }
 
@@ -368,10 +398,7 @@
   /** A link to a sound file: fetched into the library, then added to the end of the open service. */
   async function addSoundLink(url: string) {
     if (busy) return;
-    if (!service) {
-      live.status = "Pick a service on the left first";
-      return;
-    }
+    if (!service) return nowhere();
     busy = true;
     try {
       const file = await request({ area: "Library", request: { AddSoundFromLink: { url } } }, "SoundFile");
@@ -733,8 +760,13 @@
 
 <aside class="pane pane-side library" aria-label="Library" bind:this={panel} ondragover={ondropover} {ondrop}>
   <header class="head">
-    <div class="title-row">
-      <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+    {#if onback}
+      <SideHead title={libraryCount > 0 ? `Library · ${libraryCount}` : "Library"} {onback} />
+    {/if}
+    <div class="title-row" class:tools-only={!!onback}>
+      {#if !onback}
+        <h2 class="title">Library{#if libraryCount > 0}<span class="count num">{libraryCount}</span>{/if}</h2>
+      {/if}
       <div class="add">
         <Button
           size="small"
@@ -750,7 +782,7 @@
           Add files
         </Button>
         <Button size="small" variant="ghost" icon="folder" onclick={() => browse(true)} disabled={busy} label="Add a folder" title="Add a song folder or OpenSong library" />
-        {#if onhide}
+        {#if onhide && !onback}
           <Button size="small" variant="ghost" icon="panelRight" label="Hide the library" title="Hide the library" onclick={onhide} />
         {/if}
       </div>
@@ -796,6 +828,22 @@
     {/if}
     {#if notice}<p class="notice" role="status"><Icon name="check" size={14} />{notice}</p>{/if}
   </header>
+
+  {#if blocked}
+    <!-- Where the operator is looking: nothing can be added until a service is open. -->
+    <div class="nowhere" class:nudged>
+      <Banner tone="warn" icon="calendar">
+        {#if blocked === "training"}
+          <strong>Training services can't be changed.</strong> To add songs, open one of your own services.
+        {:else}
+          <strong>No service is open.</strong> Choose a service, or make a new one, to add songs and readings to it.
+        {/if}
+        {#if onservices}
+          <div class="nowhere-go"><Button size="small" variant="primary" icon="calendar" onclick={onservices}>Choose a service</Button></div>
+        {/if}
+      </Banner>
+    </div>
+  {/if}
 
   <div class="body">
     {#if showEmpty}
@@ -863,7 +911,7 @@
     {#if service}
       Click or <kbd>Enter</kbd> adds to <span class="target">{service.title}</span> · drag to place
     {:else}
-      Pick a service on the left to start adding
+      {blocked === "training" ? "Open one of your own services to add to it" : "Choose a service under Services to start adding"}
     {/if}
   </footer>
 
@@ -898,6 +946,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+  /* Inside Library & controls the sidebar's head names it; this row keeps the add buttons. */
+  .title-row.tools-only {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .count {
     margin-left: 0.5rem;
@@ -1088,6 +1141,34 @@
   }
   .nothing p + p {
     margin-top: 0.3rem;
+  }
+  .nowhere {
+    padding: 0.5rem 1rem 0;
+  }
+  .nowhere-go {
+    margin-top: 0.5rem;
+  }
+  /* Add was pressed with nowhere to add: the notice gives a short shake and a gold edge. */
+  .nowhere.nudged :global(.banner) {
+    border-color: var(--gold);
+    animation: nudge 0.45s ease-in-out;
+  }
+  @keyframes nudge {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-4px);
+    }
+    75% {
+      transform: translateX(4px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nowhere.nudged :global(.banner) {
+      animation: none;
+    }
   }
   .foot {
     border-top: 1px solid var(--line);

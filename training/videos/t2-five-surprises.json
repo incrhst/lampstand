@@ -3,7 +3,7 @@
  "scenes": [
   {
    "type": "title",
-   "kicker": "Training 2",
+   "kicker": "Training Session 2",
    "heading": "Five surprises",
    "sub": "Every Sunday has one. Here is the move for each.",
    "say": "Every Sunday brings a surprise. Here are the five you will meet most, and the move for each.",
@@ -17,19 +17,19 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 47,
-     "y": 43,
+     "x": 28.8,
+     "y": 84.2,
      "label": "Press the verse number, or C"
     },
     {
-     "x": 47,
-     "y": 88,
-     "label": "Or click the slide"
+     "x": 10.9,
+     "y": 84.2,
+     "label": "Or click the card"
     }
    ],
-   "say": "One. The leader repeats a verse or the chorus. Press that verse's number, or C for the chorus. Or click the slide you want.",
+   "say": "One. The leader repeats a verse or the chorus. Press that verse's number, or C for the chorus. Or click the card you want.",
    "narration": "narration/t2-five-surprises/02.mp3",
-   "durationSec": 13
+   "durationSec": 11.5
   },
   {
    "type": "screenshot",
@@ -39,12 +39,12 @@
    "callouts": [
     {
      "x": 10,
-     "y": 66,
+     "y": 72.4,
      "label": "Shift+↓ to the new item"
     },
     {
-     "x": 47,
-     "y": 43,
+     "x": 10.9,
+     "y": 85,
      "label": "Enter starts it"
     }
    ],
@@ -59,8 +59,8 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 50,
-     "y": 16,
+     "x": 35,
+     "y": 15.6,
      "label": "Press /, type Rom 8:28"
     },
     {
@@ -94,14 +94,19 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 44,
-     "y": 71,
-     "label": "Full stop. Now."
+     "x": 87.1,
+     "y": 86.5,
+     "label": "Full stop, or Blank. Now."
+    },
+    {
+     "x": 87.1,
+     "y": 20.7,
+     "label": "The room sees black"
     }
    ],
-   "say": "Five. Something goes wrong. Press the full stop. The screen goes black, and you have time to think.",
+   "say": "Five. Something goes wrong. Press the full stop, or Blank. The screen goes black, and you have time to think.",
    "narration": "narration/t2-five-surprises/06.mp3",
-   "durationSec": 9
+   "durationSec": 11
   },
   {
    "type": "bullets",

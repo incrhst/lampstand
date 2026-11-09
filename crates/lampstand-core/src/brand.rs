@@ -1,6 +1,6 @@
 //! A church's brand: its name, logo, colours and font. Lampstand turns it
-//! into a starting theme (`lampstand_library::theme_from_brand`) and shows
-//! the logo when the Logo overlay is on.
+//! into a starting theme (`lampstand_library::theme_from_brand`), and the
+//! logo goes on the default idle screen and in the logo bug.
 //!
 //! The brand is one of the church's settings that follow it across its
 //! devices (`crate::church`); the theme made from it is a library document.
@@ -15,19 +15,23 @@ use crate::id::BlobHash;
 pub struct Brand {
     /// The church's name; the theme made from it is named after it.
     pub name: String,
-    /// A picture in the blob store, shown by the Logo overlay.
+    /// A picture in the blob store, shown on the default idle screen and as
+    /// the logo bug.
     pub logo: Option<BlobHash>,
-    /// The main colour: the background of the theme and of the logo screen.
+    /// The main colour: the background of the theme and of the default idle
+    /// screen.
     pub primary: Color,
     /// The colour of lyrics and scripture. `None` picks black or white,
     /// whichever reads better on `primary`.
     pub text: Option<Color>,
-    /// A third colour, for the ring drawn when there is no logo yet.
+    /// A third colour. Nothing on the screens draws it since the Logo screen
+    /// went; it is kept so a brand keeps its colours.
     pub accent: Color,
     /// A font family name. Empty means the starter theme's.
     pub font_family: String,
     /// The logo drawn small in a corner of the audience screens and the
-    /// stream, over everything but Black and the Logo screen.
+    /// stream, over everything but Black and an idle screen that is the
+    /// logo itself.
     #[serde(default)]
     pub bug: LogoBug,
 }

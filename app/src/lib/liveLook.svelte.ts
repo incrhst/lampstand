@@ -1,9 +1,9 @@
-// What the main screen shows when nothing is on air, and the church's logo
-// screen, as pictures for Present's live preview. Call from a component:
+// What the main screen shows when nothing is on air (and under Idle), and
+// the church's logo for the logo bug, as pictures for Present's live preview. Call from a component:
 // it keeps itself current with the settings and the screen.
 
 import type { LogoBug, OutputConfig } from "./api";
-import { effectiveIdle } from "./idle";
+import { effectiveIdle, idleSummary } from "./idle";
 import { loadIdlePicture, loadLogoPicture } from "./idleThumb";
 import { live } from "./state.svelte";
 import { toHex } from "./themes";
@@ -11,15 +11,18 @@ import { toHex } from "./themes";
 export interface LiveLook {
   /** A picture of the idle screen; null for the plain background. */
   idle: string | null;
-  /** The Logo screen's picture (null until a logo is chosen), background and ring colour; null with no brand. */
+  /** What the idle screen is, and whether it is a looping video (its picture is a still of it). */
+  idleInfo: { label: string; video: boolean };
+  /** The church's logo picture (null until a logo is chosen), colours and logo bug; null with no brand. */
   brand: { logo: string | null; background: string; accent: string; bug?: LogoBug } | null;
 }
 
 export function useLiveLook(output: () => OutputConfig | null, width = 640): LiveLook {
-  const look: LiveLook = $state({ idle: null, brand: null });
+  const look: LiveLook = $state({ idle: null, idleInfo: { label: "Logo", video: false }, brand: null });
 
   $effect(() => {
     const setting = effectiveIdle(output()?.idle ?? null, live.settings?.idle ?? null);
+    look.idleInfo = idleSummary(setting);
     let current = true;
     loadIdlePicture(setting, width, live.settings?.brand ?? null, live.settings?.default_theme ?? null).then((r) => {
       if (current) look.idle = r?.picture ?? null;

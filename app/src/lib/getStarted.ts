@@ -14,7 +14,7 @@ export interface Facts {
   services: { id: string; title: string; items: number }[];
   /** The operator has opened a service for live at least once. */
   triedService: boolean;
-  /** The church has saved its name, logo, colours and font (Setup › Church look). */
+  /** The church has saved its name, logo, colours and font (Settings › Logo and colours). */
   brandSet?: boolean;
 }
 
@@ -64,7 +64,7 @@ export function steps(f: Facts): Step[] {
     },
     {
       id: "look",
-      title: "Set your church's look",
+      title: "Add your logo and colours",
       hint: "Add your name, logo, colours and font. Lampstand makes a matching theme.",
       done: f.brandSet === true,
       optional: true,

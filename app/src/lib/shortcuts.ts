@@ -16,7 +16,7 @@ export interface KeyLike {
 /**
  * The screen a key press asks for, or null when it is not one of ours.
  * Mod+1 is Plan, Mod+2 is Present, and Mod+\ goes to the other one of the
- * two (from Setup, to Plan).
+ * two (from Settings, to Plan).
  */
 export function screenForKey(e: KeyLike, current: ScreenId): ScreenId | null {
   if (e.altKey || e.shiftKey || e.metaKey === e.ctrlKey) return null;
@@ -31,12 +31,53 @@ export function modLabel(platform: string): string {
   return /mac|iphone|ipad/i.test(platform) ? "⌘" : "Ctrl+";
 }
 
-/** The keys of the Present screen, for the More menu and the Help screen. */
+/** The parts of a key press's target that say whether it is typing. */
+export interface TargetLike {
+  tagName: string;
+  type?: string;
+  isContentEditable?: boolean;
+}
+
+/**
+ * True when a key press lands in a control that takes keys, so the plain
+ * keys of Present and Focus leave it alone. A switch is not: after clicking
+ * Logo bug or Safe area guide, Space must still be Next (and must not flip
+ * the switch), and the arrows, F and the jump keys must still work. A radio
+ * button is, because the arrows choose within its group.
+ */
+export function isTyping(target: TargetLike | null | undefined): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName.toUpperCase();
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag !== "INPUT") return false;
+  const type = (target.type ?? "text").toLowerCase();
+  return type !== "checkbox";
+}
+
+/** The keys of the Present screen, for the sidecard's Keys card and the Help screen. */
 export const KEYS: [string, string][] = [
-  ["← → or Space", "Next and previous"],
+  ["→ or Space · ←", "Next · previous"],
+  [",", "Idle screen"],
   [".", "Blank"],
+  [";", "Clear the text, keep the background"],
   ["1–9", "Jump to a verse"],
   ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
   ["⇧↑ ⇧↓ then Enter", "Choose an item, then start it"],
   ["/", "Quick add a song or scripture"],
+];
+
+/**
+ * The modifier chord, for power users: hold Ctrl + Alt (Ctrl + Option on a
+ * Mac) and press one key with the right hand. Holding it shows each key on
+ * its button. Every one does what a labelled button does.
+ */
+export const CHORD: [string, string][] = [
+  ["I · U · O", "Idle, Blank, Clear text"],
+  ["J · K · L", "The first three in Ready"],
+  [", · .", "Start the item before or after the one on air"],
+  ["M", "Stop the sound now"],
+  ["P", "Play the sound that waits for Play"],
+  ["/", "Add a song or reading"],
+  [";", "Stream (OBS), when it is set up"],
 ];

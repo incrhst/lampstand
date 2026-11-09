@@ -7,8 +7,12 @@ use cosmic_text::fontdb::Database;
 use cosmic_text::FontSystem;
 use lampstand_core::{FontLookup, FontMatch};
 
-/// Family used when nothing else matches.
-pub const DEFAULT_FAMILY: &str = "Noto Sans";
+/// Lampstand's default typeface: a soft, low-contrast serif that reads well
+/// from the back of a room. Also the family used when nothing else matches.
+pub const DEFAULT_FAMILY: &str = "Literata";
+
+/// The bundled sans-serif, for the generic `sans-serif` family.
+pub const SANS_FAMILY: &str = "Source Sans 3";
 
 /// Requested family (lowercase) → metric-compatible bundled family.
 const SUBSTITUTES: &[(&str, &str)] = &[
@@ -42,6 +46,8 @@ macro_rules! bundled {
 /// Regular, bold, italic and bold italic of each bundled family, as
 /// (file name, bytes).
 static BUNDLED: &[(&str, &[u8])] = bundled!(
+    "Literata",
+    "SourceSans3",
     "NotoSans",
     "NotoSerif",
     "Carlito",
@@ -57,7 +63,8 @@ pub fn bundled_font_files() -> &'static [(&'static str, &'static [u8])] {
     BUNDLED
 }
 
-/// Bundled fonts (Noto Sans and Serif, plus the metric-compatible
+/// Bundled fonts (Literata and Source Sans 3 as the defaults, Noto Sans and
+/// Serif for wide script coverage, plus the metric-compatible
 /// substitutes Carlito, Caladea, Arimo, Tinos and Cousine for Calibri,
 /// Cambria, Arial, Times New Roman and Courier New) and the system fonts.
 pub struct Fonts {
@@ -83,8 +90,8 @@ impl Fonts {
         if system_fonts {
             db.load_system_fonts();
         }
-        db.set_sans_serif_family(DEFAULT_FAMILY);
-        db.set_serif_family("Noto Serif");
+        db.set_sans_serif_family(SANS_FAMILY);
+        db.set_serif_family(DEFAULT_FAMILY);
         db.set_monospace_family("Cousine");
         let locale = sys_locale();
         Self {
@@ -137,6 +144,11 @@ mod tests {
     fn exact_match_for_bundled_family() {
         assert_eq!(Fonts::bundled_only().lookup("Carlito"), FontMatch::Exact);
         assert_eq!(Fonts::bundled_only().lookup("noto sans"), FontMatch::Exact);
+        assert_eq!(Fonts::bundled_only().lookup("literata"), FontMatch::Exact);
+        assert_eq!(
+            Fonts::bundled_only().lookup("Source Sans 3"),
+            FontMatch::Exact
+        );
     }
 
     #[test]
@@ -170,6 +182,8 @@ mod tests {
         let fonts = Fonts::bundled_only();
         assert_eq!(fonts.system.db().faces().count(), BUNDLED.len());
         for family in [
+            "Literata",
+            "Source Sans 3",
             "Noto Sans",
             "Noto Serif",
             "Carlito",

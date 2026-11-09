@@ -87,7 +87,7 @@ export const words = {
   missingHere: "This sound file is not on this device.",
   /** proposed: shown on a card that has a backing track. */
   backingTag: "Backing track",
-  /** proposed: Setup › Sound. */
+  /** proposed: Settings › Sound. */
   setupTab: "Sound",
   setupTabSubtitle: "Music and backing tracks in services",
   setupTitle: "Sound",

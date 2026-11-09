@@ -5,7 +5,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { basename, resolve, join } from "node:path";
+import { basename, resolve, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 
 const args = process.argv.slice(2);
@@ -13,6 +14,14 @@ const val = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d);
 const file = resolve(args[0]);
 const voice = val("--voice", "en-US-Chirp3-HD-Algenib");
 const rate = val("--rate", "0.9");
+// Shared pronunciation map (IPA for words the voice gets wrong, e.g. the mode "Present"). Applies to every narration.
+const pronFile = join(dirname(fileURLToPath(import.meta.url)), "..", "pronunciations.json");
+const pronIpa = JSON.parse(readFileSync(pronFile, "utf8")).ipa ?? {};
+// Only lines that use a mapped word depend on the map, so adding an entry re-voices just those lines.
+// The same whole-word, any-case match narrate.py uses, so the cache key
+// changes exactly when the voice would say a line differently.
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const pronFor = (say) => { const e = Object.entries(pronIpa).filter(([k]) => new RegExp(`(?<!\\w)${escapeRe(k)}(?!\\w)`, "i").test(say)); return e.length ? `|${JSON.stringify(e)}` : ""; };
 const slug = basename(file, ".json");
 const dir = resolve("public/narration", slug);
 mkdirSync(dir, { recursive: true });
@@ -26,10 +35,10 @@ list.scenes.forEach((s, i) => {
   if (!s.say) return;
   const name = `${String(i + 1).padStart(2, "0")}.mp3`;
   const out = join(dir, name);
-  const h = createHash("sha1").update(`${voice}|${rate}|${s.say}`).digest("hex");
+  const h = createHash("sha1").update(`${voice}|${rate}|${s.say}${pronFor(s.say)}`).digest("hex");
   if (seen[name] !== h || !existsSync(out)) {
     const tmp = join(tmpdir(), `narrate-${slug}-${name}`);
-    execFileSync("uv", ["run", "--with", "google-cloud-texttospeech>=2.38", "python", join(homedir(), ".claude/skills/narrate/narrate.py"), "--text", s.say, "--voice", voice, "--rate", rate, "--out", tmp], { cwd: tmpdir(), stdio: ["ignore", "ignore", "inherit"] });
+    execFileSync("uv", ["run", "--with", "google-cloud-texttospeech>=2.38", "python", join(homedir(), ".claude/skills/narrate/narrate.py"), "--text", s.say, "--voice", voice, "--rate", rate, "--pronunciations", pronFile, "--out", tmp], { cwd: tmpdir(), stdio: ["ignore", "inherit", "inherit"] });
     copyFileSync(tmp, out);
     seen[name] = h;
   }

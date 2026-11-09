@@ -29,7 +29,7 @@
 mod obs;
 pub mod remote;
 pub use obs::SceneHub;
-pub use remote::RemoteHub;
+pub use remote::{RemoteHub, RemoteKind};
 
 use std::io;
 use std::net::SocketAddr;

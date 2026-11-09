@@ -1,4 +1,4 @@
-// What Setup › This computer says. Two switches, both off until somebody
+// What Settings › This computer says. Two switches, both off until somebody
 // turns them on, because they are the only things Lampstand asks of the
 // computer itself (docs/PRD.md, "The main machine may be someone's own
 // laptop"). Kept free of Svelte so node can read it.

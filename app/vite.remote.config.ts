@@ -5,6 +5,8 @@ import { REMOTE_NAME } from "./src/lib/product.ts";
 
 // Lampstand Remote's page (T100): a second entry, built into the server
 // crate and checked in there (as `web/obs/dist` is), so cargo needs no Node.
+// `npm run build` and `npm run dev` rebuild it, so every build of the app
+// embeds a page built from the code it ships with.
 // Fixed file names, because the server embeds them by name; small assets
 // (the keep-awake video) are inlined so there is nothing else to serve.
 export default defineConfig({

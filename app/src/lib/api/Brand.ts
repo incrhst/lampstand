@@ -9,11 +9,13 @@ export type Brand = {
  */
 name: string, 
 /**
- * A picture in the blob store, shown by the Logo overlay.
+ * A picture in the blob store, shown on the default idle screen and as
+ * the logo bug.
  */
 logo: BlobHash | null, 
 /**
- * The main colour: the background of the theme and of the logo screen.
+ * The main colour: the background of the theme and of the default idle
+ * screen.
  */
 primary: Color, 
 /**
@@ -22,7 +24,8 @@ primary: Color,
  */
 text: Color | null, 
 /**
- * A third colour, for the ring drawn when there is no logo yet.
+ * A third colour. Nothing on the screens draws it since the Logo screen
+ * went; it is kept so a brand keeps its colours.
  */
 accent: Color, 
 /**
@@ -31,6 +34,7 @@ accent: Color,
 font_family: string, 
 /**
  * The logo drawn small in a corner of the audience screens and the
- * stream, over everything but Black and the Logo screen.
+ * stream, over everything but Black and an idle screen that is the
+ * logo itself.
  */
 bug: LogoBug, };
