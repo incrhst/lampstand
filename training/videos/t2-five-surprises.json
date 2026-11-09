@@ -18,12 +18,12 @@
    "callouts": [
     {
      "x": 28.8,
-     "y": 69.7,
+     "y": 84.2,
      "label": "Press the verse number, or C"
     },
     {
      "x": 10.9,
-     "y": 69.7,
+     "y": 84.2,
      "label": "Or click the card"
     }
    ],
@@ -38,13 +38,13 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 10.9,
-     "y": 85.0,
+     "x": 10,
+     "y": 72.4,
      "label": "Shift+↓ to the new item"
     },
     {
-     "x": 9,
-     "y": 72.5,
+     "x": 10.9,
+     "y": 85,
      "label": "Enter starts it"
     }
    ],
@@ -94,19 +94,19 @@
    "tone": "screen",
    "callouts": [
     {
-     "x": 95.9,
-     "y": 38.6,
-     "label": "Full stop. Now."
+     "x": 87.1,
+     "y": 86.5,
+     "label": "Full stop, or Blank. Now."
     },
     {
      "x": 87.1,
-     "y": 20.2,
+     "y": 20.7,
      "label": "The room sees black"
     }
    ],
-   "say": "Five. Something goes wrong. Press the full stop. The screen goes black, and you have time to think.",
+   "say": "Five. Something goes wrong. Press the full stop, or Blank. The screen goes black, and you have time to think.",
    "narration": "narration/t2-five-surprises/06.mp3",
-   "durationSec": 9
+   "durationSec": 11
   },
   {
    "type": "bullets",

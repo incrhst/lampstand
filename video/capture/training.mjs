@@ -5,7 +5,7 @@
 // Each one is a scripted run of Present or Plan on the mock's training
 // services, so a UI change is a retake, not a reshoot.
 import { chromium } from "playwright-core";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 const APP = process.env.APP ?? "http://localhost:1431/";
 const OUT = new URL("../public/shots/training/", import.meta.url).pathname;
@@ -25,12 +25,50 @@ async function shot(name, script) {
   p.on("pageerror", (e) => console.log(name, "pageerror", e.message));
   await p.goto(APP);
   await p.waitForTimeout(700);
+  // "Start here" points at the Plan | Present tabs at every launch; close it.
+  const point = p.getByRole("button", { name: "Close Start here" });
+  if (await point.count()) await point.click();
   await script(p);
   await p.waitForTimeout(500);
   await p.screenshot({ path: `${OUT}${name}.png` });
+  // Where the controls a callout points at sit, as percentages of the
+  // picture, so the video scripts' callouts can follow a layout change.
+  const boxes = await p.evaluate((marks) => {
+    const out = {};
+    for (const [k, sel] of Object.entries(marks)) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width) continue;
+      out[k] = { x: +(((r.left + r.width / 2) / innerWidth) * 100).toFixed(1), y: +(((r.top + r.height / 2) / innerHeight) * 100).toFixed(1) };
+    }
+    return out;
+  }, MARKS);
+  writeFileSync(`${OUT}${name}.boxes.json`, JSON.stringify(boxes, null, 1));
   console.log("shot", name);
   await ctx.close();
 }
+
+const MARKS = {
+  monitor: ".col-onair .monitor-screen",
+  nextLine: ".look-next",
+  steps: ".wall-steps-head",
+  check: ".col-onair .check",
+  size: ".size-toggle",
+  previous: ".col-press .transport > :first-child",
+  next: ".col-press .transport > :last-child",
+  idle: ".screen-pick:not(.blank):not(.clear-text)",
+  blank: ".screen-pick.blank",
+  clear: ".screen-pick.clear-text",
+  addReady: ".add-ready",
+  press: ".col-press",
+  live: ".slide.live",
+  nextCard: ".slide.next",
+  viewed: ".wall-row.viewed .wall-label",
+  notes: ".wall-notes",
+  add: ".wall-add",
+  quickAdd: "[aria-modal='true'] input",
+};
 
 const present = async (p) => {
   await p.getByRole("button", { name: "Present", exact: true }).first().click();
@@ -65,17 +103,19 @@ const shots = {
   },
   // Training Session 1, Amazing Grace on air.
   "song": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); },
-  // The same with Ready folded to its one-line bar at the bottom of the right column.
-  "folded": async (p) => {
+  // The same: the right column, look up at On air, press down below it.
+  "right": async (p) => { await openTraining(p, "Training Session 1: Run a service"); await go(p, 3, 1); },
+  // The same with the right column narrower, so the slides get the room.
+  "narrow": async (p) => {
     await openTraining(p, "Training Session 1: Run a service");
     await go(p, 3, 1);
-    await p.locator("#ready-tray").getByRole("button", { expanded: true }).click();
+    await p.getByRole("button", { name: "Narrower" }).click();
   },
   // The same with Idle chosen: the idle screen is up, the service stays open.
   "idle": async (p) => {
     await openTraining(p, "Training Session 1: Run a service");
     await go(p, 3, 1);
-    // Idle is a tile in Ready.
+    // Idle is the first tile under Next.
     await p.locator("#ready-tray .screen-pick").filter({ hasText: "Idle" }).first().click();
   },
   // Training Session 1, the sermon deck one click into slide 2's builds: the builds panel shows.

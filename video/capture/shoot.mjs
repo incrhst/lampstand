@@ -33,20 +33,37 @@ async function shot(name, scene, script, storage = {}) {
   await ctx.close();
 }
 
+/** Plan's services list is a page inside Library & controls; choose the Sunday service there. */
+const openSunday = async (p) => {
+  await p.locator("#library-and-controls").getByRole("button", { name: /^Services/ }).first().click();
+  await p.waitForTimeout(300);
+  // The mock's Sunday service has a fixed date, so it may be among the older ones.
+  const older = p.getByRole("button", { name: /^Show \d+ older/ }).locator("visible=true");
+  if (await older.count()) await older.first().click();
+  await p.getByText("Sunday service").locator("visible=true").first().click();
+  await p.waitForTimeout(300);
+};
+
 const only = process.argv[2];
 const shots = {
   "1-getstarted": ["fresh", async () => {}],
-  "2-plan": ["default", async (p) => { await p.getByText("Sunday service").first().click(); }],
+  "2-plan": ["default", async (p) => { await openSunday(p); }],
   "3-quickadd": ["default", async (p) => {
-    await p.getByText("Sunday service").first().click();
+    await openSunday(p);
     await p.keyboard.press("/"); await p.keyboard.type("john 3:16", { delay: 20 });
   }],
   "4-decks": ["default", async (p) => {
-    await p.getByText("Sunday service").first().click();
-    await p.getByRole("button", { name: "Decks" }).click();
+    await openSunday(p);
+    // The decks are a filter in the Library, a page inside Library & controls.
+    await p.locator("#library-and-controls").getByRole("button", { name: "Back", exact: true }).first().click();
+    await p.waitForTimeout(200);
+    await p.locator("#library-and-controls").getByText("Browse the library").first().click();
+    await p.waitForTimeout(300);
+    await p.getByRole("button", { name: /^Decks/ }).first().click();
   }],
   "5-present": ["default", async (p) => {
-    await p.getByText("Sunday service").first().click();
+    await p.evaluate(() => window.__obsQuiet());
+    await openSunday(p);
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400);
     await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
@@ -54,30 +71,35 @@ const shots = {
   }],
   // The sermon deck one click into slide 2's builds: the builds panel shows.
   "5b-present-deck": ["default", async (p) => {
-    await p.getByText("Sunday service").first().click();
+    await p.evaluate(() => window.__obsQuiet());
+    await openSunday(p);
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400);
     for (let i = 0; i < 4; i++) await p.keyboard.press("Shift+ArrowDown");
     await p.keyboard.press("Enter"); await p.waitForTimeout(200);
     await p.keyboard.press(" "); await p.keyboard.press(" ");
   }],
-  // There is no Focus (F) any more: this shot (the hero tour's "focus") has Ready folded to one line.
-  "5c-focus": ["default", async (p) => {
-    await p.getByText("Sunday service").first().click();
+  // Look up, press down: a song on air, one item added to Ready, Idle, Blank and Clear text under Next.
+  "5c-press": ["default", async (p) => {
+    await p.evaluate(() => window.__obsQuiet());
+    await openSunday(p);
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400);
     await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
-    await p.waitForTimeout(200); await p.keyboard.press(" "); await p.keyboard.press(" ");
-    await p.locator("#ready-tray").getByRole("button", { expanded: true }).click();
+    await p.waitForTimeout(200); await p.keyboard.press(" ");
+    // Add John 3:16 to Ready from its row on the wall.
+    await p.locator(".wall-row").filter({ hasText: "John 3:16" }).locator(".pin").first().click();
+    await p.mouse.move(0, 0);
   }],
-  // Sound: Next has started Amazing Grace and its backing track; the Sound box open, then folded.
-  ...Object.fromEntries([["5d-sound", "1"], ["5e-sound-folded", "0"]].map(([n, open]) => [n, ["default", async (p) => {
+  // Sound: Next has started Amazing Grace and its backing track; Stop the sound now sits under the tiles.
+  "5d-sound": ["default", async (p) => {
+    await p.evaluate(() => window.__obsQuiet());
     await p.evaluate(() => window.__soundOn());
-    await p.getByText("Sunday service").first().click();
+    await openSunday(p);
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400);
     await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
-  }, { "lampstand.sound.open.during": open }]])),
+  }],
   "6-setup": ["default", async (p) => { await p.getByRole("button", { name: "Settings" }).first().click(); }],
   "7-obs": ["default", async (p) => {
     await p.evaluate(() => window.__obsOn());
@@ -85,7 +107,7 @@ const shots = {
   }],
   "8-present-obs": ["default", async (p) => {
     await p.evaluate(() => window.__obsOn());
-    await p.getByText("Sunday service").first().click();
+    await openSunday(p);
     await p.getByRole("button", { name: /Open for live/ }).click();
     await p.waitForTimeout(400); await p.keyboard.press("Shift+ArrowDown"); await p.keyboard.press("Enter");
   }],

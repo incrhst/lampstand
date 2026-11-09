@@ -131,7 +131,7 @@ Nothing in CI can listen. Before a release that changes sound, on a Mac and on a
 
 1. List the outputs: `cargo run -p lampstand-media --example play_check -- --list` (the names are what Settings › Sound shows).
 2. Play a music file through one: `cargo run -p lampstand-media --example play_check -- path/to/music.mp3 "Output name"`. It plays through the same player the app uses, and prints what it does and when. You should hear the music, a gap (pause), the music again (resume), a smooth fade over a second, then a short burst cut off at once (the panic stop), with no clicks, in the output you chose and no other.
-3. In the app, with a service that has a backing track: Plan › add sound, Present › Sound box: Play, Pause, Resume, Fade out and "Stop the sound now"; then choose another output in Settings › Sound while it plays (it stops) and play again.
+3. In the app, with a service that has a backing track: Plan › add sound, Present › Play on the item, then in the press block Pause, Resume, Fade out and "Stop the sound now"; then choose another output in Settings › Sound while it plays (it stops) and play again.
 
 On a Linux container with a null sink the same example was recorded and measured for 0.8.0: pitch within 1 Hz for mp3, flac, ogg, m4a and a mono 22 kHz wav; pause and resume exactly where asked; a linear one-second fade; no sample-to-sample jumps larger than the tone's own slope at pause, resume or panic.
 

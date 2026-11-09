@@ -481,6 +481,8 @@ export const obsOn = () => ({ ...obsOff(), connection: { Connected: { obs_versio
 };
 (window as any).__soundOn = () => { soundOn = true; sunday.items.i3.backing = BACKING; };
 (window as any).__obsOn = () => { state.obs = obsOn(); emit({ type: "Obs", data: state.obs }); };
+// A church that does not stream: OBS is not set up, so Present shows nothing about it.
+(window as any).__obsQuiet = () => { state.obs = { ...obsOff(), relevant: false }; emit({ type: "Obs", data: state.obs }); };
 
 export async function invoke(cmd: string, args: any) {
   if (cmd !== "api") throw new Error("mock: " + cmd);

@@ -252,18 +252,17 @@ and no desktop showing. Point at each part of the screen as we go."""},
         "The wall: every slide of the service",
         "Red LIVE: what the room sees now",
         "Gold NEXT: the next slide",
-        "On the right: On air, then Add, Sound and Check, then Ready",
+        "On the right: look up at On air, press down below it",
     ], "notes": """
 Trainer: Point at each one on the real screen as it appears.
 The wall is every slide, item by item, in order. The red LIVE card is on air, and the gold
 NEXT card is the next slide. On a slide with builds, Space plays the next build first.
-The notes, where you are reading this, sit beside the item on air. On the right, at the top,
-is On air: a picture of the main screen, then Previous, Next and Blank. Under it are three rows:
-Add finds a song or reading to add next, Sound has Stop the sound now, and Check says All set
-when the screen is on (or the one thing to fix, with its button). At the bottom right is Ready:
-Blank, Idle and Clear text, one tap away, and anything added to Ready. Adding to Ready is
-optional; most services need nothing added. Ready's Fold makes it one line; Open brings it back,
-and it opens again with each service."""},
+The notes, where you are reading this, sit beside the item on air. On the right, look up:
+On air is a picture of what the room sees, what Next brings, and All set when the screen is on
+(or the one thing to fix, with its button). Press down: below it is everything you press.
+Previous and Next, then Idle, Blank and Clear text, one tap away, then anything added to Ready.
+Adding to Ready is optional; most services need nothing added. While music plays, Stop the
+sound now is there too. To add a song or reading, use Add at the end of the service."""},
     {"kind": "quote", "text": "Nothing reaches the screen until you send it.", "source": "The one rule",
      "fade": True, "notes": """
 Trainer: Choosing an item with Shift and Down only marks it for you. The room sees nothing new. It goes on air when you
@@ -272,9 +271,11 @@ start it with Enter, or click one of its cards. Space always moves on from what 
         ("Space  →", "Next slide"),
         ("←", "Previous slide"),
         (".", "Blank the screen, and back"),
+        (",  ;", "Idle screen · clear the words"),
         ("⇧↓  Enter", "Choose the next item, then start it"),
     ], "notes": """
-Trainer: These four are enough to run a whole service. A presenter clicker sends the same
+Trainer: The first four are enough to run a whole service; comma and semicolon sit beside the
+full stop, in the same order as the Idle, Blank and Clear text tiles. A presenter clicker sends the same
 keys. The next video shows them in action."""},
 ])
 
