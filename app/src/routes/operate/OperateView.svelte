@@ -622,18 +622,18 @@
 {/snippet}
 
 {#snippet readyBody()}
-    <!-- Blank and Idle as pictures of what the screens will show; a
-         looping video idle screen says so, since its picture is a still. -->
+    <!-- Idle, Blank and Clear text as pictures of what the screens will
+         show, in the order of their keys on the keyboard: , . ; -->
     <div class="ready-screens">
-      <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
-        <SlidePreview overlay="Black" size="small" />
-        <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
-      </button>
       <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide (,)">
         <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
         <span class="screen-caption">
           <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong><kbd>,</kbd>
         </span>
+      </button>
+      <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
+        <SlidePreview overlay="Black" size="small" />
+        <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
       </button>
       <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide (;)">
         <span class="clear-pic" aria-hidden="true"></span>
