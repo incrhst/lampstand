@@ -4,32 +4,32 @@
     {
       "id": "t0-welcome",
       "file": "t0-welcome.mp4",
-      "size": 1546520,
-      "blake3": "9b263dfa8ac12a6ef23bb0a03fad7155ddbebad559f2a2f5eb074412bacdb4c8"
+      "size": 1529782,
+      "blake3": "d6b892146d295296a4edbea63faaa7874fe7067dc6a11723a6000919e6794917"
     },
     {
       "id": "t1-blank-idle-clear",
       "file": "t1-blank-idle-clear.mp4",
-      "size": 1108659,
-      "blake3": "fc660eb84e6e4a61fe76e95241437e1d47ad9bd7a3bc9a5338ea04063067a01d"
+      "size": 1279397,
+      "blake3": "631f8fd2020c16a5eaab2690afed1d538dc91a2db31e09d78b3ae31a6f584e8d"
     },
     {
       "id": "t1-going-live",
       "file": "t1-going-live.mp4",
-      "size": 2060672,
-      "blake3": "27c0c0d08bd5cd4515fee70f720939e4d50607754fc05fe8da91d4ad289fca0f"
+      "size": 2204167,
+      "blake3": "42a4aa936fdac661d88d4eb9a6249b3c3a31584679af90239ef4636d2cbd4117"
     },
     {
       "id": "t1-welcome",
       "file": "t1-welcome.mp4",
-      "size": 699813,
-      "blake3": "8cdef02b83ab9622f4b10a4a429ef8711af96790aa750ddcc3079ce521b2aa7d"
+      "size": 721833,
+      "blake3": "a43cc79fdafd2d2452efff4bfd40a8511456bb537a22407a5e88cea0ef25e60b"
     },
     {
       "id": "t2-five-surprises",
       "file": "t2-five-surprises.mp4",
-      "size": 1600183,
-      "blake3": "ce71942a77b9175e5ddf357e48762f15d379dfcc6f0dc2db71a5398a8fba7910"
+      "size": 1604196,
+      "blake3": "099adea1ed263a33664e2ca2ff9db7e61c109a987ee5f45f3b4ef9d1d8a4a387"
     }
   ]
 }
