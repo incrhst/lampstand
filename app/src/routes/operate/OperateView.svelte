@@ -328,14 +328,21 @@
    * until the next service is opened; nothing is remembered between them.
    */
   let readyOpen = $state(true);
+  /** On air's drawer, at the top right: open whenever a service is opened, like Ready. */
+  let onAirOpen = $state(true);
   let readyFor: string | null = null;
   $effect(() => {
     const service = live.loaded?.service ?? null;
-    if (service && service !== readyFor) readyOpen = true;
+    if (service && service !== readyFor) {
+      readyOpen = true;
+      onAirOpen = true;
+    }
     readyFor = service;
   });
-  /** How wide Library & controls is while shown, so Ready's tray opens beside it and never covers On air. */
-  let sideWidth = $state(0);
+  /** The drawers' sizes, so the sidebar's cards and the wall keep clear of them. */
+  let onAirH = $state(0);
+  let readyH = $state(0);
+  let drawerW = $state(0);
   function setReadyOpen(open: boolean) {
     readyOpen = open;
   }
@@ -683,6 +690,57 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet onAirBody()}
+    {#if previewSize !== "off"}
+    <figure class="monitor">
+      <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
+        <SlidePreview
+          lines={live.shownSlide?.lines ?? []}
+          footer={live.shownSlide?.footer ?? null}
+          image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
+          overlay={live.overlay}
+          safeArea={output?.safe_area}
+          {showGuide}
+          size="small"
+          idle={live.idle || live.overlay === "Idle" ? look.idle : null}
+          idleVideo={look.idleInfo.video}
+          brand={look.brand}
+          empty="Nothing on air"
+        />
+        {#if loopSeconds}<LoopProgress seconds={loopSeconds} slideKey={loopKey} />{/if}
+      </div>
+    </figure>
+    {/if}
+    <div class="wall-now">
+      <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
+      <span class="muted wall-where">
+        {#if live.overlay === "Idle" && liveItem && live.live}
+          {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
+        {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+      </span>
+      {#if backLine && live.overlay !== "Idle"}<span class="muted wall-back"><Icon name="prev" size={12} />{backLine}</span>{/if}
+    </div>
+    <div class="transport">
+      <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
+      <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
+      <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+    </div>
+    {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
+      {@const left = live.liveSlide.steps - live.live.step}
+      <section class="wall-steps" aria-label="Builds on this slide">
+        <p class="wall-steps-head muted">{#if autoBuilding}{left === 0 ? "Fully built. Next goes back to the service." : `${left} ${left === 1 ? "build" : "builds"} left, playing by themselves`}{:else}{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}{/if}</p>
+        <figure>
+          {#if clickNext}
+            <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
+          {:else}
+            <SlidePreview empty="End of service" size="small" />
+          {/if}
+          <figcaption class="muted">Next click</figcaption>
+        </figure>
+      </section>
+    {/if}
+{/snippet}
+
 {#snippet readyBody()}
     <!-- Blank and Idle as pictures of what the screens will show; a
          looping video idle screen says so, since its picture is a still. -->
@@ -879,7 +937,7 @@
            fold; F or its Hide button hides it, leaving a pill with the panic controls. -->
       <section class="pane wall-pane" aria-label="The whole service">
         {#if live.focus}
-          <div class="focus-pill" role="group" aria-label="Library and controls are hidden">
+          <div class="focus-pill" role="group" aria-label="Library and controls are hidden" style:right={live.loaded && onAirOpen ? `${drawerW + 20}px` : null}>
             <span class="state" role="status"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
             {#if liveItem && live.live}<span class="muted focus-where">{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}</span>{/if}
             <!-- Labelled controls, so Focus never relies on keys alone; the
@@ -892,7 +950,7 @@
             <Button size="small" shortcut="F" onclick={() => setFocus(false)} title="Show the Library and the controls again (F or Esc)">Show<span class="side-what"> library &amp; controls</span></Button>
           </div>
         {/if}
-        <div class="wall-body">
+        <div class="wall-body" style:padding-right={live.focus && live.loaded && (onAirOpen || readyOpen) ? `${drawerW + 20}px` : null}>
           {#each groups as group (group.section?.header ?? "ungrouped")}
             {@const section = group.section}
             <section class="wall-group" class:looping={!!section?.seconds} aria-label={section?.title}>
@@ -1000,59 +1058,9 @@
              Narrow, On air stands on its own beside a column of the rest
              (Sound first) that scrolls, so Previous, Next, Blank and Stop
              the sound now always stay in view. -->
-        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="Library and controls" bind:offsetWidth={sideWidth}>
-          <div class="side-onair">
-            <SideCard title="On air">
-              {#if previewSize !== "off"}
-              <figure class="monitor">
-                <div class="monitor-screen" class:on={live.overlay === "None" && !!live.live} role="img" aria-label="What {output?.name ?? 'the main screen'} shows">
-                  <SlidePreview
-                    lines={live.shownSlide?.lines ?? []}
-                    footer={live.shownSlide?.footer ?? null}
-                    image={live.shown ? thumbFor(live.shown.item, live.shown.slide, live.shown.step, liveWidth) : null}
-                    overlay={live.overlay}
-                    safeArea={output?.safe_area}
-                    {showGuide}
-                    size="small"
-                    idle={live.idle || live.overlay === "Idle" ? look.idle : null}
-                    idleVideo={look.idleInfo.video}
-                    brand={look.brand}
-                    empty="Nothing on air"
-                  />
-                  {#if loopSeconds}<LoopProgress seconds={loopSeconds} slideKey={loopKey} />{/if}
-                </div>
-              </figure>
-              {/if}
-              <div class="wall-now">
-                <span class="state"><Dot tone={live.overlay === "None" && live.live ? "live" : "neutral"} size={8} />{stateLabel[live.overlay]}</span>
-                <span class="muted wall-where">
-                  {#if live.overlay === "Idle" && liveItem && live.live}
-                    {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
-                  {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
-                </span>
-                {#if backLine && live.overlay !== "Idle"}<span class="muted wall-back"><Icon name="prev" size={12} />{backLine}</span>{/if}
-              </div>
-              <div class="transport">
-                <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
-                <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
-                <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
-              </div>
-              {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
-                {@const left = live.liveSlide.steps - live.live.step}
-                <section class="wall-steps" aria-label="Builds on this slide">
-                  <p class="wall-steps-head muted">{#if autoBuilding}{left === 0 ? "Fully built. Next goes back to the service." : `${left} ${left === 1 ? "build" : "builds"} left, playing by themselves`}{:else}{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}{/if}</p>
-                  <figure>
-                    {#if clickNext}
-                      <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
-                    {:else}
-                      <SlidePreview empty="End of service" size="small" />
-                    {/if}
-                    <figcaption class="muted">Next click</figcaption>
-                  </figure>
-                </section>
-              {/if}
-            </SideCard>
-          </div>
+        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="Library and controls"
+          style:padding-top={live.loaded ? (onAirOpen ? `${onAirH + 12}px` : "3.25rem") : null}
+          style:padding-bottom={live.loaded && readyOpen ? `${readyH + 16}px` : null}>
 
           <div class="side-rest">
             <!-- Library on top, then Controls, as in Plan. -->
@@ -1172,24 +1180,32 @@
       </section>
     </div>
     {#if live.loaded}
-      <!-- Ready: its own button at the bottom right, outside Library &
-           controls, so it never scrolls away or hides with F. Its tray
-           stays open until closed, so each tile is one tap away. -->
-      <div class="ready-fab" class:open={readyOpen}>
-        {#if readyOpen}
-          <section id="ready-tray" class="ready-tray" aria-label="Ready" style:margin-right={!live.focus && sideWidth > 0 ? `${sideWidth}px` : null}>
-            <header class="ready-tray-head">
-              <strong>Ready</strong>
-              <span class="muted ready-tray-say">One tap during the service. Next comes back to the service.</span>
-              <button type="button" class="ready-tray-close" onclick={() => setReadyOpen(false)} title="Close Ready (it stays at the bottom right)" aria-label="Close Ready"><Icon name="x" size={14} /></button>
-            </header>
-            <div class="ready-tray-body">{@render readyBody()}</div>
-          </section>
-        {/if}
-        <button type="button" class="ready-fab-button" class:on={readyOpen} aria-expanded={readyOpen} aria-controls="ready-tray" onclick={() => setReadyOpen(!readyOpen)} title={readyOpen ? "Close Ready" : "Open Ready: Blank, Idle and what you added, one tap away"}>
-          <Icon name="star" size={16} />Ready{#if ready.length > 0}<span class="ready-fab-count num">{ready.length}</span>{/if}
-        </button>
-      </div>
+      <!-- On air at the top right and Ready at the bottom right, each a
+           drawer fixed to the right edge: they never scroll and never hide
+           with F. A drawer slides away to the right, leaving a tab to bring
+           it back. With Library & controls shown, its other cards scroll
+           between them. -->
+      <section class="drawer drawer-top" class:closed={!onAirOpen} class:large={previewSize === "large"} aria-label="On air" inert={!onAirOpen} bind:offsetHeight={onAirH} bind:offsetWidth={drawerW}>
+        <header class="drawer-head">
+          <strong>On air</strong>
+          <button type="button" class="drawer-hide" onclick={() => (onAirOpen = false)} title="Slide On air away to the right" aria-label="Slide On air away"><Icon name="next" size={14} /></button>
+        </header>
+        <div class="drawer-body">{@render onAirBody()}</div>
+      </section>
+      {#if !onAirOpen}
+        <button type="button" class="drawer-tab drawer-tab-top" onclick={() => (onAirOpen = true)} title="Bring back On air"><Icon name="prev" size={13} />On air</button>
+      {/if}
+      <section id="ready-tray" class="drawer drawer-bottom" class:closed={!readyOpen} class:large={previewSize === "large"} aria-label="Ready" inert={!readyOpen} bind:offsetHeight={readyH}>
+        <header class="drawer-head">
+          <strong>Ready</strong>
+          <span class="muted drawer-say">One tap during the service. Next comes back to the service.</span>
+          <button type="button" class="drawer-hide" onclick={() => setReadyOpen(false)} title="Slide Ready away to the right" aria-label="Slide Ready away"><Icon name="next" size={14} /></button>
+        </header>
+        <div class="drawer-body">{@render readyBody()}</div>
+      </section>
+      {#if !readyOpen}
+        <button type="button" class="drawer-tab drawer-tab-bottom" onclick={() => setReadyOpen(true)} aria-controls="ready-tray" title="Bring back Ready: Blank, Idle and what you added"><Icon name="prev" size={13} /><Icon name="star" size={13} />Ready{#if ready.length > 0}<span class="drawer-count num">{ready.length}</span>{/if}</button>
+      {/if}
     {/if}
   </div>
 {/if}
@@ -1279,6 +1295,7 @@
     font-size: 0.875rem;
   }
   .operate {
+    position: relative;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -1578,93 +1595,129 @@
     position: relative;
     flex-direction: row;
   }
-  .ready-fab {
-    position: fixed;
-    right: 1rem;
-    bottom: 2.75rem;
-    z-index: 30;
+  /* On air and Ready: drawers fixed to the right edge of Present. */
+  .drawer {
+    position: absolute;
+    right: 0;
+    z-index: 6;
+    width: 21rem;
+    max-width: 92vw;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 0.5rem;
-    pointer-events: none;
+    background: var(--canvas);
+    border-left: 1px solid var(--line);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+    transition:
+      transform 0.25s ease,
+      visibility 0.25s;
   }
-  .ready-fab > * {
-    pointer-events: auto;
+  @media (min-width: 1200px) {
+    .drawer.large {
+      width: 32rem;
+    }
   }
-  .ready-fab-button {
-    font: inherit;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.6rem 1rem;
-    border-radius: 999px;
-    color: var(--text);
-    background: var(--raised);
-    border: 1px solid var(--gold);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-    cursor: pointer;
+  .drawer.closed {
+    transform: translateX(105%);
+    visibility: hidden;
   }
-  .ready-fab-button.on,
-  .ready-fab-button:hover {
-    background: var(--gold-soft);
+  .drawer-top {
+    top: 0;
+    max-height: 60%;
+    border-bottom: 1px solid var(--line);
+    border-bottom-left-radius: var(--radius-lg);
   }
-  .ready-fab-count {
-    min-width: 1.4rem;
-    padding: 0 0.35rem;
-    border-radius: 999px;
-    background: var(--gold);
-    color: var(--canvas);
-    font-size: 0.8125rem;
-    text-align: center;
+  .drawer-bottom {
+    bottom: 0;
+    max-height: 45%;
+    border-top: 1px solid var(--line);
+    border-top-left-radius: var(--radius-lg);
   }
-  .ready-tray {
-    width: min(22rem, calc(100vw - 2rem));
-    max-height: min(32rem, 62vh);
-    display: flex;
-    flex-direction: column;
-    background: var(--panel);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  }
-  .ready-tray-head {
+  .drawer-head {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
-    padding: 0.6rem 0.75rem 0.4rem 1rem;
-    border-bottom: 1px solid var(--line);
+    padding: 0.6rem 0.75rem 0.3rem 1rem;
   }
-  .ready-tray-say {
+  .drawer-say {
     flex: 1;
     font-size: 0.75rem;
   }
-  .ready-tray-close {
+  .drawer-head strong {
+    flex-shrink: 0;
+  }
+  .drawer-top .drawer-head strong {
+    flex: 1;
+  }
+  .drawer-hide {
     align-self: center;
     font: inherit;
+    display: inline-flex;
     color: var(--muted);
     background: none;
-    border: none;
-    padding: 0.2rem;
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.3rem;
     border-radius: var(--radius);
     cursor: pointer;
   }
-  .ready-tray-close:hover {
+  .drawer-hide:hover {
     color: var(--text);
+    border-color: var(--gold-hover);
   }
-  .ready-tray-body {
+  .drawer-body {
+    min-height: 0;
     overflow-y: auto;
-    padding: 0.75rem 1rem;
+    padding: 0.2rem 1rem 0.75rem;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
   }
-  .ready-tray-body .ready-empty {
+  .drawer-body .ready-empty {
     display: block;
     margin: 0;
     font-size: 0.8125rem;
+  }
+  /* A slid-away drawer leaves a labelled tab on the edge to bring it back. */
+  .drawer-tab {
+    position: absolute;
+    right: 0;
+    z-index: 6;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.45rem 0.8rem 0.45rem 0.6rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--gold);
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+  }
+  .drawer-tab:hover {
+    background: var(--gold-soft);
+  }
+  .drawer-tab-top {
+    top: 0.75rem;
+  }
+  .drawer-tab-bottom {
+    bottom: 0.75rem;
+  }
+  .drawer-count {
+    min-width: 1.3rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: var(--gold);
+    color: var(--canvas);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer {
+      transition: none;
+    }
   }
   .sidecard {
     flex: 0 0 21rem;
@@ -1681,16 +1734,6 @@
   @media (min-width: 1200px) {
     .sidecard.large-preview {
       flex-basis: 32rem;
-    }
-    /* It stays at the top right while the cards below it scroll. */
-    .sidecard.large-preview .side-onair {
-      display: block;
-      position: sticky;
-      top: -0.75rem;
-      z-index: 2;
-      padding-top: 0.75rem;
-      margin-top: -0.75rem;
-      background: var(--canvas);
     }
   }
   .preview-size {
