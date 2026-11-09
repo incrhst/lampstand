@@ -7,6 +7,7 @@ export type PreviewSize = "small" | "large" | "off";
 
 const PREVIEW_KEY = "lampstand.present.preview";
 const GUIDE_KEY = "lampstand.present.safeAreaGuide";
+const NARROW_KEY = "lampstand.present.narrow";
 
 export const previewSizes = [
   { id: "off", label: "Off" },
@@ -44,6 +45,23 @@ export function loadSafeAreaGuide(): boolean {
 export function saveSafeAreaGuide(on: boolean) {
   try {
     globalThis.localStorage?.setItem(GUIDE_KEY, on ? "1" : "0");
+  } catch {
+    // Not remembered: it still applies until Lampstand is closed.
+  }
+}
+
+/** Whether Present's right column is the narrower one: wider unless chosen. */
+export function loadNarrow(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(NARROW_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveNarrow(on: boolean) {
+  try {
+    globalThis.localStorage?.setItem(NARROW_KEY, on ? "1" : "0");
   } catch {
     // Not remembered: it still applies until Lampstand is closed.
   }
