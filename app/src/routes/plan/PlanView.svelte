@@ -86,7 +86,6 @@
     // The search box on the front page opens the Library ready to type.
     if (to === "library") tick().then(() => document.querySelector<HTMLInputElement>('.library-slot input[aria-label="Search the library"]')?.focus());
   }
-  const hideSide = () => (live.focus = true);
   const back = () => (page = "front");
   function sideKeys(e: KeyboardEvent) {
     if (e.key !== "Escape" || focus || page === "front" || e.defaultPrevented) return;
@@ -180,7 +179,8 @@
       }
     })(),
   );
-  let guideNew = $derived(!madeService && ownServices.every((s) => s.title === WELCOME_TITLE));
+  // One "Start here" at a time: the tabs' arrow at launch comes first.
+  let guideNew = $derived(!madeService && !live.pointTabs && ownServices.every((s) => s.title === WELCOME_TITLE));
   function markMade() {
     madeService = true;
     try {
@@ -197,6 +197,7 @@
    */
   async function newService() {
     if (busy) return;
+    live.pointTabs = false;
     busy = true;
     const when = defaultWhen();
     try {
@@ -405,8 +406,6 @@
 
   async function select(id: string) {
     editWhen = null;
-    // On a narrow window the drawer has done its job once a service is picked.
-    if (narrow) live.focus = true;
     try {
       selected = await request({ area: "Service", request: { Get: id } }, "Service");
       live.planning = id;
@@ -1510,7 +1509,7 @@
        half-typed new service and the library's search stay put. -->
   <aside id="library-and-controls" class="pane pane-side side" aria-label="Library and controls" hidden={focus}>
     <div class="side-front" hidden={page !== "front"}>
-      <SideHead onhide={hideSide} />
+      <SideHead />
       <h3 class="side-zone-head">Library</h3>
       <button type="button" class="side-find" onclick={() => openPage("library")}>
         <Icon name="search" size={15} />Find a song, reading or video to add
@@ -1532,7 +1531,7 @@
 
     <div class="side-page services" hidden={page !== "services"}>
       <div class="pane-head">
-        <SideHead title="Services" onback={back} onhide={hideSide} />
+        <SideHead title="Services" onback={back} />
       </div>
       <div class="new-service">
         <Button size="small" variant="primary" icon="plus" onclick={newService} disabled={busy}>New service</Button>
@@ -1631,7 +1630,6 @@
       ondecks={loadDecks}
       ontranslations={loadTranslations}
       onback={back}
-      onhide={hideSide}
       onservices={() => openPage("services")}
       training={readOnly}
     />
@@ -1704,21 +1702,10 @@
   .library-slot > :global(*) {
     flex: 1;
   }
-  /* A narrow window: a drawer over the running order, not a column that
-     squeezes it. */
+  /* A narrow window: a narrower column beside the running order. With
+     nothing to hide it, it never sits over the order. */
   .plan.narrow {
-    grid-template-columns: minmax(0, 1fr);
-    position: relative;
-  }
-  .plan.narrow > .side:not([hidden]) {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 5;
-    width: min(var(--side), calc(100% - 3rem));
-    background: var(--panel);
-    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 0.45);
+    --side: 280px;
   }
   .create {
     display: flex;

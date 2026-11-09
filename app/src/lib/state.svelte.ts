@@ -39,6 +39,12 @@ class LiveState {
   onReady: boolean = $state(false);
   /** Last import message, error or notice, for the status bar. */
   status: string = $state("");
+  /**
+   * The "Start here" arrow at the Plan | Present tabs, shown at every launch
+   * for a volunteer who comes once a month, until a tab is chosen, a service
+   * is made, or it is closed.
+   */
+  pointTabs: boolean = $state(true);
   /** A running import, for the status bar's progress bar. */
   progress: { done: number; total: number } | null = $state(null);
   /** This device's outputs, for the status bar and the operator view. */

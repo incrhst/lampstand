@@ -760,8 +760,8 @@
 
 <aside class="pane pane-side library" aria-label="Library" bind:this={panel} ondragover={ondropover} {ondrop}>
   <header class="head">
-    {#if onback && onhide}
-      <SideHead title={libraryCount > 0 ? `Library · ${libraryCount}` : "Library"} {onback} {onhide} />
+    {#if onback}
+      <SideHead title={libraryCount > 0 ? `Library · ${libraryCount}` : "Library"} {onback} />
     {/if}
     <div class="title-row" class:tools-only={!!onback}>
       {#if !onback}

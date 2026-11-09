@@ -14,7 +14,7 @@
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
   import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
-  import { isTyping, modLabel, screenForKey } from "./lib/shortcuts";
+  import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning } from "./lib/presenting";
   import { heldRoles, streamOfflineLine, uncheckedRoles, withRoster } from "./lib/roles";
   import RoleBar from "./lib/kit/RoleBar.svelte";
@@ -46,29 +46,11 @@
     if (next) {
       e.preventDefault();
       screen = next;
+      live.pointTabs = false;
       return;
-    }
-    // F hides and shows Library & controls in Plan and Present (live.focus
-    // is true while it is hidden). Esc brings it back in Plan; Present's own
-    // Esc closes its OBS drawer first. Typing in a field never triggers it
-    // (a switch is not a field). With a dialog open, such as the song
-    // editor, F and Esc are the dialog's: hiding it would lose its edits.
-    const target = e.target as HTMLElement | null;
-    if (isTyping(target)) return;
-    if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
-    if (e.metaKey || e.ctrlKey || e.altKey || !focusable) return;
-    if (e.key === "f" || e.key === "F") {
-      e.preventDefault();
-      live.focus = !live.focus;
-    } else if (e.key === "Escape" && focused && screen === "plan") {
-      e.preventDefault();
-      live.focus = false;
     }
   }
 
-  // Hiding Library & controls is one switch for Plan and Present; switching
-  // modes keeps it. It is never remembered, so every launch starts with it
-  // open. Present needs a service open to have a sidebar at all.
   // Close service sits beside the live service's name, in Plan and Present,
   // so it never scrolls away or hides with Library & controls. It asks
   // first while something is on air.
@@ -92,8 +74,6 @@
     if (!live.loaded) confirmClose = false;
   });
 
-  let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
-  let focused = $derived(live.focus && focusable);
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -272,10 +252,22 @@
   <header>
     <nav aria-label="Screens">
       {#each screens as s}
-        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
+        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => { screen = s.id; live.pointTabs = false; }}>
           {s.label}
         </button>
       {/each}
+      {#if live.pointTabs && (screen === "plan" || screen === "operate")}
+        <!-- At every launch: where a monthly volunteer starts. Goes once a
+             tab is chosen, a service is made, or it is closed. -->
+        <div class="point-tabs" role="note">
+          <span class="point-arrow" aria-hidden="true">↑</span>
+          <div class="point-say">
+            <strong>Start here</strong>
+            <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
+          </div>
+          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close">×</button>
+        </div>
+      {/if}
     </nav>
     <div class="right">
       {#if live.loaded}
@@ -308,26 +300,6 @@
         <Icon name="setup" size={16} />
         <span class="setup-word">Settings</span>
       </button>
-      {#if screen === "plan" || screen === "operate"}
-        <!-- One name in Plan and Present, so it means the same thing next
-             month. It stays put in Present before a service is open, greyed
-             out with the reason, so it never seems to have gone missing.
-             aria-disabled, not disabled, so the reason still shows on hover. -->
-        <button
-          class="setup focus-on"
-          class:waiting={!focusable}
-          aria-disabled={!focusable}
-          aria-pressed={focusable ? !focused : undefined}
-          aria-controls="library-and-controls"
-          title={focusable ? `${focused ? "Show" : "Hide"} the Library and the controls (F)` : "Open a service first: Library & controls comes with it"}
-          onclick={() => focusable && (live.focus = !live.focus)}
-        >
-          <Icon name="panelRight" size={16} />
-          <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
-          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what">&nbsp;library &amp; controls</span></span>
-          <kbd>F</kbd>
-        </button>
-      {/if}
     </div>
   </header>
 
@@ -430,8 +402,78 @@
     background: var(--panel);
   }
   nav {
+    position: relative;
     display: flex;
     gap: 0.25rem;
+  }
+  /* Start here, under the Plan | Present tabs, with a gently bouncing arrow. */
+  .point-tabs {
+    position: absolute;
+    top: calc(100% + 0.9rem);
+    left: 0;
+    z-index: 40;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: max-content;
+    max-width: 22rem;
+    padding: 0.6rem 0.6rem 0.6rem 0.8rem;
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 0.8125rem;
+  }
+  .point-arrow {
+    position: absolute;
+    top: -1.35rem;
+    left: 2.2rem;
+    color: var(--gold);
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+    animation: point-bounce 1.4s ease-in-out infinite;
+  }
+  @keyframes point-bounce {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .point-arrow {
+      animation: none;
+    }
+  }
+  .point-say {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: var(--muted);
+  }
+  .point-say strong {
+    color: var(--gold);
+    font-size: 0.875rem;
+  }
+  .point-say b {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .point-close {
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0 0.2rem;
+    cursor: pointer;
+  }
+  .point-close:hover {
+    color: var(--text);
   }
   nav button {
     font: inherit;
@@ -509,31 +551,6 @@
   .setup:hover {
     color: var(--text);
   }
-  /* Framed, so the way to hide and show Library & controls is easy to find. */
-  .focus-on {
-    border: 1px solid var(--line-strong);
-    color: var(--text);
-  }
-  .focus-on:hover {
-    border-color: var(--muted);
-  }
-  /* Present with no service open: here, but nothing to hide yet. */
-  .focus-on.waiting {
-    color: var(--faint);
-    border-color: var(--line);
-    cursor: default;
-  }
-  .focus-on.waiting:hover {
-    border-color: var(--line);
-  }
-  .focus-on kbd {
-    font: inherit;
-    font-size: 0.72em;
-    opacity: 0.7;
-    padding: 0 0.3rem;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-  }
   .setup.active {
     color: var(--text);
     background: var(--raised);
@@ -569,17 +586,6 @@
       display: none;
     }
   }
-  /* Smaller windows: the button says just Show or Hide. */
-  @media (max-width: 1100px) {
-    .side-what {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-  }
   @media (max-width: 560px) {
     .onair {
       display: none;
@@ -588,9 +594,8 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. Show or
-       Hide keeps its word, since an icon alone would not say which. */
-    .setup-word:not(.side-word) {
+    /* Help and Settings as their icons; the title still names them. */
+    .setup-word {
       position: absolute;
       width: 1px;
       height: 1px;
