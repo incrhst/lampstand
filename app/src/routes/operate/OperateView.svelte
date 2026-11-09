@@ -21,13 +21,12 @@
   import Dot from "../../lib/kit/Dot.svelte";
   import Icon from "../../lib/kit/Icon.svelte";
   import ListRow from "../../lib/kit/ListRow.svelte";
-  import Segmented from "../../lib/kit/Segmented.svelte";
   import SlidePreview from "../../lib/kit/SlidePreview.svelte";
   import StatusPill from "../../lib/kit/StatusPill.svelte";
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import TipCard from "../../lib/kit/TipCard.svelte";
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
-  import LiveLoop from "./LiveLoop.svelte";
+  import { loadPreviewSize, loadSafeAreaGuide, type PreviewSize } from "../../lib/presentPrefs";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import SoundPanel from "./SoundPanel.svelte";
   import { musicLine, words } from "../../lib/audio";
@@ -36,15 +35,12 @@
   import { loadedItem, readyList, returnLine } from "../../lib/ready";
   import { loadMediaThumb } from "../../lib/mediaThumbLoader";
   import ObsNotice from "./ObsNotice.svelte";
-  import { isConnected, isScreen, obsPill, upcomingScene } from "../../lib/obs";
+  import { isConnected, isScreen, notice as obsNotice, obsPill, sceneNotice, upcomingScene } from "../../lib/obs";
   import Banner from "../../lib/kit/Banner.svelte";
   import { formatWhen } from "../../lib/when";
   import { newScreen, screenOffers, type ScreenOffer } from "../../lib/screenOffers";
   import { steppedDown, windowToDemote } from "../../lib/primary";
-  import { isTyping, KEYS as keys, modLabel } from "../../lib/shortcuts";
-  import SideHead from "../../lib/kit/SideHead.svelte";
-  import SideCard from "../../lib/kit/SideCard.svelte";
-  import Switch from "../../lib/kit/Switch.svelte";
+  import { isTyping } from "../../lib/shortcuts";
   import ConnectRemote from "./ConnectRemote.svelte";
   import PresentAction from "../../lib/kit/PresentAction.svelte";
   import { isPlanning } from "../../lib/presenting";
@@ -125,7 +121,6 @@
   // Screens are windows and displays. A picture sent to OBS is not one: it
   // never reaches the projector, so it does not count as "a screen is on".
   let screensOn = $derived(live.outputs.filter((o) => o.enabled && isScreen(o)).length);
-  const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
 
   // With no screen on, the prompt offers to turn one on: screens set up and
   // left off, and connected displays that are not a screen yet.
@@ -174,21 +169,6 @@
   // engine, so choosing one sends the toggle that gets there. Choosing Show
   // again re-shows the live slide, which brings text back after Clear text.
   // The church's logo is the logo bug (the Screen card), not a screen of its own.
-  const modes = [
-    { id: "None", label: "Show" },
-    { id: "Idle", label: "Idle" },
-    { id: "Black", label: "Blank" },
-  ] as const;
-
-  function setOverlay(want: "None" | "Idle" | "Black") {
-    const now = live.overlay;
-    if (want === now) {
-      if (want === "None" && live.live) show(live.live);
-      return;
-    }
-    if (want === "None") command(now === "Black" ? "ToggleBlack" : "ToggleIdle");
-    else command(want === "Black" ? "ToggleBlack" : "ToggleIdle");
-  }
 
   // Space or Right: Next. Left: Previous. Full stop: Black. 1 to 9 jump to
   // that verse; C, B, P, T, I, E to the next chorus, bridge, pre-chorus,
@@ -332,23 +312,6 @@
   function setReadyOpen(open: boolean) {
     readyOpen = open;
   }
-  /** "Close service" asks first when something is on air. */
-  let confirmClose = $state(false);
-  function askClose() {
-    if (live.live || live.overlay !== "None") confirmClose = true;
-    else closeService();
-  }
-  async function closeService() {
-    const loaded = live.loaded;
-    confirmClose = false;
-    if (!loaded) return;
-    try {
-      await request({ area: "Service", request: { Close: loaded.service } }, "Ok");
-      live.loaded = null;
-    } catch (e) {
-      report(e);
-    }
-  }
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
   /** The section on air, if the live item sits under a header. */
   let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
@@ -439,30 +402,8 @@
   // The picture of what is on air, top right: small (the default), large
   // (the sidecard widens on a wide window, so the picture is big) or off.
   // Remembered per computer, as the cards' folds are.
-  const PREVIEW_KEY = "lampstand.present.preview";
-  type PreviewSize = "small" | "large" | "off";
-  const previewSizes = [
-    { id: "off", label: "Off" },
-    { id: "small", label: "Small" },
-    { id: "large", label: "Large" },
-  ] as const;
-  function loadPreviewSize(): PreviewSize {
-    try {
-      const v = globalThis.localStorage?.getItem(PREVIEW_KEY);
-      return v === "large" || v === "off" ? v : "small";
-    } catch {
-      return "small";
-    }
-  }
+  // Chosen in Settings › Screens (lib/presentPrefs.ts), not here.
   let previewSize: PreviewSize = $state(loadPreviewSize());
-  function setPreviewSize(size: PreviewSize) {
-    previewSize = size;
-    try {
-      globalThis.localStorage?.setItem(PREVIEW_KEY, size);
-    } catch {
-      // Not remembered: it still applies until Present is left.
-    }
-  }
   // The picture of what is on air is large for a deck (the presenter view)
   // and for an image or video, which fills the big preview.
   let liveWidth = $derived(presenting || previewSize === "large" || mediaOf(live.shown?.item) ? 1280 : 480);
@@ -543,45 +484,10 @@
   });
   let output = $derived(mainOutput(live.outputs));
   const look = useLiveLook(() => output);
-  let showGuide = $state(true);
+  let showGuide = $state(loadSafeAreaGuide());
 
 
-  // Clicker mode (T56): while a service is open, a clicker's Page Up, Page
-  // Down, B (Black) and full stop work whichever window has focus. It is
-  // this machine's setting, so it is read from the core, not kept here.
-  let clicker = $state(false);
-  $effect(() => {
-    request({ area: "Settings", request: "Get" }, "Settings")
-      .then((s) => (clicker = s.clicker_mode))
-      .catch(report);
-  });
 
-  async function toggleClicker() {
-    try {
-      // Put replaces every setting, so the others are sent back as they are.
-      const current = await request({ area: "Settings", request: "Get" }, "Settings");
-      const s = await request({ area: "Settings", request: { Put: { ...current, clicker_mode: !clicker } } }, "Settings");
-      clicker = s.clicker_mode;
-    } catch (e) {
-      report(e);
-    }
-  }
-
-  // The logo bug follows the logo set in Settings › Logo and colours; this flips it
-  // on or off during a service and keeps the corner, size and opacity.
-  let bugReady = $derived(!!live.settings?.brand?.logo);
-  let bugOn = $derived(bugReady && !!live.settings?.brand?.bug.enabled);
-
-  async function toggleBug() {
-    const brand = live.settings?.brand;
-    if (!brand?.logo) return;
-    try {
-      live.settings = await request({ area: "Settings", request: { SetLogoBug: { ...brand.bug, enabled: !brand.bug.enabled } } }, "Settings");
-      used("logo-bug");
-    } catch (e) {
-      report(e);
-    }
-  }
 
   function kindOf(id: string) {
     const item = service?.items[id];
@@ -708,14 +614,6 @@
       {@const left = live.liveSlide.steps - live.live.step}
       <section class="wall-steps" aria-label="Builds on this slide">
         <p class="wall-steps-head muted">{#if autoBuilding}{left === 0 ? "Fully built. Next goes back to the service." : `${left} ${left === 1 ? "build" : "builds"} left, playing by themselves`}{:else}{left === 0 ? "Fully built. Next goes to the next slide." : `${left} ${left === 1 ? "click" : "clicks"} left on this slide`}{/if}</p>
-        <figure>
-          {#if clickNext}
-            <SlidePreview lines={clickNext.slide.lines} footer={clickNext.slide.footer} image={thumbFor(clickNext.cursor.item, clickNext.cursor.slide, clickNext.cursor.step, LARGE_WIDTH)} size="small" />
-          {:else}
-            <SlidePreview empty="End of service" size="small" />
-          {/if}
-          <figcaption class="muted">Next click</figcaption>
-        </figure>
       </section>
     {/if}
 {/snippet}
@@ -734,6 +632,10 @@
           <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
           <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
         </span>
+      </button>
+      <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide">
+        <span class="clear-pic" aria-hidden="true"></span>
+        <span class="screen-caption"><Icon name="text" size={13} /><strong>Clear text</strong></span>
       </button>
     </div>
     {#if ready.length > 0}
@@ -774,9 +676,42 @@
         </ul>
       {/if}
     {:else}
-      <p class="side-line muted ready-empty">Nothing in Ready yet. Choose <Icon name="star" size={12} /> Add to Ready on an item to put it here, one tap away.</p>
+      <p class="side-line muted ready-empty"><Icon name="star" size={12} /> Add to Ready on an item puts it here.</p>
     {/if}
     <button type="button" class="side-row" title="Quick add, for Ready: a deck, picture or video from the Library" onclick={() => openQuickAdd(true)}><Icon name="plus" size={14} />Add from the Library</button>
+{/snippet}
+
+<!-- Check: one line that answers "am I all set?". The first thing that
+     needs the volunteer, with the button that fixes it; otherwise All set. -->
+{#snippet checkRow()}
+  {#if screensOn === 0}
+    <div class="check warn" role="status">
+      <Icon name="alert" size={15} />
+      <div>
+        <strong>No screen is on.</strong> Nothing reaches the projector.
+        <div class="check-fix">
+          {#each offers as offer (offer.label)}
+            <Button size="small" variant="primary" icon="monitor" onclick={() => turnOn(offer)}>{offer.label}</Button>
+          {/each}
+          {#if onsetup}<Button size="small" icon="monitor" onclick={onsetup}>Set up screens</Button>{/if}
+        </div>
+      </div>
+    </div>
+  {:else if obsNotice(live.obs) || sceneNotice(live.obs)}
+    <div class="check-obs"><ObsNotice view={live.obs} onsetup={onobs} /></div>
+  {:else if pill?.tone === "warn"}
+    <div class="check warn" role="status">
+      <Icon name="alert" size={15} />
+      <div>
+        <strong>{pill.text}.</strong>
+        {#if onobs}<div class="check-fix"><Button size="small" onclick={onobs}>Open Settings › OBS</Button></div>{/if}
+      </div>
+    </div>
+  {:else if loadedTraining && trainingLine}
+    <p class="check info" role="status"><Icon name={trainingVideosBusy(live.trainingVideos) ? "info" : "alert"} size={14} />{trainingLine}</p>
+  {:else}
+    <p class="check ok" role="status"><Icon name="checkCircle" size={14} /><strong>All set</strong><span class="muted">· {output?.name ?? "the screen"} is on</span></p>
+  {/if}
 {/snippet}
 
 {#snippet noScreen()}
@@ -1004,7 +939,7 @@
                                 title={kept ? `Slide ${s + 1} is in Ready. Click to take it out` : `Add just this slide to Ready; its builds play by themselves`}
                                 aria-label={kept ? `Take slide ${s + 1} of ${item.title} out of Ready` : `Add slide ${s + 1} of ${item.title} to Ready`}
                                 onclick={() => toggleSlide(deckId, s, item.title)}
-                              ><Icon name="star" size={11} />{kept ? "Ready" : "Keep slide"}</button>
+                              ><Icon name="star" size={11} />{kept ? "In Ready" : "Add slide to Ready"}</button>
                             {/if}
                           </li>
                         {/each}
@@ -1028,50 +963,31 @@
             {@render onAirBody()}
           </section>
 
+          <!-- The middle: three rows, always there, always in this order. A
+               row's words change; the row never moves or disappears. -->
           <div class="col-middle">
-          <div class="side-rest">
-            <!-- Library on top, then Controls, as in Plan. -->
-            <div class="side-top">
-              <SideHead />
-              <h3 class="side-zone-head">Library</h3>
-              <button type="button" class="side-find" title="Add a song or scripture after what is on air, or keep a deck or media ready (/)" onclick={() => openQuickAdd(false)}>
-                <Icon name="search" size={15} /><span>Find a song, reading, deck or media</span><kbd>/</kbd>
+            <section class="mid-row" aria-label="Add">
+              <h3 class="col-head">Add</h3>
+              <button type="button" class="side-find" title="Add a song or reading after what is on air, or a deck or media to Ready (/)" onclick={() => openQuickAdd(false)}>
+                <Icon name="search" size={15} /><span>Find a song or reading to add</span><kbd>/</kbd>
               </button>
-              <h3 class="side-zone-head">Controls</h3>
-            </div>
-            {#if screensOn === 0}<div class="no-screen side-notice">{@render noScreen()}</div>{/if}
-            {#if pill?.tone === "warn" || live.obs?.held || live.obs?.scene_problem}<div class="no-screen obs-notice side-notice"><ObsNotice view={live.obs} onsetup={onobs} /></div>{/if}
-            {#if loadedTraining && trainingLine}
-              <p class="training-note side-notice" role="status">
-                <Icon name={trainingVideosBusy(live.trainingVideos) ? "info" : "alert"} size={14} />{trainingLine}
-              </p>
-            {/if}
+            </section>
 
-            <!-- Straight after On air, so Stop the sound now is never below
-                 the fold; it stays shown even with the Sound box folded. -->
-            <SoundPanel {items} {service} />
+            <section class="mid-row" aria-label="Sound">
+              <h3 class="col-head">Sound</h3>
+              <SoundPanel {items} {service} />
+            </section>
 
-            <!-- Ready: the easy way to Blank or the idle screen, and to put
-                 up what the service keeps one tap away (a pinned item, or a
-                 deck or media kept only here) without losing the place. -->
+            <section class="mid-row" aria-label="Check">
+              <h3 class="col-head">Check</h3>
+              {@render checkRow()}
+            </section>
 
-            <SideCard title="Screen" key="lampstand.present.screen" summary={showGuide ? "Safe area on" : undefined}>
-              <Segmented options={modes} value={live.overlay} onchange={setOverlay} label="Screen" />
-              <div class="preview-size">
-                <span class="muted">Picture of the screen</span>
-                <Segmented options={previewSizes} value={previewSize} onchange={setPreviewSize} label="Picture of the screen, top right" />
-              </div>
-              <p class="side-line muted"><Icon name="monitor" size={14} />{output?.name ?? "No screen yet"}</p>
-              <Switch checked={showGuide} label="Safe area guide" onchange={() => { showGuide = !showGuide; used("safe-area"); }} />
-              <Switch checked={bugOn} disabled={!bugReady} label={bugReady ? "Logo bug" : "Logo bug (add a logo in Settings)"} onchange={toggleBug} />
-              {#if onidle}<button type="button" class="side-row" onclick={onidle}><Icon name="image" size={14} />Idle screen<span class="side-hint">Change</span></button>{/if}
-            </SideCard>
-
-            <SideCard title="The room">
-              {#if pill}
-                <!-- The OBS controller: what OBS has on air and what the next
-                     item switches to. Opens the drawer of scenes, preview and
-                     mutes. The connection's status sits quietly in the footer. -->
+            {#if pill}
+              <!-- Only for a church that streams with OBS: what OBS has on air,
+                   and the drawer of scenes, preview and mutes (O). -->
+              <section class="mid-row" aria-label="Stream">
+                <h3 class="col-head">Stream</h3>
                 <button
                   bind:this={obsToggle}
                   class="obs-control"
@@ -1090,58 +1006,13 @@
                   {/if}
                   <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
                 </button>
-              {/if}
-            </SideCard>
-
-            {#if live.loaded && liveSection}
-              <LiveLoop loaded={live.loaded} section={liveSection} />
+              </section>
             {/if}
 
-            <SideCard title="Remotes" key="lampstand.present.remotes" open={false} summary={clicker ? "Clicker on" : undefined}>
-              <Switch checked={clicker} label="Clicker mode" onchange={toggleClicker} />
-              <button type="button" class="side-row" onclick={() => (connectOpen = true)}><Icon name="phone" size={14} />Connect a phone or tablet</button>
-            </SideCard>
-
-            <SideCard title="Clear" key="lampstand.present.clear" open={false}>
-              <div class="clear">
-                <Button onclick={() => command("ClearText")} title="Clear the text and keep the background">Text</Button>
-                <Button onclick={() => command("ClearAll")} title="Clear the text, background and overlay">Everything</Button>
-              </div>
-            </SideCard>
-
-            <SideCard title="Keys" key="lampstand.present.keys" open={false}>
-              <dl class="keys">
-                {#each keys as [k, what]}
-                  <dt>{k}</dt>
-                  <dd>{what}</dd>
-                {/each}
-                <dt>F</dt>
-                <dd>Hide or show Library &amp; controls</dd>
-                {#if pill}
-                  <dt>O</dt>
-                  <dd>Control OBS</dd>
-                {/if}
-                <dt>{mod}1 · {mod}2 · {mod}\</dt>
-                <dd>Plan · Present · switch between them</dd>
-              </dl>
-            </SideCard>
-
-            {#if tip}
+            <!-- A quick tip waits until nothing is on air: never mid-service. -->
+            {#if tip && !live.live}
               <TipCard {tip} ondismiss={() => dismissTip(tip.id)} onall={() => ontips?.()} onaction={() => tipAction(tip)} onsnooze={() => snoozeTip(tip)} />
             {/if}
-
-            {#if confirmClose}
-              <div class="close">
-                <span class="close-ask">Something is on air. Close the service?</span>
-                <span class="close-buttons">
-                  <Button size="small" variant="danger" onclick={closeService}>Close service</Button>
-                  <Button size="small" variant="ghost" onclick={() => (confirmClose = false)}>Keep open</Button>
-                </span>
-              </div>
-            {:else}
-              <button type="button" class="side-row quiet" title="Put the service away; it stays in Plan" onclick={askClose}><Icon name="x" size={14} />Close service</button>
-            {/if}
-          </div>
           </div>
 
           <section id="ready-tray" class="col-ready" class:folded={!readyOpen} aria-label="Ready">
@@ -1546,37 +1417,82 @@
   }
   /* The right column: On air at the top, Library & controls scrolling in
      the middle, Ready at the bottom. Nothing in it hides or moves. */
+  /* Calm: quiet sentence-case names, space between parts, no rules. */
   .col-head {
-    margin: 0 0 0.4rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    margin: 0 0 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--faint);
+  }
+  .mid-row {
+    display: flex;
+    flex-direction: column;
+  }
+  .check {
+    margin: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    font-size: 0.875rem;
+  }
+  .check.ok {
+    align-items: center;
     color: var(--muted);
+  }
+  .check.ok :global(svg),
+  .check.ok strong {
+    color: var(--ready-text, #5cc16f);
+    font-weight: 600;
+  }
+  .check.info {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .check.warn {
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--radius);
+    background: var(--warn-soft, rgba(245, 165, 36, 0.12));
+    box-shadow: inset 0 0 0 1px var(--warn, #f5a524);
+  }
+  .check.warn > :global(svg) {
+    color: var(--warn, #f5a524);
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+  .check-fix {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.45rem;
   }
   .col-onair {
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 0.75rem 1rem 0.75rem 0;
-    border-bottom: 1px solid var(--line);
+    padding: 0.75rem 1rem 0.5rem 0;
   }
   .col-middle {
     flex: 1 1 auto;
     min-height: 6rem;
     overflow-y: auto;
-    padding: 0.75rem 1rem 0.75rem 0;
+    padding: 0.4rem 1rem 0.4rem 0;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+  }
+  /* A short window: a smaller picture, so Add, Sound and Check stay in view. */
+  @media (max-height: 880px) {
+    .col-onair :global(.monitor) {
+      width: 80%;
+      align-self: center;
+    }
   }
   .col-ready {
     flex: 0 1 auto;
     max-height: 45%;
     display: flex;
     flex-direction: column;
-    border-top: 1px solid var(--line);
     padding-right: 1rem;
   }
   .ready-head {
@@ -1650,14 +1566,6 @@
     .sidecard.large-preview {
       flex-basis: 32rem;
     }
-  }
-  .preview-size {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.4rem;
-    font-size: 0.8125rem;
   }
   .sidecard .no-screen {
     margin-bottom: 0;
@@ -1743,8 +1651,15 @@
   }
   .ready-screens {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.4rem;
+  }
+  /* Clear text: the background with no words, drawn as a plain dark panel. */
+  .clear-pic {
+    display: block;
+    aspect-ratio: 16 / 9;
+    border-radius: 2px;
+    background: linear-gradient(160deg, #1d2740, #10151f);
   }
   .screen-pick {
     display: flex;
@@ -1997,28 +1912,6 @@
     .pin:focus-visible {
       opacity: 1;
     }
-  }
-  .clear {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.4rem;
-  }
-  .clear :global(button) {
-    justify-content: center;
-  }
-  .keys {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.35rem 0.75rem;
-    font-size: 0.8rem;
-  }
-  .keys dt {
-    font-family: ui-monospace, Menlo, monospace;
-    white-space: nowrap;
-  }
-  .keys dd {
-    margin: 0;
-    color: var(--muted);
   }
   /* A narrow window: the sidecard above the wall, On air beside a column of
      the rest. The wall scrolls on its own, as it does when wide, and the
