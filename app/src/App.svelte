@@ -264,7 +264,7 @@
             <strong>Start here</strong>
             <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
           </div>
-          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close">×</button>
+          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close"><Icon name="x" size={14} /></button>
         </div>
       {/if}
     </nav>
@@ -459,7 +459,7 @@
   }
   .point-close {
     font: inherit;
-    font-size: 1rem;
+    display: inline-flex;
     line-height: 1;
     color: #4a4020;
     background: none;
