@@ -334,7 +334,7 @@
   const SCREEN_CODES: Record<string, Command> = { KeyU: "ToggleBlack", KeyI: "ToggleIdle", KeyO: "ClearText" };
   const READY_CODES = ["KeyJ", "KeyK", "KeyL"];
   const READY_LETTERS = ["J", "K", "L"];
-  /** The sound that waits for Play, from the Sound row. */
+  /** The sound that waits for Play, from Sound in the press block. */
   let waiting: SoundEntry | null = $state(null);
   function chordOff() {
     clearTimeout(chordTimer);
@@ -1003,7 +1003,7 @@
                         <p class="muted wall-count">
                           {item.slides.length === 0 ? (kind === "Sound" ? musicLine(item) : "Nothing to show") : `${item.slides.length} ${item.slides.length === 1 ? "slide" : "slides"}`}
                           {#if kind === "Sound" && item.slides.length === 0}
-                            <!-- Music only has no slide to click: its Play is right here, as in the Sound box. -->
+                            <!-- Music only has no slide to click: its Play is right here. -->
                             {#if live.sound?.playing?.item === item.id}
                               <button type="button" class="wall-play" onclick={() => sound("Stop").catch(report)} title="Fade {item.title} out">Fade out</button>
                             {:else}
