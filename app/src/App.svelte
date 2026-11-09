@@ -46,6 +46,7 @@
     if (next) {
       e.preventDefault();
       screen = next;
+      live.pointTabs = false;
       return;
     }
   }
@@ -251,10 +252,22 @@
   <header>
     <nav aria-label="Screens">
       {#each screens as s}
-        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
+        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => { screen = s.id; live.pointTabs = false; }}>
           {s.label}
         </button>
       {/each}
+      {#if live.pointTabs && (screen === "plan" || screen === "operate")}
+        <!-- At every launch: where a monthly volunteer starts. Goes once a
+             tab is chosen, a service is made, or it is closed. -->
+        <div class="point-tabs" role="note">
+          <span class="point-arrow" aria-hidden="true">↑</span>
+          <div class="point-say">
+            <strong>Start here</strong>
+            <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
+          </div>
+          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close">×</button>
+        </div>
+      {/if}
     </nav>
     <div class="right">
       {#if live.loaded}
@@ -389,8 +402,78 @@
     background: var(--panel);
   }
   nav {
+    position: relative;
     display: flex;
     gap: 0.25rem;
+  }
+  /* Start here, under the Plan | Present tabs, with a gently bouncing arrow. */
+  .point-tabs {
+    position: absolute;
+    top: calc(100% + 0.9rem);
+    left: 0;
+    z-index: 40;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: max-content;
+    max-width: 22rem;
+    padding: 0.6rem 0.6rem 0.6rem 0.8rem;
+    border: 1px solid var(--gold);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 0.8125rem;
+  }
+  .point-arrow {
+    position: absolute;
+    top: -1.35rem;
+    left: 2.2rem;
+    color: var(--gold);
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+    animation: point-bounce 1.4s ease-in-out infinite;
+  }
+  @keyframes point-bounce {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .point-arrow {
+      animation: none;
+    }
+  }
+  .point-say {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: var(--muted);
+  }
+  .point-say strong {
+    color: var(--gold);
+    font-size: 0.875rem;
+  }
+  .point-say b {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .point-close {
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0 0.2rem;
+    cursor: pointer;
+  }
+  .point-close:hover {
+    color: var(--text);
   }
   nav button {
     font: inherit;

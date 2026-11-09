@@ -179,7 +179,8 @@
       }
     })(),
   );
-  let guideNew = $derived(!madeService && ownServices.every((s) => s.title === WELCOME_TITLE));
+  // One "Start here" at a time: the tabs' arrow at launch comes first.
+  let guideNew = $derived(!madeService && !live.pointTabs && ownServices.every((s) => s.title === WELCOME_TITLE));
   function markMade() {
     madeService = true;
     try {
@@ -196,6 +197,7 @@
    */
   async function newService() {
     if (busy) return;
+    live.pointTabs = false;
     busy = true;
     const when = defaultWhen();
     try {
