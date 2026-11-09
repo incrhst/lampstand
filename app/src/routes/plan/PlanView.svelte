@@ -1436,7 +1436,7 @@
                             />
                           {/if}
                           {#if !readOnly}
-                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="Optional: puts this in Ready, the button at the bottom right of Present, one tap away during the service without losing your place. Most items don't need it.">
+                            <Button size="small" icon="star" pressed={isPinned(selected, id)} onclick={() => setPinned(id, !isPinned(selected, id))} title="Optional: puts this in Ready, under Next on the right of Present, one tap away during the service without losing your place. Most items don't need it.">
                               {isPinned(selected, id) ? "In Ready" : "Add to Ready"}
                             </Button>
                           {/if}
@@ -1465,7 +1465,7 @@
                order: Next never lands on these. -->
           <section class="ready" aria-labelledby="plan-ready">
             <h3 class="eyebrow" id="plan-ready">Ready in Present</h3>
-            <p class="muted ready-note">In Present, the Ready button at the bottom right keeps these one tap away, beside Blank and Idle. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
+            <p class="muted ready-note">In Present, Ready keeps these one tap away, under Next beside Idle, Blank and Clear text. Showing one doesn't lose the place: Next comes back to the service. A single slide of a deck plays its builds by itself.</p>
             {#if readyRows.length > 0}
               <ul class="plain ready-list">
                 {#each readyRows as r (r.id)}
