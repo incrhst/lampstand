@@ -1,4 +1,4 @@
-// The default Bible version, kept in this device's settings (Setup ›
+// The default Bible version, kept in this device's settings (Settings ›
 // Scripture). Choosing a Bible in the library or quick add saves it too, so
 // the last one chosen is the one the next reference is read from.
 

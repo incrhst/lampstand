@@ -9,7 +9,7 @@
   import Banner from "../../lib/kit/Banner.svelte";
   import Button from "../../lib/kit/Button.svelte";
 
-  /** `onsetup` opens Setup › OBS; leave it out on that screen itself. */
+  /** `onsetup` opens Settings › OBS; leave it out on that screen itself. */
   let { view, onsetup }: { view: ObsView | null; onsetup?: () => void } = $props();
 
   let n = $derived(notice(view));

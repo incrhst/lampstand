@@ -354,7 +354,7 @@ pub struct WaitingFile {
 }
 
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceSettings {
     /// Clicker mode (T56, PS-9): while a service is open for live, a
     /// presenter clicker's Page Up, Page Down, B and full stop work
@@ -362,26 +362,27 @@ pub struct DeviceSettings {
     /// default, because while it is on those keys never reach other apps.
     #[serde(default)]
     pub clicker_mode: bool,
-    /// Setup › Sound › "Use sound in services": this device offers music-only
-    /// items and backing tracks in Plan. Off by default. A service that
-    /// already has sound shows it whatever this says. Kept on this device
-    /// (not in the synced church settings): a service with sound turns the
-    /// controls on for every device that has it anyway.
-    #[serde(default)]
+    /// Settings › Sound › "Use sound in services": this device offers music-only
+    /// items and backing tracks in Plan. On by default, and on when a saved
+    /// file has no value for it; a device where someone turned it off keeps
+    /// it off. A service that already has sound shows it whatever this says.
+    /// Kept on this device (not in the synced church settings): a service
+    /// with sound turns the controls on for every device that has it anyway.
+    #[serde(default = "on")]
     pub use_sound: bool,
-    /// Setup › This computer › "Start Lampstand when this computer starts":
+    /// Settings › This computer › "Start Lampstand when this computer starts":
     /// Lampstand opens when someone signs in to this computer. Off by
     /// default, and the only startup item Lampstand ever adds. Kept on this
     /// device: it is about this computer, not the church.
     #[serde(default)]
     pub start_at_login: bool,
-    /// Setup › This computer › "Keep this computer awake while it is showing
+    /// Settings › This computer › "Keep this computer awake while it is showing
     /// the screens": while an output window is open or an OBS picture is
     /// served, the computer is stopped from sleeping or dimming its screen.
     /// Off by default. Kept on this device, like `start_at_login`.
     #[serde(default)]
     pub keep_awake: bool,
-    /// Setup › Sound › Output: the sound output this device plays through
+    /// Settings › Sound › Output: the sound output this device plays through
     /// when it holds Audio, by name. Unset, or no longer on this computer,
     /// means the computer's own default.
     #[serde(default)]
@@ -412,6 +413,29 @@ pub struct DeviceSettings {
     /// save from the UI cannot change this.
     #[serde(default)]
     pub church_synced: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for DeviceSettings {
+    /// A new device: everything off or unset except Use sound in services.
+    fn default() -> Self {
+        Self {
+            clicker_mode: false,
+            use_sound: true,
+            start_at_login: false,
+            keep_awake: false,
+            sound_output: None,
+            default_translation: None,
+            brand: None,
+            brand_theme: None,
+            default_theme: None,
+            idle: None,
+            church_synced: false,
+        }
+    }
 }
 
 /// What opening a brand file does to the themes already here.

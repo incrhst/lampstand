@@ -20,7 +20,7 @@
 //! - **OBS on another computer (#133).** When the OBS host isn't this
 //!   computer, [`diagnose`] says whether the computer refused the
 //!   connection (OBS closed there, its server off, another port) or never
-//!   answered, and Setup › OBS offers "Use this address" (a pin kept in
+//!   answered, and Settings › OBS offers "Use this address" (a pin kept in
 //!   `obs.json`) and "Set up OBS": a "Lampstand" collection with starter
 //!   scenes and a "Lampstand stream" browser source. The source's address is
 //!   this computer's network address, the pinned one if set, and never

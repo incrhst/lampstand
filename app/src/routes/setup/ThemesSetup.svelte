@@ -1,4 +1,4 @@
-<!-- Setup › Themes: how songs, scripture and text slides look. The list of
+<!-- Settings › Themes: how songs, scripture and text slides look. The list of
      the library's themes on the left (new, duplicate, rename, delete), one
      theme's settings on the right, and a live preview drawn by the same
      layout and renderer the screens use, at the main screen's shape. A

@@ -117,7 +117,7 @@ test("the notice names what is wrong, most important first", () => {
   assert.equal(notice(view({ here: false, nobody: true }))?.text, words.nobody);
   // A sound output that is not working arrives as the core's sentence in `problem`,
   // on this device and on the others alike: the panel has no wording of its own for it.
-  const down = "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Setup › Sound.";
+  const down = "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Settings › Sound.";
   assert.equal(notice(view({ problem: down, output_ok: false }))?.text, down);
   assert.equal(notice(view({ output_ok: false })), null, "the words come from the core, not from the panel");
   assert.equal(notice(view({ here: false, holder: "Sound desk", output_ok: false })), null);

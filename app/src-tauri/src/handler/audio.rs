@@ -61,13 +61,13 @@ pub fn problem_words(problem: &SoundProblem, device: Option<&str>) -> String {
             Some(name) => format!(
                 "The sound output on {name} isn't working. Check it is plugged in and switched on."
             ),
-            None => "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Setup › Sound.".to_string(),
+            None => "The sound output on this computer isn't working. Check it is plugged in and switched on, or choose another in Settings › Sound.".to_string(),
         },
         SoundReason::OutputMissing => match device {
             Some(name) => format!(
-                "The sound output chosen on {name} isn't connected. Plug it in, or choose another in Setup › Sound."
+                "The sound output chosen on {name} isn't connected. Plug it in, or choose another in Settings › Sound."
             ),
-            None => "The sound output you chose isn't connected. Plug it in, or choose another in Setup › Sound.".to_string(),
+            None => "The sound output you chose isn't connected. Plug it in, or choose another in Settings › Sound.".to_string(),
         },
         SoundReason::NoOutput => {
             format!("{subject} has no sound output. Plug one in and switch it on.")

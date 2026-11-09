@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calm Present</title>
+<!-- Mockup: the whole Present screen for a volunteer who comes once a month.
+     Rule: nothing moves, nothing disappears, nothing folds (except Ready,
+     which folds in place). Right column: On air (top), three fixed rows in
+     the middle (Add, Sound, Check), Ready (bottom). Interactive. Not wired
+     to the app. -->
+<style>
+:root {
+  --canvas: #121419; --panel: #1b1f27; --raised: #232833;
+  --line: #2a303b; --line-strong: #3a4250; --field-line: #5e6a81;
+  --text: #e6e8ec; --muted: #9aa3b2; --faint: #8690a0;
+  --gold: #f0c75e; --gold-hover: #f5d47e; --on-gold: #1b1f27; --gold-soft: rgba(240,199,94,.12);
+  --live: #e5484d; --live-text: #e96468; --ok: #5cc16f; --ok-soft: rgba(92,193,111,.12);
+  --warn: #f5a524; --warn-soft: rgba(245,165,36,.12);
+  --section-verse: #7fa8f5; --section-chorus: #4cc7b0;
+  --radius: 6px; --radius-lg: 10px;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  font-size: 15px; line-height: 1.4; -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0b0d10; color: var(--text); }
+button { font: inherit; color: inherit; cursor: pointer; }
+kbd { font: 600 .68rem/1 system-ui; padding: .12rem .28rem; border: 1px solid currentColor; border-radius: 4px; opacity: .8; }
+
+.page { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.5rem; padding: 1.25rem; max-width: 1560px; margin: 0 auto; }
+@media (max-width: 1150px) { .page { grid-template-columns: minmax(0, 1fr); } }
+.states { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; align-items: center; }
+.states .say { color: var(--muted); font-size: .85rem; margin-right: .3rem; }
+.chip { padding: .35rem .75rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel); font-size: .85rem; }
+.chip[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
+.notes { font-size: .9rem; color: var(--muted); }
+.notes h1 { font-size: 1.15rem; color: var(--text); margin: 0 0 .5rem; }
+.notes h2 { font-size: .95rem; color: var(--text); margin: 1.1rem 0 .3rem; }
+.notes p, .notes li { margin: .3rem 0; }
+.notes ul, .notes ol { padding-left: 1.2rem; }
+.notes .rule { border-left: 3px solid var(--gold); padding: .4rem .7rem; background: var(--gold-soft); color: var(--text); border-radius: 0 var(--radius) var(--radius) 0; }
+.notes table { border-collapse: collapse; width: 100%; font-size: .8rem; margin-top: .3rem; }
+.notes td { border-top: 1px solid var(--line); padding: .3rem .2rem; vertical-align: top; }
+.notes td:first-child { color: var(--text); width: 45%; padding-right: .5rem; }
+
+/* The window */
+.window { height: min(780px, calc(100vh - 5rem)); min-height: 540px; border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; background: var(--canvas); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.5); transition: max-width .3s, height .3s; }
+.window.small { max-width: 1000px; height: min(620px, calc(100vh - 5rem)); }
+.bar { display: flex; align-items: stretch; gap: .6rem; height: 3.25rem; padding: 0 .9rem; border-bottom: 1px solid var(--line); background: var(--panel); font-size: .85rem; }
+.tabs { display: flex; }
+.tab { position: relative; background: none; border: none; padding: 0 .9rem; color: var(--muted); font-size: .92rem; }
+.tab.on { color: var(--text); font-weight: 600; }
+.tab.on::after { content: ""; position: absolute; left: .6rem; right: .6rem; bottom: -1px; height: 2px; background: var(--gold); border-radius: 2px 2px 0 0; }
+.barmid { flex: 1; }
+.barright { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.livename { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.livename strong { color: var(--text); }
+.barbtn { background: var(--raised); border: 1px solid var(--field-line); border-radius: var(--radius); padding: .25rem .6rem; font-size: .8rem; white-space: nowrap; }
+.barlink { background: none; border: none; color: var(--muted); padding: .3rem .4rem; white-space: nowrap; }
+.status { display: flex; gap: 1rem; padding: .3rem .9rem; border-top: 1px solid var(--line); font-size: .75rem; color: var(--faint); background: var(--panel); }
+.status .mid { flex: 1; text-align: center; color: var(--muted); }
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* The wall */
+.wall { flex: 1; min-width: 0; overflow-y: auto; padding: .75rem 1rem 1.5rem; display: flex; flex-direction: column; gap: .5rem; }
+.row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: .75rem; padding: .5rem; border-radius: var(--radius-lg); }
+.row.live { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.row h3 { margin: 0; font-size: .95rem; }
+.row .count { color: var(--muted); font-size: .78rem; }
+.row .onair { color: var(--live-text); font-size: .78rem; font-weight: 600; }
+.pin { margin-top: .3rem; font-size: .72rem; padding: .1rem .45rem; border-radius: 999px; background: none; border: 1px solid var(--line-strong); color: var(--muted); }
+.pin.on { border-color: var(--gold); color: var(--gold); }
+.play { margin-top: .35rem; font-size: .78rem; font-weight: 600; padding: .2rem .65rem; border-radius: 999px; background: var(--raised); border: 1px solid var(--gold); }
+.slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .5rem; }
+.slide { border: none; padding: 0; text-align: left; border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.slide .pic { aspect-ratio: 16/9; background: #000; display: grid; place-items: center; text-align: center; font-size: .6rem; color: #e8e8e8; padding: .4rem; }
+.slide .cap { display: flex; gap: .3rem; align-items: center; padding: .2rem .35rem; font-size: .68rem; border-top: 3px solid var(--section-verse); }
+.slide.chorus .cap { border-top-color: var(--section-chorus); }
+.slide.is-live { box-shadow: 0 0 0 2px var(--live); }
+.slide.is-next { box-shadow: 0 0 0 2px var(--gold); }
+.pill { font-size: .6rem; font-weight: 800; padding: .05rem .3rem; border-radius: 3px; }
+.pill.live { background: var(--live); color: #fff; }
+.pill.next { background: var(--gold); color: var(--on-gold); }
+.label { color: var(--muted); }
+
+/* The right column */
+.col { flex: 0 0 21rem; display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; }
+.small .col { flex-basis: 19rem; }
+.head { padding: .6rem 1rem .35rem; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: .4rem; }
+.head .grow { flex: 1; }
+
+/* Top: On air */
+.onairpart { flex: 0 0 auto; padding-bottom: .8rem; border-bottom: 1px solid var(--line); }
+.monitor { margin: 0 1rem; aspect-ratio: 16/9; border-radius: var(--radius); background: #000; box-shadow: 0 0 0 2px var(--live); display: grid; place-items: center; text-align: center; font-size: .78rem; padding: .6rem; }
+.monitor.off { box-shadow: 0 0 0 2px var(--line-strong); color: #444; }
+.small .monitor { aspect-ratio: auto; height: 7rem; }
+.nowline { display: flex; gap: .4rem; align-items: baseline; margin: .5rem 1rem; font-size: .85rem; }
+.nowline .state { font-weight: 700; display: inline-flex; gap: .3rem; align-items: center; }
+.dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--live); display: inline-block; }
+.dot.off { background: var(--faint); }
+.nowline .where { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.transport { display: grid; grid-template-columns: 1fr 1.25fr .9fr; gap: .35rem; margin: 0 1rem; }
+.tbtn { padding: .55rem .4rem; border-radius: var(--radius); border: 1px solid var(--field-line); background: var(--raised); display: inline-flex; justify-content: center; align-items: center; gap: .35rem; font-size: .9rem; }
+.tbtn.next { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 700; }
+.tbtn.blank[aria-pressed="true"] { background: var(--live); border-color: var(--live); color: #fff; }
+
+/* Middle: three fixed rows */
+.middle { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.mrow { padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
+.mrow .rowname { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: .35rem; display: flex; align-items: center; gap: .35rem; }
+.find { width: 100%; display: flex; gap: .5rem; align-items: center; padding: .55rem .65rem; border: 1px solid var(--field-line); border-radius: var(--radius); background: var(--canvas); color: var(--faint); font-size: .88rem; text-align: left; }
+.find kbd { margin-left: auto; }
+.soundline { display: flex; align-items: center; gap: .45rem; font-size: .88rem; min-height: 1.6rem; }
+.soundline .what { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.soundline .what strong { color: var(--text); }
+.soundline .time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar2 { height: 3px; border-radius: 2px; background: var(--line); margin: .35rem 0 .45rem; overflow: hidden; }
+.bar2 span { display: block; height: 100%; width: 0; background: var(--gold); transition: width .3s; }
+.sbtns { display: flex; gap: .35rem; flex-wrap: wrap; }
+.mini { padding: .3rem .6rem; border-radius: var(--radius); border: 1px solid var(--field-line); background: var(--raised); font-size: .8rem; }
+.mini[disabled] { opacity: .45; cursor: default; }
+.mini.stop { background: var(--live); border-color: var(--live); color: #fff; font-weight: 600; }
+.check { display: flex; gap: .55rem; align-items: flex-start; padding: .55rem .65rem; border-radius: var(--radius); font-size: .86rem; }
+.check.ok { background: var(--ok-soft); color: var(--text); }
+.check.ok .icon { color: var(--ok); }
+.check.warn { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn); }
+.check.warn .icon { color: var(--warn); }
+.check .icon { font-weight: 800; }
+.check .fix { margin-top: .4rem; }
+.check .fix .mini { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 600; }
+.middle .rest { flex: 1; }
+
+/* Bottom: Ready */
+.readypart { flex: 0 0 auto; border-top: 1px solid var(--line); }
+.readyhead { width: 100%; background: none; border: none; text-align: left; padding: .6rem 1rem; display: flex; align-items: center; gap: .4rem; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.count2 { background: var(--gold); color: var(--on-gold); border-radius: 999px; padding: 0 .4rem; font-size: .7rem; letter-spacing: 0; }
+.fold { margin-left: auto; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: .1rem .5rem; font-size: .72rem; text-transform: none; letter-spacing: 0; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .35rem; padding: 0 1rem .5rem; }
+.tile { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 0; overflow: hidden; text-align: left; }
+.tile .pic { aspect-ratio: 16/9; background: #000; display: grid; place-items: center; font-size: .55rem; color: #ddd; text-align: center; padding: .15rem; }
+.tile .pic.idle { color: var(--gold); }
+.tile .name { padding: .15rem .3rem; font-size: .68rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.on { box-shadow: 0 0 0 2px var(--live); }
+.addline { padding: 0 1rem .65rem; font-size: .78rem; color: var(--muted); }
+.readypart.folded .tiles, .readypart.folded .addline { display: none; }
+
+/* ---- Calmer: same places, same words, less weight ---- */
+.calm .head, .calm .mrow .rowname, .calm .readyhead { text-transform: none; letter-spacing: 0; font-size: .8rem; font-weight: 600; color: var(--faint); }
+.calm .onairpart { border-bottom: none; padding-bottom: .4rem; }
+.calm .monitor { box-shadow: 0 0 0 1px rgba(229,72,77,.7); }
+.calm .monitor.off { box-shadow: 0 0 0 1px var(--line); }
+.calm .tbtn { background: transparent; border-color: var(--line-strong); }
+.calm .tbtn.next { background: var(--gold); border-color: var(--gold); }
+.calm .mrow { border-bottom: none; padding: .45rem 1rem; }
+.calm .find { background: transparent; border-color: var(--line-strong); }
+.calm .bar2 { display: none; }
+.calm.playing .bar2 { display: block; }
+.calm .sbtns .mini { background: transparent; border-color: var(--line-strong); }
+.calm .sbtns .mini[disabled] { display: none; }
+.calm .soundline { min-height: 1.3rem; }
+.calm .sound-quiet { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.calm .mini.stop { background: transparent; color: var(--live-text); border-color: rgba(229,72,77,.6); font-weight: 600; }
+.calm.playing .mini.stop { background: var(--live); color: #fff; border-color: var(--live); }
+.calm .check.ok { background: none; padding: .1rem 0; color: var(--muted); }
+.calm .check.ok strong { color: var(--ok); font-weight: 600; }
+.calm .readypart { border-top: none; }
+.calm .tiles { gap: .3rem; }
+.calm .tile { border-color: var(--line); background: transparent; }
+.calm .tile .name { font-weight: 500; color: var(--muted); }
+.calm .fold { border-color: var(--line); color: var(--faint); }
+.calm .addline { color: var(--faint); }
+.calm .row.live { background: transparent; box-shadow: none; }
+.calm .row .pin { visibility: hidden; }
+.calm .row:hover .pin, .calm .row .pin.on { visibility: visible; }
+.calm .row .pin.on { border-color: transparent; padding-left: 0; }
+.calm .slide { box-shadow: none; }
+.calm .slide .cap { border-top-width: 2px; }
+.calm .bar { background: var(--canvas); }
+.calm .status { background: var(--canvas); }
+.calm .col { border-left-color: var(--line); }
+</style>
+</head>
+<body>
+<div class="page">
+  <main>
+    <div class="states" role="group" aria-label="Style">
+      <span class="say">Style:</span>
+      <button class="chip style" data-s="calm" aria-pressed="true">Calmer</button>
+      <button class="chip style" data-s="draft" aria-pressed="false">First draft</button>
+    </div>
+    <div class="states" role="group" aria-label="Try a moment">
+      <span class="say">Try a moment:</span>
+      <button class="chip" data-m="calm" aria-pressed="true">A normal Sunday</button>
+      <button class="chip" data-m="music">Walk-in music playing</button>
+      <button class="chip" data-m="noscreen">No screen is on</button>
+      <button class="chip" data-m="phone">A phone asks to join</button>
+      <button class="chip" data-m="small">Small laptop</button>
+    </div>
+
+    <div class="window calm" id="win">
+      <header class="bar">
+        <nav class="tabs"><button class="tab">Plan</button><button class="tab on">Present</button></nav>
+        <span class="barmid"></span>
+        <div class="barright">
+          <span class="livename">Live service: <strong>Harvest Sunday</strong></span>
+          <button class="barbtn">✕ Close service</button>
+          <button class="barlink">ⓘ Help</button>
+          <button class="barlink">⚙ Settings</button>
+        </div>
+      </header>
+
+      <div class="body">
+        <section class="wall" aria-label="The service">
+          <div class="row live">
+            <div><h3>♪ Amazing Grace</h3><div class="count">4 slides</div><div class="onair">● On air</div><button class="pin on">☆ In Ready</button></div>
+            <div class="slides" id="slides"></div>
+          </div>
+          <div class="row">
+            <div><h3>📖 John 3:16</h3><div class="count">1 slide</div><button class="pin">☆ Add to Ready</button></div>
+            <div class="slides"><button class="slide"><div class="pic">For God so loved the world…</div><div class="cap"><span class="label">John 3:16</span></div></button></div>
+          </div>
+          <div class="row">
+            <div><h3>🔊 Walk-in music</h3><div class="count">Music only · press Play</div><button class="play" id="wallPlay">▶ Play</button></div>
+            <div></div>
+          </div>
+          <div class="row">
+            <div><h3>▭ Sermon: The Good Shepherd</h3><div class="count">6 slides</div><button class="pin">☆ Add to Ready</button></div>
+            <div class="slides"><button class="slide"><div class="pic">The Good Shepherd<br>John 10</div><div class="cap"><span class="label">1</span></div></button><button class="slide"><div class="pic">I know my sheep</div><div class="cap"><span class="label">2</span></div></button><button class="slide"><div class="pic">He lays down his life</div><div class="cap"><span class="label">3</span></div></button></div>
+          </div>
+        </section>
+
+        <aside class="col" aria-label="Right column">
+          <!-- TOP: On air -->
+          <section class="onairpart" aria-label="On air">
+            <div class="head"><span class="grow">On air</span></div>
+            <div class="monitor" id="monitor"></div>
+            <div class="nowline"><span class="state"><span class="dot" id="dot"></span><span id="stateWord">LIVE</span></span><span class="where" id="where"></span></div>
+            <div class="transport">
+              <button class="tbtn" id="prev">‹ Previous</button>
+              <button class="tbtn next" id="next">Next <kbd>Space</kbd></button>
+              <button class="tbtn blank" id="blank" aria-pressed="false">Blank <kbd>.</kbd></button>
+            </div>
+          </section>
+
+          <!-- MIDDLE: three rows, always there, always in this order -->
+          <section class="middle" aria-label="Add, sound and check">
+            <div class="mrow">
+              <div class="rowname">Add</div>
+              <button class="find">⌕ Find a song or reading to add <kbd>/</kbd></button>
+            </div>
+            <div class="mrow">
+              <div class="rowname">Sound</div>
+              <div class="soundline"><span class="what" id="soundWhat">Nothing is playing</span><span class="time" id="soundTime"></span></div>
+              <div class="bar2"><span id="soundBar"></span></div>
+              <div class="sbtns">
+                <button class="mini" id="pause" disabled>Pause</button>
+                <button class="mini" id="fade" disabled>Fade out</button>
+                <span style="flex:1"></span>
+                <button class="mini stop" id="stop">Stop the sound now</button>
+              </div>
+            </div>
+            <div class="mrow">
+              <div class="rowname">Check</div>
+              <div class="check ok" id="check"></div>
+            </div>
+            <div class="rest"></div>
+          </section>
+
+          <!-- BOTTOM: Ready -->
+          <section class="readypart" id="ready" aria-label="Ready">
+            <button class="readyhead" id="readyHead"><span>☆ Ready</span><span class="count2">1</span><span class="fold" id="fold">Fold ▾</span></button>
+            <div class="tiles">
+              <button class="tile" data-t="Blank"><div class="pic">&nbsp;</div><div class="name">Blank</div></button>
+              <button class="tile" data-t="Idle"><div class="pic idle">✛ Grace Chapel</div><div class="name">Idle</div></button>
+              <button class="tile" data-t="Clear text"><div class="pic" style="background:#16213a">(background only)</div><div class="name">Clear text</div></button>
+              <button class="tile" data-t="Notices"><div class="pic">Notices this week</div><div class="name">Notices</div></button>
+            </div>
+            <div class="addline">＋ Add from the Library</div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="status"><span>● This device only</span><span class="mid" id="statusLine">Harvest Sunday is open for live</span><span>1 screen · 1 on</span></footer>
+    </div>
+  </main>
+
+  <aside class="notes">
+    <h1>Present, calm</h1>
+    <p class="rule"><strong>Nothing moves, nothing disappears, nothing folds</strong> (Ready folds in place). A row's words change; the row never does.</p>
+
+    <h2>Calmer, not emptier</h2>
+    <ul>
+      <li>Quiet sentence-case names; no lines between rows.</li>
+      <li>Colour only with meaning: red for live, gold for Next, amber when something is wrong.</li>
+      <li>At rest, Sound and Check are one quiet line each. <strong>Stop the sound now</strong> stays put, outlined; solid red only while sound plays.</li>
+      <li>"Add to Ready" on the wall shows when you point at an item.</li>
+    </ul>
+
+    <h2>In one sentence, for training</h2>
+    <p>"Top right is the screen, bottom right is your quick buttons, and in between you add a song, stop the sound, and check it's all set."</p>
+
+    <h2>The middle: three rows, always</h2>
+    <ol>
+      <li><strong>Add</strong>: find a song or reading.</li>
+      <li><strong>Sound</strong>: what's playing, Pause, Fade out, and <strong>Stop the sound now</strong>, in the same place even when nothing plays.</li>
+      <li><strong>Check</strong>: ✓ "All set" or ⚠ the one thing to fix, with a button that fixes it.</li>
+    </ol>
+
+    <h2>Where the rest went</h2>
+    <table>
+      <tr><td>Show / Idle / Blank switch</td><td>Gone: Blank is in On air; Blank and Idle are in Ready</td></tr>
+      <tr><td>Picture size, safe area, logo bug, idle screen</td><td>Settings › Screens, Logo and colours</td></tr>
+      <tr><td>OBS</td><td>Settings › OBS; trouble shows in Check</td></tr>
+      <tr><td>Pair a phone</td><td>Settings › Devices; a phone asking shows in Check</td></tr>
+      <tr><td>Clear text / Clear all</td><td>Ready, as a tile</td></tr>
+      <tr><td>Keys</td><td>Help › Keys</td></tr>
+      <tr><td>Close service</td><td>Menu bar</td></tr>
+    </table>
+
+    <h2>Try</h2>
+    <ul>
+      <li>Space or Next, ← or Previous, "." for Blank.</li>
+      <li>▶ Play on Walk-in music, then Stop the sound now.</li>
+      <li>The moments above the window.</li>
+    </ul>
+  </aside>
+</div>
+
+<script>
+const slides = [
+  { l: "V1", c: "", t: "Amazing grace, how sweet the sound<br>That saved a wretch like me" },
+  { l: "V2", c: "", t: "'Twas grace that taught my heart to fear<br>And grace my fears relieved" },
+  { l: "V3", c: "", t: "Through many dangers, toils and snares<br>I have already come" },
+  { l: "C", c: "chorus", t: "My chains are gone,<br>I've been set free" },
+];
+const st = { at: 0, blank: false, special: null, playing: false, paused: false, pos: 84, screen: true, phone: false, folded: false };
+const $ = (id) => document.getElementById(id);
+const say = (t) => ($("statusLine").textContent = t);
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function render() {
+  $("slides").innerHTML = slides.map((s, i) => `<button class="slide ${s.c} ${i === st.at && !st.special ? "is-live" : ""} ${i === st.at + 1 ? "is-next" : ""}" data-i="${i}"><div class="pic">${s.t}</div><div class="cap">${i === st.at && !st.special ? '<span class="pill live">LIVE</span>' : i === st.at + 1 ? '<span class="pill next">NEXT</span>' : ""}<span class="label">${s.l}</span></div></button>`).join("");
+  document.querySelectorAll("#slides .slide").forEach((b) => (b.onclick = () => { st.at = +b.dataset.i; st.special = null; st.blank = false; render(); }));
+  const black = st.blank || st.special === "Blank";
+  const shown = st.special === "Idle" ? "✛ Grace Chapel" : st.special === "Notices" ? "Notices this week" : st.special === "Clear text" ? "" : slides[st.at].t;
+  $("monitor").innerHTML = black ? "" : shown;
+  $("monitor").classList.toggle("off", black);
+  $("monitor").style.background = st.special === "Clear text" ? "#16213a" : "#000";
+  $("dot").classList.toggle("off", black || !!st.special);
+  $("stateWord").textContent = black ? "BLANK" : st.special === "Idle" ? "IDLE" : st.special === "Clear text" ? "TEXT CLEARED" : "LIVE";
+  $("where").textContent = st.special && st.special !== "Blank" ? `${st.special} · Next goes back to the service` : `Amazing Grace · ${slides[st.at].l}`;
+  $("blank").setAttribute("aria-pressed", st.blank);
+  document.querySelectorAll(".tile").forEach((t) => t.classList.toggle("on", st.special === t.dataset.t));
+  // Sound row: always there.
+  $("soundWhat").innerHTML = st.playing ? `${st.paused ? "Paused" : "Playing"}: <strong>Walk-in music</strong>` : "No sound playing";
+  $("win").classList.toggle("playing", st.playing);
+  $("soundTime").textContent = st.playing ? `${mmss(st.pos)} / 3:05` : "";
+  $("soundBar").style.width = st.playing ? `${(st.pos / 185) * 100}%` : "0";
+  $("pause").disabled = !st.playing; $("fade").disabled = !st.playing;
+  $("pause").textContent = st.paused ? "Resume" : "Pause";
+  $("wallPlay").textContent = st.playing ? "Fade out" : "▶ Play";
+  // Check row: always there.
+  const c = $("check");
+  if (!st.screen) { c.className = "check warn"; c.innerHTML = `<span class="icon">⚠</span><div><strong>No screen is on.</strong> Nothing reaches the projector.<div class="fix"><button class="mini" id="fixScreen">Turn on Sanctuary projector</button></div></div>`; $("fixScreen").onclick = () => { st.screen = true; say("Sanctuary projector is on"); render(); }; }
+  else if (st.phone) { c.className = "check warn"; c.innerHTML = `<span class="icon">⚠</span><div><strong>A phone is asking to join:</strong> "Mary's iPhone".<div class="fix"><button class="mini" id="allow">Let it join</button> <button class="mini" id="deny" style="background:var(--raised);color:var(--text);border-color:var(--field-line)">Not now</button></div></div>`; $("allow").onclick = () => { st.phone = false; say("Mary's iPhone joined"); render(); }; $("deny").onclick = () => { st.phone = false; render(); }; }
+  else { c.className = "check ok"; c.innerHTML = `<span class="icon">✓</span><div><strong>All set</strong> · Sanctuary projector is on</div>`; }
+  $("ready").classList.toggle("folded", st.folded);
+  $("fold").textContent = st.folded ? "Open ▴" : "Fold ▾";
+}
+let timer = null;
+function startMusic() { st.playing = true; st.paused = false; say("Walk-in music is playing"); clearInterval(timer); timer = setInterval(() => { if (!st.paused) { st.pos = Math.min(185, st.pos + 1); render(); } }, 1000); render(); }
+function stopMusic(msg) { st.playing = false; st.paused = false; clearInterval(timer); say(msg); render(); }
+$("wallPlay").onclick = () => (st.playing ? stopMusic("Walk-in music faded out") : startMusic());
+$("stop").onclick = () => stopMusic(st.playing ? "Sound stopped" : "Nothing was playing");
+$("fade").onclick = () => stopMusic("Walk-in music faded out");
+$("pause").onclick = () => { st.paused = !st.paused; render(); };
+$("next").onclick = () => { if (st.special) { st.special = null; say("Back to the service"); } else if (st.at < slides.length - 1) st.at++; st.blank = false; render(); };
+$("prev").onclick = () => { st.special = null; if (st.at > 0) st.at--; render(); };
+$("blank").onclick = () => { st.blank = !st.blank; render(); };
+$("readyHead").onclick = () => { st.folded = !st.folded; render(); };
+document.querySelectorAll(".tile").forEach((t) => (t.onclick = () => { st.special = st.special === t.dataset.t ? null : t.dataset.t; st.blank = false; say(st.special ? `${st.special} is showing. Next goes back to the service` : "Back to the service"); render(); }));
+document.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "ArrowRight") { e.preventDefault(); $("next").click(); }
+  else if (e.key === "ArrowLeft") $("prev").click();
+  else if (e.key === ".") $("blank").click();
+});
+document.querySelectorAll(".chip.style").forEach((c) => (c.onclick = () => {
+  document.querySelectorAll(".chip.style").forEach((x) => x.setAttribute("aria-pressed", x === c));
+  $("win").classList.toggle("calm", c.dataset.s === "calm");
+}));
+document.querySelectorAll(".chip:not(.style)").forEach((c) => (c.onclick = () => {
+  const m = c.dataset.m;
+  document.querySelectorAll(".chip:not(.style)").forEach((x) => x.setAttribute("aria-pressed", x === c));
+  st.screen = m !== "noscreen"; st.phone = m === "phone";
+  $("win").classList.toggle("small", m === "small");
+  if (m === "music") startMusic(); else if (st.playing) stopMusic("Harvest Sunday is open for live");
+  render();
+}));
+render();
+</script>
+</body>
+</html>

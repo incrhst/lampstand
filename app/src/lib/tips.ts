@@ -11,7 +11,7 @@ export interface TipFacts {
   liveItem: string | null;
   /** How many slides the item on air has. */
   liveSlides?: number;
-  /** The church has set a logo (Setup › Logo and colours). */
+  /** The church has set a logo (Settings › Logo and colours). */
   hasLogo?: boolean;
   /** Devices paired with this one; undefined until sync has been asked. */
   paired?: number;
@@ -52,6 +52,12 @@ const anyLoops = (f: TipFacts) => sections(f).some((s) => s.seconds !== null);
 export const CONNECT_DEVICE = "connect-device";
 
 const onAir = (f: TipFacts) => f.liveItem !== null;
+/**
+ * A service is open and nothing is on air yet: the time a tip is shown in
+ * Present (before the service, never during it), so a tip about a feature
+ * on air is read here.
+ */
+const beforeLive = (f: TipFacts) => f.loaded != null && !onAir(f);
 const never = () => false;
 
 export const TIPS: Tip[] = [
@@ -70,7 +76,7 @@ export const TIPS: Tip[] = [
     area: "Present",
     title: "See the time left on a slide",
     body: "While a group loops, a thin gold bar along the bottom of the LIVE card and the On air picture fills as the slide's time runs out.",
-    relevant: (f) => sections(f).some((s) => s.seconds !== null && f.liveItem !== null && s.items.includes(f.liveItem)),
+    relevant: (f) => beforeLive(f) && anyLoops(f),
     used: () => false,
   },
   {
@@ -88,7 +94,7 @@ export const TIPS: Tip[] = [
     area: "Present",
     title: "Add a song without leaving the screen",
     body: "Press / to search for a song or verse and add it right after what is on air. Nothing changes on the screen until you start it.",
-    relevant: onAir,
+    relevant: beforeLive,
     used: never,
   },
   {
@@ -97,7 +103,7 @@ export const TIPS: Tip[] = [
     area: "Present",
     title: "Jump straight to a verse or chorus",
     body: "On a song, press C for the chorus, B for the bridge, or a number for that verse. On scripture, a number jumps to that verse.",
-    relevant: (f) => onAir(f) && (f.liveSlides ?? 0) >= 3,
+    relevant: (f) => beforeLive(f) && (f.loaded?.items ?? []).some((i) => i.slides.length >= 3),
     used: never,
   },
   {
@@ -106,15 +112,15 @@ export const TIPS: Tip[] = [
     area: "Present",
     title: "Blank the screen in one key",
     body: "Press the full stop to blank the screen at once, and again to bring the slide back. The Blank button does the same.",
-    relevant: onAir,
+    relevant: beforeLive,
     used: never,
   },
   {
     id: "logo-bug",
     area: "Present",
     title: "Put your logo in a corner",
-    body: "Switch on Logo bug in the Screen card, under Controls in Library & controls (press F if it's hidden), to show your logo small in the lower corner of every screen and the stream. Blank covers it. Set the corner and size in Setup › Logo and colours.",
-    relevant: (f) => onAir(f) && f.hasLogo === true,
+    body: "Switch on Logo bug in Settings › Logo and colours to show your logo small in the lower corner of every screen and the stream. Blank covers it.",
+    relevant: (f) => beforeLive(f) && f.hasLogo === true,
     used: never,
   },
   {
@@ -122,8 +128,8 @@ export const TIPS: Tip[] = [
     clip: "tips/safe-area.mp4",
     area: "Present",
     title: "Check the safe area",
-    body: "Switch on Safe area guide in the Screen card, under Controls in Library & controls (press F if it's hidden), to see what a projector might crop. It shows only on your preview, never on the screen.",
-    relevant: onAir,
+    body: "The dashed line on the On air picture shows what a projector might crop. It shows only on that picture, never on the screen. Turn it off in Settings › Screens.",
+    relevant: beforeLive,
     used: never,
   },
   {

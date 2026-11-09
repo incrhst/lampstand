@@ -983,23 +983,36 @@ fn nothing_is_fetched_while_a_service_is_on_air() {
     assert_eq!(asked(&b).len(), 1);
 }
 
-/// The Setup switch is off until somebody turns it on, is this device's own,
-/// and survives other settings being saved.
+/// The Settings switch is on until somebody turns it off, is this device's
+/// own, and survives other settings being saved.
 #[test]
-fn the_sound_switch_is_off_by_default_and_kept_with_the_device_settings() {
+fn the_sound_switch_is_on_by_default_and_kept_with_the_device_settings() {
     let mut d = device(false);
     let get = |d: &mut Device| match d.ok(Request::Settings(SettingsRequest::Get)) {
         Response::Settings(s) => s,
         other => panic!("{other:?}"),
     };
     let mut settings = get(&mut d);
-    assert!(!settings.use_sound, "off by default");
-    settings.use_sound = true;
+    assert!(settings.use_sound, "on by default");
+    settings.use_sound = false;
     d.ok(Request::Settings(SettingsRequest::Put(settings)));
     let mut settings = get(&mut d);
-    assert!(settings.use_sound);
-    // Saving something else with the switch as read keeps it.
+    assert!(!settings.use_sound);
+    // Saving something else with the switch as read keeps it off.
     settings.clicker_mode = true;
     d.ok(Request::Settings(SettingsRequest::Put(settings)));
-    assert!(get(&mut d).use_sound);
+    assert!(!get(&mut d).use_sound);
+}
+
+/// A settings file saved before the switch existed reads as on; one where it
+/// was turned off stays off.
+#[test]
+fn a_settings_file_without_the_sound_switch_reads_as_on() {
+    let old: lampstand_api::DeviceSettings =
+        serde_json::from_str(r#"{"clicker_mode":true}"#).unwrap();
+    assert!(old.use_sound);
+    assert!(old.clicker_mode);
+    let off: lampstand_api::DeviceSettings =
+        serde_json::from_str(r#"{"use_sound":false}"#).unwrap();
+    assert!(!off.use_sound);
 }

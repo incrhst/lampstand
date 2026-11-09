@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Present Right Column</title>
+<!-- Mockup: Present's right column for a volunteer who comes once a month.
+     On air pinned at the top (never hides), Library & controls scrolling in
+     the middle (F hides just this part), Ready pinned at the bottom (folds in
+     place to a one-line bar, never leaves the screen). Interactive: Next,
+     Blank, fold Ready, F, small window. Not wired to the app. -->
+<style>
+:root {
+  --canvas: #121419; --panel: #1b1f27; --raised: #232833;
+  --line: #2a303b; --line-strong: #3a4250; --field-line: #5e6a81;
+  --text: #e6e8ec; --muted: #9aa3b2; --faint: #8690a0;
+  --gold: #f0c75e; --gold-hover: #f5d47e; --on-gold: #1b1f27; --gold-soft: rgba(240,199,94,.12);
+  --live: #e5484d; --live-text: #e96468; --warn: #f5a524; --warn-soft: rgba(245,165,36,.12);
+  --section-verse: #7fa8f5; --section-chorus: #4cc7b0; --section-bridge: #eb9a5c;
+  --radius: 6px; --radius-lg: 10px; --ease: cubic-bezier(.23,1,.32,1);
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  font-size: 15px; line-height: 1.4; -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0b0d10; color: var(--text); }
+button { font: inherit; color: inherit; cursor: pointer; }
+kbd { font: 600 .7rem/1 system-ui; padding: .15rem .3rem; border: 1px solid currentColor; border-radius: 4px; opacity: .8; }
+
+/* The page around the window: the controls for the mockup and the notes. */
+.page { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: 1.5rem; padding: 1.25rem; max-width: 1500px; margin: 0 auto; }
+@media (max-width: 1100px) { .page { grid-template-columns: minmax(0, 1fr); } }
+.states { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; align-items: center; }
+.states .say { color: var(--muted); font-size: .85rem; margin-right: .3rem; }
+.chip { padding: .35rem .75rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel); font-size: .85rem; }
+.chip[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
+.notes { font-size: .9rem; color: var(--muted); }
+.notes h1 { font-size: 1.15rem; color: var(--text); margin: 0 0 .5rem; }
+.notes h2 { font-size: .95rem; color: var(--text); margin: 1.1rem 0 .3rem; }
+.notes p, .notes li { margin: .3rem 0; }
+.notes ol { padding-left: 1.2rem; }
+.notes .rule { border-left: 3px solid var(--gold); padding: .4rem .7rem; background: var(--gold-soft); color: var(--text); border-radius: 0 var(--radius) var(--radius) 0; }
+.tag { display: inline-block; font-size: .72rem; font-weight: 700; padding: .05rem .4rem; border-radius: 4px; margin-right: .3rem; vertical-align: 1px; }
+.tag.top { background: var(--live); color: #fff; }
+.tag.mid { background: var(--raised); border: 1px solid var(--line-strong); }
+.tag.bot { background: var(--gold); color: var(--on-gold); }
+
+/* The app window. */
+.window { height: min(760px, calc(100vh - 5rem)); min-height: 520px;border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; background: var(--canvas); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.5); transition: height .3s var(--ease), max-width .3s var(--ease); }
+.window.small { height: min(600px, calc(100vh - 5rem)); max-width: 980px; }
+.bar { display: flex; align-items: center; gap: .6rem; padding: .5rem .9rem; border-bottom: 1px solid var(--line); font-size: .85rem; }
+.modes { display: flex; gap: .2rem; }
+.mode { background: none; border: none; padding: .35rem .7rem; border-radius: var(--radius); color: var(--muted); }
+.mode.on { background: var(--raised); color: var(--text); }
+.spacer { flex: 1; }
+.livename { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.livename strong { color: var(--text); }
+.barbtn { background: var(--raised); border: 1px solid var(--field-line); border-radius: var(--radius); padding: .25rem .6rem; font-size: .8rem; white-space: nowrap; }
+.barlink { background: none; border: none; color: var(--muted); padding: .3rem .4rem; white-space: nowrap; }
+.barbtn.side { display: inline-flex; gap: .35rem; align-items: center; }
+.status { display: flex; gap: 1rem; padding: .3rem .9rem; border-top: 1px solid var(--line); font-size: .75rem; color: var(--faint); }
+.status .mid { flex: 1; text-align: center; color: var(--muted); }
+
+.body { flex: 1; min-height: 0; display: flex; }
+
+/* The wall. */
+.wall { flex: 1; min-width: 0; overflow-y: auto; padding: .75rem 1rem 1.5rem; display: flex; flex-direction: column; gap: .6rem; }
+.row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: .75rem; padding: .5rem; border-radius: var(--radius-lg); }
+.row.live { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.row h3 { margin: 0; font-size: .95rem; }
+.row .count { color: var(--muted); font-size: .78rem; }
+.row .onair { color: var(--live-text); font-size: .78rem; font-weight: 600; }
+.pin { margin-top: .3rem; font-size: .72rem; padding: .1rem .45rem; border-radius: 999px; background: none; border: 1px solid var(--line-strong); color: var(--muted); }
+.pin.on { border-color: var(--gold); color: var(--gold); }
+.play { margin-top: .35rem; font-size: .78rem; font-weight: 600; padding: .2rem .65rem; border-radius: 999px; background: var(--raised); border: 1px solid var(--gold); }
+.slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: .5rem; }
+.slide { border: none; padding: 0; text-align: left; border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.slide .pic { aspect-ratio: 16/9; background: #000; display: grid; place-items: center; text-align: center; font-size: .62rem; color: #e8e8e8; padding: .4rem; }
+.slide .cap { display: flex; gap: .3rem; align-items: center; padding: .2rem .35rem; font-size: .68rem; border-top: 3px solid var(--section-verse); }
+.slide.chorus .cap { border-top-color: var(--section-chorus); }
+.slide.is-live { box-shadow: 0 0 0 2px var(--live); }
+.slide.is-next { box-shadow: 0 0 0 2px var(--gold); }
+.pill { font-size: .6rem; font-weight: 800; padding: .05rem .3rem; border-radius: 3px; }
+.pill.live { background: var(--live); color: #fff; }
+.pill.next { background: var(--gold); color: var(--on-gold); }
+.label { color: var(--muted); }
+
+/* The right column: three parts, always in this order. */
+.col { flex: 0 0 21rem; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--canvas); min-height: 0; }
+.part-head { display: flex; align-items: center; gap: .45rem; padding: .55rem .9rem .35rem; font-size: .78rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.part-head .grow { flex: 1; }
+.part-head .hint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--faint); font-size: .72rem; }
+
+/* Top: On air. Pinned, can't be hidden. */
+.onairpart { flex: 0 0 auto; border-bottom: 1px solid var(--line); padding-bottom: .75rem; }
+.monitor { margin: 0 .9rem; aspect-ratio: 16/9; border-radius: var(--radius); background: #000; box-shadow: 0 0 0 2px var(--live); display: grid; place-items: center; text-align: center; font-size: .78rem; padding: .6rem; transition: box-shadow .2s; }
+.monitor.blank { box-shadow: 0 0 0 2px var(--line-strong); color: #333; }
+.small .monitor { max-height: 7.5rem; aspect-ratio: auto; height: 7.5rem; }
+.nowline { display: flex; gap: .4rem; align-items: baseline; margin: .5rem .9rem .5rem; font-size: .85rem; }
+.nowline .state { font-weight: 700; display: inline-flex; gap: .3rem; align-items: center; }
+.dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--live); display: inline-block; }
+.dot.off { background: var(--faint); }
+.nowline .where { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.transport { display: grid; grid-template-columns: 1fr 1.2fr .9fr; gap: .35rem; margin: 0 .9rem; }
+.tbtn { padding: .5rem .4rem; border-radius: var(--radius); border: 1px solid var(--field-line); background: var(--raised); display: inline-flex; justify-content: center; align-items: center; gap: .35rem; font-size: .88rem; }
+.tbtn.next { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 700; }
+.tbtn.blank[aria-pressed="true"] { background: var(--live); border-color: var(--live); color: #fff; }
+
+/* Middle: Library & controls. Scrolls; F hides just this part. */
+.middle { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.middle[hidden] { display: none; }
+.middle .scroll { overflow-y: auto; padding: 0 .9rem .75rem; display: flex; flex-direction: column; gap: .5rem; }
+.find { display: flex; gap: .45rem; align-items: center; padding: .45rem .6rem; border: 1px solid var(--field-line); border-radius: var(--radius); color: var(--faint); font-size: .85rem; }
+.find kbd { margin-left: auto; }
+.card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); padding: .55rem .75rem; font-size: .85rem; }
+.card .t { display: flex; justify-content: space-between; color: var(--text); font-weight: 600; }
+.card .s { color: var(--muted); font-size: .78rem; margin-top: .15rem; }
+.card .row2 { display: flex; gap: .4rem; margin-top: .45rem; }
+.mini { padding: .25rem .55rem; border-radius: var(--radius); border: 1px solid var(--field-line); background: var(--raised); font-size: .78rem; }
+.mini.danger { background: var(--live); border-color: var(--live); color: #fff; }
+.hidebtn { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: .1rem .45rem; color: var(--muted); font-size: .72rem; display: inline-flex; gap: .3rem; align-items: center; }
+.gap { flex: 1; }
+.middle-off { flex: 1; display: grid; place-items: center; text-align: center; color: var(--faint); font-size: .8rem; padding: 1rem; }
+.middle-off button { margin-top: .5rem; }
+.middle-off[hidden] { display: none; }
+
+/* Bottom: Ready. Pinned; folds in place to one line, never leaves. */
+.readypart { flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--canvas); }
+.readypart .part-head { cursor: pointer; }
+.fold { background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: .1rem .5rem; color: var(--muted); font-size: .72rem; text-transform: none; letter-spacing: 0; font-weight: 600; }
+.readycount { background: var(--gold); color: var(--on-gold); border-radius: 999px; padding: 0 .4rem; font-size: .72rem; text-transform: none; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; padding: 0 .9rem .75rem; }
+.tile { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 0; overflow: hidden; text-align: left; }
+.tile .pic { aspect-ratio: 16/9; background: #000; display: grid; place-items: center; font-size: .6rem; color: #ddd; }
+.tile .pic.idle { color: var(--gold); }
+.tile .name { padding: .2rem .35rem; font-size: .72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.on { box-shadow: 0 0 0 2px var(--live); }
+.addline { padding: 0 .9rem .7rem; font-size: .8rem; color: var(--muted); }
+.readypart.folded .tiles, .readypart.folded .addline { display: none; }
+.readypart.folded { box-shadow: 0 -6px 16px rgba(0,0,0,.25); }
+.small .tiles { grid-template-columns: repeat(3, 1fr); }
+</style>
+</head>
+<body>
+<div class="page">
+  <main>
+    <div class="states" role="group" aria-label="Try a state">
+      <span class="say">Try it:</span>
+      <button class="chip" data-state="normal" aria-pressed="true">As it opens</button>
+      <button class="chip" data-state="folded" aria-pressed="false">Ready folded</button>
+      <button class="chip" data-state="hidden" aria-pressed="false">F: Library &amp; controls hidden</button>
+      <button class="chip" data-state="small" aria-pressed="false">Small window (laptop)</button>
+    </div>
+
+    <div class="window" id="win">
+      <header class="bar">
+        <div class="modes"><button class="mode">Plan</button><button class="mode on">Present</button></div>
+        <span class="spacer"></span>
+        <span class="livename">Live service: <strong>Harvest Sunday</strong></span>
+        <button class="barbtn">✕ Close service</button>
+        <button class="barlink">ⓘ Help</button>
+        <button class="barlink">⚙ Settings</button>
+        <button class="barbtn side" id="sideBtn">▮ Hide library &amp; controls <kbd>F</kbd></button>
+      </header>
+
+      <div class="body">
+        <section class="wall" aria-label="The service">
+          <div class="row live">
+            <div><h3>♪ Amazing Grace</h3><div class="count">4 slides</div><div class="onair">● On air</div><button class="pin on">☆ In Ready</button></div>
+            <div class="slides" id="slides"></div>
+          </div>
+          <div class="row">
+            <div><h3>📖 John 3:16</h3><div class="count">1 slide</div><button class="pin">☆ Add to Ready</button></div>
+            <div class="slides"><button class="slide"><div class="pic">For God so loved the world…</div><div class="cap"><span class="label">John 3:16</span></div></button></div>
+          </div>
+          <div class="row">
+            <div><h3>🔊 Walk-in music</h3><div class="count">Music only · press Play</div><button class="play">▶ Play</button></div>
+            <div></div>
+          </div>
+          <div class="row">
+            <div><h3>▭ Sermon: The Good Shepherd</h3><div class="count">6 slides</div><button class="pin">☆ Add to Ready</button></div>
+            <div class="slides"><button class="slide"><div class="pic">The Good Shepherd<br>John 10</div><div class="cap"><span class="label">1</span></div></button><button class="slide"><div class="pic">I know my sheep</div><div class="cap"><span class="label">2</span></div></button><button class="slide"><div class="pic">He lays down his life</div><div class="cap"><span class="label">3</span></div></button></div>
+          </div>
+        </section>
+
+        <aside class="col" aria-label="Right column">
+          <!-- TOP: On air -->
+          <section class="onairpart" aria-label="On air">
+            <div class="part-head"><span class="grow">On air</span><span class="hint">always here</span></div>
+            <div class="monitor" id="monitor"></div>
+            <div class="nowline"><span class="state"><span class="dot" id="dot"></span><span id="stateWord">LIVE</span></span><span class="where" id="where"></span></div>
+            <div class="transport">
+              <button class="tbtn" id="prev">‹ Previous</button>
+              <button class="tbtn next" id="next">Next <kbd>Space</kbd></button>
+              <button class="tbtn blank" id="blank" aria-pressed="false">Blank <kbd>.</kbd></button>
+            </div>
+          </section>
+
+          <!-- MIDDLE: Library & controls -->
+          <section class="middle" id="middle" aria-label="Library and controls">
+            <div class="part-head"><span class="grow">Library &amp; controls</span><button class="hidebtn" id="hideBtn">Hide <kbd>F</kbd></button></div>
+            <div class="scroll">
+              <div class="find">⌕ Find a song, reading or video to add <kbd>/</kbd></div>
+              <div class="card"><div class="t"><span>Screen</span><span>▾</span></div><div class="s">Sanctuary projector · Show</div><div class="row2"><button class="mini">Show</button><button class="mini">Idle</button><button class="mini">Blank</button></div></div>
+              <div class="card"><div class="t"><span>Sound</span><span>▾</span></div><div class="s">Nothing is playing</div><div class="row2"><button class="mini danger">Stop the sound now</button></div></div>
+              <div class="card"><div class="t"><span>Remotes</span><span>›</span></div><div class="s">No phones connected</div></div>
+              <div class="card"><div class="t"><span>Clear</span><span>›</span></div></div>
+              <div class="card"><div class="t"><span>Keys</span><span>›</span></div></div>
+            </div>
+          </section>
+          <div class="middle-off" id="middleOff" hidden>
+            <div>Library &amp; controls is hidden.<br>On air and Ready stay.<br><button class="mini" id="showBtn">Show library &amp; controls <kbd>F</kbd></button></div>
+          </div>
+
+          <!-- BOTTOM: Ready -->
+          <section class="readypart" id="ready" aria-label="Ready">
+            <div class="part-head" id="readyHead"><span>☆ Ready</span><span class="readycount">3</span><span class="grow"></span><button class="fold" id="foldBtn" aria-expanded="true">Fold ▾</button></div>
+            <div class="tiles">
+              <button class="tile" id="tBlank"><div class="pic">&nbsp;</div><div class="name">Blank</div></button>
+              <button class="tile" id="tIdle"><div class="pic idle">✛ Grace Chapel</div><div class="name">Idle</div></button>
+              <button class="tile" id="tAnn"><div class="pic">Notices this week</div><div class="name">Notices</div></button>
+            </div>
+            <div class="addline">＋ Add from the Library</div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="status"><span>● This device only</span><span class="mid" id="statusLine">Harvest Sunday is open for live</span><span>1 screen · 1 on</span></footer>
+    </div>
+  </main>
+
+  <aside class="notes">
+    <h1>Present's right column</h1>
+    <p class="rule">One rule for a volunteer who comes once a month: <strong>nothing moves and nothing disappears.</strong> The same three parts, in the same order, every time.</p>
+
+    <h2><span class="tag top">TOP</span>On air</h2>
+    <ul>
+      <li>The screen picture, what is live, and <strong>Previous · Next · Blank</strong>.</li>
+      <li><strong>Can't be hidden.</strong> It's the one thing an operator must always see.</li>
+    </ul>
+
+    <h2><span class="tag mid">MIDDLE</span>Library &amp; controls</h2>
+    <ul>
+      <li>Find a song, Screen, Sound, Remotes, Clear, Keys. Scrolls between the other two.</li>
+      <li><strong>F</strong> (or Hide) hides just this part for more room. On air and Ready stay where they are.</li>
+    </ul>
+
+    <h2><span class="tag bot">BOTTOM</span>Ready</h2>
+    <ul>
+      <li>Blank, Idle, and anything added with <strong>☆ Add to Ready</strong>, one tap away.</li>
+      <li><strong>Fold</strong> turns it into a single line, "☆ Ready · 3", <em>in the same place</em>. It never slides off the screen. Click the line to open it.</li>
+    </ul>
+
+    <h2>Every service starts the same</h2>
+    <p>When a service is opened for live, everything is open. Last month's folding or hiding never carries over.</p>
+
+    <h2>What training can say</h2>
+    <ol>
+      <li>"What's on the screen is <strong>top right</strong>."</li>
+      <li>"Blank, Idle and your extras are <strong>bottom right</strong>."</li>
+      <li>"Everything else is in between."</li>
+    </ol>
+  </aside>
+</div>
+
+<script>
+const slides = [
+  { l: "V1", c: "", t: "Amazing grace, how sweet the sound<br>That saved a wretch like me" },
+  { l: "V2", c: "", t: "'Twas grace that taught my heart to fear<br>And grace my fears relieved" },
+  { l: "V3", c: "", t: "Through many dangers, toils and snares<br>I have already come" },
+  { l: "C", c: "chorus", t: "My chains are gone,<br>I've been set free" },
+];
+let at = 0, blank = false, folded = false, hidden = false, special = null;
+const $ = (id) => document.getElementById(id);
+function render() {
+  $("slides").innerHTML = slides.map((s, i) =>
+    `<button class="slide ${s.c} ${i === at && !special ? "is-live" : ""} ${i === at + 1 ? "is-next" : ""}" data-i="${i}"><div class="pic">${s.t}</div><div class="cap">${i === at && !special ? '<span class="pill live">LIVE</span>' : i === at + 1 ? '<span class="pill next">NEXT</span>' : ""}<span class="label">${s.l}</span></div></button>`).join("");
+  const showing = special === "Notices" ? "Notices this week" : special === "Idle" ? "✛ Grace Chapel" : slides[at].t;
+  $("monitor").innerHTML = blank || special === "Blank" ? "" : showing;
+  $("monitor").classList.toggle("blank", blank || special === "Blank");
+  $("dot").classList.toggle("off", blank || !!special);
+  $("stateWord").textContent = blank || special === "Blank" ? "BLANK" : special === "Idle" ? "IDLE" : "LIVE";
+  $("where").textContent = special && special !== "Blank" ? `${special} · Next goes back to Amazing Grace` : `Amazing Grace · ${slides[at].l}`;
+  $("blank").setAttribute("aria-pressed", blank);
+  for (const [id, n] of [["tBlank", "Blank"], ["tIdle", "Idle"], ["tAnn", "Notices"]]) $(id).classList.toggle("on", special === n);
+  $("ready").classList.toggle("folded", folded);
+  $("foldBtn").textContent = folded ? "Open ▴" : "Fold ▾";
+  $("foldBtn").setAttribute("aria-expanded", !folded);
+  $("middle").hidden = hidden;
+  $("middleOff").hidden = !hidden;
+  $("sideBtn").innerHTML = (hidden ? "▮ Show library &amp; controls" : "▮ Hide library &amp; controls") + " <kbd>F</kbd>";
+  document.querySelectorAll("#slides .slide").forEach((b) => b.onclick = () => { at = +b.dataset.i; special = null; blank = false; render(); });
+}
+function say(t) { $("statusLine").textContent = t; }
+$("next").onclick = () => { if (special) { special = null; say("Back to the service"); } else if (at < slides.length - 1) at++; blank = false; render(); };
+$("prev").onclick = () => { special = null; if (at > 0) at--; render(); };
+$("blank").onclick = () => { blank = !blank; render(); };
+$("foldBtn").onclick = (e) => { e.stopPropagation(); folded = !folded; say(folded ? "Ready folded. It stays here: click it to open" : "Ready open"); render(); setChip(null); };
+$("readyHead").onclick = () => { if (folded) { folded = false; render(); } };
+const toggleSide = () => { hidden = !hidden; say(hidden ? "Library & controls hidden. On air and Ready stay" : "Library & controls shown"); render(); setChip(null); };
+$("hideBtn").onclick = toggleSide; $("sideBtn").onclick = toggleSide; $("showBtn").onclick = toggleSide;
+for (const [id, n] of [["tBlank", "Blank"], ["tIdle", "Idle"], ["tAnn", "Notices"]]) $(id).onclick = () => { special = special === n ? null : n; blank = false; say(special ? `${n} is showing. Next goes back to the service` : "Back to the service"); render(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f" || e.key === "F") toggleSide();
+  else if (e.key === " " || e.key === "ArrowRight") { e.preventDefault(); $("next").click(); }
+  else if (e.key === "ArrowLeft") $("prev").click();
+  else if (e.key === ".") $("blank").click();
+});
+function setChip(state) { document.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", c.dataset.state === state)); }
+document.querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+  const s = c.dataset.state;
+  folded = s === "folded"; hidden = s === "hidden";
+  $("win").classList.toggle("small", s === "small");
+  setChip(s); render();
+});
+render();
+</script>
+</body>
+</html>

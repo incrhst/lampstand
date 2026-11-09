@@ -14,7 +14,7 @@
 //!   its own OBS and nothing about it changes.
 //! - **The drawer follows.** A device that is not the owner reports OBS as
 //!   not relevant, so Present shows no OBS strip, warning or drawer there,
-//!   and it refuses to switch scenes or mutes by hand. Setup › OBS still
+//!   and it refuses to switch scenes or mutes by hand. Settings › OBS still
 //!   works everywhere, so a machine can be set up before it takes Stream.
 //!
 //! The OBS password and any file path never leave the device: a cue is a

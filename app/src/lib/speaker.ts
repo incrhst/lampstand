@@ -40,7 +40,7 @@ export const speakerWords = {
   scanSpeaker: "The speaker scans this with their phone",
   speakerNote: (item: string) =>
     `The speaker's phone shows only “${item}”. It stops working when the service is closed, and you can still run everything from here.`,
-  runNote: "It joins the paired phones and tablets in Setup › Devices, where you can disconnect it at any time.",
+  runNote: "It joins the paired phones and tablets in Settings › Devices, where you can disconnect it at any time.",
   noItems: "Open a service with slides to connect a speaker.",
 };
 

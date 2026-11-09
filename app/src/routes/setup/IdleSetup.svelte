@@ -1,4 +1,4 @@
-<!-- Setup › Idle screen: what the audience screens show when no service is
+<!-- Settings › Idle screen: what the audience screens show when no service is
      open, or when nothing from the open service is on the screen. One choice for every
      screen, and a screen that needs its own can have one. Blank in Present
      still covers it, and Idle in Present puts it on air mid-service. -->

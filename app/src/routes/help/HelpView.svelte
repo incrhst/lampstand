@@ -1,4 +1,4 @@
-<!-- Help: what Lampstand can do and where to get answers, apart from Setup,
+<!-- Help: what Lampstand can do and where to get answers, apart from Settings,
      which is only for configuration. Quick tips, the keys, the docs and
      feedback, and About (the version, and updating it). -->
 <script module lang="ts">

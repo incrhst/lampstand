@@ -1,7 +1,7 @@
 <!-- The head of the Library & controls sidebar, the same in Plan and
      Present. On its front page it names the sidebar; on a page inside it
      (the Library, Services) it shows Back and that page's name. Hide is
-     always here, with its key, so the way out is never only a shortcut. -->
+     shown only where a page can be hidden (none since the fixed column). -->
 <script lang="ts">
   import Icon from "./Icon.svelte";
 
@@ -9,7 +9,7 @@
     title = "Library & controls",
     onback,
     onhide,
-  }: { title?: string; onback?: () => void; onhide: () => void } = $props();
+  }: { title?: string; onback?: () => void; onhide?: () => void } = $props();
 </script>
 
 <div class="side-head">
@@ -22,7 +22,7 @@
   {:else}
     <h2 class="name">{title}</h2>
   {/if}
-  <button type="button" class="hide" onclick={onhide} title="Hide the Library and the controls (F)">Hide <kbd>F</kbd></button>
+  {#if onhide}<button type="button" class="hide" onclick={onhide} title="Hide the Library and the controls">Hide</button>{/if}
 </div>
 
 <style>
@@ -75,13 +75,5 @@
   .hide {
     margin-left: auto;
     color: var(--faint);
-  }
-  kbd {
-    font: inherit;
-    font-size: 0.72em;
-    opacity: 0.8;
-    padding: 0 0.3rem;
-    border: 1px solid currentColor;
-    border-radius: 3px;
   }
 </style>

@@ -1,6 +1,6 @@
 <!-- The shell: a top bar with the two weekly jobs (Plan and Present) and
      Setup apart on the right, the screen, and a status bar whose sync and
-     screens items open Setup. Each screen lives in src/routes/<name>/ so
+     screens items open Settings. Each screen lives in src/routes/<name>/ so
      T47 to T55 can each own one folder. -->
 <script lang="ts">
   import PlanView from "./routes/plan/PlanView.svelte";
@@ -8,13 +8,13 @@
   import SetupView, { type SetupTab } from "./routes/setup/SetupView.svelte";
   import HelpView, { type HelpTab } from "./routes/help/HelpView.svelte";
   import { request } from "./lib/api";
-  import { checkForUpdate, isCalibrated, live, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
+  import { checkForUpdate, isCalibrated, live, report, refreshObs, refreshOutputs, refreshSettings, refreshSync, refreshThemes } from "./lib/state.svelte";
   import { formatWhen } from "./lib/when";
   import { syncPill } from "./lib/sync";
   import { CONNECT_DEVICE, connectDue, dismissForGood, loadDismissed, loadSnoozed } from "./lib/tips";
   import { WELCOME_TITLE } from "./lib/getStarted";
   import { isPicture, isScreen, obsPill } from "./lib/obs";
-  import { isTyping, modLabel, screenForKey } from "./lib/shortcuts";
+  import { modLabel, screenForKey } from "./lib/shortcuts";
   import { isPlanning } from "./lib/presenting";
   import { heldRoles, streamOfflineLine, uncheckedRoles, withRoster } from "./lib/roles";
   import RoleBar from "./lib/kit/RoleBar.svelte";
@@ -46,31 +46,34 @@
     if (next) {
       e.preventDefault();
       screen = next;
+      live.pointTabs = false;
       return;
-    }
-    // F hides and shows Library & controls in Plan and Present (live.focus
-    // is true while it is hidden). Esc brings it back in Plan; Present's own
-    // Esc closes its OBS drawer first. Typing in a field never triggers it
-    // (a switch is not a field). With a dialog open, such as the song
-    // editor, F and Esc are the dialog's: hiding it would lose its edits.
-    const target = e.target as HTMLElement | null;
-    if (isTyping(target)) return;
-    if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
-    if (e.metaKey || e.ctrlKey || e.altKey || !focusable) return;
-    if (e.key === "f" || e.key === "F") {
-      e.preventDefault();
-      live.focus = !live.focus;
-    } else if (e.key === "Escape" && focused && screen === "plan") {
-      e.preventDefault();
-      live.focus = false;
     }
   }
 
-  // Hiding Library & controls is one switch for Plan and Present; switching
-  // modes keeps it. It is never remembered, so every launch starts with it
-  // open. Present needs a service open to have a sidebar at all.
-  let focusable = $derived(screen === "plan" || (screen === "operate" && !!live.loaded));
-  let focused = $derived(live.focus && focusable);
+  // Close service sits beside the live service's name, in Plan and Present,
+  // so it never scrolls away or hides with Library & controls. It asks
+  // first while something is on air.
+  let confirmClose = $state(false);
+  function askClose() {
+    if (live.live || live.overlay !== "None") confirmClose = true;
+    else closeService();
+  }
+  async function closeService() {
+    const loaded = live.loaded;
+    confirmClose = false;
+    if (!loaded) return;
+    try {
+      await request({ area: "Service", request: { Close: loaded.service } }, "Ok");
+      live.loaded = null;
+    } catch (e) {
+      report(e);
+    }
+  }
+  $effect(() => {
+    if (!live.loaded) confirmClose = false;
+  });
+
 
   function openSetup(tab: SetupTab) {
     setupTab = tab;
@@ -249,48 +252,53 @@
   <header>
     <nav aria-label="Screens">
       {#each screens as s}
-        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => (screen = s.id)}>
+        <button class:active={screen === s.id} aria-current={screen === s.id ? "page" : undefined} title="{s.label} ({mod}{s.key}; {mod}\ switches between Plan and Present)" onclick={() => { screen = s.id; live.pointTabs = false; }}>
           {s.label}
         </button>
       {/each}
+      {#if live.pointTabs && (screen === "plan" || screen === "operate")}
+        <!-- At every launch: where a monthly volunteer starts. Goes once a
+             tab is chosen, a service is made, or it is closed. -->
+        <div class="point-tabs" role="note">
+          <div class="point-say">
+            <strong>Start here</strong>
+            <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
+          </div>
+          <button type="button" class="point-close" onclick={() => (live.pointTabs = false)} aria-label="Close Start here" title="Close"><Icon name="x" size={14} /></button>
+        </div>
+      {/if}
     </nav>
     <div class="right">
       {#if live.loaded}
+        <!-- While Close service asks, the question takes the name's place. -->
+        {#if !confirmClose}
         <p class="onair">
           <span class="label">Live service:</span>
           <strong title={live.loaded.title}>{live.loaded.title}</strong>
           {#if liveWhen}<span class="when">· {liveWhen}</span>{/if}
         </p>
+        {/if}
+        {#if confirmClose}
+          <span class="close-ask" role="alert">
+            Something is on air. Close the service?
+            <button class="close-live danger" onclick={closeService}>Close service</button>
+            <button class="close-live" onclick={() => (confirmClose = false)}>Keep open</button>
+          </span>
+        {:else}
+          <button class="close-live" onclick={askClose} title="Put the service away; it stays in Plan">
+            <Icon name="x" size={14} />Close service
+          </button>
+        {/if}
       {/if}
       <button class="setup" class:active={screen === "help"} aria-current={screen === "help" ? "page" : undefined} title="Help" onclick={() => (screen = "help")}>
         <Icon name="info" size={16} />
         <span class="setup-word">Help</span>
         {#if newVersion}<span class="update-dot" title="Update {newVersion} available" role="img" aria-label="Update available"></span>{/if}
       </button>
-      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Setup" onclick={() => (screen = "setup")}>
+      <button class="setup" class:active={screen === "setup"} aria-current={screen === "setup" ? "page" : undefined} title="Settings" onclick={() => (screen = "setup")}>
         <Icon name="setup" size={16} />
-        <span class="setup-word">Setup</span>
+        <span class="setup-word">Settings</span>
       </button>
-      {#if screen === "plan" || screen === "operate"}
-        <!-- One name in Plan and Present, so it means the same thing next
-             month. It stays put in Present before a service is open, greyed
-             out with the reason, so it never seems to have gone missing.
-             aria-disabled, not disabled, so the reason still shows on hover. -->
-        <button
-          class="setup focus-on"
-          class:waiting={!focusable}
-          aria-disabled={!focusable}
-          aria-pressed={focusable ? !focused : undefined}
-          aria-controls="library-and-controls"
-          title={focusable ? `${focused ? "Show" : "Hide"} the Library and the controls (F)` : "Open a service first: Library & controls comes with it"}
-          onclick={() => focusable && (live.focus = !live.focus)}
-        >
-          <Icon name="panelRight" size={16} />
-          <!-- On a smaller window Show or Hide is enough; the rest stays for screen readers. -->
-          <span class="setup-word side-word">{focused ? "Show" : "Hide"}<span class="side-what">&nbsp;library &amp; controls</span></span>
-          <kbd>F</kbd>
-        </button>
-      {/if}
     </div>
   </header>
 
@@ -312,7 +320,7 @@
 
   <StatusBar>
     {#snippet start()}
-      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Setup › Devices">
+      <button class="status-link" onclick={() => openSetup("devices")} title="{rolePill.title}. Open Settings › Devices">
         <Dot tone={syncStatus.tone} />
         {#if live.team && live.team.paired.length > 0}
           <RoleBar held={heldRoles(live.team)} unchecked={uncheckedRoles(live.team)} />
@@ -324,7 +332,7 @@
         {#if streamOffline}<Dot tone="warn" /><span class="warn">{streamOffline}</span>{/if}
       </span>
       {#if connectLine}
-        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Setup › Devices">
+        <button class="status-link quiet" onclick={() => openSetup("devices")} title="Pair another computer to keep plans and screens in step. Open Settings › Devices">
           Connect another device
         </button>
       {/if}
@@ -352,12 +360,12 @@
       {#if obsStatus}
         <!-- OBS's connection, streaming and recording, kept quiet here;
              Present has the OBS control itself. -->
-        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="{obsStatus.title}. Open Settings › OBS">
           <Dot tone={obsStatus.tone} />
           <span class:warn={obsStatus.tone === "warn"}>{obsStatus.text}</span>
         </button>
       {/if}
-      <button class="status-link" onclick={() => openSetup("screens")} title="Open Setup › Screens">
+      <button class="status-link" onclick={() => openSetup("screens")} title="Open Settings › Screens">
         <Icon name="monitor" size={14} />
         {screenOutputs.length}
         {screenOutputs.length === 1 ? "screen" : "screens"}
@@ -365,7 +373,7 @@
         {#if uncalibrated.length > 0}<span class="warn">· {uncalibrated.join(", ")} not calibrated</span>{/if}
       </button>
       {#if pictureOutputs.length > 0}
-        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Setup › OBS">
+        <button class="status-link" onclick={() => openSetup("obs")} title="Pictures sent to OBS as a Browser source. Open Settings › OBS">
           <Icon name="broadcast" size={14} />
           {pictureOutputs.length}
           {pictureOutputs.length === 1 ? "picture" : "pictures"} to OBS
@@ -393,18 +401,89 @@
     background: var(--panel);
   }
   nav {
+    position: relative;
     display: flex;
     gap: 0.25rem;
   }
-  nav button {
-    font: inherit;
+  /* Start here, under the Plan | Present tabs: a soft yellow note with a
+     dark outline and a small point at its top left, toward the tabs. Still,
+     no animation. */
+  .point-tabs {
+    --note: #fbeca2;
+    --note-line: #1f1f1f;
+    position: absolute;
+    top: calc(100% + 0.75rem);
+    left: 0.25rem;
+    z-index: 40;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: max-content;
+    max-width: 24rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.9rem;
+    border: 3px solid var(--note-line);
+    border-radius: 12px;
+    background: var(--note);
+    color: #2a2410;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 0.8125rem;
+  }
+  /* The point: a small square turned on its corner, outlined on its two
+     outer sides only, so it joins the note's edge. */
+  .point-tabs::before {
+    content: "";
+    position: absolute;
+    top: -9px;
+    left: 1.6rem;
+    width: 14px;
+    height: 14px;
+    background: var(--note);
+    border-top: 3px solid var(--note-line);
+    border-left: 3px solid var(--note-line);
+    border-radius: 3px 0 0 0;
+    transform: rotate(45deg);
+  }
+  .point-say {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: #4a4020;
+  }
+  .point-say strong {
+    color: #1f1a08;
     font-size: 0.875rem;
+  }
+  .point-say b {
+    color: #1f1a08;
+    font-weight: 700;
+  }
+  .point-close {
+    font: inherit;
+    display: inline-flex;
+    line-height: 1;
+    color: #4a4020;
+    background: none;
+    border: none;
+    padding: 0 0.2rem;
+    cursor: pointer;
+  }
+  .point-close:hover {
+    color: #000;
+  }
+  /* Plan and Present as quiet tabs: the chosen one in full white with a
+     thin gold line on the bar's bottom edge, the other muted. */
+  nav {
+    align-self: stretch;
+  }
+  nav button {
+    position: relative;
+    font: inherit;
+    font-size: 0.9375rem;
     font-weight: 500;
     background: none;
     border: none;
     color: var(--muted);
-    padding: 0.4rem 0.9rem;
-    border-radius: var(--radius);
+    padding: 0 0.95rem;
     cursor: pointer;
     /* No transition: selection shows at once, and a window that is not
        frontmost can freeze a transition part way. */
@@ -412,9 +491,25 @@
   nav button:hover {
     color: var(--text);
   }
+  nav button::after {
+    content: "";
+    position: absolute;
+    left: 0.6rem;
+    right: 0.6rem;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+  }
+  nav button:hover::after {
+    background: var(--line-strong);
+  }
   nav button.active {
     color: var(--text);
-    background: var(--raised);
+    font-weight: 600;
+  }
+  nav button.active::after {
+    background: var(--gold);
   }
   .right {
     margin-left: auto;
@@ -422,6 +517,37 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+  }
+  .close-live {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    padding: 0.25rem 0.6rem;
+    color: var(--text);
+    background: var(--raised);
+    border: 1px solid var(--field-line, var(--line));
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .close-live:hover {
+    border-color: var(--gold-hover);
+  }
+  .close-live.danger {
+    color: #fff;
+    background: var(--live);
+    border-color: var(--live);
+  }
+  .close-ask {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    color: var(--text);
   }
   .setup {
     font: inherit;
@@ -440,31 +566,6 @@
   }
   .setup:hover {
     color: var(--text);
-  }
-  /* Framed, so the way to hide and show Library & controls is easy to find. */
-  .focus-on {
-    border: 1px solid var(--line-strong);
-    color: var(--text);
-  }
-  .focus-on:hover {
-    border-color: var(--muted);
-  }
-  /* Present with no service open: here, but nothing to hide yet. */
-  .focus-on.waiting {
-    color: var(--faint);
-    border-color: var(--line);
-    cursor: default;
-  }
-  .focus-on.waiting:hover {
-    border-color: var(--line);
-  }
-  .focus-on kbd {
-    font: inherit;
-    font-size: 0.72em;
-    opacity: 0.7;
-    padding: 0 0.3rem;
-    border: 1px solid currentColor;
-    border-radius: 3px;
   }
   .setup.active {
     color: var(--text);
@@ -501,17 +602,6 @@
       display: none;
     }
   }
-  /* Smaller windows: the button says just Show or Hide. */
-  @media (max-width: 1100px) {
-    .side-what {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-  }
   @media (max-width: 560px) {
     .onair {
       display: none;
@@ -520,9 +610,8 @@
       gap: 0.75rem;
       padding: 0 0.75rem;
     }
-    /* Help and Setup as their icons; the title still names them. Show or
-       Hide keeps its word, since an icon alone would not say which. */
-    .setup-word:not(.side-word) {
+    /* Help and Settings as their icons; the title still names them. */
+    .setup-word {
       position: absolute;
       width: 1px;
       height: 1px;

@@ -280,7 +280,7 @@ export function ownRunsLine(team: TeamStatus | null | undefined): string {
   return runsLine(heldRoles(team));
 }
 
-/** Setup › Devices: a paired device, "Runs the stream" or "Planning". */
+/** Settings › Devices: a paired device, "Runs the stream" or "Planning". */
 export function deviceRunsLine(team: TeamStatus | null | undefined, device: string): string {
   return runsLine(rolesHeldBy(team, device));
 }
@@ -324,7 +324,7 @@ export function streamOfflineLine(team: TeamStatus | null | undefined): string |
   return `${s.holder_name || "Another device"} runs the stream and is offline. OBS will catch up when it is back.`;
 }
 
-/** Setup › Devices: the takeover time control. */
+/** Settings › Devices: the takeover time control. */
 export const TAKEOVER_LABEL = "Take over without asking after";
 export const TAKEOVER_HELP =
   "If the device that runs a job has been offline this long (or as long as that device's own setting, if longer), plus ten seconds, another device can take the job without asking. Never while it is connected. Set on each device.";

@@ -1,4 +1,4 @@
-<!-- Setup › Logo and colours: the quick start. A church says its name, adds its
+<!-- Settings › Logo and colours: the quick start. A church says its name, adds its
      logo, picks two or three colours and a font, and Lampstand makes a
      matching theme and uses it everywhere that doesn't choose its own. The
      logo, small and centred on its colour, is also the default idle screen,
@@ -179,7 +179,7 @@
             <span>Opacity: {brand.bug.opacity}%</span>
             <input type="range" min="10" max="100" step="5" disabled={!brand.logo} bind:value={brand.bug.opacity} oninput={() => (done = false)} aria-label="Opacity" />
           </label>
-          <span class="faint small">Blank covers it, and it is not drawn over an idle screen that is the logo. It stays inside the safe area, and the stage display never shows it. Turn it on or off during a service with Logo bug in Present's Screen card.</span>
+          <span class="faint small">Blank covers it, and it is not drawn over an idle screen that is the logo. It stays inside the safe area, and the stage display never shows it. Turn it on or off here.</span>
         </div>
       </Panel>
 

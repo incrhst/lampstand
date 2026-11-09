@@ -1,4 +1,4 @@
-<!-- Setup › OBS: the two separate ways OBS and Lampstand work together.
+<!-- Settings › OBS: the two separate ways OBS and Lampstand work together.
      "Send to OBS" is OBS loading a picture from Lampstand (a browser
      source). "Control OBS" (T89) is Lampstand driving OBS over its
      WebSocket: where the server is, its password, and whether Lampstand is
