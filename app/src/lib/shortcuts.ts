@@ -58,9 +58,26 @@ export function isTyping(target: TargetLike | null | undefined): boolean {
 /** The keys of the Present screen, for the sidecard's Keys card and the Help screen. */
 export const KEYS: [string, string][] = [
   ["← → or Space", "Next and previous"],
+  [",", "Idle screen"],
   [".", "Blank"],
+  [";", "Clear the text, keep the background"],
   ["1–9", "Jump to a verse"],
   ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
   ["⇧↑ ⇧↓ then Enter", "Choose an item, then start it"],
   ["/", "Quick add a song or scripture"],
+];
+
+/**
+ * The modifier chord, for power users: hold Ctrl + Alt (Ctrl + Option on a
+ * Mac) and press one key with the right hand. Holding it shows each key on
+ * its button. Every one does what a labelled button does.
+ */
+export const CHORD: [string, string][] = [
+  ["I · U · O", "Idle, Blank, Clear text"],
+  ["J · K · L", "The first three in Ready"],
+  [", · .", "Start the item before or after the one on air"],
+  ["M", "Stop the sound now"],
+  ["P", "Play the sound that waits for Play"],
+  ["/", "Add a song or reading"],
+  [";", "Stream (OBS), when it is set up"],
 ];

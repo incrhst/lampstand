@@ -26,10 +26,10 @@
   import { kindIcon, kindLabel, kindName } from "../../lib/kit/items";
   import TipCard from "../../lib/kit/TipCard.svelte";
   import { nextTip, loadDismissed, saveDismissed, loadUsed, saveUsed, loadSnoozed, saveSnoozed, snooze, type Tip } from "../../lib/tips";
-  import { loadPreviewSize, loadSafeAreaGuide, type PreviewSize } from "../../lib/presentPrefs";
+  import { loadNarrow, loadPreviewSize, loadSafeAreaGuide, saveNarrow, type PreviewSize } from "../../lib/presentPrefs";
   import LoopProgress from "../../lib/kit/LoopProgress.svelte";
   import SoundPanel from "./SoundPanel.svelte";
-  import { musicLine, words } from "../../lib/audio";
+  import { musicLine, words, type SoundEntry } from "../../lib/audio";
   import ObsDrawer from "./ObsDrawer.svelte";
   import QuickAdd from "./QuickAdd.svelte";
   import { loadedItem, readyList, returnLine } from "../../lib/ready";
@@ -181,8 +181,13 @@
     // A dialog over the service (Connect a phone or tablet, Quick add) has
     // its own keys; none of them may move the screen.
     if (connectOpen || quickAddOpen || target?.closest?.('[aria-modal="true"]')) return;
+    const off = shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"));
+    if (e.ctrlKey && e.altKey && !e.metaKey && !off) {
+      chordKey(e);
+      return;
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (shortcutsOff(streamDesk, !!live.loaded, !!target?.closest?.("#obs-drawer.docked"))) return;
+    if (off) return;
     if (live.loaded && e.key === "/") {
       e.preventDefault();
       quickAddReady = false;
@@ -206,7 +211,10 @@
       PageDown: "Next",
       ArrowLeft: "Previous",
       PageUp: "Previous",
+      // The three screen keys sit together: . Blank, , Idle, ; Clear text.
       ".": "ToggleBlack",
+      ",": "ToggleIdle",
+      ";": "ClearText",
     };
     const c = keys[e.key];
     if (c) {
@@ -297,22 +305,74 @@
   }
   let viewed = $derived(items.find((i) => i.id === viewing) ?? items.find((i) => i.slides.length > 0) ?? items[0]);
   /**
-   * Ready's tray, at the bottom right: open whenever a service is opened for
-   * live, so its tiles are one tap away from the start. Closing it lasts
-   * until the next service is opened; nothing is remembered between them.
+   * Narrower: the whole right column slims down, so the service on the wall
+   * gets the room. One labelled button in On air's heading, kept on this
+   * computer, so a church sets it once.
    */
-  let readyOpen = $state(true);
-  let readyFor: string | null = null;
-  $effect(() => {
-    const service = live.loaded?.service ?? null;
-    if (service && service !== readyFor) readyOpen = true;
-    readyFor = service;
-  });
+  let narrow = $state(loadNarrow());
+  function toggleNarrow() {
+    narrow = !narrow;
+    saveNarrow(narrow);
+    live.status = narrow ? "The right side is narrower on this computer: more room for the service" : "The right side is wider on this computer";
+  }
 
-  function setReadyOpen(open: boolean) {
-    readyOpen = open;
+  /**
+   * The modifier chord, for power users: hold Ctrl + Alt (Ctrl + Option on a
+   * Mac, the same two keys on every computer) and, after a moment, every
+   * control it reaches shows its key. The right hand stays on its home keys:
+   * U I O and J K L are the tiles, in the same grid as on screen (I Idle,
+   * U Blank, O Clear text, then the first three in Ready); , and . start the
+   * item before or after the one on air; M stops the sound, P plays the
+   * sound that waits for Play, / adds, ; opens the stream. Matched by key
+   * position (e.code), so the grid keeps its shape on any keyboard layout.
+   * Every key does what a labelled button does; a volunteer who never holds
+   * the chord never sees any of it. VoiceOver on a Mac also uses Ctrl +
+   * Option, so while it runs the chord is VoiceOver's.
+   */
+  let chord = $state(false);
+  let chordTimer: ReturnType<typeof setTimeout> | undefined;
+  const SCREEN_CODES: Record<string, Command> = { KeyU: "ToggleBlack", KeyI: "ToggleIdle", KeyO: "ClearText" };
+  const READY_CODES = ["KeyJ", "KeyK", "KeyL"];
+  const READY_LETTERS = ["J", "K", "L"];
+  /** The sound that waits for Play, from the Sound row. */
+  let waiting: SoundEntry | null = $state(null);
+  function chordOff() {
+    clearTimeout(chordTimer);
+    chord = false;
+  }
+  function chordKey(e: KeyboardEvent) {
+    if (e.key === "Control" || e.key === "Alt") {
+      clearTimeout(chordTimer);
+      chordTimer = setTimeout(() => (chord = true), 350);
+      return;
+    }
+    const screen = SCREEN_CODES[e.code];
+    const r = READY_CODES.indexOf(e.code);
+    let done = true;
+    if (screen) command(screen);
+    else if (r >= 0 && readyTiles[r]) showReady(readyTiles[r].item.id);
+    else if ((e.code === "Comma" && jumpBack) || (e.code === "Period" && jumpOn)) {
+      const id = (e.code === "Comma" ? jumpBack : jumpOn) as string;
+      show({ item: id, slide: 0, step: 0 });
+    } else if (e.code === "Slash") openQuickAdd(false);
+    else if (e.code === "Semicolon" && pill) setObsOpen(!obsOpen);
+    // The panic stop always works, whatever this device thinks is playing.
+    else if (e.code === "KeyM") sound("Panic").catch(report);
+    else if (e.code === "KeyP" && waiting) {
+      const w = waiting;
+      sound({ Play: { item: w.item, backing: w.backing } }).catch(report);
+    } else done = false;
+    if (done) e.preventDefault();
+    chord = true;
+  }
+  function onkeyup(e: KeyboardEvent) {
+    if (e.key === "Control" || e.key === "Alt") chordOff();
   }
   let liveIndex = $derived(items.findIndex((i) => i.id === live.live?.item));
+  /** The items the chord's , and . start: before and after the one on air. */
+  let jumpFrom = $derived(live.live?.item ?? viewed?.id ?? null);
+  let jumpBack = $derived(neighbourItem(items, jumpFrom, -1));
+  let jumpOn = $derived(neighbourItem(items, jumpFrom, 1));
   /** The section on air, if the live item sits under a header. */
   let liveSection = $derived(live.loaded?.sections.find((s) => s.items.includes(live.live?.item ?? "")) ?? null);
   /** While the group on air loops and the slide is showing: how long each slide stays up, else null. */
@@ -528,7 +588,7 @@
   // Tapping one is a side-trip; Next past its end goes back to the service.
   let ready = $derived(readyList(live.loaded));
   /** The first few show as pictures, the rest as rows. */
-  const READY_TILES = 4;
+  const READY_TILES = 3;
   let readyTiles = $derived(ready.slice(0, READY_TILES));
   let readyRows = $derived(ready.slice(READY_TILES));
   let pinned = $derived(new Set((live.loaded?.ready ?? []).filter((r) => r.in_order).map((r) => r.item.id)));
@@ -573,8 +633,15 @@
   const stateLabel = { None: "LIVE", Black: "BLANK", Idle: "IDLE" } as const;
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} {onkeyup} onblur={chordOff} />
 
+<!-- A key of the modifier chord, shown on its control while the chord is held. -->
+{#snippet chordBadge(k: string)}
+  {#if chord}<span class="chord-key" aria-hidden="true">{k}</span>{/if}
+{/snippet}
+
+<!-- Look: what the room sees. The picture, what is live, what Next shows,
+     and whether all is set. Nothing to press here but a fix. -->
 {#snippet onAirBody()}
     {#if previewSize !== "off"}
     <figure class="monitor">
@@ -601,14 +668,10 @@
       <span class="muted wall-where">
         {#if live.overlay === "Idle" && liveItem && live.live}
           {"Idle screen · Show returns to "}{liveItem.title} · {live.liveSlide?.label ?? live.live.slide + 1}{#if upcoming}{" · Next shows "}{upcoming.title} · {upcoming.slide.label ?? upcoming.cursor.slide + 1}{/if}
-        {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Press Space to start.{/if}
+        {:else if liveItem && live.live}{liveItem.title} · {liveItem.slides.length === 0 ? "Music only" : (live.liveSlide?.label ?? live.live.slide + 1)}{:else}Nothing on air. Next starts the service.{/if}
       </span>
       {#if backLine && live.overlay !== "Idle"}<span class="muted wall-back"><Icon name="prev" size={12} />{backLine}</span>{/if}
-    </div>
-    <div class="transport">
-      <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
-      <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
-      <Button variant="danger" onclick={() => command("ToggleBlack")} pressed={live.overlay === "Black"} shortcut=".">Blank</Button>
+      {#if upcoming && live.live && live.overlay === "None"}<span class="faint look-next">Next: <strong>{upcoming.title === liveItem?.title ? (upcoming.slide.label ?? upcoming.cursor.slide + 1) : `${upcoming.title} · ${upcoming.slide.label ?? upcoming.cursor.slide + 1}`}</strong></span>{/if}
     </div>
     {#if stepped && live.overlay !== "Idle" && liveItem && live.live && live.liveSlide}
       {@const left = live.liveSlide.steps - live.live.step}
@@ -618,33 +681,42 @@
     {/if}
 {/snippet}
 
-{#snippet readyBody()}
-    <!-- Blank and Idle as pictures of what the screens will show; a
-         looping video idle screen says so, since its picture is a still. -->
-    <div class="ready-screens">
-      <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
-        <SlidePreview overlay="Black" size="small" />
-        <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
-      </button>
-      <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide">
+<!-- Press: everything you press during a service, in one block. Previous
+     and Next, then the tiles: Idle, Blank and Clear text as pictures of what
+     the screens will become, in the order of their keys , . ; then what was
+     added to Ready. Sound joins while it plays; Stream for a church with OBS. -->
+{#snippet pressBody()}
+    <div class="transport">
+      <Button icon="prev" onclick={() => command("Previous")} title="Previous (←)">Previous</Button>
+      <Button variant="primary" onclick={() => command("Next")} shortcut="Space">Next</Button>
+    </div>
+    <div class="ready-screens" aria-label="Screens">
+      <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide (,)">
+        {@render chordBadge("I")}
         <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
         <span class="screen-caption">
-          <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
-          <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
+          <strong>Idle</strong><kbd>,</kbd>
         </span>
       </button>
-      <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide">
+      <button type="button" class="screen-pick blank" class:on={live.overlay === "Black"} aria-pressed={live.overlay === "Black"} onclick={() => command("ToggleBlack")} title="Black screens, until you tap again (.)">
+        {@render chordBadge("U")}
+        <SlidePreview overlay="Black" size="small" />
+        <span class="screen-caption"><strong>Blank</strong><kbd>.</kbd></span>
+      </button>
+      <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide (;)">
+        {@render chordBadge("O")}
         <span class="clear-pic" aria-hidden="true"></span>
-        <span class="screen-caption"><Icon name="text" size={13} /><strong>Clear text</strong></span>
+        <span class="screen-caption"><strong>Clear text</strong><kbd>;</kbd></span>
       </button>
     </div>
     {#if ready.length > 0}
       <ul class="plain ready-tiles" aria-label="In Ready">
-        {#each readyTiles as r (r.item.id)}
+        {#each readyTiles as r, t (r.item.id)}
           {@const onAir = live.live?.item === r.item.id && live.overlay === "None"}
           {@const first = r.item.slides[0]}
           <li class="ready-tile" class:on-air={onAir}>
             <button type="button" class="ready-pick" onclick={() => showReady(r.item.id)} title="Show {r.item.title} now; Next comes back to the service">
+              {@render chordBadge(READY_LETTERS[t])}
               <SlidePreview lines={first?.lines ?? []} footer={first?.footer ?? null} image={first ? thumbFor(r.item.id, 0, first.steps) : null} size="small" empty={r.item.title} />
               <span class="ready-caption">
                 {#if onAir}<StatusPill tone="live">LIVE</StatusPill>{/if}
@@ -675,10 +747,32 @@
           {/each}
         </ul>
       {/if}
-    {:else}
-      <p class="side-line muted ready-empty"><Icon name="star" size={12} /> Add to Ready on an item puts it here.</p>
     {/if}
-    <button type="button" class="side-row" title="Quick add, for Ready: a deck, picture or video from the Library" onclick={() => openQuickAdd(true)}><Icon name="plus" size={14} />Add from the Library</button>
+    <button type="button" class="add-ready" title="Add to Ready: a deck, picture or video from the Library, one tap away during the service. Add to Ready on an item in the service puts it here too." onclick={() => openQuickAdd(true)}><Icon name="plus" size={12} />Add to Ready</button>
+    <SoundPanel {items} {service} {chord} bind:waiting />
+    {#if pill}
+      <!-- Only for a church that streams with OBS: what OBS has on air, and
+           the drawer of scenes, preview and mutes (O). -->
+      <button
+        bind:this={obsToggle}
+        class="obs-control"
+        class:open={obsOpen}
+        onclick={() => setObsOpen(!obsOpen)}
+        aria-expanded={obsOpen}
+        aria-controls="obs-drawer"
+        title="Stream: switch OBS scenes, preview them, mute audio (O)"
+      >
+        {@render chordBadge(";")}
+        <span class="obs-tag"><Icon name="remote" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
+        {#if obsOn && live.obs?.program_scene}
+          <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
+          {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
+        {:else}
+          <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
+        {/if}
+        <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
+      </button>
+    {/if}
 {/snippet}
 
 <!-- Check: one line that answers "am I all set?". The first thing that
@@ -823,7 +917,10 @@
     </div>
   </div>
 {:else}
-  <div class="operate" inert={paused} class:paused>
+  <div class="operate" inert={paused} class:paused class:chording={chord}>
+    {#if chord}
+      <p class="chordbar" role="status">Modifier chord held: <strong>Ctrl + Alt</strong> (Ctrl + Option on a Mac). Press a key shown on a button.</p>
+    {/if}
     <div class="grid">
       {#if connectOpen}
         <ConnectRemote onclose={() => (connectOpen = false)} />
@@ -896,6 +993,7 @@
                     aria-label={item.title}
                   >
                     <div class="wall-label">
+                      {#if item.id === jumpBack}{@render chordBadge(",")}{:else if item.id === jumpOn}{@render chordBadge(".")}{/if}
                       <span class="num index" class:current={i === liveIndex}>{i + 1}</span>
                       <span class:current={i === liveIndex}>
                         <Icon name={kind ? kindIcon[kind] : "file"} label={kind ? kindLabel[kind] : undefined} />
@@ -959,73 +1057,27 @@
               {/if}
             </section>
           {/each}
+          <!-- Add, at the end of the service: a song or reading after what is
+               on air, or a deck or media to Ready (/). -->
+          <button type="button" class="wall-add" title="Add a song or reading after what is on air, or a deck or media to Ready (/)" onclick={() => openQuickAdd(false)}>
+            {@render chordBadge("/")}
+            <Icon name="plus" size={14} /><span>Add a song or reading</span><kbd>/</kbd>
+          </button>
         </div>
         <!-- The right column, the same every time, for a volunteer who comes
-             once a month: On air at the top (never hides), Library &
-             controls scrolling in the middle, Ready at the bottom (folds in
-             place to one line, never leaves). -->
-        <aside id="library-and-controls" class="sidecard" class:large-preview={previewSize === "large"} aria-label="On air, Library and controls, and Ready">
+             once a month. Look up: On air, what the room sees. Press down:
+             everything you press. Nothing in it hides or moves. -->
+        <aside id="library-and-controls" class="sidecard" class:narrow class:large-preview={previewSize === "large" && !narrow} aria-label="On air and controls">
           <section class="col-onair" aria-label="On air">
-            <h3 class="col-head">On air</h3>
+            <div class="col-head look-head">
+              <h3>On air</h3>
+              <button type="button" class="size-toggle" onclick={toggleNarrow} title={narrow ? "Make the right side wider again; kept on this computer" : "Make the right side narrower, for more room for the service; kept on this computer"}>{narrow ? "Wider" : "Narrower"}</button>
+            </div>
             {@render onAirBody()}
+            {@render checkRow()}
           </section>
-
-          <!-- The middle: three rows, always there, always in this order. A
-               row's words change; the row never moves or disappears. -->
-          <div class="col-middle">
-            <section class="mid-row" aria-label="Add">
-              <h3 class="col-head">Add</h3>
-              <button type="button" class="side-find" title="Add a song or reading after what is on air, or a deck or media to Ready (/)" onclick={() => openQuickAdd(false)}>
-                <Icon name="search" size={15} /><span>Find a song or reading to add</span><kbd>/</kbd>
-              </button>
-            </section>
-
-            <section class="mid-row" aria-label="Sound">
-              <h3 class="col-head">Sound</h3>
-              <SoundPanel {items} {service} />
-            </section>
-
-            <section class="mid-row" aria-label="Check">
-              <h3 class="col-head">Check</h3>
-              {@render checkRow()}
-            </section>
-
-            {#if pill}
-              <!-- Only for a church that streams with OBS: what OBS has on air,
-                   and the drawer of scenes, preview and mutes (O). -->
-              <section class="mid-row" aria-label="Stream">
-                <h3 class="col-head">Stream</h3>
-                <button
-                  bind:this={obsToggle}
-                  class="obs-control"
-                  class:open={obsOpen}
-                  onclick={() => setObsOpen(!obsOpen)}
-                  aria-expanded={obsOpen}
-                  aria-controls="obs-drawer"
-                  title="Control OBS: switch scenes, preview them, mute audio (O)"
-                >
-                  <span class="obs-tag"><Icon name="remote" size={14} />OBS<Dot tone={pill.tone} size={6} /></span>
-                  {#if obsOn && live.obs?.program_scene}
-                    <span class="on-air"><span class="sr">On air: </span>{live.obs.program_scene}</span>
-                    {#if nextObsScene}<span class="next">Next: {nextObsScene}</span>{/if}
-                  {:else}
-                    <span class="on-air">{obsOn ? "Scenes" : "Not connected"}</span>
-                  {/if}
-                  <span class="chevron" aria-hidden="true"><Icon name="next" size={12} /></span>
-                </button>
-              </section>
-            {/if}
-
-          </div>
-
-          <section id="ready-tray" class="col-ready" class:folded={!readyOpen} aria-label="Ready">
-            <button type="button" class="ready-head" aria-expanded={readyOpen} aria-controls="ready-body" onclick={() => setReadyOpen(!readyOpen)} title={readyOpen ? "Fold Ready to one line; it stays here" : "Open Ready: Blank, Idle and what you added"}>
-              <Icon name="star" size={14} /><strong>Ready</strong>
-              {#if ready.length > 0}<span class="ready-count num">{ready.length}</span>{/if}
-              <span class="muted ready-say">{readyOpen ? "One tap during the service" : ""}</span>
-              <span class="ready-fold">{readyOpen ? "Fold" : "Open"}<Icon name="chevronDown" size={12} /></span>
-            </button>
-            {#if readyOpen}<div id="ready-body" class="ready-body">{@render readyBody()}</div>{/if}
+          <section id="ready-tray" class="col-press" aria-label="Controls and Ready">
+            {@render pressBody()}
           </section>
         </aside>
       </section>
@@ -1427,10 +1479,6 @@
     font-weight: 600;
     color: var(--faint);
   }
-  .mid-row {
-    display: flex;
-    flex-direction: column;
-  }
   .check {
     margin: 0;
     display: flex;
@@ -1469,97 +1517,147 @@
     margin-top: 0.45rem;
   }
   .col-onair {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem 1rem 0.5rem 0;
   }
-  /* The middle never gives up its rows: when room is short, Ready's tiles
-     scroll inside Ready instead, and its header stays in view. */
-  .col-middle {
-    flex: 1 0 auto;
-    overflow-y: auto;
-    padding: 0.4rem 1rem 0.4rem 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  /* A short window: a smaller picture, so Add, Sound and Check stay in view. */
+  /* A short window: a smaller picture, so the press block stays in view. */
   @media (max-height: 880px) {
     .col-onair :global(.monitor) {
       width: 80%;
       align-self: center;
     }
   }
-  .col-ready {
+  /* Press: one block of everything you press, below what the room sees. */
+  .col-press {
     flex: 0 1 auto;
-    min-height: 2.6rem;
-    max-height: 45%;
-    overflow: hidden;
+    min-height: 0;
+    max-height: 68%;
+    overflow-y: auto;
+    padding: 0.75rem 1rem 0.9rem 0;
+    border-top: 1px solid var(--line);
     display: flex;
     flex-direction: column;
-    padding-right: 1rem;
+    gap: 0.55rem;
   }
-  .ready-head {
-    font: inherit;
+  .look-head {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    width: 100%;
-    padding: 0.6rem 0;
-    color: var(--text);
+    justify-content: space-between;
+  }
+  .look-head h3 {
+    margin: 0;
+    font: inherit;
+  }
+  .size-toggle {
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 500;
+    padding: 0.1rem 0.5rem;
+    color: var(--faint);
     background: none;
-    border: none;
-    text-align: left;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     cursor: pointer;
   }
-  .ready-say {
-    flex: 1;
-    font-size: 0.75rem;
+  .size-toggle:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
   }
-  .ready-count {
-    min-width: 1.3rem;
-    padding: 0 0.3rem;
-    border-radius: 999px;
-    background: var(--gold);
-    color: var(--canvas);
-    font-size: 0.75rem;
-    text-align: center;
+  .look-next {
+    font-size: 0.8rem;
   }
-  .ready-fold {
+  .look-next strong {
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .add-ready {
+    font: inherit;
+    font-size: 0.78rem;
+    align-self: flex-start;
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.5rem;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius);
+    gap: 0.3rem;
+    padding: 0;
+    color: var(--faint);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .add-ready:hover {
+    color: var(--text);
+  }
+  /* Add, at the end of the service on the wall. */
+  .wall-add {
+    position: relative;
+    align-self: flex-start;
+    font: inherit;
+    font-size: 0.88rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.8rem;
     color: var(--muted);
-    font-size: 0.75rem;
-    font-weight: 600;
+    background: none;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+    cursor: pointer;
   }
-  .col-ready.folded .ready-fold :global(svg) {
-    transform: rotate(180deg);
-  }
-  .ready-head:hover .ready-fold {
+  .wall-add:hover {
     color: var(--text);
     border-color: var(--gold-hover);
   }
-  .ready-body {
-    min-height: 0;
-    overflow-y: auto;
-    padding-bottom: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
+  .wall-add kbd {
+    font: inherit;
+    font-size: 0.72em;
+    padding: 0 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    opacity: 0.8;
   }
-  .ready-body .ready-empty {
-    display: block;
+  /* The modifier chord: a gold strip says it is held, and each control it
+     reaches shows its key in a gold badge at its top left corner. */
+  .chordbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
     margin: 0;
-    font-size: 0.8125rem;
+    padding: 0.3rem 0.9rem;
+    font-size: 0.8rem;
+    color: var(--canvas);
+    background: var(--gold);
+  }
+  .chord-key {
+    position: absolute;
+    top: -0.45rem;
+    left: -0.35rem;
+    z-index: 4;
+    min-width: 1.35rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 5px;
+    background: var(--gold);
+    color: var(--canvas);
+    font: 700 0.72rem/1.2 ui-monospace, Menlo, monospace;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+  }
+  .chording .screen-pick,
+  .chording .ready-pick,
+  .chording .obs-control,
+  .chording .wall-label {
+    position: relative;
   }
   .sidecard {
     flex: 0 0 21rem;
+    transition: flex-basis 0.25s ease;
     min-height: 0;
     padding: 0;
     overflow: hidden;
@@ -1573,34 +1671,28 @@
       flex-basis: 32rem;
     }
   }
-  .sidecard .no-screen {
-    margin-bottom: 0;
+  /* Narrower: the whole column slims, so the wall gets the room. Everything
+     keeps its place: Next above Previous, then the tiles two to a row. */
+  .sidecard.narrow {
+    flex-basis: 15rem;
   }
-  /* Wide: the two parts are one column, with the notices above On air. */
-  .side-onair,
-  .side-rest {
-    display: contents;
+  .sidecard.narrow .transport {
+    grid-template-columns: 1fr;
   }
-  .side-notice {
+  .sidecard.narrow .transport :global(button:last-child) {
     order: -1;
   }
-  /* The head and the Library come before everything, notices included. */
-  .side-top {
-    order: -3;
-    display: flex;
-    flex-direction: column;
+  .sidecard.narrow .ready-screens,
+  .sidecard.narrow .ready-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .side-top .side-zone-head:first-of-type {
-    margin-top: 0.25rem;
+  @media (prefers-reduced-motion: reduce) {
+    .sidecard {
+      transition: none;
+    }
   }
-  .side-find kbd {
-    margin-left: auto;
-    font: inherit;
-    font-size: 0.72em;
-    padding: 0 0.3rem;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-    opacity: 0.8;
+  .sidecard .no-screen {
+    margin-bottom: 0;
   }
   .sidecard :global(.sound) {
     margin: 0;
@@ -1609,47 +1701,13 @@
   }
   .transport {
     display: grid;
-    grid-template-columns: 1fr 1.6fr 1fr;
+    grid-template-columns: 1fr 1.6fr;
     gap: 0.4rem;
   }
   .transport :global(button) {
     height: 2.75rem;
     justify-content: center;
     padding: 0 0.5rem;
-  }
-  .side-line {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.8125rem;
-  }
-  .side-row {
-    font: inherit;
-    font-size: 0.85rem;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    min-height: 2.25rem;
-    padding: 0;
-    border: none;
-    background: none;
-    text-align: left;
-    cursor: pointer;
-  }
-  .side-row :global(.icon) {
-    color: var(--muted);
-  }
-  .side-row:hover {
-    color: var(--gold-hover);
-  }
-  .side-row.quiet {
-    color: var(--muted);
-    padding: 0 0.25rem;
-  }
-  .side-row.quiet:hover {
-    color: var(--text);
   }
   .side-hint {
     margin-left: auto;
@@ -1700,9 +1758,11 @@
     min-width: 0;
     padding: 0 0.15rem;
   }
-  .screen-caption :global(.icon) {
-    flex-shrink: 0;
-    color: var(--muted);
+  .screen-caption strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .screen-caption kbd {
     margin-left: auto;
@@ -1724,7 +1784,7 @@
   }
   .ready-tiles {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.4rem;
   }
   .ready-tile {
@@ -1841,9 +1901,6 @@
   .ready-remove:hover {
     color: var(--text);
   }
-  .ready-empty {
-    gap: 0.3rem;
-  }
   .wall-back {
     display: flex;
     align-items: center;
@@ -1939,8 +1996,7 @@
       overflow: hidden;
     }
     .col-onair,
-    .col-middle,
-    .col-ready {
+    .col-press {
       flex: 1 1 0;
       min-width: 0;
       min-height: 0;
@@ -1948,21 +2004,6 @@
       overflow-y: auto;
       border: none;
       padding: 0 0.5rem;
-    }
-    .side-rest {
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-    }
-    /* A warning such as "No screen is on" first, above the Sound box. */
-    .side-notice {
-      order: -2;
-    }
-    .side-rest > :global(.sound) {
-      order: -1;
-    }
-    .side-rest > :global(*) {
-      flex-shrink: 0;
     }
     .sidecard .monitor,
     .sidecard .wall-steps figure {

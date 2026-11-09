@@ -1,12 +1,11 @@
-<!-- Present › Sound: one row, always there and always in the same place, for
-     a volunteer who comes once a month. At rest it is one quiet line, "No
-     sound playing", with Stop the sound now beside it (outlined). While
-     something plays: its name, how far it has got, Pause or Resume, Fade
-     out, and Stop the sound now turns solid red. A sound the service has
-     reached that waits for Play (a backing track) shows with its own Play.
-     A problem with the sound shows here too, in words. Music-only items also
-     have Play on the wall. It works from any device: the request goes to
-     whichever device runs the sound. -->
+<!-- Present › Sound, in the press block. At rest it shows nothing: music
+     plays from Play on its item on the wall. While something plays: its
+     name, how far it has got, Pause or Resume, Fade out, and Stop the sound
+     now in solid red. A sound the service has reached that waits for Play (a
+     backing track) shows with its own Play. A problem with the sound shows
+     here too, in words. It works from any device: the request goes to
+     whichever device runs the sound. With the modifier chord held, Stop
+     shows M and the waiting Play shows P. -->
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import type { LoadedItemView, Service } from "../../lib/api";
@@ -26,7 +25,12 @@
   } from "../../lib/audio";
   import Icon from "../../lib/kit/Icon.svelte";
 
-  let { items, service }: { items: LoadedItemView[]; service: Service | null } = $props();
+  let {
+    items,
+    service,
+    chord = false,
+    waiting = $bindable(null),
+  }: { items: LoadedItemView[]; service: Service | null; chord?: boolean; waiting?: SoundEntry | null } = $props();
 
   let entries = $derived(soundEntries(items, service));
   let view = $derived(live.sound);
@@ -45,6 +49,13 @@
     });
   });
   let queue = $derived(soundQueue(entries, items.map((i) => i.id), liveItem, heard.keys));
+  // Present's modifier chord plays the waiting sound with P.
+  $effect(() => {
+    const next = queue.waiting ?? null;
+    untrack(() => {
+      if (next !== waiting) waiting = next;
+    });
+  });
 
   // The position moves on by itself between what the core says.
   let now = $state(Date.now());
@@ -74,6 +85,7 @@
   const fraction = $derived(playing ? progressFraction(playing, live.soundAt, now) : 0);
 </script>
 
+{#if playing || queue.waiting || message}
 <div class="sound-row" class:playing={!!playing}>
   <p class="line" aria-live="polite">
     {#if playing}
@@ -92,22 +104,22 @@
   {#if queue.waiting}
     <p class="waiting">
       <span class="what">{words.waiting}: <strong>{queue.waiting.name}</strong></span>
-      <button type="button" class="btn play" onclick={() => queue.waiting && playEntry(queue.waiting)}><Icon name="play" size={12} />{words.play}</button>
+      <button type="button" class="btn play" onclick={() => queue.waiting && playEntry(queue.waiting)}>{#if chord}<span class="chord-key" aria-hidden="true">P</span>{/if}<Icon name="play" size={12} />{words.play}</button>
     </p>
   {/if}
 
+  {#if playing}
   <div class="buttons">
-    {#if playing}
       {#if can.resume}
         <button type="button" class="btn" onclick={() => act(() => sound("Resume"))}>{words.resume}</button>
       {:else}
         <button type="button" class="btn" disabled={!can.pause} onclick={() => act(() => sound("Pause"))}>{words.pause}</button>
       {/if}
       <button type="button" class="btn" disabled={!can.fadeOut} onclick={() => act(() => sound("Stop"))}>{words.fadeOut}</button>
-    {/if}
     <span class="gap"></span>
-    <button type="button" class="btn stop" onclick={() => act(() => sound("Panic"))} title="Stops every sound at once">{words.panic}</button>
+    <button type="button" class="btn stop" onclick={() => act(() => sound("Panic"))} title="Stops every sound at once">{#if chord}<span class="chord-key" aria-hidden="true">M</span>{/if}{words.panic}</button>
   </div>
+  {/if}
 
   <!-- Always in the page, so a message that arrives is announced once. -->
   <div role="status">
@@ -116,6 +128,7 @@
     {/if}
   </div>
 </div>
+{/if}
 
 <style>
   .sound-row {
@@ -172,6 +185,7 @@
     flex: 1;
   }
   .btn {
+    position: relative;
     font: inherit;
     font-size: 0.8125rem;
     display: inline-flex;
@@ -204,6 +218,20 @@
   .playing .btn.stop {
     color: #fff;
     background: var(--live);
+  }
+  .chord-key {
+    position: absolute;
+    top: -0.45rem;
+    left: -0.35rem;
+    min-width: 1.35rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 5px;
+    background: var(--gold);
+    color: var(--canvas);
+    font: 700 0.72rem/1.2 ui-monospace, Menlo, monospace;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
   }
   .problem {
     margin: 0;
