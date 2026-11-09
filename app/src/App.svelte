@@ -260,7 +260,6 @@
         <!-- At every launch: where a monthly volunteer starts. Goes once a
              tab is chosen, a service is made, or it is closed. -->
         <div class="point-tabs" role="note">
-          <span class="point-arrow" aria-hidden="true">↑</span>
           <div class="point-say">
             <strong>Start here</strong>
             <span><b>Plan</b> gets a service ready · <b>Present</b> runs it on Sunday</span>
@@ -406,74 +405,70 @@
     display: flex;
     gap: 0.25rem;
   }
-  /* Start here, under the Plan | Present tabs, with a gently bouncing arrow. */
+  /* Start here, under the Plan | Present tabs: a soft yellow note with a
+     dark outline and a small point at its top left, toward the tabs. Still,
+     no animation. */
   .point-tabs {
+    --note: #fbeca2;
+    --note-line: #1f1f1f;
     position: absolute;
-    top: calc(100% + 0.9rem);
-    left: 0;
+    top: calc(100% + 0.75rem);
+    left: 0.25rem;
     z-index: 40;
     display: flex;
     align-items: flex-start;
     gap: 0.6rem;
     width: max-content;
-    max-width: 22rem;
-    padding: 0.6rem 0.6rem 0.6rem 0.8rem;
-    border: 1px solid var(--gold);
-    border-radius: var(--radius-lg);
-    background: var(--panel);
+    max-width: 24rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.9rem;
+    border: 3px solid var(--note-line);
+    border-radius: 12px;
+    background: var(--note);
+    color: #2a2410;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     font-size: 0.8125rem;
   }
-  .point-arrow {
+  /* The point: a small square turned on its corner, outlined on its two
+     outer sides only, so it joins the note's edge. */
+  .point-tabs::before {
+    content: "";
     position: absolute;
-    top: -1.35rem;
-    left: 2.2rem;
-    color: var(--gold);
-    font-size: 1.25rem;
-    font-weight: 700;
-    line-height: 1;
-    animation: point-bounce 1.4s ease-in-out infinite;
-  }
-  @keyframes point-bounce {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-5px);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .point-arrow {
-      animation: none;
-    }
+    top: -9px;
+    left: 1.6rem;
+    width: 14px;
+    height: 14px;
+    background: var(--note);
+    border-top: 3px solid var(--note-line);
+    border-left: 3px solid var(--note-line);
+    border-radius: 3px 0 0 0;
+    transform: rotate(45deg);
   }
   .point-say {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    color: var(--muted);
+    color: #4a4020;
   }
   .point-say strong {
-    color: var(--gold);
+    color: #1f1a08;
     font-size: 0.875rem;
   }
   .point-say b {
-    color: var(--text);
-    font-weight: 600;
+    color: #1f1a08;
+    font-weight: 700;
   }
   .point-close {
     font: inherit;
     font-size: 1rem;
     line-height: 1;
-    color: var(--muted);
+    color: #4a4020;
     background: none;
     border: none;
     padding: 0 0.2rem;
     cursor: pointer;
   }
   .point-close:hover {
-    color: var(--text);
+    color: #000;
   }
   /* Plan and Present as quiet tabs: the chosen one in full white with a
      thin gold line on the bar's bottom edge, the other muted. */
