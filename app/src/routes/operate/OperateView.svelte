@@ -206,7 +206,10 @@
       PageDown: "Next",
       ArrowLeft: "Previous",
       PageUp: "Previous",
+      // The three screen keys sit together: . Blank, , Idle, ; Clear text.
       ".": "ToggleBlack",
+      ",": "ToggleIdle",
+      ";": "ClearText",
     };
     const c = keys[e.key];
     if (c) {
@@ -626,16 +629,15 @@
         <SlidePreview overlay="Black" size="small" />
         <span class="screen-caption"><Icon name="eyeOff" size={13} /><strong>Blank</strong><kbd>.</kbd></span>
       </button>
-      <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide">
+      <button type="button" class="screen-pick" class:on={live.overlay === "Idle"} aria-pressed={live.overlay === "Idle"} onclick={() => command("ToggleIdle")} title="Put the idle screen up ({look.idleInfo.video ? "a looping video" : look.idleInfo.label}) without ending the service, until you tap again or show a slide (,)">
         <SlidePreview overlay="Idle" idle={look.idle} idleVideo={look.idleInfo.video} idleTag={false} size="small" />
         <span class="screen-caption">
-          <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong>
-          <span class="screen-what" title={look.idleInfo.label}>{look.idleInfo.video ? "Looping video" : look.idleInfo.label}</span>
+          <Icon name={look.idleInfo.video ? "media" : "image"} size={13} /><strong>Idle</strong><kbd>,</kbd>
         </span>
       </button>
-      <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide">
+      <button type="button" class="screen-pick clear-text" onclick={() => command("ClearText")} title="Take the words off the screen and keep the background, until the next slide (;)">
         <span class="clear-pic" aria-hidden="true"></span>
-        <span class="screen-caption"><Icon name="text" size={13} /><strong>Clear text</strong></span>
+        <span class="screen-caption"><Icon name="text" size={13} /><strong>Clear text</strong><kbd>;</kbd></span>
       </button>
     </div>
     {#if ready.length > 0}

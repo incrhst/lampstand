@@ -59,6 +59,8 @@ export function isTyping(target: TargetLike | null | undefined): boolean {
 export const KEYS: [string, string][] = [
   ["← → or Space", "Next and previous"],
   [".", "Blank"],
+  [",", "Idle screen"],
+  [";", "Clear the text, keep the background"],
   ["1–9", "Jump to a verse"],
   ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
   ["⇧↑ ⇧↓ then Enter", "Choose an item, then start it"],
