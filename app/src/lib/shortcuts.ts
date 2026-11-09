@@ -58,8 +58,8 @@ export function isTyping(target: TargetLike | null | undefined): boolean {
 /** The keys of the Present screen, for the sidecard's Keys card and the Help screen. */
 export const KEYS: [string, string][] = [
   ["← → or Space", "Next and previous"],
-  [".", "Blank"],
   [",", "Idle screen"],
+  [".", "Blank"],
   [";", "Clear the text, keep the background"],
   ["1–9", "Jump to a verse"],
   ["C B P T I E", "Chorus, bridge, pre-chorus, tag, intro, ending"],
