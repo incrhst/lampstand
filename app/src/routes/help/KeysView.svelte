@@ -1,6 +1,6 @@
 <!-- Help › Keys: every key of the Present screen, plus the screen switches. -->
 <script lang="ts">
-  import { KEYS, modLabel } from "../../lib/shortcuts";
+  import { CHORD, KEYS, modLabel } from "../../lib/shortcuts";
 
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
   const rows: [string, string][] = [...KEYS, ["O", "Control OBS, when it is connected"], [`${mod}1 · ${mod}2 · ${mod}\\`, "Plan, Present, and switch between them"]];
@@ -12,6 +12,15 @@
   <table>
     <tbody>
       {#each rows as [key, what]}
+        <tr><td><kbd>{key}</kbd></td><td>{what}</td></tr>
+      {/each}
+    </tbody>
+  </table>
+  <h2>Hold Ctrl + Alt</h2>
+  <p class="muted intro">For regulars: hold Ctrl + Alt (Ctrl + Option on a Mac) with the left hand, and each control shows its key. Press one with the right hand.</p>
+  <table>
+    <tbody>
+      {#each CHORD as [key, what]}
         <tr><td><kbd>{key}</kbd></td><td>{what}</td></tr>
       {/each}
     </tbody>
@@ -28,6 +37,11 @@
     font-size: 1.3rem;
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+  h2 {
+    margin: 2rem 0 0;
+    font-size: 1rem;
+    font-weight: 600;
   }
   .intro {
     margin: 0.3rem 0 1.5rem;
