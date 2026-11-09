@@ -475,15 +475,20 @@
   .point-close:hover {
     color: var(--text);
   }
+  /* Plan and Present as quiet tabs: the chosen one in full white with a
+     thin gold line on the bar's bottom edge, the other muted. */
+  nav {
+    align-self: stretch;
+  }
   nav button {
+    position: relative;
     font: inherit;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     font-weight: 500;
     background: none;
     border: none;
     color: var(--muted);
-    padding: 0.4rem 0.9rem;
-    border-radius: var(--radius);
+    padding: 0 0.95rem;
     cursor: pointer;
     /* No transition: selection shows at once, and a window that is not
        frontmost can freeze a transition part way. */
@@ -491,9 +496,25 @@
   nav button:hover {
     color: var(--text);
   }
+  nav button::after {
+    content: "";
+    position: absolute;
+    left: 0.6rem;
+    right: 0.6rem;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+  }
+  nav button:hover::after {
+    background: var(--line-strong);
+  }
   nav button.active {
     color: var(--text);
-    background: var(--raised);
+    font-weight: 600;
+  }
+  nav button.active::after {
+    background: var(--gold);
   }
   .right {
     margin-left: auto;
