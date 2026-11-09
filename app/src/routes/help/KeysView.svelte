@@ -3,7 +3,7 @@
   import { KEYS, modLabel } from "../../lib/shortcuts";
 
   const mod = modLabel(typeof navigator === "undefined" ? "" : navigator.platform);
-  const rows: [string, string][] = [...KEYS, ["F", "Hide or show Library & controls, in Plan and Present"], ["O", "Control OBS, when it is connected"], [`${mod}1 · ${mod}2 · ${mod}\\`, "Plan, Present, and switch between them"]];
+  const rows: [string, string][] = [...KEYS, ["O", "Control OBS, when it is connected"], [`${mod}1 · ${mod}2 · ${mod}\\`, "Plan, Present, and switch between them"]];
 </script>
 
 <div class="page">
