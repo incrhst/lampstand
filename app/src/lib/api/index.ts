@@ -58,6 +58,7 @@ export * from "./OutputRole";
 export * from "./OutputTarget";
 export * from "./Overlay";
 export * from "./PairingView";
+export * from "./ParsedSong";
 export * from "./Passage";
 export * from "./Point";
 export * from "./Position";

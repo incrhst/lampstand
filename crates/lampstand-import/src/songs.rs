@@ -5,5 +5,6 @@ pub mod freeshow;
 pub mod openlp;
 pub mod openlyrics;
 pub mod opensong;
+pub mod paste;
 pub mod propresenter;
 pub mod songselect;

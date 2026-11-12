@@ -529,6 +529,28 @@ Lampstand plays files the church is licensed to play: a track it bought, a multi
 
 Done when tests (wiremock, as `links` has) cover a Drive, Dropbox, OneDrive and direct link that add a track with its name and length; a private link and a missing one; an HTML page; a file that isn't sound; the size limit; and a YouTube, Spotify and SoundCloud link refused without a request. Done, too, when a track added from a Drive link plays in Present's Sound box.
 
+## Follow-ups for 0.9.x
+
+The order the 0.9.x releases are planned in, and what each needs. Everything on `main` for 0.9.0 (music starting from Next, the "nobody runs the sound" warning, Lampstand Remote, the roles settling work) is not repeated here.
+
+| ID | Title | Model | Needs | PRD | Files | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| T114 | Paste lyrics | S | — | SL-1 | `import/src/songs/paste.rs`, `api/src/lib.rs`, `app/src-tauri/src/handler.rs`, `app/src/routes/plan/PasteSong.svelte` | In review |
+| T116 | Paste lyrics keeps chords | S | T114 | SL-1 | `import/src/songs/paste.rs`, `app/src/routes/plan/PasteSong.svelte` | Not started |
+| T115 | MCP server for the library | **O** | T114, decision 0011 accepted | SL-1 | `app/src-tauri/src/mcp.rs`, `app/src-tauri/src/shell.rs`, `app/src/routes/setup/` | Not started |
+
+**T114. Paste lyrics.** `LibraryRequest::ParseLyrics { text, title }` reads pasted words into a song without saving it, and answers `Response::ParsedSong { song, warnings, same_title }`; the person checks it in Plan's "Paste lyrics" dialog and saves it with `PutSong`, optionally into the open service. Headings (`Verse 1`, `[Chorus]`, `Chorus:`, `V2`, and their Spanish, Portuguese, French and German forms) start sections, a heading written again with nothing under it is a repeat (so the song gets an arrangement), a first one-line block is the title, lines of chords above the words are left out and counted, and a SongSelect lyrics page keeps its authors, copyright and CCLI number. Every guess comes back as a plain-words warning. Done when the reading, the request and the dialog's logic have tests, and the dialog has been looked at in the app.
+
+**T116. Paste lyrics keeps chords.** A chart pasted with the chords on a line above the words today loses them. Turn each chord line into ChordPro by placing every chord over the word that sits at the same column (`[G]Amazing [D]grace`), so the song carries its chords for the musicians' screens. Where a chord falls past the end of the words line, put it at the end. Only when the person ticks "Keep the chords"; off by default, so the words alone stay the simple case. Done when the position rules have tests with real chart layouts (tabs, uneven spacing, a chord over a gap, a line with no words under it), and the preview shows the chords it will keep.
+
+**T115. MCP server for the library.** After [decision 0011](decisions/0011-mcp-for-the-library.md) is accepted: an opt-in server in the app, on the loopback address with a token made in Setup, with the read tools (`search_songs`, `get_song`, `list_services`, `get_service`) and the plan tools (`add_song`, `add_song_to_service`, `create_service`), each a thin call into `App::handle`, no live control, and songs it adds marked as not yet checked. Done when a request the screens refuse is refused here too (tested per tool), the token is shown once and kept hashed, turning the switch off closes the listener, and a church that never turns it on has nothing listening.
+
+**Also planned for 0.9.x, tracked elsewhere:**
+
+- **Send sound to the stream** (#137), after the OBS prototype (#125) proves a browser source can carry it. Needs a real OBS; no session can do it.
+- **Real-hardware sound check** on a Mac and Windows computer (#186) and a pairing and service run on real phones and a tablet for Lampstand Remote (#179), before the releases that carry them.
+- **CCLI usage log and report** (T38), so a church that adds songs by paste or by an assistant can report what it used. Until it lands, the Paste lyrics dialog says "Only add words your church has the right to use."
+
 ## Not code: start now
 
 These sit on the critical path, but no session can do them:
